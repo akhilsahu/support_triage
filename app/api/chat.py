@@ -19,16 +19,18 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 
 # ── Conversation State (in-memory) ───────────────────────────────────────────
-# Tracks per-conversation context: awaiting_identifier, resolved user_id, intent
+# Keys: awaiting_identifier, user, pending_intent, pending_routing, last_intent, history
 conversation_state: Dict[str, dict] = {}
 
 # ── Mock Data ────────────────────────────────────────────────────────────────
 
-# Keyed by phone number or user ID
+_D = datetime.utcnow()
+
 MOCK_USERS = {
     "5551234": {
         "name": "Alex Kim",
         "email": "alex.kim@email.com",
+        "member_since": "January 2024",
         "orders": [
             {
                 "order_id": "ORD-1042",
@@ -36,7 +38,7 @@ MOCK_USERS = {
                 "status": "In Transit",
                 "tracking": "1Z999AA10123456784",
                 "carrier": "UPS",
-                "estimated_delivery": (datetime.utcnow() + timedelta(days=2)).strftime("%B %d, %Y"),
+                "estimated_delivery": (_D + timedelta(days=2)).strftime("%B %d, %Y"),
                 "placed_on": "April 29, 2026",
                 "total": "$349.99",
             },
@@ -50,6 +52,26 @@ MOCK_USERS = {
                 "placed_on": "April 24, 2026",
                 "total": "$99.99",
             },
+            {
+                "order_id": "ORD-1019",
+                "item": "Keychron K2 Mechanical Keyboard",
+                "status": "Delivered",
+                "tracking": "1Z999AA10123456611",
+                "carrier": "UPS",
+                "estimated_delivery": "April 10, 2026",
+                "placed_on": "April 7, 2026",
+                "total": "$89.99",
+            },
+            {
+                "order_id": "ORD-1005",
+                "item": "Anker 65W USB-C Charger",
+                "status": "Delivered",
+                "tracking": "9400111899223450000001",
+                "carrier": "USPS",
+                "estimated_delivery": "March 22, 2026",
+                "placed_on": "March 19, 2026",
+                "total": "$35.99",
+            },
         ],
         "refunds": [
             {
@@ -58,14 +80,33 @@ MOCK_USERS = {
                 "amount": "$99.99",
                 "status": "Processed",
                 "reason": "Item not as described",
-                "processed_on": "April 23, 2026",
-            }
+                "processed_on": "April 30, 2026",
+            },
+            {
+                "refund_id": "REF-0078",
+                "order_id": "ORD-1005",
+                "amount": "$35.99",
+                "status": "Processed",
+                "reason": "Arrived damaged",
+                "processed_on": "March 25, 2026",
+            },
         ],
     },
     "5559876": {
         "name": "Jordan Lee",
         "email": "jordan.lee@email.com",
+        "member_since": "June 2023",
         "orders": [
+            {
+                "order_id": "ORD-1038",
+                "item": "Apple AirPods Pro (2nd Gen)",
+                "status": "Out for Delivery",
+                "tracking": "9400111899223450123457",
+                "carrier": "USPS",
+                "estimated_delivery": (_D + timedelta(days=0)).strftime("%B %d, %Y"),
+                "placed_on": "April 28, 2026",
+                "total": "$249.99",
+            },
             {
                 "order_id": "ORD-1018",
                 "item": "Samsung 27\" 4K Monitor",
@@ -76,6 +117,63 @@ MOCK_USERS = {
                 "placed_on": "April 16, 2026",
                 "total": "$429.99",
             },
+            {
+                "order_id": "ORD-1002",
+                "item": "Bose QuietComfort 45 Headphones",
+                "status": "Delivered",
+                "tracking": "1Z999BB10123456001",
+                "carrier": "UPS",
+                "estimated_delivery": "February 14, 2026",
+                "placed_on": "February 10, 2026",
+                "total": "$279.99",
+            },
+        ],
+        "refunds": [
+            {
+                "refund_id": "REF-0085",
+                "order_id": "ORD-1018",
+                "amount": "$429.99",
+                "status": "Pending",
+                "reason": "Dead pixel on screen",
+                "processed_on": "Pending review",
+            },
+        ],
+    },
+    "5550001": {
+        "name": "Sam Rivera",
+        "email": "sam.rivera@email.com",
+        "member_since": "March 2025",
+        "orders": [
+            {
+                "order_id": "ORD-1044",
+                "item": "iPad Air M2",
+                "status": "Processing",
+                "tracking": "N/A",
+                "carrier": "FedEx",
+                "estimated_delivery": (_D + timedelta(days=5)).strftime("%B %d, %Y"),
+                "placed_on": "May 1, 2026",
+                "total": "$699.99",
+            },
+            {
+                "order_id": "ORD-1033",
+                "item": "Apple Pencil (2nd Gen)",
+                "status": "Delivered",
+                "tracking": "7749000100000000001",
+                "carrier": "FedEx",
+                "estimated_delivery": "April 22, 2026",
+                "placed_on": "April 19, 2026",
+                "total": "$129.99",
+            },
+            {
+                "order_id": "ORD-1021",
+                "item": "Magic Keyboard with Touch ID",
+                "status": "Delivered",
+                "tracking": "7749000100000000002",
+                "carrier": "FedEx",
+                "estimated_delivery": "April 5, 2026",
+                "placed_on": "April 2, 2026",
+                "total": "$149.99",
+            },
         ],
         "refunds": [],
     },
@@ -84,14 +182,12 @@ MOCK_USERS = {
 
 def _extract_identifier(message: str) -> Optional[str]:
     """Extract phone number or user ID from message."""
-    # Match 7+ digit numbers (phone or ID)
-    match = re.search(r'\b(\d{7,})\b', message.replace("-", "").replace(" ", ""))
-    if match:
-        return match.group(1)
-    # Match last-4 style short IDs
-    match = re.search(r'\b(\d{4,6})\b', message)
-    if match:
-        return match.group(1)
+    # Search on original message (don't strip spaces — breaks word boundaries)
+    # Longest digit sequence first
+    all_numbers = re.findall(r'\d+', message.replace("-", "").replace(" ", ""))
+    for num in sorted(all_numbers, key=len, reverse=True):
+        if len(num) >= 4:
+            return num
     return None
 
 
@@ -150,6 +246,17 @@ def _build_refund_response(user: dict) -> str:
 
 def _needs_identifier(intent: str) -> bool:
     return intent in ("shipping", "delivery", "tracking", "refund", "credit", "compensation", "account", "product_issue")
+
+
+_AFFIRMATIVE = {"yes", "yeah", "yep", "sure", "ok", "okay", "please", "show", "yup", "go ahead", "do it"}
+_FOLLOWUP_ORDER = {"previous", "older", "earlier", "before", "past", "more", "others", "rest", "all", "list"}
+
+def _is_affirmative(msg: str) -> bool:
+    return msg.strip().lower().rstrip("?.!") in _AFFIRMATIVE
+
+def _is_followup_orders(msg: str) -> bool:
+    lower = msg.lower()
+    return any(w in lower for w in _FOLLOWUP_ORDER)
 
 
 def _generate_response(intent: str, message: str, sentiment_score: float, user: Optional[dict] = None) -> str:
@@ -336,6 +443,42 @@ finance_agent = FinanceAgent()
 logistics_agent = LogisticsAgent()
 
 
+def _build_user_context(user: dict) -> str:
+    """Serialize full user data as context for the LLM."""
+    orders_text = "\n".join(
+        f"  - {o['order_id']}: {o['item']} | Status: {o['status']} | "
+        f"Carrier: {o['carrier']} | Tracking: {o['tracking']} | "
+        f"Placed: {o['placed_on']} | Est. Delivery: {o['estimated_delivery']} | Total: {o['total']}"
+        for o in user["orders"]
+    )
+    refunds_text = "\n".join(
+        f"  - {r['refund_id']}: Order {r['order_id']} | Amount: {r['amount']} | "
+        f"Status: {r['status']} | Reason: {r['reason']} | Processed: {r['processed_on']}"
+        for r in user.get("refunds", [])
+    ) or "  None"
+
+    return (
+        f"CUSTOMER ACCOUNT:\n"
+        f"  Name: {user['name']} | Email: {user['email']} | Member since: {user.get('member_since', 'N/A')}\n\n"
+        f"ALL ORDERS ({len(user['orders'])} total):\n{orders_text}\n\n"
+        f"ALL REFUNDS:\n{refunds_text}"
+    )
+
+
+SYSTEM_PROMPT = """You are an AI customer support agent for an e-commerce platform.
+
+Your job:
+1. Identify the customer using their phone number or customer ID (7 digits: 5551234, 5559876, or 5550001).
+2. Once identified, answer questions using ONLY the data provided in the CUSTOMER ACCOUNT section.
+3. If not yet identified and the request needs account data, ask for their phone number or customer ID.
+4. If the customer includes their phone number in their first message, extract it and proceed directly.
+5. Always show ALL relevant data (e.g., if asked for all orders, list every single one).
+6. Never invent data. Never say you "don't have access" if the data is provided below.
+7. Be concise, friendly, and use markdown formatting (bold, bullet points).
+
+Capabilities: order status, order history, tracking, refunds, account info."""
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
@@ -345,86 +488,72 @@ async def chat(request: ChatRequest):
         conversation_id = request.conversation_id or str(uuid.uuid4())
 
         sentiment_result = await empathy_engine.analyze_sentiment(request.message)
+        state = conversation_state.get(conversation_id, {"history": []})
+        state.setdefault("history", [])
+        user = state.get("user")
 
-        # Load or init conversation state
-        state = conversation_state.get(conversation_id, {})
-
-        # If we're waiting for an identifier, try to resolve it
-        if state.get("awaiting_identifier"):
+        # ── Try to resolve user from current message even if not yet identified ──
+        if not user:
             identifier = _extract_identifier(request.message)
-            user = _lookup_user(identifier) if identifier else None
-            if user:
-                state["user"] = user
-                state["awaiting_identifier"] = False
-                conversation_state[conversation_id] = state
-                intent = state.get("pending_intent", "general_inquiry")
-                routing = state.get("pending_routing", "support")
-                response_text = await _hand_off(
-                    routing=routing,
-                    intent=intent,
-                    message=request.message,
-                    sentiment_score=sentiment_result.score,
-                    user=user,
-                    conversation_id=conversation_id,
-                )
-            else:
-                response_text = "I couldn't find an account with that number. Please try your 7-digit phone number or customer ID (e.g. **5551234**)."
-                return ChatResponse(
-                    message_id=message_id,
-                    conversation_id=conversation_id,
-                    response=response_text,
-                    agent="Triage Agent",
-                    sentiment_score=sentiment_result.score,
-                    intent="verification",
-                    timestamp=datetime.utcnow()
-                )
+            if identifier:
+                user = _lookup_user(identifier)
+                if user:
+                    state["user"] = user
+                    logger.info("User identified from message", name=user["name"])
+
+        # ── Build system prompt with user context if available ───────────────
+        system = SYSTEM_PROMPT
+        if user:
+            system += f"\n\nSTATUS: Customer is IDENTIFIED.\n\n{_build_user_context(user)}"
         else:
-            # Normal triage flow
+            system += "\n\nSTATUS: Customer is NOT yet identified. Ask for phone number or customer ID (7 digits) before showing any account data."
+
+        # ── Append current message to history ────────────────────────────────
+        state["history"].append({"role": "user", "content": request.message})
+
+        # ── Call LLM with full conversation history ───────────────────────────
+        llm_result = await llm_service.generate_with_fallback(
+            messages=state["history"][-10:],  # last 10 turns for context window
+            system_prompt=system,
+            temperature=0.4,
+            max_tokens=500,
+        )
+
+        if llm_result:
+            response_text = llm_result["content"]
+            provider = llm_result.get("provider", "llm")
+            logger.info("LLM response generated", provider=provider)
+        else:
+            # Hard fallback — keyword only
+            logger.warning("All LLM providers failed, using keyword fallback")
             triage_result = await triage_agent.triage(
-                customer_message=request.message,
-                customer_id=conversation_id
+                customer_message=request.message, customer_id=conversation_id
             )
             intent = triage_result.intent.value if triage_result.intent else "general_inquiry"
             routing = triage_result.routed_to.value if triage_result.routed_to else "support"
+            response_text = _generate_response(intent, request.message, sentiment_result.score, user)
+            provider = "keyword-fallback"
 
-            user = state.get("user")
+        state["history"].append({"role": "assistant", "content": response_text})
+        conversation_state[conversation_id] = state
 
-            if not user and _needs_identifier(intent):
-                # Ask for identifier before proceeding
-                state["awaiting_identifier"] = True
-                state["pending_intent"] = intent
-                state["pending_routing"] = routing
-                conversation_state[conversation_id] = state
-                response_text = "Sure, I can help with that! To pull up your account, please provide your **phone number** or **customer ID**."
-                return ChatResponse(
-                    message_id=message_id,
-                    conversation_id=conversation_id,
-                    response=response_text,
-                    agent="Triage Agent",
-                    sentiment_score=sentiment_result.score,
-                    intent=intent,
-                    timestamp=datetime.utcnow()
-                )
+        # ── Determine routing label for UI ────────────────────────────────────
+        msg_lower = request.message.lower()
+        if any(w in msg_lower for w in ("refund", "credit", "compensation")):
+            routing = "finance"
+        elif any(w in msg_lower for w in ("order", "ship", "track", "deliver", "package")):
+            routing = "logistics"
+        else:
+            routing = "support"
 
-            response_text = await _hand_off(
-                routing=routing,
-                intent=intent,
-                message=request.message,
-                sentiment_score=sentiment_result.score,
-                user=user,
-                conversation_id=conversation_id,
-            )
-            conversation_state[conversation_id] = state
-
-        logger.info("Chat complete", intent=intent, routing=routing, sentiment=sentiment_result.score)
+        logger.info("Chat complete", sentiment=sentiment_result.score, provider=provider)
 
         return ChatResponse(
-            message_id=message_id,
-            conversation_id=conversation_id,
+            message_id=message_id, conversation_id=conversation_id,
             response=response_text,
-            agent=f"Triage → {routing.capitalize()}",
+            agent=f"AI Agent → {routing.capitalize()}",
             sentiment_score=sentiment_result.score,
-            intent=intent,
+            intent=routing,
             timestamp=datetime.utcnow()
         )
 
