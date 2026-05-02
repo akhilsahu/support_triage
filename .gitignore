@@ -1,0 +1,115 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+.env
+.venv
+# Poetry
+poetry.lock
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Alembic
+alembic/versions/*.pyc
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+.DS_Store
+
+# Redis dump
+dump.rdb
+
+# Prometheus
+/tmp/prometheus_multiproc/
+
+# Docker
+docker-compose.override.yml
+
+# Documentation builds
+docs/_build/
+site/
+
+# Model files
+*.pkl
+*.h5
+*.pt
+*.pth
+models/
+
+# Data files
+data/
+*.csv
+*.json
+*.parquet
+
+# Uploads
+uploads/
+
+# Made with Bob
