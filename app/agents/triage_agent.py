@@ -18,8 +18,10 @@ from enum import Enum
 from datetime import datetime
 from uuid import uuid4
 
+import json
 from pydantic import BaseModel, Field
 
+from app.services.llm_service import llm_service
 from app.agents.empathy_engine import (
     EmpathyEngine,
     SentimentAnalysis,
@@ -45,6 +47,9 @@ class IntentType(str, Enum):
     COMPENSATION = "compensation"
     PRODUCT_ISSUE = "product_issue"
     ACCOUNT = "account"
+    BROWSE_PRODUCTS = "browse_products"
+    PLACE_ORDER = "place_order"
+    REPLACEMENT = "replacement"
     GENERAL_INQUIRY = "general_inquiry"
 
 
@@ -52,6 +57,7 @@ class RoutingTarget(str, Enum):
     """Routing target agents"""
     LOGISTICS = "logistics"
     FINANCE = "finance"
+    ORDER = "order"
     ESCALATION = "escalation"
 
 
@@ -94,6 +100,19 @@ class TriageAgent:
         ],
         IntentType.CREDIT: [
             "credit", "store credit", "voucher", "coupon"
+        ],
+        IntentType.BROWSE_PRODUCTS: [
+            "browse", "show products", "what products", "catalog",
+            "available", "buy", "purchase", "shop", "looking for",
+            "recommend", "suggestion", "list products", "what do you sell"
+        ],
+        IntentType.PLACE_ORDER: [
+            "place order", "order now", "i want to buy", "add to cart",
+            "checkout", "purchase", "i'd like to order", "can i order"
+        ],
+        IntentType.REPLACEMENT: [
+            "replacement", "replace", "exchange", "swap",
+            "broken", "damaged", "defective", "not working", "send another"
         ],
         IntentType.COMPENSATION: [
             "compensation", "compensate", "make up for",
@@ -236,7 +255,7 @@ class TriageAgent:
         )
         
         # Respect actual intent — don't force Finance if message is about orders/shipping
-        _actual_intent = self._classify_intent(customer_message)
+        _actual_intent = await self._classify_intent(customer_message)
         _logistics_intents = {IntentType.SHIPPING, IntentType.DELIVERY, IntentType.TRACKING}
         if _actual_intent in _logistics_intents:
             _empathy_intent = _actual_intent
@@ -290,7 +309,7 @@ class TriageAgent:
             TriageDecision with standard routing
         """
         # Classify intent
-        intent = self._classify_intent(customer_message)
+        intent = await self._classify_intent(customer_message)
         
         # Assign priority based on sentiment and urgency
         priority = self._assign_priority(sentiment_analysis)
@@ -349,31 +368,55 @@ class TriageAgent:
         
         return decision
     
-    def _classify_intent(self, message: str) -> IntentType:
+    async def _classify_intent(self, message: str) -> IntentType:
         """
-        Classify customer intent from message.
-        
-        Args:
-            message: Customer message
-            
-        Returns:
-            IntentType classification
+        Classify customer intent using LLM. Falls back to keyword scoring only if LLM fails.
         """
+        valid_intents = [i.value for i in IntentType]
+        try:
+            result = await llm_service.generate_with_fallback(
+                messages=[{"role": "user", "content": message}],
+                system_prompt=(
+                    "You are an intent classifier for a customer support system. "
+                    "Classify the customer message into exactly ONE of these intents:\n"
+                    f"{', '.join(valid_intents)}\n\n"
+                    "Definitions:\n"
+                    "- shipping/delivery/tracking: questions about order shipment or tracking\n"
+                    "- refund: wants money back to original payment method\n"
+                    "- credit: wants store credit or voucher\n"
+                    "- compensation: wants something for bad experience\n"
+                    "- product_issue: broken, damaged, wrong, or missing item\n"
+                    "- replacement: wants a new item sent instead of refund\n"
+                    "- account: login, password, profile settings\n"
+                    "- browse_products: wants to see what's available to buy\n"
+                    "- place_order: wants to buy a specific product\n"
+                    "- general_inquiry: anything else\n\n"
+                    'Respond with JSON only: {"intent": "<value>"}'
+                ),
+                temperature=0.0,
+                max_tokens=30,
+            )
+            if result:
+                raw = result["content"].strip()
+                # extract JSON even if wrapped in markdown
+                if "```" in raw:
+                    raw = raw.split("```")[1].strip().lstrip("json").strip()
+                data = json.loads(raw)
+                intent_val = data.get("intent", "").strip()
+                if intent_val in valid_intents:
+                    return IntentType(intent_val)
+        except Exception:
+            pass
+
+        # Keyword fallback (last resort)
         message_lower = message.lower()
-        
-        # Score each intent based on keyword matches
         intent_scores = {}
-        
         for intent_type, keywords in self.INTENT_KEYWORDS.items():
-            score = sum(1 for keyword in keywords if keyword in message_lower)
+            score = sum(1 for kw in keywords if kw in message_lower)
             if score > 0:
                 intent_scores[intent_type] = score
-        
-        # Return intent with highest score
         if intent_scores:
             return max(intent_scores, key=intent_scores.get)
-        
-        # Default to general inquiry
         return IntentType.GENERAL_INQUIRY
     
     def _assign_priority(self, sentiment_analysis: SentimentAnalysis) -> int:

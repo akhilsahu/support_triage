@@ -3,15 +3,18 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Dict
-from datetime import datetime, timedelta
+from datetime import datetime
 import uuid
 import re
 import structlog
 
-from app.services.empathy import EmpathyEngine
+from app.mock.users import MOCK_USERS
+from app.mock.products import search_products, get_product, CATEGORIES
+from app.agents.empathy_engine import get_empathy_engine
 from app.agents.triage_agent import TriageAgent
 from app.agents.finance_agent import FinanceAgent
 from app.agents.logistics_agent import LogisticsAgent
+from app.agents.order_agent import get_order_agent
 from app.services.llm_service import llm_service
 
 logger = structlog.get_logger()
@@ -22,162 +25,6 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
 # Keys: awaiting_identifier, user, pending_intent, pending_routing, last_intent, history
 conversation_state: Dict[str, dict] = {}
 
-# ── Mock Data ────────────────────────────────────────────────────────────────
-
-_D = datetime.utcnow()
-
-MOCK_USERS = {
-    "5551234": {
-        "name": "Alex Kim",
-        "email": "alex.kim@email.com",
-        "member_since": "January 2024",
-        "orders": [
-            {
-                "order_id": "ORD-1042",
-                "item": "Sony WH-1000XM5 Headphones",
-                "status": "In Transit",
-                "tracking": "1Z999AA10123456784",
-                "carrier": "UPS",
-                "estimated_delivery": (_D + timedelta(days=2)).strftime("%B %d, %Y"),
-                "placed_on": "April 29, 2026",
-                "total": "$349.99",
-            },
-            {
-                "order_id": "ORD-1031",
-                "item": "Logitech MX Master 3 Mouse",
-                "status": "Delivered",
-                "tracking": "1Z999AA10123456700",
-                "carrier": "UPS",
-                "estimated_delivery": "April 27, 2026",
-                "placed_on": "April 24, 2026",
-                "total": "$99.99",
-            },
-            {
-                "order_id": "ORD-1019",
-                "item": "Keychron K2 Mechanical Keyboard",
-                "status": "Delivered",
-                "tracking": "1Z999AA10123456611",
-                "carrier": "UPS",
-                "estimated_delivery": "April 10, 2026",
-                "placed_on": "April 7, 2026",
-                "total": "$89.99",
-            },
-            {
-                "order_id": "ORD-1005",
-                "item": "Anker 65W USB-C Charger",
-                "status": "Delivered",
-                "tracking": "9400111899223450000001",
-                "carrier": "USPS",
-                "estimated_delivery": "March 22, 2026",
-                "placed_on": "March 19, 2026",
-                "total": "$35.99",
-            },
-        ],
-        "refunds": [
-            {
-                "refund_id": "REF-0091",
-                "order_id": "ORD-1031",
-                "amount": "$99.99",
-                "status": "Processed",
-                "reason": "Item not as described",
-                "processed_on": "April 30, 2026",
-            },
-            {
-                "refund_id": "REF-0078",
-                "order_id": "ORD-1005",
-                "amount": "$35.99",
-                "status": "Processed",
-                "reason": "Arrived damaged",
-                "processed_on": "March 25, 2026",
-            },
-        ],
-    },
-    "5559876": {
-        "name": "Jordan Lee",
-        "email": "jordan.lee@email.com",
-        "member_since": "June 2023",
-        "orders": [
-            {
-                "order_id": "ORD-1038",
-                "item": "Apple AirPods Pro (2nd Gen)",
-                "status": "Out for Delivery",
-                "tracking": "9400111899223450123457",
-                "carrier": "USPS",
-                "estimated_delivery": (_D + timedelta(days=0)).strftime("%B %d, %Y"),
-                "placed_on": "April 28, 2026",
-                "total": "$249.99",
-            },
-            {
-                "order_id": "ORD-1018",
-                "item": "Samsung 27\" 4K Monitor",
-                "status": "Delivered",
-                "tracking": "9400111899223450123456",
-                "carrier": "USPS",
-                "estimated_delivery": "April 20, 2026",
-                "placed_on": "April 16, 2026",
-                "total": "$429.99",
-            },
-            {
-                "order_id": "ORD-1002",
-                "item": "Bose QuietComfort 45 Headphones",
-                "status": "Delivered",
-                "tracking": "1Z999BB10123456001",
-                "carrier": "UPS",
-                "estimated_delivery": "February 14, 2026",
-                "placed_on": "February 10, 2026",
-                "total": "$279.99",
-            },
-        ],
-        "refunds": [
-            {
-                "refund_id": "REF-0085",
-                "order_id": "ORD-1018",
-                "amount": "$429.99",
-                "status": "Pending",
-                "reason": "Dead pixel on screen",
-                "processed_on": "Pending review",
-            },
-        ],
-    },
-    "5550001": {
-        "name": "Sam Rivera",
-        "email": "sam.rivera@email.com",
-        "member_since": "March 2025",
-        "orders": [
-            {
-                "order_id": "ORD-1044",
-                "item": "iPad Air M2",
-                "status": "Processing",
-                "tracking": "N/A",
-                "carrier": "FedEx",
-                "estimated_delivery": (_D + timedelta(days=5)).strftime("%B %d, %Y"),
-                "placed_on": "May 1, 2026",
-                "total": "$699.99",
-            },
-            {
-                "order_id": "ORD-1033",
-                "item": "Apple Pencil (2nd Gen)",
-                "status": "Delivered",
-                "tracking": "7749000100000000001",
-                "carrier": "FedEx",
-                "estimated_delivery": "April 22, 2026",
-                "placed_on": "April 19, 2026",
-                "total": "$129.99",
-            },
-            {
-                "order_id": "ORD-1021",
-                "item": "Magic Keyboard with Touch ID",
-                "status": "Delivered",
-                "tracking": "7749000100000000002",
-                "carrier": "FedEx",
-                "estimated_delivery": "April 5, 2026",
-                "placed_on": "April 2, 2026",
-                "total": "$149.99",
-            },
-        ],
-        "refunds": [],
-    },
-}
 
 
 def _extract_identifier(message: str) -> Optional[str]:
@@ -437,10 +284,11 @@ class ChatResponse(BaseModel):
     timestamp: datetime
 
 # Initialize services
-empathy_engine = EmpathyEngine()
+empathy_engine = get_empathy_engine()
 triage_agent = TriageAgent()
 finance_agent = FinanceAgent()
 logistics_agent = LogisticsAgent()
+order_agent = get_order_agent()
 
 
 def _build_user_context(user: dict) -> str:
@@ -457,9 +305,17 @@ def _build_user_context(user: dict) -> str:
         for r in user.get("refunds", [])
     ) or "  None"
 
+    wallet = user.get("wallet", {})
+    wallet_text = (
+        f"Balance: ${wallet.get('balance', 0):.2f} | "
+        f"Store Credits: ${wallet.get('credits', 0):.2f} | "
+        f"Pending Refunds: ${wallet.get('pending', 0):.2f}"
+    ) if wallet else "N/A"
+
     return (
         f"CUSTOMER ACCOUNT:\n"
-        f"  Name: {user['name']} | Email: {user['email']} | Member since: {user.get('member_since', 'N/A')}\n\n"
+        f"  Name: {user['name']} | Email: {user['email']} | Member since: {user.get('member_since', 'N/A')}\n"
+        f"  Wallet: {wallet_text}\n\n"
         f"ALL ORDERS ({len(user['orders'])} total):\n{orders_text}\n\n"
         f"ALL REFUNDS:\n{refunds_text}"
     )
@@ -476,7 +332,7 @@ Your job:
 6. Never invent data. Never say you "don't have access" if the data is provided below.
 7. Be concise, friendly, and use markdown formatting (bold, bullet points).
 
-Capabilities: order status, order history, tracking, refunds, account info."""
+Capabilities: order status, order history, tracking, refunds, account info, browse products, place orders, request replacements."""
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -487,7 +343,6 @@ async def chat(request: ChatRequest):
         message_id = str(uuid.uuid4())
         conversation_id = request.conversation_id or str(uuid.uuid4())
 
-        sentiment_result = await empathy_engine.analyze_sentiment(request.message)
         state = conversation_state.get(conversation_id, {"history": []})
         state.setdefault("history", [])
         user = state.get("user")
@@ -501,12 +356,74 @@ async def chat(request: ChatRequest):
                     state["user"] = user
                     logger.info("User identified from message", name=user["name"])
 
+        # ── AI Triage: classify intent and determine routing ─────────────────
+        ticket_id = f"TKT-{conversation_id[:8].upper()}"
+        triage_result = await triage_agent.triage(
+            customer_message=request.message,
+            customer_id=conversation_id,
+            ticket_id=ticket_id,
+        )
+        intent = triage_result.intent.value
+        routing = triage_result.routed_to.value
+        logger.info("Triage complete", intent=intent, routing=routing, sentiment=triage_result.sentiment_analysis.get("score"))
+
+        # ── Call FinanceAgent for finance routing ────────────────────────────
+        agent_context = ""
+        if user and routing == "finance":
+            try:
+                wallet_data = await finance_agent.check_wallet_balance(
+                    ticket_id=ticket_id,
+                    customer_id=user["name"],
+                    wallet=user.get("wallet", {}),
+                )
+                agent_context = (
+                    f"\n\nFINANCE AGENT RESULT (wallet check):\n"
+                    f"  Balance: ${wallet_data['balance']:.2f} {wallet_data['currency']}\n"
+                    f"  Store Credits: ${wallet_data['store_credits']:.2f}\n"
+                    f"  Pending Refunds: ${wallet_data['pending_refunds']:.2f}\n"
+                    f"  Total Available: ${wallet_data['total_available']:.2f}\n"
+                    f"  (Action logged to CRM audit trail)"
+                )
+                logger.info("FinanceAgent wallet check complete", balance=wallet_data["balance"])
+            except Exception as e:
+                logger.error("FinanceAgent wallet check failed", error=str(e))
+
+        # ── Call OrderAgent for order/browse routing ─────────────────────────
+        order_context = ""
+        msg_lower = request.message.lower()
+        if routing == "order" or intent in ("browse_products", "place_order", "replacement"):
+            try:
+                browse_result = await order_agent.browse_products(ticket_id=ticket_id)
+                products = browse_result["products"][:8]
+                if products:
+                    prod_lines = "\n".join(
+                        f"  - {p['product_id']}: {p['name']} | ${p['price']:.2f} | "
+                        f"Stock: {p['stock']} | Rating: {p['rating']} | Category: {p['category']}"
+                        for p in products
+                    )
+                    order_context = (
+                        f"\n\nPRODUCT CATALOG ({browse_result['total']} items):\n{prod_lines}\n"
+                        f"Available categories: {', '.join(CATEGORIES)}\n"
+                        "To place an order the customer must provide a product ID and quantity."
+                    )
+                    if intent == "replacement":
+                        order_context += (
+                            "\n\nREPLACEMENT: Customer wants to replace a damaged/defective item. "
+                            "Use their order history to identify the relevant order."
+                        )
+            except Exception as e:
+                logger.error("OrderAgent browse failed", error=str(e))
+
         # ── Build system prompt with user context if available ───────────────
         system = SYSTEM_PROMPT
         if user:
             system += f"\n\nSTATUS: Customer is IDENTIFIED.\n\n{_build_user_context(user)}"
+            if agent_context:
+                system += agent_context
         else:
             system += "\n\nSTATUS: Customer is NOT yet identified. Ask for phone number or customer ID (7 digits) before showing any account data."
+        if order_context:
+            system += order_context
 
         # ── Append current message to history ────────────────────────────────
         state["history"].append({"role": "user", "content": request.message})
@@ -524,36 +441,24 @@ async def chat(request: ChatRequest):
             provider = llm_result.get("provider", "llm")
             logger.info("LLM response generated", provider=provider)
         else:
-            # Hard fallback — keyword only
-            logger.warning("All LLM providers failed, using keyword fallback")
-            triage_result = await triage_agent.triage(
-                customer_message=request.message, customer_id=conversation_id
-            )
-            intent = triage_result.intent.value if triage_result.intent else "general_inquiry"
-            routing = triage_result.routed_to.value if triage_result.routed_to else "support"
-            response_text = _generate_response(intent, request.message, sentiment_result.score, user)
-            provider = "keyword-fallback"
+            logger.warning("All LLM providers failed, using template fallback")
+            response_text = _generate_response(intent, request.message, triage_result.sentiment_analysis.get("score", 0.5), user)
+            provider = "template-fallback"
 
         state["history"].append({"role": "assistant", "content": response_text})
         conversation_state[conversation_id] = state
 
-        # ── Determine routing label for UI ────────────────────────────────────
-        msg_lower = request.message.lower()
-        if any(w in msg_lower for w in ("refund", "credit", "compensation")):
-            routing = "finance"
-        elif any(w in msg_lower for w in ("order", "ship", "track", "deliver", "package")):
-            routing = "logistics"
-        else:
-            routing = "support"
+        # routing already set from triage_result above
 
-        logger.info("Chat complete", sentiment=sentiment_result.score, provider=provider)
+        sentiment_score = triage_result.sentiment_analysis.get("score")
+        logger.info("Chat complete", sentiment=sentiment_score, provider=provider)
 
         return ChatResponse(
             message_id=message_id, conversation_id=conversation_id,
             response=response_text,
             agent=f"AI Agent → {routing.capitalize()}",
-            sentiment_score=sentiment_result.score,
-            intent=routing,
+            sentiment_score=sentiment_score,
+            intent=intent,
             timestamp=datetime.utcnow()
         )
 
@@ -597,13 +502,14 @@ async def get_agent_status():
 async def analyze_sentiment(request: ChatRequest):
     """Analyze sentiment of a message"""
     try:
-        result = await empathy_engine.analyze_sentiment(request.message)
-        
+        result = await empathy_engine.analyze(request.message)
+
         return {
             "sentiment_score": result.score,
-            "emotion": result.emotion,
-            "urgency": result.urgency,
-            "key_phrases": result.key_phrases,
+            "level": result.level.value,
+            "urgency": result.urgency.value,
+            "triggers": result.triggers,
+            "empathy_triggered": result.empathy_triggered,
             "confidence": result.confidence
         }
     except Exception as e:

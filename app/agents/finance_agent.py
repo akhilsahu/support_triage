@@ -135,6 +135,46 @@ class FinanceAgent:
         self.credits_issued = 0
         self.total_amount_processed = 0.0
     
+    async def check_wallet_balance(
+        self,
+        ticket_id: str,
+        customer_id: str,
+        wallet: dict,
+    ) -> Dict[str, Any]:
+        """
+        Check wallet balance for a customer.
+        Logs the action to CRM and returns structured balance info.
+        """
+        self.actions_count += 1
+
+        balance = wallet.get("balance", 0.0)
+        credits = wallet.get("credits", 0.0)
+        pending = wallet.get("pending", 0.0)
+        currency = wallet.get("currency", "USD")
+
+        await self.action_enforcement.log_action(
+            ticket_id=ticket_id,
+            action_type=ActionType.FINANCE_ACTION,
+            agent_id="finance-001",
+            agent_type="finance",
+            details={
+                "action": "wallet_balance_checked",
+                "customer_id": customer_id,
+                "balance": balance,
+                "credits": credits,
+                "pending": pending,
+            },
+            status=TicketStatus.IN_PROGRESS,
+        )
+
+        return {
+            "balance": balance,
+            "store_credits": credits,
+            "pending_refunds": pending,
+            "currency": currency,
+            "total_available": round(balance + credits, 2),
+        }
+
     async def process_refund_request(
         self,
         ticket_id: str,
