@@ -22,7 +22,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from app.services.rag_service import (
-    MockRAGService,
+    RAGService,
     RAGResponse,
     PolicyDocument,
     PolicySection,
@@ -114,7 +114,7 @@ class FinanceAgent:
     
     def __init__(
         self,
-        rag_service: Optional[MockRAGService] = None,
+        rag_service: Optional[RAGService] = None,
         crm_service: Optional[CRMService] = None,
         action_enforcement: Optional[ActionEnforcementService] = None
     ):

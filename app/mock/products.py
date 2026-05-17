@@ -1,5 +1,7 @@
 """Mock product catalog for development and testing."""
 
+from typing import Optional
+
 MOCK_PRODUCTS = {
     "PROD-001": {
         "product_id": "PROD-001",
@@ -172,5 +174,5 @@ def search_products(query: str = "", category: str = "") -> list:
     return results
 
 
-def get_product(product_id: str) -> dict | None:
+def get_product(product_id: str) -> Optional[dict]:
     return MOCK_PRODUCTS.get(product_id)

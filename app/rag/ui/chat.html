@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tech Support Chat</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f0f2f5;
+  color: #1a1a2e;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  background: #1a1a2e;
+  color: #fff;
+  padding: 13px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.25);
+  flex-shrink: 0;
+}
+header h1 { font-size: 1.05rem; font-weight: 700; }
+header .sub { font-size: 0.76rem; color: #8892b0; }
+.nav-links { margin-left: auto; display: flex; gap: 10px; }
+.nav-links a {
+  color: #8892b0; font-size: 0.78rem; text-decoration: none;
+  padding: 4px 10px; border-radius: 6px; border: 1px solid #2d3561;
+  transition: all .15s;
+}
+.nav-links a:hover, .nav-links a.active { background: #0d7377; color: #fff; border-color: #0d7377; }
+
+/* Client bar */
+#client-bar {
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+#client-bar label { font-size: 0.8rem; font-weight: 600; color: #374151; white-space: nowrap; }
+#client-bar input[type="text"] {
+  padding: 7px 12px; border: 1px solid #e2e8f0; border-radius: 8px;
+  font-size: 0.83rem; outline: none; font-family: inherit;
+  transition: border-color .2s; width: 180px;
+}
+#client-bar input:focus { border-color: #0d7377; }
+
+.mode-tabs { display: flex; gap: 6px; margin-left: 4px; }
+.mode-tab {
+  padding: 5px 14px; border-radius: 6px; border: 1px solid #e2e8f0;
+  background: #f8fafc; font-size: 0.78rem; font-weight: 600;
+  cursor: pointer; transition: all .15s; color: #64748b;
+}
+.mode-tab.active { background: #0d7377; color: #fff; border-color: #0d7377; }
+
+.divider { width: 1px; height: 24px; background: #e2e8f0; }
+
+#doc-type-wrap { display: none; align-items: center; gap: 8px; }
+#doc-type-wrap label { font-size: 0.8rem; font-weight: 600; color: #374151; }
+#doc-type-wrap select {
+  padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 8px;
+  font-size: 0.8rem; outline: none; font-family: inherit;
+  transition: border-color .2s;
+}
+
+#client-status {
+  margin-left: auto;
+  font-size: 0.78rem;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: #f1f5f9;
+  color: #64748b;
+}
+#client-status.active { background: #d1fae5; color: #065f46; }
+
+/* ── Layout ── */
+.layout { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Sidebar ── */
+aside {
+  width: 290px;
+  min-width: 260px;
+  background: #fff;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px;
+  gap: 14px;
+  overflow-y: auto;
+}
+.section-label {
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: #8892b0; margin-bottom: 6px;
+}
+
+/* Drop zone */
+#drop-zone {
+  border: 2px dashed #c3d0e0; border-radius: 10px;
+  padding: 22px 12px; text-align: center; cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+#drop-zone:hover, #drop-zone.drag-over { border-color: #0d7377; background: #f0fafa; }
+#drop-zone .icon { font-size: 1.8rem; display: block; margin-bottom: 6px; }
+#drop-zone p { font-size: 0.78rem; color: #64748b; line-height: 1.4; }
+#drop-zone strong { color: #0d7377; }
+#file-input { display: none; }
+
+#progress-wrap { display: none; }
+.progress-bar { height: 5px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-top: 5px; }
+.progress-fill { height: 100%; background: #0d7377; border-radius: 4px; transition: width .3s; }
+#progress-label { font-size: 0.78rem; color: #64748b; }
+
+.doc-card {
+  background: #f8fafc; border: 1px solid #e2e8f0;
+  border-radius: 10px; padding: 11px;
+}
+.doc-card .doc-name { font-size: 0.82rem; font-weight: 600; word-break: break-all; }
+.doc-card .doc-meta { font-size: 0.73rem; color: #8892b0; margin-top: 3px; }
+.doc-card .doc-actions { display: flex; gap: 6px; margin-top: 8px; }
+.btn-sm {
+  padding: 4px 9px; border-radius: 5px; border: none;
+  font-size: 0.73rem; font-weight: 600; cursor: pointer; transition: opacity .15s;
+}
+.btn-sm:hover { opacity: .8; }
+.btn-danger { background: #fee2e2; color: #dc2626; }
+
+/* KB docs list */
+#kb-docs { display: none; }
+.kb-doc-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px;
+  background: #f8fafc; border: 1px solid #e2e8f0;
+  border-radius: 8px; margin-bottom: 5px;
+  cursor: pointer; transition: background .15s;
+}
+.kb-doc-item:hover { background: #e8f4f4; }
+.kb-doc-item.active { border-color: #0d7377; background: #e0f2f2; }
+.kb-doc-item .kname { font-size: 0.8rem; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-doc-item .ktag  { font-size: 0.68rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #dbeafe; color: #1d4ed8; margin-left: 6px; flex-shrink: 0; }
+.all-docs-btn {
+  width: 100%; padding: 7px 10px; border-radius: 8px; border: 1px dashed #0d7377;
+  background: none; color: #0d7377; font-size: 0.78rem; font-weight: 600;
+  cursor: pointer; margin-bottom: 8px; transition: background .15s;
+}
+.all-docs-btn:hover, .all-docs-btn.active { background: #e0f2f2; }
+
+/* Suggestions */
+#suggestions { display: none; }
+.suggestion-btn {
+  width: 100%; text-align: left;
+  padding: 7px 10px; border-radius: 7px;
+  border: 1px solid #e2e8f0; background: #f8fafc;
+  font-size: 0.78rem; color: #1a1a2e;
+  cursor: pointer; margin-bottom: 5px; transition: background .15s;
+}
+.suggestion-btn:hover { background: #e8f4f4; }
+
+/* ── Chat ── */
+main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #f0f2f5; }
+
+#empty-state {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px; color: #8892b0;
+}
+#empty-state .big-icon { font-size: 3rem; }
+#empty-state h3 { font-size: 1rem; color: #1a1a2e; }
+#empty-state p { font-size: 0.83rem; text-align: center; max-width: 280px; line-height: 1.6; }
+
+#chat-area { flex: 1; overflow-y: auto; padding: 18px 20px; display: none; flex-direction: column; gap: 14px; }
+
+.msg { display: flex; gap: 8px; max-width: 760px; }
+.msg.user { flex-direction: row-reverse; margin-left: auto; }
+.avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.85rem; flex-shrink: 0; margin-top: 2px;
+}
+.avatar.ai { background: #0d7377; color: #fff; }
+.avatar.user { background: #1a1a2e; color: #fff; }
+.bubble {
+  padding: 11px 15px; border-radius: 16px;
+  font-size: 0.85rem; line-height: 1.7; max-width: 620px;
+}
+.msg.user .bubble { background: #0d7377; color: #fff; border-bottom-right-radius: 4px; }
+.msg.ai .bubble { background: #fff; border: 1px solid #e2e8f0; border-bottom-left-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+
+/* Sources */
+.sources { margin-top: 8px; }
+.sources-toggle {
+  font-size: 0.73rem; color: #0d7377; cursor: pointer;
+  background: none; border: none; padding: 0; font-weight: 600;
+}
+.sources-list { display: none; margin-top: 6px; }
+.source-item {
+  background: #f8fafc; border: 1px solid #e2e8f0;
+  border-radius: 7px; padding: 7px 10px;
+  margin-bottom: 5px; font-size: 0.76rem; color: #64748b;
+}
+.page-badge {
+  display: inline-block; background: #0d7377; color: #fff;
+  border-radius: 4px; padding: 1px 5px; font-size: 0.68rem;
+  font-weight: 700; margin-right: 5px;
+}
+.score-badge {
+  display: inline-block; background: #f1f5f9; color: #475569;
+  border-radius: 4px; padding: 1px 5px; font-size: 0.68rem; font-weight: 600;
+}
+
+/* Mode badge */
+.mode-indicator {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 0.68rem; font-weight: 700; margin-left: 8px;
+  vertical-align: middle;
+}
+.mode-kb   { background: #dbeafe; color: #1d4ed8; }
+.mode-doc  { background: #d1fae5; color: #065f46; }
+.mode-general { background: #fef3c7; color: #92400e; }
+
+/* Typing */
+.typing { display: flex; gap: 4px; align-items: center; padding: 12px 15px; }
+.dot { width: 6px; height: 6px; background: #94a3b8; border-radius: 50%; animation: bounce .9s infinite; }
+.dot:nth-child(2) { animation-delay: .15s; }
+.dot:nth-child(3) { animation-delay: .3s; }
+@keyframes bounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+
+/* Input bar */
+#input-bar {
+  background: #fff; border-top: 1px solid #e2e8f0;
+  padding: 12px 18px; display: flex; gap: 10px; align-items: flex-end;
+}
+#question-input {
+  flex: 1; border: 1px solid #e2e8f0; border-radius: 12px;
+  padding: 9px 13px; font-size: 0.85rem; resize: none; outline: none;
+  font-family: inherit; max-height: 120px; transition: border-color .2s; line-height: 1.5;
+}
+#question-input:focus { border-color: #0d7377; }
+#question-input:disabled { background: #f8fafc; color: #94a3b8; }
+#send-btn {
+  width: 40px; height: 40px; background: #0d7377; color: #fff;
+  border: none; border-radius: 12px; cursor: pointer;
+  font-size: 1rem; transition: background .15s; flex-shrink: 0;
+}
+#send-btn:disabled { background: #e2e8f0; color: #94a3b8; cursor: not-allowed; }
+#send-btn:hover:not(:disabled) { background: #0a5c60; }
+.hint { font-size: 0.7rem; color: #94a3b8; text-align: center; padding: 3px 0 0; }
+
+/* Toast */
+#toast {
+  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+  background: #1a1a2e; color: #fff; padding: 9px 20px; border-radius: 8px;
+  font-size: 0.8rem; display: none; z-index: 999;
+  box-shadow: 0 4px 16px rgba(0,0,0,.2);
+}
+#toast.error { background: #dc2626; }
+#toast.success { background: #059669; }
+</style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:1.4rem">🤖</span>
+  <div>
+    <h1>Tech Support Chat</h1>
+    <div class="sub">OrchestraSupport · Client Knowledge Base</div>
+  </div>
+  <div class="nav-links">
+    <a href="/api/v1/documents/rag/ui">Admin</a>
+    <a href="/api/v1/documents/rag/ui/chat" class="active">Chat</a>
+  </div>
+</header>
+
+<!-- Client/mode bar -->
+<div id="client-bar">
+  <label for="client-id-input">Client ID</label>
+  <input type="text" id="client-id-input" placeholder="acme, techco…" oninput="onClientChange()" />
+
+  <div class="divider"></div>
+
+  <div class="mode-tabs">
+    <button class="mode-tab active" id="tab-kb" onclick="setMode('kb')">🗄 Knowledge Base</button>
+    <button class="mode-tab" id="tab-doc" onclick="setMode('doc')">📄 Upload Doc</button>
+  </div>
+
+  <div id="doc-type-wrap">
+    <label for="chat-doc-type">Doc Type</label>
+    <select id="chat-doc-type">
+      <option value="tech_support">tech_support</option>
+      <option value="faq">faq</option>
+      <option value="policy">policy</option>
+      <option value="manual">manual</option>
+      <option value="contract">contract</option>
+      <option value="general">general</option>
+    </select>
+  </div>
+
+  <div id="client-status">No client set</div>
+</div>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside>
+    <!-- KB mode sidebar -->
+    <div id="sidebar-kb">
+      <div class="section-label">Knowledge Base</div>
+      <button class="all-docs-btn active" id="all-docs-btn" onclick="selectAllDocs()">
+        🗄 All Documents (entire KB)
+      </button>
+      <div id="kb-docs">
+        <div id="kb-doc-list"></div>
+      </div>
+      <div id="kb-empty" style="font-size:.78rem;color:#94a3b8;text-align:center;padding:12px 0">
+        Set a client ID to load their knowledge base.
+      </div>
+    </div>
+
+    <!-- Doc upload sidebar (hidden by default) -->
+    <div id="sidebar-doc" style="display:none">
+      <div class="section-label">Upload Document</div>
+      <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <span class="icon">📂</span>
+        <p>Drop or <strong>click to browse</strong></p>
+        <p style="font-size:.7rem;color:#94a3b8;margin-top:4px">PDF · DOCX · TXT · MD · HTML · JSON · CSV</p>
+      </div>
+      <input type="file" id="file-input"
+        accept=".pdf,.docx,.doc,.txt,.md,.html,.htm,.json,.jsonl,.csv" />
+
+      <div id="progress-wrap">
+        <div id="progress-label">Processing…</div>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+
+      <div id="doc-info" style="display:none">
+        <div class="section-label">Loaded Doc</div>
+        <div class="doc-card">
+          <div class="doc-name" id="doc-name"></div>
+          <div class="doc-meta" id="doc-meta"></div>
+          <div class="doc-actions">
+            <button class="btn-sm btn-danger" onclick="clearDocument()">🗑 Remove</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Suggestions -->
+    <div id="suggestions">
+      <div class="section-label">Try asking</div>
+      <button class="suggestion-btn" onclick="ask(this.textContent)">🔧 How do I set this up?</button>
+      <button class="suggestion-btn" onclick="ask(this.textContent)">⚠️ How to troubleshoot connection issues?</button>
+      <button class="suggestion-btn" onclick="ask(this.textContent)">📋 What are the system requirements?</button>
+      <button class="suggestion-btn" onclick="ask(this.textContent)">🔄 How do I reset to factory defaults?</button>
+    </div>
+  </aside>
+
+  <!-- Chat -->
+  <main>
+    <div id="empty-state">
+      <div class="big-icon">💬</div>
+      <h3>Ready to help</h3>
+      <p id="empty-hint">Set a Client ID to start chatting with their knowledge base.</p>
+    </div>
+
+    <div id="chat-area"></div>
+
+    <div id="input-bar">
+      <textarea id="question-input" rows="1" placeholder="Set a client ID to begin…"
+        disabled oninput="autoResize(this)" onkeydown="handleKey(event)"></textarea>
+      <button id="send-btn" disabled onclick="sendQuestion()">➤</button>
+    </div>
+    <div class="hint" id="hint-text">Set a client ID first</div>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API      = '/api/v1/documents/rag';
+const ADMIN_API= '/api/v1/admin';
+
+let mode         = 'kb';     // 'kb' | 'doc'
+let clientId     = '';
+let currentDocId = null;
+let selectedDocId= null;     // null = all KB docs
+
+// ── Client ID ─────────────────────────────────────────────────────────────────
+function onClientChange() {
+  clientId = document.getElementById('client-id-input').value.trim();
+  const status = document.getElementById('client-status');
+  if (clientId) {
+    status.textContent = `Client: ${clientId}`;
+    status.className = 'active';
+    if (mode === 'kb') loadKBDocs();
+    checkReady();
+  } else {
+    status.textContent = 'No client set';
+    status.className = '';
+    disableInput();
+  }
+}
+
+// ── Mode tabs ─────────────────────────────────────────────────────────────────
+function setMode(m) {
+  mode = m;
+  document.getElementById('tab-kb').classList.toggle('active',  m === 'kb');
+  document.getElementById('tab-doc').classList.toggle('active', m === 'doc');
+  document.getElementById('sidebar-kb').style.display  = m === 'kb'  ? 'block' : 'none';
+  document.getElementById('sidebar-doc').style.display = m === 'doc' ? 'block' : 'none';
+  document.getElementById('doc-type-wrap').style.display = m === 'doc' ? 'flex' : 'none';
+
+  // Update suggestions for mode
+  const sugs = document.getElementById('suggestions');
+  if (m === 'kb') {
+    sugs.querySelectorAll('.suggestion-btn')[0].textContent = '🔧 How do I set this up?';
+    sugs.querySelectorAll('.suggestion-btn')[1].textContent = '⚠️ How to troubleshoot connection issues?';
+  } else {
+    sugs.querySelectorAll('.suggestion-btn')[0].textContent = '📋 Summarise this document';
+    sugs.querySelectorAll('.suggestion-btn')[1].textContent = '🔑 What are the key points?';
+  }
+  checkReady();
+}
+
+// ── KB Docs ───────────────────────────────────────────────────────────────────
+async function loadKBDocs() {
+  if (!clientId) return;
+  document.getElementById('kb-empty').style.display = 'none';
+
+  try {
+    const res  = await fetch(`${ADMIN_API}/clients/${encodeURIComponent(clientId)}/knowledge-base`);
+    const docs = await res.json();
+
+    const list = document.getElementById('kb-doc-list');
+    list.innerHTML = '';
+
+    if (!docs.length) {
+      document.getElementById('kb-empty').textContent = `No KB docs for ${clientId}.`;
+      document.getElementById('kb-empty').style.display = 'block';
+      document.getElementById('kb-docs').style.display = 'none';
+      return;
+    }
+
+    document.getElementById('kb-docs').style.display = 'block';
+    docs.forEach(d => {
+      const div = document.createElement('div');
+      div.className = 'kb-doc-item';
+      div.dataset.docId = d.doc_id;
+      div.innerHTML = `<span class="kname">📄 ${escHtml(d.filename)}</span><span class="ktag">${d.doc_type}</span>`;
+      div.onclick = () => selectDoc(d.doc_id, div);
+      list.appendChild(div);
+    });
+
+  } catch(err) {
+    document.getElementById('kb-empty').textContent = 'Failed to load KB.';
+    document.getElementById('kb-empty').style.display = 'block';
+  }
+}
+
+function selectAllDocs() {
+  selectedDocId = null;
+  document.getElementById('all-docs-btn').classList.add('active');
+  document.querySelectorAll('.kb-doc-item').forEach(el => el.classList.remove('active'));
+  document.getElementById('suggestions').style.display = 'block';
+}
+
+function selectDoc(docId, el) {
+  selectedDocId = docId;
+  document.getElementById('all-docs-btn').classList.remove('active');
+  document.querySelectorAll('.kb-doc-item').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('suggestions').style.display = 'block';
+}
+
+// ── File upload (doc mode) ─────────────────────────────────────────────────────
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+if (dropZone) {
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]);
+  });
+}
+if (fileInput) {
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) uploadFile(fileInput.files[0]); });
+}
+
+async function uploadFile(file) {
+  if (!clientId) { showToast('Set a client ID first.', 'error'); return; }
+  const supported = ['.pdf','.docx','.doc','.txt','.md','.html','.htm','.json','.jsonl','.csv'];
+  if (!supported.some(ext => file.name.toLowerCase().endsWith(ext))) {
+    showToast('Unsupported file type.', 'error'); return;
+  }
+
+  setProgress(true, 'Parsing & embedding…', 40);
+  const form = new FormData();
+  form.append('file', file);
+  const docType = document.getElementById('chat-doc-type').value;
+
+  try {
+    setProgress(true, 'Indexing…', 70);
+    const res  = await fetch(`${API}/upload`, {
+      method: 'POST', body: form,
+      headers: {
+        'X-Client-Id':  clientId,
+        'X-Session-Id': sessionId(),
+        'X-Doc-Type':   docType,
+      },
+    });
+    const data = await res.json();
+    setProgress(true, 'Done!', 100);
+    setTimeout(() => setProgress(false), 500);
+
+    if (!res.ok) { showToast(data.detail || 'Upload failed.', 'error'); return; }
+
+    currentDocId = data.doc_id;
+    document.getElementById('doc-name').textContent = data.filename;
+    document.getElementById('doc-meta').textContent =
+      `${data.pages} pages · ${data.chunks} chunks · ID: ${data.doc_id}`;
+    document.getElementById('doc-info').style.display = 'block';
+    document.getElementById('suggestions').style.display = 'block';
+
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('chat-area').style.display = 'flex';
+    enableInput();
+    appendMsg('ai', `✅ **${data.filename}** indexed.\n${data.pages} pages · ${data.chunks} chunks.\n\nAsk me anything about this document!`);
+    showToast(data.message, 'success');
+
+  } catch(err) {
+    setProgress(false);
+    showToast('Upload failed: ' + err.message, 'error');
+  }
+}
+
+function clearDocument() {
+  if (currentDocId) {
+    fetch(`${API}/${currentDocId}`, { method: 'DELETE' });
+    currentDocId = null;
+  }
+  document.getElementById('doc-info').style.display = 'none';
+  document.getElementById('suggestions').style.display = 'none';
+  checkReady();
+  fileInput.value = '';
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+async function sendQuestion() {
+  const input = document.getElementById('question-input');
+  const q = input.value.trim();
+  if (!q) return;
+
+  input.value = '';
+  autoResize(input);
+  appendMsg('user', q);
+  const typing = appendTyping();
+  disableInput();
+
+  try {
+    let res, data;
+
+    if (mode === 'kb') {
+      // Query client knowledge base (tech support agent)
+      const body = { client_id: clientId, question: q, top_k: 5 };
+      if (selectedDocId) body.doc_id = selectedDocId;
+      res  = await fetch(`${API}/client/${encodeURIComponent(clientId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } else {
+      // Query uploaded doc
+      res = await fetch(`${API}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doc_id: currentDocId, question: q, top_k: 5 }),
+      });
+    }
+
+    data = await res.json();
+    typing.remove();
+
+    if (!res.ok) {
+      appendMsg('ai', '⚠️ ' + (data.detail || 'Error.'));
+    } else {
+      const modeLabel = mode === 'kb'
+        ? `<span class="mode-indicator mode-kb">KB</span>`
+        : `<span class="mode-indicator mode-doc">Doc</span>`;
+      appendMsgWithSources('ai', data.answer, data.sources, modeLabel);
+    }
+
+  } catch(err) {
+    typing.remove();
+    appendMsg('ai', '⚠️ Request failed: ' + err.message);
+  } finally {
+    enableInput();
+  }
+}
+
+function ask(text) {
+  document.getElementById('question-input').value = text;
+  sendQuestion();
+}
+
+// ── Readiness check ───────────────────────────────────────────────────────────
+function checkReady() {
+  const ready =
+    (mode === 'kb'  && clientId) ||
+    (mode === 'doc' && currentDocId);
+
+  if (ready) {
+    enableInput();
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('chat-area').style.display = 'flex';
+    document.getElementById('suggestions').style.display = 'block';
+    if (mode === 'kb') loadKBDocs();
+  } else {
+    disableInput();
+    const hint = document.getElementById('empty-hint');
+    if (mode === 'kb') {
+      hint.textContent = clientId
+        ? 'Client set. Ask anything from their knowledge base.'
+        : 'Set a Client ID to start chatting with their knowledge base.';
+    } else {
+      hint.textContent = clientId
+        ? 'Upload a document to start chatting with it.'
+        : 'Set a Client ID and upload a document.';
+    }
+  }
+}
+
+// ── DOM helpers ───────────────────────────────────────────────────────────────
+function appendMsg(role, text) {
+  const area = document.getElementById('chat-area');
+  const div  = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.innerHTML = `
+    <div class="avatar ${role}">${role === 'ai' ? '🤖' : '👤'}</div>
+    <div class="bubble">${mdToHtml(text)}</div>`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+  return div;
+}
+
+function appendMsgWithSources(role, text, sources, badge) {
+  const area = document.getElementById('chat-area');
+  const div  = document.createElement('div');
+  div.className = `msg ${role}`;
+  let sourcesHtml = '';
+  if (sources && sources.length) {
+    const items = sources.map(s => `
+      <div class="source-item">
+        <span class="page-badge">p.${s.page || '?'}</span>
+        ${s.section ? `<em>${escHtml(s.section)}</em> — ` : ''}
+        <span class="score-badge">${(s.score * 100).toFixed(0)}%</span>
+        ${s.filename ? `<span style="color:#0d7377;font-size:.72rem;margin-left:4px">${escHtml(s.filename)}</span>` : ''}
+        <div style="margin-top:4px">${escHtml(s.excerpt)}</div>
+      </div>`).join('');
+    sourcesHtml = `
+      <div class="sources">
+        <button class="sources-toggle" onclick="toggleSources(this)">📎 ${sources.length} source${sources.length>1?'s':''}</button>
+        <div class="sources-list">${items}</div>
+      </div>`;
+  }
+  div.innerHTML = `
+    <div class="avatar ai">🤖</div>
+    <div>
+      <div class="bubble">${badge||''}${mdToHtml(text)}</div>
+      ${sourcesHtml}
+    </div>`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function appendTyping() {
+  const area = document.getElementById('chat-area');
+  const div  = document.createElement('div');
+  div.className = 'msg ai';
+  div.innerHTML = `<div class="avatar ai">🤖</div><div class="bubble"><div class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+  return div;
+}
+
+function toggleSources(btn) {
+  const list = btn.nextElementSibling;
+  const shown = list.style.display === 'block';
+  list.style.display = shown ? 'none' : 'block';
+  btn.textContent = shown
+    ? btn.textContent.replace('▲', '📎')
+    : btn.textContent.replace('📎', '▲');
+}
+
+function enableInput() {
+  const q = document.getElementById('question-input');
+  q.disabled = false;
+  q.placeholder = mode === 'kb'
+    ? `Ask a question (client: ${clientId})…`
+    : 'Ask a question about the document…';
+  document.getElementById('send-btn').disabled = false;
+  document.getElementById('hint-text').textContent = 'Enter to send · Shift+Enter for new line';
+}
+
+function disableInput() {
+  document.getElementById('question-input').disabled = true;
+  document.getElementById('send-btn').disabled = true;
+}
+
+function setProgress(show, label, pct) {
+  document.getElementById('progress-wrap').style.display = show ? 'block' : 'none';
+  document.getElementById('progress-label').textContent  = label || '';
+  document.getElementById('progress-fill').style.width   = (pct || 0) + '%';
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuestion(); }
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function mdToHtml(text) {
+  return escHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+}
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = type || '';
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 3500);
+}
+function sessionId() {
+  let s = sessionStorage.getItem('rag_session');
+  if (!s) { s = crypto.randomUUID(); sessionStorage.setItem('rag_session', s); }
+  return s;
+}
+
+// ── Init from URL params ──────────────────────────────────────────────────────
+const params = new URLSearchParams(window.location.search);
+if (params.get('client_id')) {
+  document.getElementById('client-id-input').value = params.get('client_id');
+  onClientChange();
+}
+if (params.get('mode') === 'doc') setMode('doc');
+</script>
+</body>
+</html>

@@ -105,11 +105,48 @@ models/
 
 # Data files
 data/
-*.csv
-*.json
 *.parquet
 
 # Uploads
 uploads/
 
-# Made with Bob
+# UI Node modules and build
+ui/node_modules/
+ui/dist/
+ui/build/
+
+# Assets - ignore large files but keep folder structure
+# Uncomment specific lines below if you want to ignore certain asset types
+# ui/src/assets/videos/*.mp4
+# ui/src/assets/videos/*.webm
+# ui/src/assets/videos/*.mov
+# ui/src/assets/images/**/*.psd
+# ui/src/assets/images/**/*.ai
+# ui/src/assets/fonts/*.ttf
+# ui/src/assets/fonts/*.otf
+# But keep .gitkeep files
+!**/.gitkeep
+
+# Large binary files (uncomment if needed)
+# *.mov
+# *.mp4
+# *.avi
+# *.webm
+# *.psd
+# *.ai
+# *.sketch
+
+# Session / scratch data
+bob_sessions/
+
+# ChromaDB / vector store
+chroma_db/
+.chroma/
+
+# UI env files
+ui/.env
+ui/.env.local
+ui/.env.*.local
+
+# OS
+Thumbs.db

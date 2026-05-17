@@ -30,6 +30,33 @@ class OrderAgent:
     def __init__(self, action_enforcement: Optional[ActionEnforcementService] = None):
         self.action_enforcement = action_enforcement or get_action_enforcement_service()
         self.orders_placed = 0
+        self._mcp_server = None   # injected by chat handler when org has data sources
+
+    def set_mcp_server(self, server) -> None:
+        """Inject the loaded DataSourceMCPServer for this org's session."""
+        self._mcp_server = server
+
+    async def lookup_order(self, ticket_id: str, order_id: str) -> Dict[str, Any]:
+        """
+        Look up a specific order via the org's configured data source (MCP).
+        Falls back to a not-found response if no data source is configured.
+        """
+        if not self._mcp_server:
+            return {"error": "No data source configured for order lookup."}
+
+        result = await self._mcp_server.call_tool("get_order", {"id": order_id})
+
+        await self.action_enforcement.log_action(
+            ticket_id=ticket_id,
+            action_type=ActionType.TRIAGE_COMPLETE,
+            agent_id="order-001",
+            agent_type="order",
+            details={"action": "lookup_order", "order_id": order_id, "found": result.get("count", 0) > 0},
+            status=TicketStatus.IN_PROGRESS,
+        )
+
+        logger.info("Order lookup via MCP", order_id=order_id, result_count=result.get("count", 0))
+        return result
 
     async def browse_products(
         self,

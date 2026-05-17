@@ -1,0 +1,66 @@
+name: Deploy Backend to VPS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'requirements.txt'
+      - 'alembic/**'
+      - 'docker/Dockerfile.prod'
+      - 'deploy/**'
+
+jobs:
+  deploy:
+    name: Build → Push → Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 1. Build & push image to GitHub Container Registry ──────────────
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.prod
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest
+
+      # ── 2. SSH into VPS and redeploy ─────────────────────────────────────
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host:     ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key:      ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/support247
+
+            # Pull latest code (for compose files / nginx configs)
+            git pull origin main
+
+            # Log in to GHCR on the VPS
+            echo "${{ secrets.GITHUB_TOKEN }}" | \
+              docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull new image and restart
+            docker compose -f deploy/docker-compose.prod.yml pull api celery-worker
+            docker compose -f deploy/docker-compose.prod.yml up -d --remove-orphans
+
+            # Run any pending DB migrations
+            docker compose -f deploy/docker-compose.prod.yml exec -T api \
+              alembic upgrade head
+
+            # Clean up old images
+            docker image prune -f
+
+            echo "✅ Deployed successfully"

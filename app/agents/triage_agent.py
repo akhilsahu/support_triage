@@ -50,6 +50,7 @@ class IntentType(str, Enum):
     BROWSE_PRODUCTS = "browse_products"
     PLACE_ORDER = "place_order"
     REPLACEMENT = "replacement"
+    TECHNICAL_SUPPORT = "technical_support"
     GENERAL_INQUIRY = "general_inquiry"
 
 
@@ -58,6 +59,7 @@ class RoutingTarget(str, Enum):
     LOGISTICS = "logistics"
     FINANCE = "finance"
     ORDER = "order"
+    SUPPORT = "support"
     ESCALATION = "escalation"
 
 
@@ -125,6 +127,11 @@ class TriageAgent:
         IntentType.ACCOUNT: [
             "account", "login", "password", "profile",
             "settings", "email", "phone"
+        ],
+        IntentType.TECHNICAL_SUPPORT: [
+            "error", "not working", "issue", "problem", "fix", "resolve",
+            "troubleshoot", "bug", "crash", "failed", "setup", "configure",
+            "install", "technical", "tech support", "help with", "how to",
         ],
     }
     
@@ -390,6 +397,7 @@ class TriageAgent:
                     "- account: login, password, profile settings\n"
                     "- browse_products: wants to see what's available to buy\n"
                     "- place_order: wants to buy a specific product\n"
+                    "- technical_support: asking how to fix/setup/troubleshoot a technical issue\n"
                     "- general_inquiry: anything else\n\n"
                     'Respond with JSON only: {"intent": "<value>"}'
                 ),
@@ -487,7 +495,10 @@ class TriageAgent:
             IntentType.COMPENSATION
         ]:
             return RoutingTarget.FINANCE
-        
+
+        if intent == IntentType.TECHNICAL_SUPPORT:
+            return RoutingTarget.SUPPORT
+
         # Default to logistics for general inquiries
         return RoutingTarget.LOGISTICS
     

@@ -15,6 +15,7 @@ from app.agents.triage_agent import TriageAgent
 from app.agents.finance_agent import FinanceAgent
 from app.agents.logistics_agent import LogisticsAgent
 from app.agents.order_agent import get_order_agent
+from app.agents.support_agent import get_support_agent
 from app.services.llm_service import llm_service
 
 logger = structlog.get_logger()
@@ -273,6 +274,7 @@ async def _hand_off(
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User message")
     conversation_id: Optional[str] = Field(None, description="Conversation ID for context")
+    org_id: Optional[str] = Field(None, description="Org UUID — scopes KB queries to this org")
 
 class ChatResponse(BaseModel):
     message_id: str
@@ -289,6 +291,7 @@ triage_agent = TriageAgent()
 finance_agent = FinanceAgent()
 logistics_agent = LogisticsAgent()
 order_agent = get_order_agent()
+support_agent = get_support_agent()
 
 
 def _build_user_context(user: dict) -> str:
@@ -388,6 +391,35 @@ async def chat(request: ChatRequest):
             except Exception as e:
                 logger.error("FinanceAgent wallet check failed", error=str(e))
 
+        # ── Always query org KB if org_slug is provided ──────────────────────
+        kb_context = ""
+        org_id = request.org_id or state.get("org_id")
+        if org_id:
+            state["org_id"] = org_id   # persist across turns
+            try:
+                kb_result = await support_agent.answer(
+                    question=request.message,
+                    client_id=org_id,
+                    ticket_id=ticket_id,
+                )
+                if kb_result.rag_hit:
+                    source_lines = "\n".join(
+                        f"  - {s['filename']} p.{s['page']}"
+                        + (f" · {s['section']}" if s["section"] else "")
+                        + f" [{s.get('doc_type', '')}] (score: {s['score']:.2f})"
+                        for s in kb_result.sources
+                    )
+                    kb_context = (
+                        f"\n\nKNOWLEDGE BASE ANSWER (from org docs):\n"
+                        f"{kb_result.answer}\n\n"
+                        f"Sources:\n{source_lines}"
+                    )
+                    logger.info("SupportAgent answered from KB", org_id=org_id, rag_hit=True)
+                else:
+                    logger.info("SupportAgent: no KB hits", org_id=org_id)
+            except Exception as e:
+                logger.error("SupportAgent failed", error=str(e))
+
         # ── Call OrderAgent for order/browse routing ─────────────────────────
         order_context = ""
         msg_lower = request.message.lower()
@@ -424,6 +456,8 @@ async def chat(request: ChatRequest):
             system += "\n\nSTATUS: Customer is NOT yet identified. Ask for phone number or customer ID (7 digits) before showing any account data."
         if order_context:
             system += order_context
+        if kb_context:
+            system += kb_context
 
         # ── Append current message to history ────────────────────────────────
         state["history"].append({"role": "user", "content": request.message})
@@ -456,7 +490,7 @@ async def chat(request: ChatRequest):
         return ChatResponse(
             message_id=message_id, conversation_id=conversation_id,
             response=response_text,
-            agent=f"AI Agent → {routing.capitalize()}",
+            agent=f"AI Agent → {routing.replace('_', ' ').title()}",
             sentiment_score=sentiment_score,
             intent=intent,
             timestamp=datetime.utcnow()

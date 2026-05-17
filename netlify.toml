@@ -1,0 +1,28 @@
+[build]
+  base    = "ui"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# ── Proxy API calls to VPS backend (no code changes needed in frontend) ──
+
+[[redirects]]
+  from   = "/api/*"
+  to     = "https://api.support247.chat/api/:splat"
+  status = 200
+  force  = true
+
+[[redirects]]
+  from   = "/org/*"
+  to     = "https://api.support247.chat/org/:splat"
+  status = 200
+  force  = true
+
+# ── SPA fallback (React Router) ──────────────────────────────────────────
+
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

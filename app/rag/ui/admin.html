@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin — Knowledge Base Manager</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f0f2f5;
+  color: #1a1a2e;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  background: #1a1a2e;
+  color: #fff;
+  padding: 14px 28px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.25);
+}
+header h1 { font-size: 1.05rem; font-weight: 700; }
+header .sub { font-size: 0.78rem; color: #8892b0; }
+.nav-links { margin-left: auto; display: flex; gap: 12px; }
+.nav-links a {
+  color: #8892b0; font-size: 0.8rem; text-decoration: none;
+  padding: 5px 12px; border-radius: 6px; border: 1px solid #2d3561;
+  transition: all .15s;
+}
+.nav-links a:hover { background: #2d3561; color: #fff; }
+.nav-links a.active { background: #0d7377; color: #fff; border-color: #0d7377; }
+
+.page { display: flex; flex: 1; gap: 0; overflow: hidden; height: calc(100vh - 54px); }
+
+/* ── Sidebar ── */
+aside {
+  width: 320px;
+  min-width: 300px;
+  background: #fff;
+  border-right: 1px solid #e2e8f0;
+  padding: 24px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}
+
+.section-label {
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: #8892b0; margin-bottom: 8px;
+}
+
+.input-group { display: flex; flex-direction: column; gap: 6px; }
+.input-group label { font-size: 0.82rem; font-weight: 600; color: #374151; }
+input[type="text"], select {
+  padding: 9px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  outline: none;
+  font-family: inherit;
+  transition: border-color .2s;
+  color: #1a1a2e;
+  background: #fff;
+  width: 100%;
+}
+input[type="text"]:focus, select:focus { border-color: #0d7377; }
+
+/* Drop zone */
+#drop-zone {
+  border: 2px dashed #c3d0e0;
+  border-radius: 12px;
+  padding: 28px 14px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+#drop-zone:hover, #drop-zone.drag-over { border-color: #0d7377; background: #f0fafa; }
+#drop-zone .icon { font-size: 2rem; display: block; margin-bottom: 8px; }
+#drop-zone p { font-size: 0.82rem; color: #64748b; line-height: 1.5; }
+#drop-zone strong { color: #0d7377; }
+#file-input { display: none; }
+
+/* Staged files */
+#staged-list { display: none; }
+.staged-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+}
+.staged-item .fname { font-weight: 600; color: #1a1a2e; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.staged-item .fsize { color: #94a3b8; margin-left: 8px; flex-shrink: 0; }
+.staged-item .rm { background: none; border: none; color: #dc2626; cursor: pointer; font-size: 1rem; padding: 0 4px; flex-shrink: 0; }
+
+/* Progress */
+#progress-wrap { display: none; }
+.progress-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-top: 6px; }
+.progress-fill { height: 100%; background: #0d7377; border-radius: 4px; transition: width .3s; }
+#progress-label { font-size: 0.82rem; color: #64748b; }
+
+.btn {
+  padding: 10px 18px; border-radius: 8px; border: none;
+  font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  transition: opacity .15s, background .15s;
+  width: 100%;
+}
+.btn:hover:not(:disabled) { opacity: .88; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-primary { background: #0d7377; color: #fff; }
+.btn-outline { background: #fff; color: #0d7377; border: 1px solid #0d7377; }
+
+/* ── Main ── */
+main {
+  flex: 1;
+  padding: 28px 32px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.stats-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.stat-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 22px;
+  flex: 1;
+  min-width: 140px;
+}
+.stat-card .val { font-size: 1.6rem; font-weight: 700; color: #0d7377; }
+.stat-card .lbl { font-size: 0.75rem; color: #8892b0; margin-top: 2px; }
+
+.panel {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.panel-header {
+  padding: 16px 22px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.panel-header h2 { font-size: 0.95rem; font-weight: 700; }
+.panel-header .client-chip {
+  background: #e0f2f2; color: #0d7377;
+  font-size: 0.75rem; font-weight: 700;
+  padding: 3px 10px; border-radius: 20px;
+}
+
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left; font-size: 0.72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em;
+  color: #8892b0; padding: 10px 16px;
+  border-bottom: 1px solid #e2e8f0; background: #f8fafc;
+}
+td { padding: 11px 16px; font-size: 0.83rem; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f8fafc; }
+
+.tag {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 0.72rem; font-weight: 700;
+}
+.tag-tech { background: #dbeafe; color: #1d4ed8; }
+.tag-faq  { background: #d1fae5; color: #065f46; }
+.tag-policy { background: #fef3c7; color: #92400e; }
+.tag-manual { background: #ede9fe; color: #4c1d95; }
+.tag-contract { background: #fee2e2; color: #991b1b; }
+.tag-general { background: #f1f5f9; color: #475569; }
+
+.btn-del {
+  padding: 4px 10px; border-radius: 6px;
+  border: 1px solid #fee2e2; background: #fff;
+  color: #dc2626; font-size: 0.75rem; font-weight: 600;
+  cursor: pointer; transition: background .15s;
+}
+.btn-del:hover { background: #fee2e2; }
+
+#empty-kb { text-align: center; padding: 48px; color: #94a3b8; font-size: 0.88rem; }
+
+/* Upload results */
+#results-panel { display: none; }
+.result-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.83rem;
+}
+.result-item:last-child { border-bottom: none; }
+.result-icon { font-size: 1.1rem; flex-shrink: 0; }
+.result-info .fname { font-weight: 600; }
+.result-info .meta  { color: #64748b; font-size: 0.77rem; margin-top: 2px; }
+.result-info .err   { color: #dc2626; font-size: 0.77rem; margin-top: 2px; }
+
+/* Toast */
+#toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #1a1a2e; color: #fff;
+  padding: 10px 22px; border-radius: 8px;
+  font-size: 0.83rem; display: none; z-index: 999;
+  box-shadow: 0 4px 16px rgba(0,0,0,.2);
+}
+#toast.error { background: #dc2626; }
+#toast.success { background: #059669; }
+</style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:1.5rem">🗄️</span>
+  <div>
+    <h1>Knowledge Base Admin</h1>
+    <div class="sub">OrchestraSupport · RAG Management</div>
+  </div>
+  <div class="nav-links">
+    <a href="/api/v1/documents/rag/ui" class="active">Admin</a>
+    <a href="/api/v1/documents/rag/ui/chat">Chat</a>
+    <a href="/docs#/Admin" target="_blank">API Docs</a>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- Sidebar: Upload Form -->
+  <aside>
+    <div>
+      <div class="section-label">Client</div>
+      <div class="input-group">
+        <label for="client-id">Client ID</label>
+        <input type="text" id="client-id" placeholder="e.g. acme, techco" value="" />
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Document Type</div>
+      <div class="input-group">
+        <label for="doc-type">Category</label>
+        <select id="doc-type">
+          <option value="tech_support">🔧 tech_support</option>
+          <option value="faq">❓ faq</option>
+          <option value="policy">📋 policy</option>
+          <option value="manual">📘 manual</option>
+          <option value="contract">📄 contract</option>
+          <option value="general">🗂️ general</option>
+        </select>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Files</div>
+      <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <span class="icon">📂</span>
+        <p>Drop files here or <strong>click to browse</strong></p>
+        <p style="font-size:.73rem;color:#94a3b8;margin-top:6px">Multiple files · Max 50 MB each</p>
+        <p style="font-size:.73rem;color:#94a3b8;">PDF · DOCX · TXT · MD · HTML · JSON · CSV</p>
+      </div>
+      <input type="file" id="file-input" multiple
+        accept=".pdf,.docx,.doc,.txt,.md,.html,.htm,.json,.jsonl,.csv" />
+    </div>
+
+    <div id="staged-list">
+      <div class="section-label">Staged Files (<span id="staged-count">0</span>)</div>
+      <div id="staged-items"></div>
+    </div>
+
+    <div id="progress-wrap">
+      <div id="progress-label">Uploading…</div>
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+
+    <button class="btn btn-primary" id="upload-btn" disabled onclick="uploadFiles()">
+      ⬆ Upload to Knowledge Base
+    </button>
+
+    <button class="btn btn-outline" onclick="loadClient()">
+      🔍 Load Client Docs
+    </button>
+  </aside>
+
+  <!-- Main: Stats + Table -->
+  <main>
+    <!-- Stats -->
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card"><div class="val" id="stat-policy">—</div><div class="lbl">Policy Docs</div></div>
+      <div class="stat-card"><div class="val" id="stat-products">—</div><div class="lbl">Product Catalog</div></div>
+      <div class="stat-card"><div class="val" id="stat-clients">—</div><div class="lbl">Client Chunks</div></div>
+    </div>
+
+    <!-- Upload Results -->
+    <div class="panel" id="results-panel">
+      <div class="panel-header">
+        <h2>Upload Results</h2>
+        <span id="results-summary" class="client-chip"></span>
+      </div>
+      <div id="results-list"></div>
+    </div>
+
+    <!-- KB Table -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>Knowledge Base Documents</h2>
+        <span class="client-chip" id="kb-client-chip">No client selected</span>
+      </div>
+      <div id="kb-content">
+        <div id="empty-kb">Enter a client ID and click "Load Client Docs" to see their knowledge base.</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const ADMIN_API = '/api/v1/admin';
+const DOC_API   = '/api/v1/documents/rag';
+
+let stagedFiles = [];
+
+// ── Drag & drop ───────────────────────────────────────────────────────────────
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  addFiles([...e.dataTransfer.files]);
+});
+fileInput.addEventListener('change', () => { addFiles([...fileInput.files]); fileInput.value = ''; });
+
+function addFiles(files) {
+  const supported = ['.pdf','.docx','.doc','.txt','.md','.html','.htm','.json','.jsonl','.csv'];
+  files.forEach(f => {
+    const ext = '.' + f.name.split('.').pop().toLowerCase();
+    if (!supported.includes(ext)) { showToast(`Skipped ${f.name}: unsupported type`, 'error'); return; }
+    if (!stagedFiles.find(x => x.name === f.name)) stagedFiles.push(f);
+  });
+  renderStaged();
+}
+
+function renderStaged() {
+  const container = document.getElementById('staged-items');
+  container.innerHTML = '';
+  stagedFiles.forEach((f, i) => {
+    const div = document.createElement('div');
+    div.className = 'staged-item';
+    div.innerHTML = `
+      <span class="fname">📄 ${escHtml(f.name)}</span>
+      <span class="fsize">${fmtSize(f.size)}</span>
+      <button class="rm" onclick="removeStaged(${i})">✕</button>`;
+    container.appendChild(div);
+  });
+  document.getElementById('staged-count').textContent = stagedFiles.length;
+  document.getElementById('staged-list').style.display = stagedFiles.length ? 'block' : 'none';
+  document.getElementById('upload-btn').disabled = stagedFiles.length === 0;
+}
+
+function removeStaged(i) {
+  stagedFiles.splice(i, 1);
+  renderStaged();
+}
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+async function uploadFiles() {
+  const clientId = document.getElementById('client-id').value.trim();
+  const docType  = document.getElementById('doc-type').value;
+
+  if (!clientId) { showToast('Enter a client ID first.', 'error'); return; }
+  if (!stagedFiles.length) { showToast('No files staged.', 'error'); return; }
+
+  document.getElementById('upload-btn').disabled = true;
+  setProgress(true, 'Uploading…', 10);
+
+  const form = new FormData();
+  stagedFiles.forEach(f => form.append('files', f));
+
+  try {
+    setProgress(true, 'Parsing & embedding…', 50);
+    const res  = await fetch(`${ADMIN_API}/clients/${encodeURIComponent(clientId)}/knowledge-base?doc_type=${docType}`, {
+      method: 'POST', body: form,
+    });
+    const data = await res.json();
+    setProgress(true, 'Done!', 100);
+    setTimeout(() => setProgress(false), 500);
+
+    if (!res.ok) { showToast(data.detail || 'Upload failed.', 'error'); return; }
+
+    showResults(data);
+    stagedFiles = [];
+    renderStaged();
+    showToast(`${data.indexed}/${data.total_files} files indexed for ${clientId}`, 'success');
+    loadClientDocs(clientId);
+    loadStats();
+
+  } catch(err) {
+    setProgress(false);
+    showToast('Upload failed: ' + err.message, 'error');
+  } finally {
+    document.getElementById('upload-btn').disabled = false;
+  }
+}
+
+function showResults(data) {
+  const panel = document.getElementById('results-panel');
+  const list  = document.getElementById('results-list');
+  document.getElementById('results-summary').textContent =
+    `${data.indexed} indexed · ${data.failed} failed`;
+  list.innerHTML = data.results.map(r => `
+    <div class="result-item">
+      <span class="result-icon">${r.status === 'indexed' ? '✅' : '❌'}</span>
+      <div class="result-info">
+        <div class="fname">${escHtml(r.filename)}</div>
+        ${r.status === 'indexed'
+          ? `<div class="meta">${r.pages} pages · ${r.chunks} chunks · ID: ${r.doc_id}</div>`
+          : `<div class="err">${escHtml(r.error || 'Failed')}</div>`}
+      </div>
+      <span class="tag ${tagClass(data.doc_type)}">${data.doc_type}</span>
+    </div>`).join('');
+  panel.style.display = 'block';
+}
+
+// ── Load client docs ──────────────────────────────────────────────────────────
+function loadClient() {
+  const clientId = document.getElementById('client-id').value.trim();
+  if (!clientId) { showToast('Enter a client ID.', 'error'); return; }
+  loadClientDocs(clientId);
+}
+
+async function loadClientDocs(clientId) {
+  document.getElementById('kb-client-chip').textContent = clientId;
+  const content = document.getElementById('kb-content');
+  content.innerHTML = '<div id="empty-kb">Loading…</div>';
+
+  try {
+    const res  = await fetch(`${ADMIN_API}/clients/${encodeURIComponent(clientId)}/knowledge-base`);
+    const docs = await res.json();
+
+    if (!docs.length) {
+      content.innerHTML = `<div id="empty-kb">No documents found for client <strong>${escHtml(clientId)}</strong>.</div>`;
+      return;
+    }
+
+    content.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Filename</th>
+            <th>Type</th>
+            <th>Format</th>
+            <th>Strategy</th>
+            <th>Uploaded</th>
+            <th>Expires</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="kb-tbody">
+        </tbody>
+      </table>`;
+
+    const tbody = document.getElementById('kb-tbody');
+    docs.forEach(d => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${escHtml(d.filename)}</strong><br><small style="color:#94a3b8">${d.doc_id}</small></td>
+        <td><span class="tag ${tagClass(d.doc_type)}">${d.doc_type}</span></td>
+        <td>${d.extension}</td>
+        <td style="font-size:.78rem;color:#64748b">${d.strategy}</td>
+        <td style="font-size:.78rem;color:#64748b">${fmtDate(d.uploaded_at)}</td>
+        <td style="font-size:.78rem;color:#94a3b8">${d.expires_at === 'never' ? '∞ Never' : fmtDate(d.expires_at)}</td>
+        <td>
+          <button class="btn-del" onclick="deleteDoc('${escHtml(clientId)}','${d.doc_id}',this)">Delete</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+
+  } catch(err) {
+    content.innerHTML = `<div id="empty-kb">Error loading docs: ${escHtml(err.message)}</div>`;
+  }
+}
+
+async function deleteDoc(clientId, docId, btn) {
+  if (!confirm(`Delete doc ${docId} for client ${clientId}?`)) return;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const res = await fetch(`${ADMIN_API}/clients/${encodeURIComponent(clientId)}/knowledge-base/${docId}`, { method: 'DELETE' });
+    if (res.ok) {
+      btn.closest('tr').remove();
+      showToast('Document deleted.', 'success');
+      loadStats();
+    } else {
+      const d = await res.json();
+      showToast(d.detail || 'Delete failed.', 'error');
+      btn.disabled = false; btn.textContent = 'Delete';
+    }
+  } catch(err) {
+    showToast('Delete failed: ' + err.message, 'error');
+    btn.disabled = false; btn.textContent = 'Delete';
+  }
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const res  = await fetch(`${ADMIN_API}/stats`);
+    const data = await res.json();
+    document.getElementById('stat-policy').textContent   = data.policy_documents ?? '—';
+    document.getElementById('stat-products').textContent = data.product_catalog   ?? '—';
+    document.getElementById('stat-clients').textContent  = data.client_documents  ?? '—';
+  } catch(_) {}
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setProgress(show, label, pct) {
+  document.getElementById('progress-wrap').style.display = show ? 'block' : 'none';
+  document.getElementById('progress-label').textContent  = label || '';
+  document.getElementById('progress-fill').style.width   = (pct || 0) + '%';
+}
+
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' }); }
+  catch(_) { return iso; }
+}
+
+function tagClass(t) {
+  const map = { tech_support:'tag-tech', faq:'tag-faq', policy:'tag-policy', manual:'tag-manual', contract:'tag-contract', general:'tag-general' };
+  return map[t] || 'tag-general';
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = type || '';
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 3500);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadStats();
+
+// Pre-fill client_id from URL param if present
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('client_id')) {
+  document.getElementById('client-id').value = urlParams.get('client_id');
+  loadClient();
+}
+</script>
+</body>
+</html>

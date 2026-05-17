@@ -1,0 +1,54 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Assets - Large files that shouldn't be in version control
+# Uncomment these if you want to ignore specific asset types:
+
+# Large video files
+# src/assets/videos/*.mp4
+# src/assets/videos/*.webm
+# src/assets/videos/*.mov
+# src/assets/videos/*.avi
+
+# Design source files  
+# src/assets/**/*.psd
+# src/assets/**/*.ai
+# src/assets/**/*.sketch
+# src/assets/**/*.fig
+
+# Large image files (adjust size threshold as needed)
+# src/assets/**/*.[jJ][pP][gG]
+# src/assets/**/*.[pP][nN][gG]
+# src/assets/**/*.[gG][iI][fF]
+
+# Font files (if using web fonts from CDN)
+# src/assets/fonts/*.ttf
+# src/assets/fonts/*.otf
+# src/assets/fonts/*.woff
+# src/assets/fonts/*.woff2
+
+# Keep structure files
+!**/.gitkeep
+!**/README.md

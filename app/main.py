@@ -11,8 +11,12 @@ import structlog
 from app.config import settings
 from app.core.database import init_db, close_db, check_db_connection
 from app.core.redis import redis_client
-from app.api.v1 import agents, workflows, tasks, documents
-from app.api import chat
+from app.api.v1 import agents, workflows, tasks, documents, admin, datasources, mock_orders
+from app.api.v1 import org_agents, chat_sessions
+from app.api.v1.org_agents import kb_router
+from app.api import chat, auth, customer, org
+from app.api.v1 import dashboard, superadmin
+from app.rag import api as rag_api
 
 logger = structlog.get_logger()
 
@@ -170,11 +174,23 @@ async def root():
 
 
 # Include API routers
-app.include_router(chat.router, tags=["Chat"])  # Chat API for UI integration
+app.include_router(auth.router, prefix="/api/v1", tags=["Auth"])
+app.include_router(chat.router, tags=["Chat"])
+app.include_router(rag_api.router, tags=["RAG"])
 app.include_router(agents.router, prefix="/api/v1", tags=["Agents"])
 app.include_router(workflows.router, prefix="/api/v1", tags=["Workflows"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"])
 app.include_router(documents.router, prefix="/api/v1", tags=["Documents"])
+app.include_router(admin.router,      prefix="/api/v1", tags=["Admin"])
+app.include_router(dashboard.router,   prefix="/api/v1", tags=["Dashboard"])
+app.include_router(superadmin.router,   prefix="/api/v1", tags=["Super Admin"])
+app.include_router(datasources.router,   prefix="/api/v1", tags=["Data Sources"])
+app.include_router(mock_orders.router,   prefix="/api/v1", tags=["Mock API"])
+app.include_router(org_agents.router,    prefix="/api/v1", tags=["Org Agents"])
+app.include_router(kb_router,                prefix="/api/v1", tags=["Org Knowledge Base"])
+app.include_router(chat_sessions.router,     prefix="/api/v1", tags=["Chat Sessions"])
+app.include_router(org.router)
+app.include_router(customer.router)
 
 
 if __name__ == "__main__":

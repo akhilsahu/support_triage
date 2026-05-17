@@ -91,6 +91,12 @@ brew services start redis
 sudo apt-get install redis-server
 sudo systemctl start redis
 ```
+Using Docker Compose
+
+```
+docker-compose up postgres redis -d
+
+```
 
 ### 5. Configure Environment Variables
 

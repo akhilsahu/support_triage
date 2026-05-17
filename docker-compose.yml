@@ -1,6 +1,8 @@
 version: '3.8'
 
 services:
+
+  
   # PostgreSQL with pgvector
   postgres:
     image: pgvector/pgvector:pg15
@@ -62,6 +64,18 @@ services:
     networks:
       - multiagent-network
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Adminer — browser-based Postgres UI at http://localhost:8081
+  adminer:
+    image: adminer:latest
+    container_name: multiagent-adminer
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - multiagent-network
 
   # Celery Worker
   celery-worker:

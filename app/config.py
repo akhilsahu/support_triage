@@ -142,6 +142,13 @@ class Settings(BaseSettings):
     WS_MAX_CONNECTIONS: int = 1000
     WS_MESSAGE_QUEUE_SIZE: int = 100
 
+    # JWT Auth
+    JWT_SECRET: str = "orchestra-dev-secret-change-in-production"
+    JWT_TTL_HOURS: int = 72
+
+    # Super Admin
+    SUPER_ADMIN_KEY: str = "super-secret-change-me"
+
     @property
     def database_url_sync(self) -> str:
         """Get synchronous database URL for Alembic"""
