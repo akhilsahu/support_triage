@@ -43,7 +43,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key:      ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd /opt/support247
+            cd /var/www/support247
 
             # Pull latest code (for compose files / nginx configs)
             git pull origin main
