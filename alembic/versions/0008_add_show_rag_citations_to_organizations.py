@@ -1,24 +1,16 @@
-"""add show_rag_citations to organizations
+"""no-op (squashed into 19fd7781d00f)
 
 Revision ID: 0008_add_show_rag_citations
 Revises: 0007_add_base_prompt_to_agent_definitions
-Create Date: 2026-05-16
 """
-from alembic import op
-import sqlalchemy as sa
+from typing import Sequence, Union
+revision: str = '0008_add_show_rag_citations'
+down_revision: Union[str, None] = '0007_add_base_prompt_to_agent_definitions'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
-revision = '0008_add_show_rag_citations'
-down_revision = '0007_add_base_prompt_to_agent_definitions'
-branch_labels = None
-depends_on = None
+def upgrade() -> None:
+    pass
 
-
-def upgrade():
-    op.add_column(
-        'organizations',
-        sa.Column('show_rag_citations', sa.Boolean(), server_default='false', nullable=False),
-    )
-
-
-def downgrade():
-    op.drop_column('organizations', 'show_rag_citations')
+def downgrade() -> None:
+    pass

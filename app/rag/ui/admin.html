@@ -72,6 +72,30 @@ input[type="text"], select {
 }
 input[type="text"]:focus, select:focus { border-color: #0d7377; }
 
+/* Source tabs */
+.source-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.source-tab {
+  flex: 1; padding: 7px 4px; border-radius: 7px; border: 1px solid #e2e8f0;
+  background: #f8fafc; font-size: 0.78rem; font-weight: 600;
+  color: #64748b; cursor: pointer; text-align: center; transition: all .15s;
+}
+.source-tab.active { background: #0d7377; color: #fff; border-color: #0d7377; }
+.source-panel { display: none; }
+.source-panel.active { display: block; }
+
+/* Text area */
+#text-input {
+  width: 100%; min-height: 140px; padding: 10px 12px;
+  border: 1px solid #e2e8f0; border-radius: 8px;
+  font-size: 0.84rem; font-family: inherit; resize: vertical;
+  outline: none; transition: border-color .2s;
+}
+#text-input:focus { border-color: #0d7377; }
+
+/* URL input row */
+.url-row { display: flex; gap: 6px; align-items: center; }
+.url-row input { flex: 1; }
+
 /* Drop zone */
 #drop-zone {
   border: 2px dashed #c3d0e0;
@@ -262,20 +286,52 @@ tr:hover td { background: #f8fafc; }
     </div>
 
     <div>
-      <div class="section-label">Files</div>
-      <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-        <span class="icon">📂</span>
-        <p>Drop files here or <strong>click to browse</strong></p>
-        <p style="font-size:.73rem;color:#94a3b8;margin-top:6px">Multiple files · Max 50 MB each</p>
-        <p style="font-size:.73rem;color:#94a3b8;">PDF · DOCX · TXT · MD · HTML · JSON · CSV</p>
+      <div class="section-label">Source</div>
+      <div class="source-tabs">
+        <div class="source-tab active" onclick="switchTab('file')">📂 File</div>
+        <div class="source-tab" onclick="switchTab('text')">📝 Text</div>
+        <div class="source-tab" onclick="switchTab('url')">🌐 URL</div>
       </div>
-      <input type="file" id="file-input" multiple
-        accept=".pdf,.docx,.doc,.txt,.md,.html,.htm,.json,.jsonl,.csv" />
-    </div>
 
-    <div id="staged-list">
-      <div class="section-label">Staged Files (<span id="staged-count">0</span>)</div>
-      <div id="staged-items"></div>
+      <!-- FILE tab -->
+      <div id="tab-file" class="source-panel active">
+        <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+          <span class="icon">📂</span>
+          <p>Drop files here or <strong>click to browse</strong></p>
+          <p style="font-size:.73rem;color:#94a3b8;margin-top:6px">Multiple files · Max 30 MB each</p>
+          <p style="font-size:.73rem;color:#94a3b8;">PDF · DOCX · TXT · MD · HTML · JSON · CSV</p>
+        </div>
+        <input type="file" id="file-input" multiple
+          accept=".pdf,.docx,.doc,.txt,.md,.html,.htm,.json,.jsonl,.csv" />
+        <div id="staged-list" style="margin-top:10px">
+          <div class="section-label">Staged (<span id="staged-count">0</span>)</div>
+          <div id="staged-items"></div>
+        </div>
+      </div>
+
+      <!-- TEXT tab -->
+      <div id="tab-text" class="source-panel">
+        <div class="input-group" style="margin-bottom:8px">
+          <label for="text-title">Title</label>
+          <input type="text" id="text-title" placeholder="e.g. Refund Policy" />
+        </div>
+        <div class="input-group">
+          <label for="text-input">Content (plain text or markdown)</label>
+          <textarea id="text-input" placeholder="Paste your text or markdown here…"></textarea>
+        </div>
+      </div>
+
+      <!-- URL tab -->
+      <div id="tab-url" class="source-panel">
+        <div class="input-group">
+          <label for="url-input">Page URL</label>
+          <input type="text" id="url-input" placeholder="https://example.com/docs/faq" />
+        </div>
+        <p style="font-size:.73rem;color:#94a3b8;margin-top:8px">
+          Static HTML pages, PDFs, and plain text files are supported.<br>
+          JS-rendered SPAs may return limited content.
+        </p>
+      </div>
     </div>
 
     <div id="progress-wrap">
@@ -283,8 +339,8 @@ tr:hover td { background: #f8fafc; }
       <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
     </div>
 
-    <button class="btn btn-primary" id="upload-btn" disabled onclick="uploadFiles()">
-      ⬆ Upload to Knowledge Base
+    <button class="btn btn-primary" id="upload-btn" onclick="handleIngest()">
+      ⬆ Add to Knowledge Base
     </button>
 
     <button class="btn btn-outline" onclick="loadClient()">
@@ -330,6 +386,18 @@ const ADMIN_API = '/api/v1/admin';
 const DOC_API   = '/api/v1/documents/rag';
 
 let stagedFiles = [];
+let activeTab = 'file';
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.source-tab').forEach((el, i) => {
+    const tabs = ['file','text','url'];
+    el.classList.toggle('active', tabs[i] === tab);
+  });
+  document.querySelectorAll('.source-panel').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+}
 
 // ── Drag & drop ───────────────────────────────────────────────────────────────
 const dropZone  = document.getElementById('drop-zone');
@@ -367,87 +435,157 @@ function renderStaged() {
   });
   document.getElementById('staged-count').textContent = stagedFiles.length;
   document.getElementById('staged-list').style.display = stagedFiles.length ? 'block' : 'none';
-  document.getElementById('upload-btn').disabled = stagedFiles.length === 0;
 }
 
-function removeStaged(i) {
-  stagedFiles.splice(i, 1);
-  renderStaged();
+function removeStaged(i) { stagedFiles.splice(i, 1); renderStaged(); }
+
+// ── Unified ingest dispatcher ─────────────────────────────────────────────────
+function handleIngest() {
+  if (activeTab === 'file') uploadFiles();
+  else if (activeTab === 'text') ingestText();
+  else if (activeTab === 'url') ingestUrl();
 }
 
-// ── Upload ────────────────────────────────────────────────────────────────────
+// ── File upload ───────────────────────────────────────────────────────────────
 async function uploadFiles() {
-  const clientId = document.getElementById('client-id').value.trim();
-  const docType  = document.getElementById('doc-type').value;
-
-  if (!clientId) { showToast('Enter a client ID first.', 'error'); return; }
+  const token   = localStorage.getItem('auth_token') || '';
+  const docType = document.getElementById('doc-type').value;
   if (!stagedFiles.length) { showToast('No files staged.', 'error'); return; }
 
-  document.getElementById('upload-btn').disabled = true;
+  const btn = document.getElementById('upload-btn');
+  btn.disabled = true;
   setProgress(true, 'Uploading…', 10);
 
-  const form = new FormData();
-  stagedFiles.forEach(f => form.append('files', f));
+  const results = [];
+  for (let i = 0; i < stagedFiles.length; i++) {
+    const f = stagedFiles[i];
+    setProgress(true, `Uploading ${f.name}… (${i+1}/${stagedFiles.length})`, 10 + Math.round(80 * i / stagedFiles.length));
+    const form = new FormData();
+    form.append('file', f);
+    try {
+      const res  = await fetch(`${DOC_API}/upload`, {
+        method: 'POST', body: form,
+        headers: { 'X-Doc-Type': docType, ...(token ? {'Authorization': 'Bearer ' + token} : {}) },
+      });
+      const data = await res.json();
+      if (res.ok) results.push({ status: 'indexed', filename: f.name, ...data });
+      else results.push({ status: 'error', filename: f.name, error: data.detail || 'Failed' });
+    } catch(e) {
+      results.push({ status: 'error', filename: f.name, error: e.message });
+    }
+  }
+
+  setProgress(true, 'Done!', 100);
+  setTimeout(() => setProgress(false), 500);
+  showBatchResults(results, docType);
+  stagedFiles = []; renderStaged();
+  showToast(`${results.filter(r=>r.status==='indexed').length}/${results.length} files indexed`, 'success');
+  loadClientDocs('me');
+  loadStats();
+  btn.disabled = false;
+}
+
+// ── Text ingest ───────────────────────────────────────────────────────────────
+async function ingestText() {
+  const token   = localStorage.getItem('auth_token') || '';
+  const title   = document.getElementById('text-title').value.trim();
+  const text    = document.getElementById('text-input').value.trim();
+  const docType = document.getElementById('doc-type').value;
+
+  if (!title) { showToast('Enter a title.', 'error'); return; }
+  if (!text)  { showToast('Text content is empty.', 'error'); return; }
+
+  const btn = document.getElementById('upload-btn');
+  btn.disabled = true;
+  setProgress(true, 'Indexing text…', 40);
 
   try {
-    setProgress(true, 'Parsing & embedding…', 50);
-    const res  = await fetch(`${ADMIN_API}/clients/${encodeURIComponent(clientId)}/knowledge-base?doc_type=${docType}`, {
-      method: 'POST', body: form,
+    const res  = await fetch(`${DOC_API}/ingest-text`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': 'Bearer ' + token} : {}) },
+      body: JSON.stringify({ title, text, doc_type: docType }),
     });
     const data = await res.json();
     setProgress(true, 'Done!', 100);
     setTimeout(() => setProgress(false), 500);
-
-    if (!res.ok) { showToast(data.detail || 'Upload failed.', 'error'); return; }
-
-    showResults(data);
-    stagedFiles = [];
-    renderStaged();
-    showToast(`${data.indexed}/${data.total_files} files indexed for ${clientId}`, 'success');
-    loadClientDocs(clientId);
+    if (!res.ok) { showToast(data.detail || 'Ingest failed.', 'error'); return; }
+    showBatchResults([{ status: 'indexed', filename: data.filename, ...data }], docType);
+    document.getElementById('text-title').value = '';
+    document.getElementById('text-input').value = '';
+    showToast(`Text '${title}' indexed — ${data.chunks} chunks`, 'success');
     loadStats();
-
-  } catch(err) {
+  } catch(e) {
     setProgress(false);
-    showToast('Upload failed: ' + err.message, 'error');
-  } finally {
-    document.getElementById('upload-btn').disabled = false;
-  }
+    showToast('Ingest failed: ' + e.message, 'error');
+  } finally { btn.disabled = false; }
 }
 
-function showResults(data) {
+// ── URL ingest ────────────────────────────────────────────────────────────────
+async function ingestUrl() {
+  const token   = localStorage.getItem('auth_token') || '';
+  const url     = document.getElementById('url-input').value.trim();
+  const docType = document.getElementById('doc-type').value;
+
+  if (!url) { showToast('Enter a URL.', 'error'); return; }
+
+  const btn = document.getElementById('upload-btn');
+  btn.disabled = true;
+  setProgress(true, 'Scraping URL…', 30);
+
+  try {
+    const res  = await fetch(`${DOC_API}/ingest-url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': 'Bearer ' + token} : {}) },
+      body: JSON.stringify({ url, doc_type: docType }),
+    });
+    const data = await res.json();
+    setProgress(true, 'Done!', 100);
+    setTimeout(() => setProgress(false), 500);
+    if (!res.ok) { showToast(data.detail || 'Scrape failed.', 'error'); return; }
+    showBatchResults([{ status: 'indexed', filename: data.filename, ...data }], docType);
+    document.getElementById('url-input').value = '';
+    showToast(`URL indexed — ${data.chunks} chunks`, 'success');
+    loadStats();
+  } catch(e) {
+    setProgress(false);
+    showToast('Scrape failed: ' + e.message, 'error');
+  } finally { btn.disabled = false; }
+}
+
+// ── Batch results display ─────────────────────────────────────────────────────
+function showBatchResults(results, docType) {
   const panel = document.getElementById('results-panel');
   const list  = document.getElementById('results-list');
-  document.getElementById('results-summary').textContent =
-    `${data.indexed} indexed · ${data.failed} failed`;
-  list.innerHTML = data.results.map(r => `
+  const ok = results.filter(r => r.status === 'indexed').length;
+  document.getElementById('results-summary').textContent = `${ok} indexed · ${results.length - ok} failed`;
+  list.innerHTML = results.map(r => `
     <div class="result-item">
       <span class="result-icon">${r.status === 'indexed' ? '✅' : '❌'}</span>
       <div class="result-info">
         <div class="fname">${escHtml(r.filename)}</div>
         ${r.status === 'indexed'
-          ? `<div class="meta">${r.pages} pages · ${r.chunks} chunks · ID: ${r.doc_id}</div>`
+          ? `<div class="meta">${r.pages ?? 1} page(s) · ${r.chunks} chunks · ID: ${r.doc_id}</div>`
           : `<div class="err">${escHtml(r.error || 'Failed')}</div>`}
       </div>
-      <span class="tag ${tagClass(data.doc_type)}">${data.doc_type}</span>
+      <span class="tag ${tagClass(docType)}">${docType}</span>
     </div>`).join('');
   panel.style.display = 'block';
 }
 
+
 // ── Load client docs ──────────────────────────────────────────────────────────
-function loadClient() {
-  const clientId = document.getElementById('client-id').value.trim();
-  if (!clientId) { showToast('Enter a client ID.', 'error'); return; }
-  loadClientDocs(clientId);
-}
+function loadClient() { loadClientDocs('me'); }
 
 async function loadClientDocs(clientId) {
-  document.getElementById('kb-client-chip').textContent = clientId;
+  const token = localStorage.getItem('auth_token') || '';
+  document.getElementById('kb-client-chip').textContent = 'My KB';
   const content = document.getElementById('kb-content');
   content.innerHTML = '<div id="empty-kb">Loading…</div>';
 
   try {
-    const res  = await fetch(`${ADMIN_API}/clients/${encodeURIComponent(clientId)}/knowledge-base`);
+    const res  = await fetch(`${DOC_API}/list`, {
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+    });
     const docs = await res.json();
 
     if (!docs.length) {
@@ -494,10 +632,14 @@ async function loadClientDocs(clientId) {
 }
 
 async function deleteDoc(clientId, docId, btn) {
-  if (!confirm(`Delete doc ${docId} for client ${clientId}?`)) return;
+  if (!confirm(`Delete doc ${docId}?`)) return;
+  const token = localStorage.getItem('auth_token') || '';
   btn.disabled = true; btn.textContent = '…';
   try {
-    const res = await fetch(`${ADMIN_API}/clients/${encodeURIComponent(clientId)}/knowledge-base/${docId}`, { method: 'DELETE' });
+    const res = await fetch(`${DOC_API}/${docId}`, {
+      method: 'DELETE',
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+    });
     if (res.ok) {
       btn.closest('tr').remove();
       showToast('Document deleted.', 'success');

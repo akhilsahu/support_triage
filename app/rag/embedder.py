@@ -1,60 +1,50 @@
 """
-Embedder — thin wrapper around sentence-transformers for the RAG system.
+Embedder — OpenAI text-embedding-3-small for the RAG system.
 
-Used by VectorRAGService when generating embeddings outside of ChromaDB's
-built-in embedding function (e.g. for scoring, similarity checks).
+Replaces sentence-transformers to eliminate the PyTorch dependency (~1.5 GB).
+Dimension: 1536  Model: text-embedding-3-small
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import List, Optional
+
 import structlog
 
 logger = structlog.get_logger()
 
+OPENAI_EMBED_MODEL = "text-embedding-3-small"
+OPENAI_EMBED_DIM   = 1536
+
 
 class Embedder:
-    """
-    Generates dense vector embeddings using sentence-transformers.
-    Falls back to a deterministic hash vector if the model fails to load.
-    """
+    """Generates embeddings via OpenAI. Sync interface for ChromaDB compatibility."""
 
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = OPENAI_EMBED_MODEL):
         self.model_name = model_name
-        self._model = None
-        self._dim = 384
-        self._load()
-
-    def _load(self):
-        try:
-            from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(self.model_name)
-            self._dim = self._model.get_sentence_embedding_dimension()
-            logger.info("Embedder ready", model=self.model_name, dim=self._dim)
-        except Exception as e:
-            logger.warning("Embedder: sentence-transformers unavailable, using hash fallback", error=str(e))
+        self._dim = OPENAI_EMBED_DIM
+        logger.info("Embedder ready", model=self.model_name, dim=self._dim, provider="openai")
 
     def embed(self, text: str) -> List[float]:
-        """Return a single embedding vector for text."""
-        if self._model:
-            return self._model.encode(text, show_progress_bar=False).tolist()
-        return self._hash_embed(text)
+        return asyncio.get_event_loop().run_until_complete(self._async_embed(text))
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
-        """Return embeddings for a list of texts."""
-        if self._model:
-            return self._model.encode(texts, show_progress_bar=False).tolist()
-        return [self._hash_embed(t) for t in texts]
+        return asyncio.get_event_loop().run_until_complete(self._async_embed_batch(texts))
 
-    def _hash_embed(self, text: str) -> List[float]:
-        """Deterministic pseudo-embedding from MD5 hash (fallback only)."""
-        import hashlib, struct
-        h = hashlib.md5(text.encode()).digest()
-        floats = [struct.unpack("f", h[i : i + 4])[0] for i in range(0, 16, 4)]
-        # pad to self._dim
-        repeated = (floats * (self._dim // 4 + 1))[: self._dim]
-        norm = sum(x ** 2 for x in repeated) ** 0.5 or 1.0
-        return [x / norm for x in repeated]
+    async def _async_embed(self, text: str) -> List[float]:
+        from openai import AsyncOpenAI
+        from app.config import settings
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        resp = await client.embeddings.create(model=self.model_name, input=text)
+        return resp.data[0].embedding
+
+    async def _async_embed_batch(self, texts: List[str]) -> List[List[float]]:
+        from openai import AsyncOpenAI
+        from app.config import settings
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        resp = await client.embeddings.create(model=self.model_name, input=texts)
+        return [d.embedding for d in sorted(resp.data, key=lambda x: x.index)]
 
     @property
     def dimension(self) -> int:

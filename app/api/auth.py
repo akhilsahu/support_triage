@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.auth import create_token, hash_password, verify_password, current_brand
 from app.models.org import Organization, AgentDefinition
+from app.models.chatbot import Chatbot
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -150,11 +151,14 @@ BUILTIN_AGENTS = [
 ]
 
 
-async def _seed_builtin_agents(db: AsyncSession, org_id: uuid.UUID) -> None:
+async def _seed_builtin_agents(
+    db: AsyncSession, org_id: uuid.UUID, chatbot_id: uuid.UUID | None = None
+) -> None:
     """Insert all built-in AgentDefinition rows for a new brand."""
     for cfg in BUILTIN_AGENTS:
         agent = AgentDefinition(
             org_id=org_id,
+            chatbot_id=chatbot_id,
             slug=cfg["slug"],
             name=cfg["name"],
             description=cfg["description"],
@@ -220,7 +224,21 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     db.add(org)
     await db.flush()
 
-    await _seed_builtin_agents(db, org.id)
+    # Create default chatbot for this org
+    default_chatbot = Chatbot(
+        org_id=org.id,
+        slug=f"{org.slug}-default",
+        display_name=org.display_name,
+        description="",
+        logo_url=org.logo_url,
+        theme_color=org.theme_color,
+        is_default=True,
+        active=True,
+    )
+    db.add(default_chatbot)
+    await db.flush()
+
+    await _seed_builtin_agents(db, org.id, chatbot_id=default_chatbot.id)
     await db.commit()
     await db.refresh(org)
 

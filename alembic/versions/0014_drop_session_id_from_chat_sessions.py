@@ -1,22 +1,16 @@
-"""drop session_id from chat_sessions — use id as the session identifier
+"""no-op (squashed into 19fd7781d00f)
 
 Revision ID: 0014_drop_session_id_from_chat_sessions
 Revises: 0013_add_chat_sessions
-Create Date: 2026-05-16
 """
-from alembic import op
+from typing import Sequence, Union
+revision: str = '0014_drop_session_id_from_chat_sessions'
+down_revision: Union[str, None] = '0013_add_chat_sessions'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
-revision = '0014_drop_session_id_from_chat_sessions'
-down_revision = '0013_add_chat_sessions'
-branch_labels = None
-depends_on = None
+def upgrade() -> None:
+    pass
 
-
-def upgrade():
-    op.drop_column('chat_sessions', 'session_id')
-
-
-def downgrade():
-    import sqlalchemy as sa
-    op.add_column('chat_sessions',
-        sa.Column('session_id', sa.String(100), nullable=True))
+def downgrade() -> None:
+    pass

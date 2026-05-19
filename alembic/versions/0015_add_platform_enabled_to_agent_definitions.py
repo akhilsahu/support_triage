@@ -1,30 +1,16 @@
-"""add platform_enabled to agent_definitions
+"""no-op (squashed into 19fd7781d00f)
 
 Revision ID: 0015_add_platform_enabled
 Revises: 0014_drop_session_id_from_chat_sessions
-Create Date: 2026-05-16
 """
-import sqlalchemy as sa
-from alembic import op
+from typing import Sequence, Union
+revision: str = '0015_add_platform_enabled'
+down_revision: Union[str, None] = '0014_drop_session_id_from_chat_sessions'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
-revision = '0015_add_platform_enabled'
-down_revision = '0014_drop_session_id_from_chat_sessions'
-branch_labels = None
-depends_on = None
+def upgrade() -> None:
+    pass
 
-
-def upgrade():
-    op.add_column(
-        'agent_definitions',
-        sa.Column('platform_enabled', sa.Boolean(), server_default='true', nullable=False),
-    )
-    op.create_index(
-        'ix_agent_def_platform_enabled',
-        'agent_definitions',
-        ['is_builtin', 'platform_enabled'],
-    )
-
-
-def downgrade():
-    op.drop_index('ix_agent_def_platform_enabled', table_name='agent_definitions')
-    op.drop_column('agent_definitions', 'platform_enabled')
+def downgrade() -> None:
+    pass

@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.core.database import Base
 from app.models import agent, workflow, task, execution, conversation, document  # noqa
 from app.models import org  # noqa
+from app.models import chatbot  # noqa
 
 config = context.config
 
@@ -47,9 +48,12 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
-        with context.begin_transaction():
-            context.run_migrations()
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            transaction_per_migration=True,  # each migration gets its own transaction
+        )
+        context.run_migrations()
 
 
 if context.is_offline_mode():

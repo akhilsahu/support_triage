@@ -1,11 +1,11 @@
 """no-op (squashed into 19fd7781d00f)
 
-Revision ID: 0012_add_agent_doc_links
-Revises: 0011_rename_doc_id_key_to_doc_id
+Revision ID: 0017_add_chatbots
+Revises: 0016_builtin_agents_disabled_by_default
 """
 from typing import Sequence, Union
-revision: str = '0012_add_agent_doc_links'
-down_revision: Union[str, None] = '0011_rename_doc_id_key_to_doc_id'
+revision: str = '0017_add_chatbots'
+down_revision: Union[str, None] = '0016_builtin_agents_disabled_by_default'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

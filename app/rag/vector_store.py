@@ -262,10 +262,14 @@ class VectorStore:
 
     def _get_chroma_ef(self):
         try:
-            from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-            return SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+            from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+            from app.config import settings
+            return OpenAIEmbeddingFunction(
+                api_key=settings.OPENAI_API_KEY,
+                model_name="text-embedding-3-small",
+            )
         except Exception as e:
-            logger.warning("SentenceTransformer EF unavailable, using default", error=str(e))
+            logger.warning("OpenAI EF unavailable, falling back to default", error=str(e))
             return None
 
     def _collection(self, name: str):

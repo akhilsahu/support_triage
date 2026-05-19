@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.org import Organization, AgentDefinition, ConversationLog
+from app.models.chatbot import Chatbot
 
 logger = structlog.get_logger()
 router = APIRouter(tags=["Customer"])
@@ -46,7 +47,11 @@ class CustomerChatResponse(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 async def _get_brand(slug: str):
-    """Return Organization ORM object and db session; raises 404 if not found or inactive."""
+    """
+    Return (Organization, Chatbot, db) for the given org slug.
+    Chatbot is the org's default chatbot (is_default=True).
+    Raises 404 if org not found/inactive or no default chatbot configured.
+    """
     from app.core.database import AsyncSessionLocal
     db = AsyncSessionLocal()
     result = await db.execute(
@@ -56,13 +61,28 @@ async def _get_brand(slug: str):
     if not org:
         await db.close()
         raise HTTPException(404, f"Brand '{slug}' not found.")
-    return org, db
+
+    # Resolve default chatbot for this org
+    cb_result = await db.execute(
+        select(Chatbot).where(
+            Chatbot.org_id == org.id,
+            Chatbot.is_default == True,
+            Chatbot.active == True,
+        )
+    )
+    chatbot = cb_result.scalar_one_or_none()
+    if not chatbot:
+        await db.close()
+        raise HTTPException(503, f"No active chatbot configured for '{slug}'.")
+
+    return org, chatbot, db
 
 
-async def _get_active_agents(db: AsyncSession, org_id: uuid.UUID) -> list[AgentDefinition]:
+async def _get_active_agents(db: AsyncSession, chatbot_id: uuid.UUID) -> list[AgentDefinition]:
+    """Return active agents scoped to the given chatbot."""
     result = await db.execute(
         select(AgentDefinition).where(
-            AgentDefinition.org_id == org_id,
+            AgentDefinition.chatbot_id == chatbot_id,
             AgentDefinition.active == True,
         )
     )
@@ -182,14 +202,14 @@ _CHAT_PAGE_TEMPLATE = """<!DOCTYPE html>
 @router.get("/{slug}", response_class=HTMLResponse)
 async def customer_chat_page(slug: str):
     """Serve the branded customer chat page."""
-    org, db = await _get_brand(slug)
-    logo_img = (
-        f'<img src="{org.logo_url}" alt="logo"/>'
-        if org.logo_url else ""
-    )
+    org, chatbot, db = await _get_brand(slug)
+    # Chatbot branding takes precedence over org branding
+    logo_url    = chatbot.logo_url    or org.logo_url
+    theme_color = chatbot.theme_color or org.theme_color or "#6366f1"
+    logo_img = f'<img src="{logo_url}" alt="logo"/>' if logo_url else ""
     html = _CHAT_PAGE_TEMPLATE.format(
-        brand_name=org.display_name,
-        theme_color=org.theme_color or "#6366f1",
+        brand_name=chatbot.display_name or org.display_name,
+        theme_color=theme_color,
         logo_img=logo_img,
         slug=slug,
     )
@@ -207,7 +227,7 @@ async def customer_chat(slug: str, req: CustomerChatRequest):
     """
     from app.agents.dynamic_executor import DynamicAgentExecutor
 
-    org, db = await _get_brand(slug)
+    org, chatbot, db = await _get_brand(slug)
     t0 = time.time()
 
     # session_id from client is the chat_sessions.id UUID string
@@ -215,7 +235,7 @@ async def customer_chat(slug: str, req: CustomerChatRequest):
     incoming_session_id = req.session_id
 
     try:
-        active_agents = await _get_active_agents(db, org.id)
+        active_agents = await _get_active_agents(db, chatbot.id)
 
         # MCP data source integration — disabled for now, enable when ready
         # from app.mcp.datasource_server import DataSourceMCPServer
@@ -253,6 +273,7 @@ async def customer_chat(slug: str, req: CustomerChatRequest):
         if not chat_session:
             chat_session = ChatSession(
                 org_id=org.id,
+                chatbot_id=chatbot.id,
                 title=req.message[:100].strip(),
                 agent_slug=agent_slug,
                 status="open",
@@ -271,6 +292,7 @@ async def customer_chat(slug: str, req: CustomerChatRequest):
         # Log both turns in the same transaction
         db.add(ConversationLog(
             org_id=org.id,
+            chatbot_id=chatbot.id,
             session_id=session_id,
             role="user",
             message=req.message,
@@ -281,6 +303,7 @@ async def customer_chat(slug: str, req: CustomerChatRequest):
         ))
         db.add(ConversationLog(
             org_id=org.id,
+            chatbot_id=chatbot.id,
             session_id=session_id,
             role="assistant",
             message=result.get("reply", ""),
@@ -316,10 +339,10 @@ async def get_chat_suggestions(slug: str):
     from app.utils.ai.chat_suggestions import get_suggestions
     from app.rag.vector_store import get_vector_store
 
-    org, db = await _get_brand(slug)
+    org, chatbot, db = await _get_brand(slug)
     try:
         try:
-            active_agents = await _get_active_agents(db, org.id)
+            active_agents = await _get_active_agents(db, chatbot.id)
             store = get_vector_store()
             doc_types = store.get_org_doc_types(str(org.id))
         except Exception:
@@ -346,7 +369,7 @@ async def get_session_history(slug: str, session_id: str):
     Public endpoint — restore a chat session by slug + session_id.
     Returns message history so the frontend can render past messages.
     """
-    org, db = await _get_brand(slug)
+    org, chatbot, db = await _get_brand(slug)
     try:
         # Verify this session belongs to this org
         from app.models.chat import ChatSession

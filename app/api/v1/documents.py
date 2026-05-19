@@ -9,6 +9,10 @@ Existing (pgvector / DB-backed):
   POST   /documents/search              — vector similarity search (pgvector)
   POST   /documents/rag/query           — RAG query via pgvector + LLM
 
+Multi-source ingest (ChromaDB-backed):
+  POST   /documents/rag/ingest-text     — ingest raw text / markdown from a text box
+  POST   /documents/rag/ingest-url      — scrape a URL and ingest page content
+
 New (ChromaDB-backed, no DB required):
   POST   /documents/rag/upload          — upload any doc (PDF/DOCX/TXT/HTML/JSON/CSV)
                                           parse → chunk → embed → ChromaDB
@@ -582,5 +586,202 @@ async def rag_delete(doc_id: str, org=Depends(current_brand)):
     _rag_docs.pop(doc_id, None)
     logger.info("RAG document removed", org_id=str(org.id), doc_id=doc_id, chunks=deleted)
     return {"message": f"Document '{doc_id}' removed ({deleted} chunks).", "doc_id": doc_id}
+
+# ── Ingest: raw text / markdown ───────────────────────────────────────────────
+
+class IngestTextRequest(BaseModel):
+    title: str
+    text: str
+    doc_type: Optional[str] = "general"
+    kb_name: Optional[str] = ""
+    description: Optional[str] = ""
+
+
+@router.post("/rag/ingest-text", response_model=RagUploadResponse)
+async def rag_ingest_text(req: IngestTextRequest, org=Depends(current_brand)):
+    """
+    Ingest raw text or markdown from a text box into the org's knowledge base.
+    The text is treated as a single plain-text document.
+    """
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="Text content cannot be empty.")
+
+    doc_type = req.doc_type if req.doc_type in VALID_DOC_TYPES else "general"
+    filename = f"{req.title.strip() or 'text-input'}.txt"
+
+    # Build a ParsedDocument directly from the raw text
+    from app.rag.document_parser import ParsedDocument, ParsedPage
+    parsed = ParsedDocument(
+        filename=filename,
+        extension=".txt",
+        pages=[ParsedPage(page=1, text=req.text.strip(), section=req.title.strip())],
+    )
+
+    cfg = get_chunk_config(filename)
+    chunks = chunk_document(parsed)
+    if not chunks:
+        raise HTTPException(status_code=422, detail="Text produced no chunks.")
+
+    doc_id = str(uuid.uuid4())[:8]
+    store  = get_vector_store()
+    store.upsert_client_chunks(
+        client_id=str(org.id),
+        session_id=str(uuid.uuid4()),
+        doc_id=doc_id,
+        filename=filename,
+        extension=".txt",
+        strategy=cfg.strategy.value,
+        doc_type=doc_type,
+        ttl_days=None,
+        kb_name=req.kb_name or "",
+        org_id=str(org.id),
+        org_name=org.display_name,
+        description=req.description or "",
+        chunks=[
+            {"text": c.text, "page": c.page, "chunk_index": c.chunk_index, "section": c.section}
+            for c in chunks
+        ],
+    )
+
+    _rag_docs[doc_id] = {
+        "doc_id": doc_id, "client_id": str(org.id),
+        "doc_type": doc_type, "kb_name": req.kb_name or "",
+        "org_name": org.display_name, "description": req.description or "",
+        "filename": filename, "extension": ".txt",
+        "pages": 1, "chunks": len(chunks), "collection": COLLECTION_CLIENT,
+    }
+
+    logger.info("Text ingested", org_id=str(org.id), doc_id=doc_id, chunks=len(chunks))
+    return RagUploadResponse(
+        doc_id=doc_id, filename=filename, extension=".txt",
+        pages=1, chunks=len(chunks), collection=COLLECTION_CLIENT,
+        message=f"Text '{req.title}' indexed — {len(chunks)} chunks.",
+    )
+
+
+# ── Ingest: URL scraping ───────────────────────────────────────────────────────
+
+class IngestUrlRequest(BaseModel):
+    url: str
+    doc_type: Optional[str] = "general"
+    kb_name: Optional[str] = ""
+    description: Optional[str] = ""
+
+
+@router.post("/rag/ingest-url", response_model=RagUploadResponse)
+async def rag_ingest_url(req: IngestUrlRequest, org=Depends(current_brand)):
+    """
+    Scrape a URL, strip HTML, and ingest the page content into the org's knowledge base.
+    Works best with static pages. JS-rendered SPAs may return limited content.
+    """
+    import httpx
+    from urllib.parse import urlparse
+
+    url = req.url.strip()
+    parsed_url = urlparse(url)
+    if parsed_url.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="Only http/https URLs are supported.")
+
+    # Fetch the page
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True,
+                                     headers={"User-Agent": "SupportBot/1.0 (KB Indexer)"}) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=408, detail="Request timed out fetching the URL.")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=400, detail=f"URL returned {e.response.status_code}.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {e}")
+
+    content_type = response.headers.get("content-type", "")
+    raw_bytes = response.content
+
+    # Route to parser based on content type / URL extension
+    url_path = parsed_url.path.lower()
+    if url_path.endswith(".pdf"):
+        filename = url_path.split("/")[-1] or "page.pdf"
+    elif url_path.endswith(".md"):
+        filename = url_path.split("/")[-1] or "page.md"
+    elif "text/plain" in content_type:
+        filename = "page.txt"
+    else:
+        filename = "page.html"
+
+    # Parse using existing document parser
+    try:
+        from app.rag.document_parser import ParsedDocument, ParsedPage
+        if filename.endswith(".html"):
+            # Strip HTML tags with BeautifulSoup for clean text
+            try:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(raw_bytes, "html.parser")
+                # Remove scripts/styles
+                for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                    tag.decompose()
+                title_tag = soup.find("title")
+                page_title = title_tag.get_text(strip=True) if title_tag else parsed_url.netloc
+                text = soup.get_text(separator="\n", strip=True)
+            except ImportError:
+                text = raw_bytes.decode("utf-8", errors="replace")
+                page_title = parsed_url.netloc
+            parsed = ParsedDocument(
+                filename=filename,
+                extension=".html",
+                pages=[ParsedPage(page=1, text=text, section=page_title)],
+            )
+        else:
+            from app.rag.document_parser import parse
+            parsed = parse(raw_bytes, filename)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Failed to parse page content: {e}")
+
+    if not parsed.full_text.strip():
+        raise HTTPException(status_code=422, detail="Page has no extractable text content.")
+
+    doc_type = req.doc_type if req.doc_type in VALID_DOC_TYPES else "general"
+    cfg = get_chunk_config(filename)
+    chunks = chunk_document(parsed)
+    if not chunks:
+        raise HTTPException(status_code=422, detail="Page produced no chunks.")
+
+    doc_id = str(uuid.uuid4())[:8]
+    store  = get_vector_store()
+    display_name = page_title if filename.endswith(".html") else url
+    store.upsert_client_chunks(
+        client_id=str(org.id),
+        session_id=str(uuid.uuid4()),
+        doc_id=doc_id,
+        filename=display_name[:200],
+        extension=f".{filename.split('.')[-1]}",
+        strategy=cfg.strategy.value,
+        doc_type=doc_type,
+        ttl_days=None,
+        kb_name=req.kb_name or "",
+        org_id=str(org.id),
+        org_name=org.display_name,
+        description=req.description or url,
+        chunks=[
+            {"text": c.text, "page": c.page, "chunk_index": c.chunk_index, "section": c.section}
+            for c in chunks
+        ],
+    )
+
+    _rag_docs[doc_id] = {
+        "doc_id": doc_id, "client_id": str(org.id),
+        "doc_type": doc_type, "kb_name": req.kb_name or "",
+        "org_name": org.display_name, "description": req.description or url,
+        "filename": display_name[:200], "extension": f".{filename.split('.')[-1]}",
+        "pages": parsed.page_count, "chunks": len(chunks), "collection": COLLECTION_CLIENT,
+    }
+
+    logger.info("URL ingested", org_id=str(org.id), url=url, doc_id=doc_id, chunks=len(chunks))
+    return RagUploadResponse(
+        doc_id=doc_id, filename=display_name[:80], extension=f".{filename.split('.')[-1]}",
+        pages=parsed.page_count, chunks=len(chunks), collection=COLLECTION_CLIENT,
+        message=f"URL '{url}' scraped and indexed — {parsed.page_count} page(s), {len(chunks)} chunks.",
+    )
+
 
 # Made with Bob

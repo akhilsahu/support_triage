@@ -86,10 +86,10 @@ class Settings(BaseSettings):
     ANTHROPIC_MAX_TOKENS: int = 2000
 
     # Embeddings
-    EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
-    EMBEDDING_DIMENSION: int = 384
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_DIMENSION: int = 1536
     EMBEDDING_BATCH_SIZE: int = 32
-    EMBEDDING_DEVICE: str = "cpu"
+    EMBEDDING_DEVICE: str = "cpu"  # unused, kept for compat
 
     # RAG
     RAG_TOP_K: int = 5

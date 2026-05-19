@@ -12,7 +12,7 @@ from app.config import settings
 from app.core.database import init_db, close_db, check_db_connection
 from app.core.redis import redis_client
 from app.api.v1 import agents, workflows, tasks, documents, admin, datasources, mock_orders
-from app.api.v1 import org_agents, chat_sessions
+from app.api.v1 import org_agents, chat_sessions, chatbots
 from app.api.v1.org_agents import kb_router
 from app.api import chat, auth, customer, org
 from app.api.v1 import dashboard, superadmin
@@ -189,6 +189,7 @@ app.include_router(mock_orders.router,   prefix="/api/v1", tags=["Mock API"])
 app.include_router(org_agents.router,    prefix="/api/v1", tags=["Org Agents"])
 app.include_router(kb_router,                prefix="/api/v1", tags=["Org Knowledge Base"])
 app.include_router(chat_sessions.router,     prefix="/api/v1", tags=["Chat Sessions"])
+app.include_router(chatbots.router,          prefix="/api/v1", tags=["Chatbots"])
 app.include_router(org.router)
 app.include_router(customer.router)
 
