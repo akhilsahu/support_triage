@@ -1,5 +1,5 @@
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, String
 from alembic import context
 import os
 import sys
@@ -52,6 +52,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             transaction_per_migration=True,  # each migration gets its own transaction
+            version_num_col_type=String(128),  # allow long revision IDs
         )
         context.run_migrations()
 
