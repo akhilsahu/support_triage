@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MessageSquare, TrendingUp, Bot, Database, Activity, ArrowRight, ExternalLink, Loader2 } from 'lucide-react'
+import { MessageSquare, TrendingUp, Bot, Database, Activity, ArrowRight, ExternalLink, Loader2, Bell } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { Card } from '../components/ui/Card'
@@ -32,9 +32,10 @@ function timeAgo(iso: string | null): string {
 
 export function Dashboard() {
   const navigate = useNavigate()
-  const { orgSlug } = useAppStore()
+  const { orgSlug, token, unreadSessionIds } = useAppStore()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [waitingCount, setWaitingCount] = useState(0)
 
   useEffect(() => {
     apiClient.getDashboardStats()
@@ -42,6 +43,15 @@ export function Dashboard() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (!token) return
+    apiClient.listInboxSessions(token)
+      .then((sessions: any[]) => {
+        setWaitingCount(sessions.filter(s => ['escalated', 'queued'].includes(s.status)).length)
+      })
+      .catch(() => {})
+  }, [token])
 
   const statCards = stats ? [
     {
@@ -90,7 +100,7 @@ export function Dashboard() {
           <div className="flex items-center gap-2 flex-shrink-0">
             {orgSlug && (
               <a
-                href={`/s/${orgSlug}`}
+                href={`/${orgSlug}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors"
@@ -101,7 +111,7 @@ export function Dashboard() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => navigate('/chat')}
+              onClick={() => navigate('/app/chat')}
               className="bg-white/20 hover:bg-white/30 text-white border-white/30"
             >
               Start Chat <ArrowRight className="w-3.5 h-3.5" />
@@ -109,6 +119,28 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Unread / waiting sessions alert */}
+      {(unreadSessionIds.length > 0 || waitingCount > 0) && (
+        <button
+          onClick={() => navigate('/app/inbox')}
+          className="w-full flex items-center gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-xl text-left hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
+        >
+          <span className="relative flex-shrink-0">
+            <Bell className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+              {unreadSessionIds.length > 0
+                ? `${unreadSessionIds.length} unread message${unreadSessionIds.length > 1 ? 's' : ''} in Inbox`
+                : `${waitingCount} session${waitingCount > 1 ? 's' : ''} waiting for human support`}
+            </p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">Click to open Inbox</p>
+          </div>
+          <ArrowRight className="w-4 h-4 text-amber-500 flex-shrink-0" />
+        </button>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-400">
@@ -207,7 +239,7 @@ export function Dashboard() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Agent Fleet Status</h3>
-                <button onClick={() => navigate('/agents')} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1">
+                <button onClick={() => navigate('/app/agents')} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1">
                   Manage agents <ArrowRight className="w-3 h-3" />
                 </button>
               </div>

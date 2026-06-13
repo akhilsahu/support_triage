@@ -71,19 +71,18 @@ IDs are globally unique strings.
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import structlog
+
+from app.config import settings
 
 logger = structlog.get_logger()
 
 # ── Storage path ──────────────────────────────────────────────────────────────
 
-_DEFAULT_PERSIST_DIR = str(Path(__file__).resolve().parents[2] / ".chroma_db")
-CHROMA_PERSIST_DIR = os.environ.get("CHROMA_PERSIST_DIR", _DEFAULT_PERSIST_DIR)
+CHROMA_PERSIST_DIR = settings.CHROMA_PERSIST_DIR
 
 # ── Collection names ──────────────────────────────────────────────────────────
 
@@ -94,7 +93,7 @@ COLLECTION_CUSTOM   = COLLECTION_CLIENT    # backwards-compat alias
 
 # ── Default TTL for client uploads ───────────────────────────────────────────
 
-DEFAULT_TTL_DAYS = int(os.environ.get("RAG_DOC_TTL_DAYS", "30"))
+DEFAULT_TTL_DAYS = settings.RAG_DOC_TTL_DAYS
 
 
 # ── Metadata helpers ──────────────────────────────────────────────────────────
@@ -123,9 +122,11 @@ def build_client_metadata(
     doc_type: str = "general",
     ttl_days: Optional[int] = DEFAULT_TTL_DAYS,
     kb_name: str = "",
-    org_id: str = "",
+    kb_id: str = "",
+    space_id: str = "",
     org_name: str = "",
     description: str = "",
+    semantic_summary: str = "",
     extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
@@ -153,11 +154,13 @@ def build_client_metadata(
         # Processing
         "strategy":    str(strategy),
         # Org / KB metadata
-        "org_id":      str(org_id),
+        "space_id":    str(space_id),
         "org_name":    str(org_name),
+        "kb_id":       str(kb_id),
         "kb_name":     str(kb_name),
-        "doc_name":    str(filename),   # explicit alias for lookups
+        "doc_name":    str(filename),
         "description": str(description),
+        "semantic_summary": str(semantic_summary),
         # Timestamps
         "uploaded_at": now.isoformat(),
         "expires_at":  (now + timedelta(days=ttl_days)).isoformat() if ttl_days else "",
@@ -318,9 +321,11 @@ class VectorStore:
         doc_type: str = "general",
         ttl_days: Optional[int] = DEFAULT_TTL_DAYS,
         kb_name: str = "",
-        org_id: str = "",
+        kb_id: str = "",
+        space_id: str = "",
         org_name: str = "",
         description: str = "",
+        semantic_summary: str = "",
     ) -> int:
         """
         High-level upsert for client document chunks.
@@ -346,9 +351,11 @@ class VectorStore:
                 doc_type=doc_type,
                 ttl_days=ttl_days,
                 kb_name=kb_name,
-                org_id=org_id,
+                kb_id=kb_id,
+                space_id=space_id,
                 org_name=org_name,
                 description=description,
+                semantic_summary=semantic_summary,
             ))
         return self.upsert(COLLECTION_CLIENT, ids, texts, metas)
 
@@ -437,10 +444,11 @@ class VectorStore:
                 seen[did] = {
                     "doc_id":      did,
                     "client_id":   meta.get("client_id"),
-                    "org_id":      meta.get("org_id", ""),
+                    "space_id":      meta.get("space_id", ""),
                     "org_name":    meta.get("org_name", ""),
                     "kb_name":     meta.get("kb_name", ""),
                     "description": meta.get("description", ""),
+                    "semantic_summary": meta.get("semantic_summary", ""),
                     "filename":    meta.get("filename"),
                     "doc_name":    meta.get("doc_name", meta.get("filename", "")),
                     "extension":   meta.get("extension"),
@@ -448,8 +456,35 @@ class VectorStore:
                     "strategy":    meta.get("strategy"),
                     "uploaded_at": meta.get("uploaded_at"),
                     "expires_at":  meta.get("expires_at"),
+                    "chunks":      0,   # filled below
                 }
+            seen[did]["chunks"] = seen[did].get("chunks", 0) + 1
         return list(seen.values())
+
+    def get_doc_meta(self, doc_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch metadata for a single doc by doc_id — no client_id needed.
+        Used by rag_chat to resolve client_id + filename without _rag_docs.
+        Returns None if doc not found in ChromaDB.
+        """
+        col = self._collection(COLLECTION_CLIENT)
+        results = col.get(
+            where={"doc_id": {"$eq": doc_id}},
+            include=["metadatas"],
+        )
+        metas = results.get("metadatas") or []
+        if not metas:
+            return None
+        first = metas[0]
+        return {
+            "doc_id":     doc_id,
+            "client_id":  first.get("client_id", ""),
+            "session_id": first.get("session_id", ""),
+            "filename":   first.get("filename", ""),
+            "doc_type":   first.get("doc_type", "general"),
+            "semantic_summary": first.get("semantic_summary", ""),
+            "chunks":     len(metas),
+        }
 
     def update_org_name(self, client_id: str, new_org_name: str) -> int:
         """

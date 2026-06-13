@@ -1,8 +1,8 @@
 """Application configuration using Pydantic Settings"""
 
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict, NoDecode
 import json
 
 
@@ -66,6 +66,30 @@ class Settings(BaseSettings):
                 return [origin.strip() for origin in v.split(",")]
         return v
 
+    # Reserved slugs — customer chat lives at /<slug>, so a space slug must not
+    # collide with a frontend route or backend proxy prefix. Override via env:
+    #   RESERVED_SLUGS=app,api,login,custom-word   (comma-separated or JSON list)
+    RESERVED_SLUGS: Annotated[List[str], NoDecode] = Field(default=[
+        "app", "s", "api", "org", "space",
+        "about", "what-we-do", "how-it-works", "features", "pricing",
+        "privacy", "terms", "cookies", "contact", "security",
+        "login", "dashboard", "admin", "super-admin", "widget", "widget.js",
+        "assets", "static", "index.html", "favicon.ico", "robots.txt",
+    ])
+
+    @field_validator("RESERVED_SLUGS", mode="before")
+    @classmethod
+    def parse_reserved_slugs(cls, v):
+        if isinstance(v, str):
+            try:
+                items = json.loads(v)
+            except json.JSONDecodeError:
+                items = v.split(",")
+        else:
+            items = v or []
+        # Normalize: trim + lowercase, drop blanks
+        return [s.strip().lower() for s in items if s and s.strip()]
+
     # IBM watsonx.ai (top priority)
     WATSONX_API_KEY: Optional[str] = None
     WATSONX_URL: Optional[str] = "https://us-south.ml.cloud.ibm.com"
@@ -75,7 +99,7 @@ class Settings(BaseSettings):
 
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
-    OPENAI_MODEL: str = "gpt-4-turbo-preview"
+    OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_TEMPERATURE: float = 0.7
     OPENAI_MAX_TOKENS: int = 2000
 
@@ -84,6 +108,10 @@ class Settings(BaseSettings):
     ANTHROPIC_MODEL: str = "claude-3-opus-20240229"
     ANTHROPIC_TEMPERATURE: float = 0.7
     ANTHROPIC_MAX_TOKENS: int = 2000
+
+    # ChromaDB / RAG storage
+    CHROMA_PERSIST_DIR: str = ".chroma_db"
+    RAG_DOC_TTL_DAYS: int = 30
 
     # Embeddings
     EMBEDDING_MODEL: str = "text-embedding-3-small"
@@ -115,6 +143,11 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_MINUTE: int = 60
     RATE_LIMIT_PER_HOUR: int = 1000
 
+    # Login brute-force protection (Redis fixed-window)
+    LOGIN_RATELIMIT_EMAIL_MAX: int = 5       # attempts per email per window
+    LOGIN_RATELIMIT_IP_MAX: int = 30         # attempts per IP per window
+    LOGIN_RATELIMIT_WINDOW_SEC: int = 900    # 15 minutes
+
     # File Upload
     MAX_UPLOAD_SIZE: int = 10485760  # 10MB
     ALLOWED_EXTENSIONS: List[str] = Field(
@@ -143,11 +176,37 @@ class Settings(BaseSettings):
     WS_MESSAGE_QUEUE_SIZE: int = 100
 
     # JWT Auth
-    JWT_SECRET: str = "orchestra-dev-secret-change-in-production"
     JWT_TTL_HOURS: int = 72
 
     # Super Admin
     SUPER_ADMIN_KEY: str = "super-secret-change-me"
+    AVAILABLE_HOMEPAGES: List[str] = Field(
+        default=["homepage1", "homepage2", "homepage3"]
+    )
+
+    # Memory (mem0)
+    MEM0_ENABLED: bool = False
+    MEM0_LLM_PROVIDER: str = "openai"       # openai | anthropic
+    MEM0_LLM_MODEL: str = "gpt-4o-mini"
+    MEM0_VECTOR_STORE: str = "chroma"       # chroma | memory
+    MEM0_COLLECTION: str = "agent_memory"
+    MEM0_CHROMA_PATH: str = ".chroma_db"
+    MEM0_SEARCH_LIMIT: int = 5
+    MEM0_REWRITE_MAX_TOKENS: int = 80
+
+    # Orchestrator backend: "dynamic" (default) or "agno"
+    # Set ORCHESTRATOR=agno in .env to enable Agno-backed routing.
+    ORCHESTRATOR: str = "agno"
+
+    # SMTP — used for password reset emails
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASS: str = ""
+    SMTP_FROM: str = "noreply@support247.chat"
+
+    # Password reset token TTL in minutes
+    PASSWORD_RESET_TTL_MINUTES: int = 30
 
     @property
     def database_url_sync(self) -> str:

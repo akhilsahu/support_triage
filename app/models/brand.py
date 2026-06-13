@@ -88,7 +88,7 @@ class AgentDefinition(Base):
     __tablename__ = "agent_definitions"
 
     id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id     = Column(UUID(as_uuid=True), ForeignKey("brands.id", ondelete="CASCADE"),
+    space_id     = Column(UUID(as_uuid=True), ForeignKey("brands.id", ondelete="CASCADE"),
                           nullable=False, index=True)
 
     slug         = Column(String(80), nullable=False)   # e.g. "finance", "my_warranty_bot"
@@ -126,7 +126,7 @@ class AgentDefinition(Base):
 
     __table_args__ = (
         # slug must be unique within a brand
-        Index("ix_agent_def_brand_slug", "org_id", "slug", unique=True),
+        Index("ix_agent_def_brand_slug", "space_id", "slug", unique=True),
     )
 
     @property
@@ -146,7 +146,7 @@ class AgentDefinition(Base):
     def to_dict(self) -> dict:
         return {
             "id":            str(self.id),
-            "org_id":      str(self.org_id),
+            "space_id":      str(self.space_id),
             "slug":          self.slug,
             "name":          self.name,
             "description":   self.description,
@@ -182,7 +182,7 @@ class PromptSkill(Base):
     __tablename__ = "prompt_skills"
 
     id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id     = Column(UUID(as_uuid=True), ForeignKey("brands.id", ondelete="CASCADE"),
+    space_id     = Column(UUID(as_uuid=True), ForeignKey("brands.id", ondelete="CASCADE"),
                           nullable=False, index=True)
 
     name         = Column(String(200), nullable=False)
@@ -199,7 +199,7 @@ class PromptSkill(Base):
     def to_dict(self) -> dict:
         return {
             "id":          str(self.id),
-            "org_id":    str(self.org_id),
+            "space_id":    str(self.space_id),
             "name":        self.name,
             "description": self.description,
             "skill_type":  self.skill_type,
@@ -217,7 +217,7 @@ class ConversationLog(Base):
     __tablename__ = "conversation_logs"
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id        = Column(UUID(as_uuid=True), ForeignKey("brands.id", ondelete="CASCADE"),
+    space_id        = Column(UUID(as_uuid=True), ForeignKey("brands.id", ondelete="CASCADE"),
                              nullable=False, index=True)
     session_id      = Column(String(100), nullable=False, index=True)
 
@@ -235,5 +235,5 @@ class ConversationLog(Base):
     brand = relationship("Organization", back_populates="conversation_logs")
 
     __table_args__ = (
-        Index("ix_conv_log_brand_ts", "org_id", "timestamp"),
+        Index("ix_conv_log_brand_ts", "space_id", "timestamp"),
     )

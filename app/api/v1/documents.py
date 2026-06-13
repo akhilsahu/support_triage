@@ -1,24 +1,13 @@
 """
-Documents API — CRUD + RAG upload/chat endpoints.
+Documents API — ChromaDB-backed RAG endpoints.
 
-Existing (pgvector / DB-backed):
-  POST   /documents/                    — create document record
-  GET    /documents/                    — list all documents
-  GET    /documents/{id}                — get document
-  DELETE /documents/{id}                — delete document
-  POST   /documents/search              — vector similarity search (pgvector)
-  POST   /documents/rag/query           — RAG query via pgvector + LLM
-
-Multi-source ingest (ChromaDB-backed):
-  POST   /documents/rag/ingest-text     — ingest raw text / markdown from a text box
-  POST   /documents/rag/ingest-url      — scrape a URL and ingest page content
-
-New (ChromaDB-backed, no DB required):
   POST   /documents/rag/upload          — upload any doc (PDF/DOCX/TXT/HTML/JSON/CSV)
-                                          parse → chunk → embed → ChromaDB
+  POST   /documents/rag/ingest-text     — ingest raw text / markdown
+  POST   /documents/rag/ingest-url      — scrape a URL and ingest page content
   POST   /documents/rag/chat            — chat with an uploaded doc
-  GET    /documents/rag/list            — list uploaded docs (in-session)
-  DELETE /documents/rag/{doc_id}        — remove an uploaded doc
+  GET    /documents/rag/list            — list org's docs (from ChromaDB — survives restarts)
+  DELETE /documents/rag/{doc_id}        — remove a doc
+  POST   /documents/rag/client/{id}     — chat with entire org KB
   GET    /documents/rag/ui              — serve the RAG chat HTML UI
 """
 
@@ -29,17 +18,11 @@ from pathlib import Path
 from typing import List, Optional
 
 import structlog
-from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from uuid import UUID
 
-from app.core.auth import current_brand
-from app.core.database import get_db
-from app.models.document import Document
-from app.rag.chain import RAGChain
+from app.core.auth import current_space
 from app.rag.document_parser import (
     SUPPORTED_EXTENSIONS,
     ParsedDocument,
@@ -47,32 +30,41 @@ from app.rag.document_parser import (
     parse,
 )
 from app.rag.chunking import chunk as chunk_document, get_config as get_chunk_config
-from app.rag.retriever import RAGRetriever
 from app.rag.vector_store import (
     COLLECTION_CLIENT,
     VALID_DOC_TYPES,
     get_vector_store,
-    client_where,
 )
-from app.schemas.document import (
-    DocumentCreate,
-    DocumentResponse,
-    DocumentSearchRequest,
-    DocumentSearchResponse,
-    DocumentSearchResult,
-    DocumentUploadResponse,
-    RAGQueryRequest,
-    RAGQueryResponse,
-)
-from app.services.embedding_service import embedding_service
 from app.services.llm_service import llm_service
 
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
-# In-memory registry of ChromaDB-indexed uploads {doc_id: metadata}
-_rag_docs: dict = {}
+
+async def _generate_summary(content: str) -> str:
+    """Generate a highly concise 1-2 sentence semantic summary of the text content."""
+    if not content or not content.strip():
+        return ""
+    snippet = content[:6000].strip()
+    system_prompt = (
+        "You are an AI that writes extremely concise summaries for customer support documents. "
+        "Write exactly one or two sentences summarizing the main topic or scope of this document. "
+        "Do not include any intro, meta-commentary, or pleasantries."
+    )
+    try:
+        res = await llm_service.generate_with_fallback(
+            messages=[{"role": "user", "content": f"Document content:\n{snippet}\n\nSummary:"}],
+            system_prompt=system_prompt,
+            temperature=0.2,
+            max_tokens=150,
+        )
+        if res and res.get("content"):
+            return res["content"].strip()
+    except Exception as e:
+        logger.warning("Failed to generate semantic summary", error=str(e))
+    return ""
+
 
 UI_HTML       = Path(__file__).resolve().parents[2] / "rag" / "ui.html"
 UI_ADMIN_HTML = Path(__file__).resolve().parents[2] / "rag" / "ui" / "admin.html"
@@ -81,121 +73,6 @@ UI_CHAT_HTML  = Path(__file__).resolve().parents[2] / "rag" / "ui" / "chat.html"
 # ── Max upload size ────────────────────────────────────────────────────────────
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024  # 30 MB
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Existing DB-backed endpoints
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@router.post("/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
-async def create_document(document_data: DocumentCreate, db: AsyncSession = Depends(get_db), org=Depends(current_brand)):
-    """Create a new document record with auto-generated embedding, scoped to the authenticated org."""
-    try:
-        document = Document(**document_data.model_dump())
-        document.org_id = org.id
-        embedding = await embedding_service.generate_embedding(document.content)
-        document.embedding = embedding
-        db.add(document)
-        await db.commit()
-        await db.refresh(document)
-        logger.info("Document created", document_id=str(document.id), org=org.slug)
-        return DocumentResponse.from_orm_with_embedding(document)
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to create document: {e}")
-
-
-@router.get("/", response_model=List[DocumentResponse])
-async def list_documents(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db), org=Depends(current_brand)):
-    """List documents belonging to the authenticated org."""
-    try:
-        result = await db.execute(
-            select(Document).where(Document.org_id == org.id).offset(skip).limit(limit)
-        )
-        return [DocumentResponse.from_orm_with_embedding(d) for d in result.scalars().all()]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to list documents: {e}")
-
-
-@router.get("/{document_id}", response_model=DocumentResponse)
-async def get_document(document_id: UUID, db: AsyncSession = Depends(get_db), org=Depends(current_brand)):
-    """Get document by ID — must belong to the authenticated org."""
-    try:
-        result = await db.execute(
-            select(Document).where(Document.id == document_id, Document.org_id == org.id)
-        )
-        doc = result.scalar_one_or_none()
-        if not doc:
-            raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
-        return DocumentResponse.from_orm_with_embedding(doc)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get document: {e}")
-
-
-@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_document(document_id: UUID, db: AsyncSession = Depends(get_db), org=Depends(current_brand)):
-    """Delete a document — must belong to the authenticated org."""
-    try:
-        result = await db.execute(
-            select(Document).where(Document.id == document_id, Document.org_id == org.id)
-        )
-        doc = result.scalar_one_or_none()
-        if not doc:
-            raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
-        await db.delete(doc)
-        await db.commit()
-        logger.info("Document deleted", document_id=str(document_id), org=org.slug)
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to delete document: {e}")
-
-
-@router.post("/search", response_model=DocumentSearchResponse)
-async def search_documents(search_request: DocumentSearchRequest, db: AsyncSession = Depends(get_db), org=Depends(current_brand)):
-    """Vector similarity search using pgvector."""
-    try:
-        retriever = RAGRetriever(db)
-        docs_with_scores = await retriever.retrieve_with_scores(
-            query=search_request.query,
-            top_k=search_request.top_k,
-            filters=search_request.filters,
-        )
-        filtered = [(d, s) for d, s in docs_with_scores if s >= search_request.similarity_threshold]
-        results = [
-            DocumentSearchResult(document=DocumentResponse.from_orm_with_embedding(d), similarity_score=s)
-            for d, s in filtered
-        ]
-        return DocumentSearchResponse(query=search_request.query, results=results, total=len(results))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Document search failed: {e}")
-
-
-@router.post("/rag/query", response_model=RAGQueryResponse)
-async def rag_query(query_request: RAGQueryRequest, db: AsyncSession = Depends(get_db)):
-    """RAG query over pgvector-indexed documents with switchable LLM."""
-    try:
-        retriever = RAGRetriever(db)
-        chain = RAGChain(retriever)
-        result = await chain.query(
-            question=query_request.query,
-            model=query_request.model,
-            temperature=query_request.temperature,
-            max_tokens=query_request.max_tokens,
-            top_k=query_request.top_k,
-            filters=query_request.filters,
-            include_sources=query_request.include_sources,
-        )
-        return RAGQueryResponse(**result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"RAG query failed: {e}")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# ChromaDB-backed RAG: upload any document type and chat with it
-# ═══════════════════════════════════════════════════════════════════════════════
 
 # ── Pydantic models ───────────────────────────────────────────────────────────
 
@@ -290,7 +167,7 @@ async def rag_upload(
     x_kb_name: Optional[str] = Header(default=None, alias="X-KB-Name"),
     x_kb_description: Optional[str] = Header(default=None, alias="X-KB-Description"),
     x_kb_expiry: Optional[str] = Header(default=None, alias="X-KB-Expiry"),
-    org=Depends(current_brand),
+    org=Depends(current_space),
 ):
     """
     Upload a document into the org's knowledge base. JWT required.
@@ -350,6 +227,8 @@ async def rag_upload(
         except ValueError:
             ttl_days = None
 
+    semantic_summary = await _generate_summary(parsed.full_text)
+
     store.upsert_client_chunks(
         client_id=client_id,
         session_id=session_id,
@@ -360,29 +239,15 @@ async def rag_upload(
         doc_type=doc_type,
         ttl_days=ttl_days,
         kb_name=kb_name,
-        org_id=str(org.id),
+        space_id=str(org.id),
         org_name=org.display_name,
         description=description,
+        semantic_summary=semantic_summary,
         chunks=[
             {"text": c.text, "page": c.page, "chunk_index": c.chunk_index, "section": c.section}
             for c in chunks
         ],
     )
-
-    _rag_docs[doc_id] = {
-        "doc_id":      doc_id,
-        "client_id":   client_id,
-        "session_id":  session_id,
-        "doc_type":    doc_type,
-        "kb_name":     kb_name,
-        "org_name":    org.display_name,
-        "description": description,
-        "filename":    filename,
-        "extension":   parsed.extension,
-        "pages":       parsed.page_count,
-        "chunks":      len(chunks),
-        "collection":  COLLECTION_CLIENT,
-    }
 
     logger.info("Document indexed", client_id=client_id, doc_id=doc_id,
                 filename=filename, chunks=len(chunks))
@@ -406,14 +271,13 @@ async def rag_upload(
 @router.post("/rag/chat", response_model=RagChatResponse)
 async def rag_chat(req: RagChatRequest):
     """Ask a question about an uploaded document using RAG + LLM."""
-    if req.doc_id not in _rag_docs:
+    store = get_vector_store()
+    meta  = store.get_doc_meta(req.doc_id)
+    if not meta:
         raise HTTPException(
             status_code=404,
-            detail=f"Document '{req.doc_id}' not found. Upload a document first.",
+            detail=f"Document '{req.doc_id}' not found.",
         )
-
-    meta  = _rag_docs[req.doc_id]
-    store = get_vector_store()
 
     hits = store.query_client(
         client_id=meta.get("client_id", "anonymous"),
@@ -497,7 +361,7 @@ class ClientChatResponse(BaseModel):
 
 
 @router.post("/rag/client/{client_id}", response_model=ClientChatResponse)
-async def rag_client_chat(client_id: str, req: ClientChatRequest, org=Depends(current_brand)):
+async def rag_client_chat(client_id: str, req: ClientChatRequest, org=Depends(current_space)):
     """
     Chat with the authenticated org's knowledge base.
     client_id in the path must match the JWT org slug.
@@ -539,37 +403,30 @@ async def rag_client_chat(client_id: str, req: ClientChatRequest, org=Depends(cu
 # ── List / Delete ─────────────────────────────────────────────────────────────
 
 @router.get("/rag/list", response_model=List[RagDocInfo])
-async def rag_list(org=Depends(current_brand)):
+async def rag_list(org=Depends(current_space)):
     """List documents belonging to the authenticated org (from ChromaDB — survives restarts)."""
     store = get_vector_store()
-    docs = store.get_client_docs(str(org.id))
-    # Enrich with chunk counts from in-memory cache where available
-    result = []
-    for d in docs:
-        doc_id = d["doc_id"]
-        # Only use in-memory cache entry if it belongs to this org
-        cached = _rag_docs.get(doc_id, {})
-        if cached.get("client_id") != str(org.id):
-            cached = {}
-        result.append(RagDocInfo(
-            doc_id=doc_id,
-            filename=d.get("filename") or cached.get("filename", ""),
-            extension=d.get("extension") or cached.get("extension", ""),
+    docs  = store.get_client_docs(str(org.id))
+    return [
+        RagDocInfo(
+            doc_id=d["doc_id"],
+            filename=d.get("filename", ""),
+            extension=d.get("extension", ""),
             doc_type=d.get("doc_type", "general"),
             kb_name=d.get("kb_name", ""),
             org_name=d.get("org_name", ""),
             description=d.get("description", ""),
-            pages=cached.get("pages", 0),
-            chunks=cached.get("chunks", 0),
+            chunks=d.get("chunks", 0),
             collection=COLLECTION_CLIENT,
             uploaded_at=d.get("uploaded_at", ""),
             expires_at=d.get("expires_at", ""),
-        ))
-    return result
+        )
+        for d in docs
+    ]
 
 
 @router.delete("/rag/{doc_id}")
-async def rag_delete(doc_id: str, org=Depends(current_brand)):
+async def rag_delete(doc_id: str, org=Depends(current_space)):
     """Remove a document. Only the owning org can delete it."""
     store = get_vector_store()
     # Verify ownership — check ChromaDB for a chunk with this doc_id under the org's client_id
@@ -583,8 +440,7 @@ async def rag_delete(doc_id: str, org=Depends(current_brand)):
         raise HTTPException(status_code=404, detail="Document not found or not owned by your org.")
 
     deleted = store.delete_client_doc(str(org.id), doc_id)
-    _rag_docs.pop(doc_id, None)
-    logger.info("RAG document removed", org_id=str(org.id), doc_id=doc_id, chunks=deleted)
+    logger.info("RAG document removed", space_id=str(org.id), doc_id=doc_id, chunks=deleted)
     return {"message": f"Document '{doc_id}' removed ({deleted} chunks).", "doc_id": doc_id}
 
 # ── Ingest: raw text / markdown ───────────────────────────────────────────────
@@ -598,7 +454,7 @@ class IngestTextRequest(BaseModel):
 
 
 @router.post("/rag/ingest-text", response_model=RagUploadResponse)
-async def rag_ingest_text(req: IngestTextRequest, org=Depends(current_brand)):
+async def rag_ingest_text(req: IngestTextRequest, org=Depends(current_space)):
     """
     Ingest raw text or markdown from a text box into the org's knowledge base.
     The text is treated as a single plain-text document.
@@ -624,6 +480,7 @@ async def rag_ingest_text(req: IngestTextRequest, org=Depends(current_brand)):
 
     doc_id = str(uuid.uuid4())[:8]
     store  = get_vector_store()
+    semantic_summary = await _generate_summary(req.text)
     store.upsert_client_chunks(
         client_id=str(org.id),
         session_id=str(uuid.uuid4()),
@@ -634,24 +491,17 @@ async def rag_ingest_text(req: IngestTextRequest, org=Depends(current_brand)):
         doc_type=doc_type,
         ttl_days=None,
         kb_name=req.kb_name or "",
-        org_id=str(org.id),
+        space_id=str(org.id),
         org_name=org.display_name,
         description=req.description or "",
+        semantic_summary=semantic_summary,
         chunks=[
             {"text": c.text, "page": c.page, "chunk_index": c.chunk_index, "section": c.section}
             for c in chunks
         ],
     )
 
-    _rag_docs[doc_id] = {
-        "doc_id": doc_id, "client_id": str(org.id),
-        "doc_type": doc_type, "kb_name": req.kb_name or "",
-        "org_name": org.display_name, "description": req.description or "",
-        "filename": filename, "extension": ".txt",
-        "pages": 1, "chunks": len(chunks), "collection": COLLECTION_CLIENT,
-    }
-
-    logger.info("Text ingested", org_id=str(org.id), doc_id=doc_id, chunks=len(chunks))
+    logger.info("Text ingested", space_id=str(org.id), doc_id=doc_id, chunks=len(chunks))
     return RagUploadResponse(
         doc_id=doc_id, filename=filename, extension=".txt",
         pages=1, chunks=len(chunks), collection=COLLECTION_CLIENT,
@@ -669,7 +519,7 @@ class IngestUrlRequest(BaseModel):
 
 
 @router.post("/rag/ingest-url", response_model=RagUploadResponse)
-async def rag_ingest_url(req: IngestUrlRequest, org=Depends(current_brand)):
+async def rag_ingest_url(req: IngestUrlRequest, org=Depends(current_space)):
     """
     Scrape a URL, strip HTML, and ingest the page content into the org's knowledge base.
     Works best with static pages. JS-rendered SPAs may return limited content.
@@ -749,6 +599,7 @@ async def rag_ingest_url(req: IngestUrlRequest, org=Depends(current_brand)):
     doc_id = str(uuid.uuid4())[:8]
     store  = get_vector_store()
     display_name = page_title if filename.endswith(".html") else url
+    semantic_summary = await _generate_summary(parsed.full_text)
     store.upsert_client_chunks(
         client_id=str(org.id),
         session_id=str(uuid.uuid4()),
@@ -759,24 +610,17 @@ async def rag_ingest_url(req: IngestUrlRequest, org=Depends(current_brand)):
         doc_type=doc_type,
         ttl_days=None,
         kb_name=req.kb_name or "",
-        org_id=str(org.id),
+        space_id=str(org.id),
         org_name=org.display_name,
         description=req.description or url,
+        semantic_summary=semantic_summary,
         chunks=[
             {"text": c.text, "page": c.page, "chunk_index": c.chunk_index, "section": c.section}
             for c in chunks
         ],
     )
 
-    _rag_docs[doc_id] = {
-        "doc_id": doc_id, "client_id": str(org.id),
-        "doc_type": doc_type, "kb_name": req.kb_name or "",
-        "org_name": org.display_name, "description": req.description or url,
-        "filename": display_name[:200], "extension": f".{filename.split('.')[-1]}",
-        "pages": parsed.page_count, "chunks": len(chunks), "collection": COLLECTION_CLIENT,
-    }
-
-    logger.info("URL ingested", org_id=str(org.id), url=url, doc_id=doc_id, chunks=len(chunks))
+    logger.info("URL ingested", space_id=str(org.id), url=url, doc_id=doc_id, chunks=len(chunks))
     return RagUploadResponse(
         doc_id=doc_id, filename=display_name[:80], extension=f".{filename.split('.')[-1]}",
         pages=parsed.page_count, chunks=len(chunks), collection=COLLECTION_CLIENT,

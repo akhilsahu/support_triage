@@ -13,7 +13,7 @@ Redis cache key: chat:history:{str(id)}
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Integer, String, ForeignKey, Index
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -24,8 +24,8 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id          = Column(UUID(as_uuid=True),
-                             ForeignKey("organizations.id", ondelete="CASCADE"),
+    space_id          = Column(UUID(as_uuid=True),
+                             ForeignKey("spaces.id", ondelete="CASCADE"),
                              nullable=False, index=True)
     chatbot_id      = Column(UUID(as_uuid=True),
                              ForeignKey("chatbots.id", ondelete="CASCADE"),
@@ -37,8 +37,16 @@ class ChatSession(Base):
     # Last agent that handled a message in this session
     agent_slug      = Column(String(80), nullable=True)
 
-    # open | closed | escalated
+    # open | escalated | queued | active | closed
     status          = Column(String(20), default="open", nullable=False)
+
+    # Human transfer fields
+    ai_disabled        = Column(Boolean, default=False, nullable=False)
+    escalated_at       = Column(DateTime, nullable=True)
+    escalation_reason  = Column(String(100), nullable=True)
+    assigned_staff_id  = Column(UUID(as_uuid=True), ForeignKey("staff_members.id", ondelete="SET NULL"), nullable=True)
+    claimed_at         = Column(DateTime, nullable=True)
+    resolved_at        = Column(DateTime, nullable=True)
 
     message_count   = Column(Integer, default=0, nullable=False)
     started_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -47,14 +55,14 @@ class ChatSession(Base):
     chatbot         = relationship("Chatbot", back_populates="chat_sessions")
 
     __table_args__ = (
-        Index("ix_chat_sessions_org_last", "org_id", "last_message_at"),
+        Index("ix_chat_sessions_space_last", "space_id", "last_message_at"),
     )
 
     def to_dict(self) -> dict:
         return {
             "id":              str(self.id),
             "session_id":      str(self.id),   # alias for API consumers
-            "org_id":          str(self.org_id),
+            "space_id":          str(self.space_id),
             "chatbot_id":      str(self.chatbot_id) if self.chatbot_id else None,
             "title":           self.title,
             "agent_slug":      self.agent_slug,

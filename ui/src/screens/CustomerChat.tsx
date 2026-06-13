@@ -1,8 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { Send, Plus, Sun, Moon, Waves } from 'lucide-react'
+import { useAppStore } from '../store/useAppStore'
+import { Send, Plus, Sun, Moon, Waves, X } from 'lucide-react'
 import { SourceCitation } from '../components/ui/SourceCitation'
+import { NotFound } from './NotFound'
 import type { SourceItem } from '../types'
+
+// Detect if we're embedded inside an iframe (widget mode)
+const IS_EMBEDDED = window.self !== window.top
 
 // ── Theme definitions ─────────────────────────────────────────────────────────
 
@@ -154,7 +159,7 @@ interface Message {
   citations?: SourceItem[]
 }
 
-interface OrgInfo {
+interface SpaceInfo {
   name: string
   logo_url?: string
   theme_color?: string
@@ -163,11 +168,14 @@ interface OrgInfo {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function CustomerChat() {
-  const { slug }                        = useParams<{ slug: string }>()
+  const { slug: slugParam }             = useParams<{ slug?: string }>()
+  const storeSlug                       = useAppStore(s => s.orgSlug)
+  const slug                            = slugParam || storeSlug || ''
   const [searchParams, setSearchParams] = useSearchParams()
   const chatParam                       = searchParams.get('chat')
 
-  const [org, setOrg]               = useState<OrgInfo | null>(null)
+  const [space, setSpace]           = useState<SpaceInfo | null>(null)
+  const [notFound, setNotFound]     = useState(false)
   const [messages, setMessages]     = useState<Message[]>([])
   const [suggestions, setSuggestions] = useState<string[]>([
     'How can I track my order?',
@@ -179,14 +187,24 @@ export function CustomerChat() {
   const [loading, setLoading]       = useState(false)
   const [restoring, setRestoring]   = useState(!!chatParam)
   const [sessionId, setSessionId]   = useState(() => chatParam || crypto.randomUUID())
+  const [escalated, setEscalated]   = useState(false)
+  const [escalating, setEscalating] = useState(false)
+  const [humanTransferEnabled, setHumanTransferEnabled] = useState(true)
+  const sseRef = useRef<EventSource | null>(null)
+  // Tab-title notification — only flashes a count while the tab is in the background
+  const titleBaseRef   = useRef<string>('Live Chat')
+  const awayUnreadRef  = useRef<number>(0)
   const [theme, setTheme]           = useState<ThemeKey>(() => {
     return (localStorage.getItem('chat-theme') as ThemeKey) || 'blue'
   })
 
+  // When embedded in the widget iframe, start hidden until parent sends support247:show
+  const [isVisible, setIsVisible] = useState(!IS_EMBEDDED)
+
   const bottomRef  = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLInputElement>(null)
   const t          = THEMES[theme]
-  const accentColor = org?.theme_color || '#6366f1'
+  const accentColor = space?.theme_color || '#6366f1'
 
   // Cycle theme
   const cycleTheme = () => {
@@ -195,14 +213,115 @@ export function CustomerChat() {
     localStorage.setItem('chat-theme', next)
   }
 
-  // Fetch org branding
+  // Fetch space branding
   useEffect(() => {
     if (!slug) return
-    fetch(`/api/v1/org/public/${slug}`)
+    fetch(`/api/v1/space/public/${slug}`)
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setOrg(data); else setOrg({ name: slug }) })
-      .catch(() => setOrg({ name: slug }))
+      .then(data => {
+        if (data) {
+          setSpace(data)
+          if (data.human_transfer_enabled === false) setHumanTransferEnabled(false)
+        } else {
+          // Unknown slug at the root namespace — show 404 instead of a fake chat
+          setNotFound(true)
+        }
+      })
+      .catch(() => setSpace({ name: slug }))  // network blip → keep a usable fallback
   }, [slug])
+
+  // Keep the base tab title in sync with the brand name
+  useEffect(() => {
+    const name = space?.name || slug || 'Live Chat'
+    titleBaseRef.current = name
+    if (document.visibilityState === 'visible') document.title = name
+  }, [space, slug])
+
+  // Clear the unread count + restore the title when the customer returns to the tab
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        awayUnreadRef.current = 0
+        document.title = titleBaseRef.current
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      document.title = titleBaseRef.current
+    }
+  }, [])
+
+  // SSE — always connect once we have a sessionId (server pushes human messages in real time)
+  useEffect(() => {
+    if (!sessionId) return
+    sseRef.current?.close()
+
+    const es = new EventSource(`/api/v1/inbox/customer-stream?session_id=${sessionId}`)
+    sseRef.current = es
+
+    es.addEventListener('human_message', (e) => {
+      const d = JSON.parse(e.data)
+      setEscalated(true)
+      setMessages(prev => [...prev, {
+        id:    crypto.randomUUID(),
+        role:  'ai',
+        text:  d.content,
+        agent: d.staff_name || 'Agent',
+      }])
+      // Notify parent SDK of unread message when widget is hidden
+      if (IS_EMBEDDED && !isVisible) {
+        window.parent.postMessage({
+          type:    'support247:unread',
+          count:   1,
+          preview: d.content,
+        }, '*')
+      }
+      // Flash a count in the browser tab title only while the customer is away
+      if (document.hidden) {
+        awayUnreadRef.current += 1
+        const n = awayUnreadRef.current
+        document.title = `(${n}) New repl${n > 1 ? 'ies' : 'y'} · ${titleBaseRef.current}`
+      }
+    })
+
+    es.addEventListener('staff_assigned', (e) => {
+      const d = JSON.parse(e.data)
+      setEscalated(true)
+      setMessages(prev => [...prev, {
+        id:   crypto.randomUUID(),
+        role: 'ai',
+        text: `${d.staff_name || 'A support agent'} has joined the conversation.`,
+      }])
+    })
+
+    es.addEventListener('queue_position_update', (e) => {
+      const d = JSON.parse(e.data)
+      setEscalated(true)
+      setMessages(prev => {
+        const last = prev[prev.length - 1]
+        const posMsg = `You are #${d.position} in queue. We'll be with you shortly.`
+        if (last?.text?.startsWith('You are #')) {
+          return [...prev.slice(0, -1), { ...last, text: posMsg }]
+        }
+        return [...prev, { id: crypto.randomUUID(), role: 'ai', text: posMsg }]
+      })
+    })
+
+    es.addEventListener('session_closed', () => {
+      setMessages(prev => [...prev, {
+        id:   crypto.randomUUID(),
+        role: 'ai',
+        text: 'This support session has been closed. Thank you for contacting us.',
+      }])
+      es.close()
+    })
+
+    // Ignore errors on sessions that aren't escalated — SSE just stays silent
+    es.onerror = () => {}
+
+    return () => { es.close(); sseRef.current = null }
+  }, [sessionId])
 
   // Fetch suggestions
   useEffect(() => {
@@ -228,6 +347,10 @@ export function CustomerChat() {
           agent: h.agent_slug ?? undefined,
         })))
         setSessionId(chatParam)
+        // Restore escalated state if session was handed off to human
+        if (data.ai_disabled || data.status === 'active' || data.status === 'queued' || data.status === 'escalated') {
+          setEscalated(true)
+        }
       })
       .catch(() => {})
       .finally(() => setRestoring(false))
@@ -236,6 +359,84 @@ export function CustomerChat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
+
+  // ── postMessage bridge (widget mode) ────────────────────────────────────
+  // Tell the parent SDK that the iframe is ready
+  useEffect(() => {
+    if (!IS_EMBEDDED) return
+    window.parent.postMessage({ type: 'support247:ready' }, '*')
+  }, [])
+
+  // Listen for commands from the parent SDK
+  useEffect(() => {
+    if (!IS_EMBEDDED) return
+    const handler = (e: MessageEvent) => {
+      if (!e.data || typeof e.data !== 'object') return
+      switch (e.data.type) {
+        case 'support247:show':
+          setIsVisible(true)
+          setTimeout(() => inputRef.current?.focus(), 100)
+          break
+        case 'support247:hide':
+          setIsVisible(false)
+          break
+        case 'support247:config':
+          // Customer identity pushed by the SDK — store for future requests
+          if (e.data.customer_email || e.data.customer_name || e.data.customer_id) {
+            // Stored in sessionStorage so the send() fn can include them
+            if (e.data.customer_email) sessionStorage.setItem('s247_email', e.data.customer_email)
+            if (e.data.customer_name)  sessionStorage.setItem('s247_name',  e.data.customer_name)
+            if (e.data.customer_id)    sessionStorage.setItem('s247_cid',   e.data.customer_id)
+          }
+          break
+        case 'support247:page':
+          // Host page navigation context — stored for next chat message
+          if (e.data.url) sessionStorage.setItem('s247_page_url', e.data.url)
+          if (e.data.title) sessionStorage.setItem('s247_page_title', e.data.title)
+          break
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
+
+  // Close handler — tells parent SDK to hide the panel
+  const closeWidget = useCallback(() => {
+    if (IS_EMBEDDED) {
+      window.parent.postMessage({ type: 'support247:close' }, '*')
+    }
+  }, [])
+
+  const escalateToHuman = async () => {
+    if (escalating || escalated) return
+    setEscalating(true)
+    try {
+      const res = await fetch('/api/v1/inbox/escalate', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ session_id: sessionId, reason: 'customer_request' }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMessages(prev => [...prev, {
+          id:   crypto.randomUUID(),
+          role: 'ai',
+          text: data.detail || 'Human support is not available right now.',
+        }])
+        return
+      }
+      setEscalated(true)
+      setMessages(prev => [...prev, {
+        id:   crypto.randomUUID(),
+        role: 'ai',
+        text: data.message || "You've been connected to a human agent. They'll be with you shortly.",
+      }])
+    } catch {
+      // silently ignore
+    } finally {
+      setEscalating(false)
+    }
+  }
 
   const send = async (text?: string) => {
     const msg = (text ?? input).trim()
@@ -255,13 +456,16 @@ export function CustomerChat() {
         setSearchParams({ chat: data.session_id }, { replace: true })
         setSessionId(data.session_id)
       }
-      setMessages(prev => [...prev, {
-        id:        crypto.randomUUID(),
-        role:      'ai',
-        text:      data.reply || data.detail || 'Sorry, something went wrong.',
-        agent:     data.agent,
-        citations: data.citations ?? [],
-      }])
+      // Only add AI reply if there is one — human sessions return empty reply
+      if (data.reply) {
+        setMessages(prev => [...prev, {
+          id:        crypto.randomUUID(),
+          role:      'ai',
+          text:      data.reply,
+          agent:     data.agent,
+          citations: data.citations ?? [],
+        }])
+      }
     } catch {
       setMessages(prev => [...prev, {
         id:   crypto.randomUUID(),
@@ -277,27 +481,42 @@ export function CustomerChat() {
   const ThemeIcon = THEME_ICON[theme]
   const isEmpty   = messages.length === 0 && !restoring
 
+  // Unknown slug at the root namespace → 404
+  if (notFound) return <NotFound />
+
   return (
     <div className={`flex flex-col h-screen ${t.bg} transition-colors duration-300`}>
 
       {/* Header */}
       <header className={`flex items-center justify-between px-5 py-3 flex-shrink-0 backdrop-blur-sm ${t.headerBg} transition-colors duration-300`}>
         <div className="flex items-center gap-2.5">
-          {org?.logo_url && (
-            <img src={org.logo_url} alt="logo" className="w-7 h-7 rounded-lg object-cover opacity-90" />
+          {space?.logo_url && (
+            <img src={space.logo_url} alt="logo" className="w-7 h-7 rounded-lg object-cover opacity-90" />
           )}
           <span className={`text-base font-bold tracking-tight ${t.text} transition-colors duration-300`}
             style={{ fontFamily: "'Inter', 'SF Pro Display', system-ui, sans-serif", letterSpacing: '-0.02em' }}>
-            {org?.name || slug}
+            {space?.name || slug}
           </span>
         </div>
-        <button
-          onClick={cycleTheme}
-          className={`p-2 rounded-full transition-all duration-200 ${t.icon}`}
-          title={`Switch theme (${THEME_NEXT[theme]})`}
-        >
-          <ThemeIcon className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={cycleTheme}
+            className={`p-2 rounded-full transition-all duration-200 ${t.icon}`}
+            title={`Switch theme (${THEME_NEXT[theme]})`}
+          >
+            <ThemeIcon className="w-4 h-4" />
+          </button>
+          {IS_EMBEDDED && (
+            <button
+              onClick={closeWidget}
+              className={`p-2 rounded-full transition-all duration-200 ${t.icon}`}
+              title="Close chat"
+              aria-label="Close chat"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Messages / Empty state */}
@@ -396,7 +615,7 @@ export function CustomerChat() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
-            placeholder={`Ask ${org?.name || 'us'} anything…`}
+            placeholder={`Ask ${space?.name || 'us'} anything…`}
             disabled={loading}
             autoFocus
             className={`flex-1 bg-transparent text-sm outline-none disabled:opacity-50 ${t.inputText} transition-colors duration-300`}
@@ -410,9 +629,23 @@ export function CustomerChat() {
             <Send className="w-3.5 h-3.5 text-white" />
           </button>
         </div>
-        <p className={`text-center text-xs mt-2.5 ${t.subtext} opacity-50`}>
-          Powered by AI · Responses may not always be accurate
-        </p>
+        <div className="flex items-center justify-between mt-2.5 px-1">
+          <p className={`text-xs ${t.subtext} opacity-50`}>
+            Powered by AI · Responses may not always be accurate
+          </p>
+          {!escalated && messages.length > 0 && humanTransferEnabled && (
+            <button
+              onClick={escalateToHuman}
+              disabled={escalating}
+              className={`text-xs ${t.subtext} opacity-60 hover:opacity-100 transition-opacity underline underline-offset-2`}
+            >
+              {escalating ? 'Connecting…' : 'Talk to a human'}
+            </button>
+          )}
+          {escalated && (
+            <span className={`text-xs ${t.subtext} opacity-60`}>👤 Human agent</span>
+          )}
+        </div>
       </div>
     </div>
   )

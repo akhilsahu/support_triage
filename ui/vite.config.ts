@@ -16,8 +16,21 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
+        // Required for SSE (Server-Sent Events) — disables response buffering
+        // so event-stream chunks are flushed to the browser immediately.
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            // Tell the backend not to compress SSE responses
+            proxyReq.setHeader('Accept-Encoding', 'identity')
+          })
+        },
       },
       '/org': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      // /space/public/* lives on the backend — proxy for local widget dev
+      '/space': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },

@@ -1,5 +1,5 @@
 """
-Data Source API — org-scoped external API connections with LLM field mapping.
+Data Source API — space-scoped external API connections with LLM field mapping.
 
 POST   /datasources/probe          — fetch sample from URL + LLM-generate mapping
 GET    /datasources/               — list org's data sources
@@ -25,10 +25,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_brand
+from app.core.auth import current_space
 from app.core.database import get_db
 from app.core.encryption import encrypt, decrypt
-from app.models.datasource import OrgDataSource, CANONICAL_ORDER_FIELDS
+from app.models.datasource import SpaceDataSource, CANONICAL_ORDER_FIELDS
 from app.services.llm_service import llm_service
 
 logger = structlog.get_logger()
@@ -222,7 +222,7 @@ def _shallow_extract(data: Any) -> Dict[str, Any]:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/probe", response_model=ProbeResponse)
-async def probe_datasource(req: ProbeRequest, org=Depends(current_brand)):
+async def probe_datasource(req: ProbeRequest, org=Depends(current_space)):
     """
     Fetch a sample from the external API and use LLM to map fields
     to the canonical schema. Returns mapping for user review.
@@ -258,15 +258,15 @@ async def probe_datasource(req: ProbeRequest, org=Depends(current_brand)):
     if not sample:
         raise HTTPException(status_code=422, detail="Could not extract a record from the API response.")
 
-    logger.info("Datasource probed", org_id=str(org.id), url=req.api_url, fields=raw_fields)
+    logger.info("Datasource probed", space_id=str(org.id), url=req.api_url, fields=raw_fields)
     return ProbeResponse(sample=sample, raw_fields=raw_fields, mapping=mapping, llm_used=True)
 
 
 @router.get("/", response_model=List[dict])
-async def list_datasources(db: AsyncSession = Depends(get_db), org=Depends(current_brand)):
+async def list_datasources(db: AsyncSession = Depends(get_db), org=Depends(current_space)):
     """List all data sources belonging to the authenticated org."""
     result = await db.execute(
-        select(OrgDataSource).where(OrgDataSource.org_id == org.id).order_by(OrgDataSource.created_at.desc())
+        select(SpaceDataSource).where(SpaceDataSource.space_id == org.id).order_by(SpaceDataSource.created_at.desc())
     )
     return [ds.to_dict() for ds in result.scalars().all()]
 
@@ -275,12 +275,12 @@ async def list_datasources(db: AsyncSession = Depends(get_db), org=Depends(curre
 async def create_datasource(
     req: DataSourceCreate,
     db: AsyncSession = Depends(get_db),
-    org=Depends(current_brand),
+    org=Depends(current_space),
 ):
-    """Save a new data source. org_id is derived from JWT — never from request."""
+    """Save a new data source. space_id is derived from JWT — never from request."""
     _validate_url(req.api_url)
-    ds = OrgDataSource(
-        org_id      = org.id,
+    ds = SpaceDataSource(
+        space_id      = org.id,
         name        = req.name,
         agent_type  = req.agent_type,
         api_url     = req.api_url,
@@ -296,7 +296,7 @@ async def create_datasource(
     db.add(ds)
     await db.commit()
     await db.refresh(ds)
-    logger.info("Datasource created", org_id=str(org.id), name=req.name, agent_type=req.agent_type)
+    logger.info("Datasource created", space_id=str(org.id), name=req.name, agent_type=req.agent_type)
     return ds.to_dict()
 
 
@@ -305,13 +305,13 @@ async def update_datasource(
     ds_id: str,
     req: DataSourceUpdate,
     db: AsyncSession = Depends(get_db),
-    org=Depends(current_brand),
+    org=Depends(current_space),
 ):
     """Update mapping or auth. Only the owning org can update."""
     result = await db.execute(
-        select(OrgDataSource).where(
-            OrgDataSource.id == uuid.UUID(ds_id),
-            OrgDataSource.org_id == org.id,
+        select(SpaceDataSource).where(
+            SpaceDataSource.id == uuid.UUID(ds_id),
+            SpaceDataSource.space_id == org.id,
         )
     )
     ds = result.scalar_one_or_none()
@@ -336,13 +336,13 @@ async def update_datasource(
 async def delete_datasource(
     ds_id: str,
     db: AsyncSession = Depends(get_db),
-    org=Depends(current_brand),
+    org=Depends(current_space),
 ):
     """Delete a data source. Only the owning org can delete."""
     result = await db.execute(
-        select(OrgDataSource).where(
-            OrgDataSource.id == uuid.UUID(ds_id),
-            OrgDataSource.org_id == org.id,
+        select(SpaceDataSource).where(
+            SpaceDataSource.id == uuid.UUID(ds_id),
+            SpaceDataSource.space_id == org.id,
         )
     )
     ds = result.scalar_one_or_none()
@@ -378,7 +378,7 @@ async def fetch_live_data(
     ds_id: str,
     req: FetchRequest = FetchRequest(),
     db: AsyncSession = Depends(get_db),
-    org=Depends(current_brand),
+    org=Depends(current_space),
 ):
     """
     Fetch live data from the saved API URL, apply field mapping,
@@ -388,9 +388,9 @@ async def fetch_live_data(
     e.g. {"id": "ORD-1234"} fills in any param stored as order_id={id}
     """
     result = await db.execute(
-        select(OrgDataSource).where(
-            OrgDataSource.id == uuid.UUID(ds_id),
-            OrgDataSource.org_id == org.id,
+        select(SpaceDataSource).where(
+            SpaceDataSource.id == uuid.UUID(ds_id),
+            SpaceDataSource.space_id == org.id,
         )
     )
     ds = result.scalar_one_or_none()

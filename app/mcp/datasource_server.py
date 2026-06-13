@@ -2,13 +2,13 @@
 OrchestraSupport MCP Server — Data Source Tools
 
 Single MCP server for all orgs. Flow:
-  1. Caller passes org_id (from JWT) when initialising a session
-  2. Server looks up all OrgDataSource rows for that org
+  1. Caller passes space_id (from JWT) when initialising a session
+  2. Server looks up all SpaceDataSource rows for that org
   3. Exposes one tool per agent_type: get_order(order_id), etc.
   4. Each tool resolves the right data source, substitutes {id} placeholders,
      calls the org's API, normalises the response, and returns canonical records.
 
-No per-org server processes. One server, multi-tenant by org_id.
+No per-org server processes. One server, multi-tenant by space_id.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.encryption import decrypt
-from app.models.datasource import OrgDataSource
+from app.models.datasource import SpaceDataSource
 
 logger = structlog.get_logger()
 
@@ -58,7 +58,7 @@ def _build_auth_headers(auth_type: str, auth_value: str, auth_header: str) -> Di
 # ── Core fetch logic ──────────────────────────────────────────────────────────
 
 async def _fetch_from_datasource(
-    ds: OrgDataSource,
+    ds: SpaceDataSource,
     user_inputs: Dict[str, str],
 ) -> Dict[str, Any]:
     """
@@ -84,7 +84,7 @@ async def _fetch_from_datasource(
         return resp.json()
 
 
-def _normalize_records(ds: OrgDataSource, raw: Any) -> List[Dict[str, Any]]:
+def _normalize_records(ds: SpaceDataSource, raw: Any) -> List[Dict[str, Any]]:
     """Extract list of records from raw response and apply field mapping."""
     if isinstance(raw, list):
         records = raw
@@ -106,28 +106,28 @@ class DataSourceMCPServer:
     Multi-tenant MCP tool executor.
 
     Usage:
-        server = DataSourceMCPServer(db, org_id)
+        server = DataSourceMCPServer(db, space_id)
         await server.load()                          # loads org's data sources from DB
         tools = server.tool_definitions()            # pass to LLM as tool specs
         result = await server.call_tool("get_order", {"order_id": "ORD-1001"})
     """
 
-    def __init__(self, db: AsyncSession, org_id: UUID):
+    def __init__(self, db: AsyncSession, space_id: UUID):
         self.db = db
-        self.org_id = org_id
-        self._sources: Dict[str, OrgDataSource] = {}   # agent_type → data source
+        self.space_id = space_id
+        self._sources: Dict[str, SpaceDataSource] = {}   # agent_type → data source
 
     async def load(self) -> None:
         """Load all active data sources for this org from DB."""
         result = await self.db.execute(
-            select(OrgDataSource).where(
-                OrgDataSource.org_id == self.org_id,
-                OrgDataSource.active == True,
+            select(SpaceDataSource).where(
+                SpaceDataSource.space_id == self.space_id,
+                SpaceDataSource.active == True,
             )
         )
         for ds in result.scalars().all():
             self._sources[ds.agent_type] = ds
-        logger.info("MCP server loaded", org_id=str(self.org_id), sources=list(self._sources.keys()))
+        logger.info("MCP server loaded", space_id=str(self.space_id), sources=list(self._sources.keys()))
 
     def tool_definitions(self) -> List[Dict[str, Any]]:
         """
@@ -185,7 +185,7 @@ class DataSourceMCPServer:
         try:
             raw      = await _fetch_from_datasource(ds, args)
             records  = _normalize_records(ds, raw)
-            logger.info("MCP tool called", tool=tool_name, org_id=str(self.org_id), records=len(records))
+            logger.info("MCP tool called", tool=tool_name, space_id=str(self.space_id), records=len(records))
             return {
                 "source":  ds.name,
                 "count":   len(records),

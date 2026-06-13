@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, X, Lock, ChevronRight, Database, Trash2, CheckCircle, Settings2, Loader2, Bot } from 'lucide-react'
+import { useAppStore } from '../store/useAppStore'
+import { Plus, X, Lock, ChevronRight, Database, Trash2, CheckCircle, Settings2, Loader2, Bot, MessageCircle } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -26,7 +27,7 @@ export interface OrgAgent {
   rag_doc_types: string[]
   rag_top_k: number
   keywords: string[]
-  doc_ids: string[]
+  kb_ids: string[]
 }
 
 interface DataSource {
@@ -93,21 +94,18 @@ function PromptModal({ agent, docTypes, onClose, onSaved }: {
   const [ragEnabled, setRagEnabled]     = useState(agent.rag_enabled)
   const [ragDocTypes, setRagDocTypes]   = useState<string[]>(agent.rag_doc_types)
   const [ragTopK, setRagTopK]           = useState(agent.rag_top_k)
-  const [linkedDocIds, setLinkedDocIds] = useState<string[]>(agent.doc_ids || [])
-  const [allDocs, setAllDocs]           = useState<{ doc_id: string; filename: string; doc_type: string }[]>([])
+  const [selectedKbIds, setSelectedKbIds] = useState<string[]>(agent.kb_ids || [])
+  const [allKBs, setAllKBs]             = useState<{ id: string; name: string; item_count: number }[]>([])
   const [saving, setSaving]             = useState(false)
   const [error, setError]               = useState('')
 
   const inputCls = 'w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white placeholder-gray-400'
 
   useEffect(() => {
-    apiClient.listDocs()
-      .then(data => setAllDocs(data.documents || data || []))
+    apiClient.listKBs()
+      .then(d => setAllKBs(d || []))
       .catch(() => {})
   }, [])
-
-  const toggleDoc = (docId: string) =>
-    setLinkedDocIds(prev => prev.includes(docId) ? prev.filter(d => d !== docId) : [...prev, docId])
 
   const save = async () => {
     setSaving(true)
@@ -120,7 +118,7 @@ function PromptModal({ agent, docTypes, onClose, onSaved }: {
         rag_enabled: ragEnabled,
         rag_doc_types: ragDocTypes,
         rag_top_k: ragTopK,
-        doc_ids: linkedDocIds,
+        kb_ids: selectedKbIds,
       })
       onSaved(updated)
       onClose()
@@ -215,37 +213,41 @@ function PromptModal({ agent, docTypes, onClose, onSaved }: {
                   )}
                 </div>
 
-                {/* Linked Docs */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
-                    Linked Documents
-                    <span className="ml-1.5 text-gray-400 font-normal">— pin specific docs to this agent</span>
-                  </label>
-                  {allDocs.length === 0 ? (
-                    <p className="text-xs text-gray-400 italic">No documents uploaded yet.</p>
-                  ) : (
-                    <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                      {allDocs.map(doc => (
-                        <label key={doc.doc_id}
-                          className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                          <input
-                            type="checkbox"
-                            checked={linkedDocIds.includes(doc.doc_id)}
-                            onChange={() => toggleDoc(doc.doc_id)}
-                            className="accent-indigo-600 w-3.5 h-3.5 flex-shrink-0"
-                          />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 truncate flex-1">
-                            {doc.filename}
-                          </span>
-                          <span className="text-xs text-gray-400 flex-shrink-0">{doc.doc_type}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                  {linkedDocIds.length > 0 && (
-                    <p className="text-xs text-indigo-500 mt-1">{linkedDocIds.length} doc{linkedDocIds.length > 1 ? 's' : ''} linked</p>
-                  )}
-                </div>
+                {/* Knowledge Bases */}
+                {!agent.is_builtin && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                      Knowledge Bases
+                      <span className="ml-1.5 text-gray-400 font-normal">— select knowledge bases for this agent</span>
+                    </label>
+                    {allKBs.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic">No knowledge bases yet.</p>
+                    ) : (
+                      <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                        {allKBs.map(kb => (
+                          <label key={kb.id}
+                            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={selectedKbIds.includes(kb.id)}
+                              onChange={() => setSelectedKbIds(prev =>
+                                prev.includes(kb.id) ? prev.filter(id => id !== kb.id) : [...prev, kb.id]
+                              )}
+                              className="accent-indigo-600 w-3.5 h-3.5 flex-shrink-0"
+                            />
+                            <span className="text-xs text-gray-700 dark:text-gray-300 truncate flex-1">
+                              {kb.name}
+                            </span>
+                            <span className="text-xs text-gray-400 flex-shrink-0">{kb.item_count} items</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    {selectedKbIds.length > 0 && (
+                      <p className="text-xs text-indigo-500 mt-1">{selectedKbIds.length} KB{selectedKbIds.length > 1 ? 's' : ''} linked</p>
+                    )}
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
@@ -283,15 +285,17 @@ function PromptModal({ agent, docTypes, onClose, onSaved }: {
 export function CreateAgentModal({ onClose, onCreated, prefill }: {
   onClose: () => void
   onCreated: () => void
-  prefill?: { name?: string; docType?: string; docId?: string }
+  prefill?: { name?: string; docType?: string; docId?: string; kb_ids?: string[] }
 }) {
   const [name, setName]               = useState(prefill?.name || '')
   const [description, setDescription] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
-  const [ragEnabled, setRagEnabled]   = useState(!!prefill?.docType)
+  const [ragEnabled, setRagEnabled]   = useState(!!(prefill?.docType || prefill?.kb_ids?.length))
   const [ragDocTypes, setRagDocTypes] = useState<string[]>(prefill?.docType ? [prefill.docType] : [])
   const [ragTopK, setRagTopK]         = useState(5)
   const [docTypes, setDocTypes]       = useState<string[]>([])
+  const [selectedKbIds, setSelectedKbIds] = useState<string[]>(prefill?.kb_ids || [])
+  const [allKBs, setAllKBs]           = useState<{ id: string; name: string; item_count: number }[]>([])
   const [saving, setSaving]           = useState(false)
   const [suggesting, setSuggesting]   = useState(false)
   const [suggestionId, setSuggestionId] = useState<string | null>(null)
@@ -301,33 +305,47 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
 
   useEffect(() => {
     apiClient.listOrgDocTypes().then(d => setDocTypes(d.doc_types || [])).catch(() => {})
+    apiClient.listKBs().then(d => setAllKBs(d || [])).catch(() => {})
   }, [])
 
-  // Auto-generate suggestion when modal opens with a prefilled doc type
+  // Auto-generate when opened with prefilled doc type or KBs
   useEffect(() => {
-    if (prefill?.docType) {
-      handleGenerate([prefill.docType], prefill.docId)
+    if (prefill?.docType || prefill?.kb_ids?.length) {
+      handleGenerate(true)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleGenerate = async (types?: string[], docId?: string, force = false) => {
-    const target = types ?? ragDocTypes
-    if (!target.length) return
-    const targetDocId = docId ?? prefill?.docId
+  // Generate button is enabled when name is set OR RAG has doc types / KBs selected
+  const canGenerate = name.trim().length > 0 || (ragEnabled && (ragDocTypes.length > 0 || selectedKbIds.length > 0))
+
+  const handleGenerate = async (force = false) => {
     setSuggesting(true)
     setError('')
     try {
-      const data = await apiClient.generateAgentSuggestion(target, targetDocId, force)
-      // Only pre-fill fields the user hasn't touched yet
-      if (!name || name === prefill?.name) setName(data.name)
-      if (!description) setDescription(data.description)
-      if (!systemPrompt) setSystemPrompt(data.system_prompt)
+      const data = await apiClient.generateAgentSuggestion(
+        ragDocTypes,
+        prefill?.docId,
+        force || !!suggestionId,
+        name.trim() || undefined,
+        selectedKbIds
+      )
+      if (force || !name.trim()) setName(data.name || name)
+      if (force || !description) setDescription(data.description || '')
+      if (force || !systemPrompt) setSystemPrompt(data.system_prompt || '')
       setSuggestionId(data.suggestion_id)
     } catch {
       setError('Could not generate suggestions. Fill in manually.')
     } finally {
       setSuggesting(false)
     }
+  }
+
+  const handleGenerateClick = () => {
+    if (!canGenerate) {
+      alert("Please enter an agent name or select a knowledge base document in the following list to generate the prompt.")
+      return
+    }
+    handleGenerate(true)
   }
 
   const handleCreate = async () => {
@@ -342,7 +360,7 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
         rag_enabled: ragEnabled,
         rag_doc_types: ragDocTypes,
         rag_top_k: ragTopK,
-        doc_ids: prefill?.docId ? [prefill.docId] : [],
+        kb_ids: selectedKbIds,
       })
       // Link suggestion → agent so cache knows this suggestion was used
       if (suggestionId && agent?.id) {
@@ -371,57 +389,87 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
         </div>
 
         <div className="p-5 space-y-4">
+
+          {/* Step 1 — Name */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">Agent Name *</label>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Agent Name <span className="text-red-500">*</span>
+            </label>
             <input type="text" value={name} onChange={e => setName(e.target.value)}
-              placeholder="e.g., Policy Agent" className={inputCls} />
+              placeholder="e.g., Policy Agent, Billing Agent…" className={inputCls} autoFocus />
           </div>
+
+          {/* Step 2 — Description */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">Description</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Description</label>
+              <button
+                type="button"
+                onClick={handleGenerateClick}
+                disabled={suggesting}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-750 dark:hover:text-indigo-300 transition-colors cursor-pointer disabled:opacity-40"
+              >
+                {suggesting ? (
+                  <><Loader2 className="w-3 h-3 animate-spin animate-spin-slow" /> Generating…</>
+                ) : (
+                  <>{suggestionId ? '↻ Regenerate Prompt' : '✨ Auto-fill Prompt'}</>
+                )}
+              </button>
+            </div>
             <input type="text" value={description} onChange={e => setDescription(e.target.value)}
-              placeholder="What does this agent handle? (used for routing)" className={inputCls} />
+              placeholder="What does this agent handle? (used for triage routing)" className={inputCls} />
             <p className="text-xs text-gray-400 mt-1">Triage uses this to decide when to route customers here.</p>
           </div>
+
+          {/* Step 3 — System Prompt */}
           <div>
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">System Prompt</label>
             <textarea value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)}
-              placeholder="You are a specialized support agent who helps with..."
-              rows={3} className={`${inputCls} resize-none font-mono text-xs`} />
+              placeholder="You are a specialized support agent who helps with…"
+              rows={4} className={`${inputCls} resize-none font-mono text-xs`} />
           </div>
 
-          {/* RAG */}
+          {/* Step 5 — RAG */}
           <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2.5 bg-gray-50 dark:bg-gray-800">
               <div>
                 <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">Knowledge Base (RAG)</p>
-                <p className="text-xs text-gray-400 mt-0.5">Answers from your uploaded documents</p>
+                <p className="text-xs text-gray-400 mt-0.5">Let agent answer from your documents</p>
               </div>
               <Toggle checked={ragEnabled} onChange={setRagEnabled} />
             </div>
             {ragEnabled && (
               <div className="px-3 py-3 space-y-3">
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Document Types</label>
-                    {ragDocTypes.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => handleGenerate(undefined, undefined, !!suggestionId)}
-                        disabled={suggesting}
-                        className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 disabled:opacity-50 font-medium"
-                      >
-                        {suggesting
-                          ? <><Loader2 className="w-3 h-3 animate-spin" /> Generating…</>
-                          : <>✨ {suggestionId ? 'Re-generate' : 'Generate suggestions'}</>
-                        }
-                      </button>
-                    )}
-                  </div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Document Types</label>
                   <DocTypeChips selected={ragDocTypes} available={docTypes} onChange={setRagDocTypes} />
-                  {ragDocTypes.length === 0 && (
-                    <p className="text-xs text-amber-500 mt-1">Select doc types, then generate suggestions.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                    Knowledge Bases
+                  </label>
+                  {allKBs.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic">No knowledge bases yet.</p>
+                  ) : (
+                    <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                      {allKBs.map(kb => (
+                        <label key={kb.id}
+                          className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                          <input type="checkbox"
+                            checked={selectedKbIds.includes(kb.id)}
+                            onChange={() => setSelectedKbIds(prev =>
+                              prev.includes(kb.id) ? prev.filter(id => id !== kb.id) : [...prev, kb.id]
+                            )}
+                            className="accent-indigo-600 w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="text-xs text-gray-700 dark:text-gray-300 flex-1 truncate">{kb.name}</span>
+                          <span className="text-xs text-gray-400 flex-shrink-0">{kb.item_count} items</span>
+                        </label>
+                      ))}
+                    </div>
                   )}
                 </div>
+
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                     Top K <span className="font-mono text-indigo-600">{ragTopK}</span>
@@ -433,15 +481,6 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
               </div>
             )}
           </div>
-
-          {suggesting && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg">
-              <Loader2 className="w-3.5 h-3.5 text-indigo-500 animate-spin flex-shrink-0" />
-              <span className="text-xs text-indigo-600 dark:text-indigo-400">
-                Analysing your knowledge base and generating suggestions…
-              </span>
-            </div>
-          )}
 
           {suggestionId && !suggesting && (
             <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
@@ -458,7 +497,7 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
           <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
           <Button
             onClick={handleCreate}
-            disabled={!name.trim() || saving || suggesting || (ragEnabled && ragDocTypes.length === 0)}
+            disabled={!name.trim() || saving || suggesting}
             loading={saving}
             className="flex-1"
           >
@@ -473,7 +512,8 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
 // ── Main Agents screen ────────────────────────────────────────────────────────
 
 export function Agents() {
-  const navigate = useNavigate()
+  const navigate  = useNavigate()
+  const orgSlug   = useAppStore(s => s.orgSlug)
   const [agents, setAgents]             = useState<OrgAgent[]>([])
   const [loading, setLoading]           = useState(true)
   const [dataSources, setDataSources]   = useState<DataSource[]>([])
@@ -483,6 +523,14 @@ export function Agents() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [saved, setSaved]               = useState(false)
 
+  // Human transfer settings (chatbot-level)
+  const [chatbotSlug, setChatbotSlug]           = useState<string | null>(null)
+  const [humanTransfer, setHumanTransfer]       = useState(true)
+  const [transferMessage, setTransferMessage]   = useState("You're being connected to a human agent. Please hold on.")
+  const [savingTransfer, setSavingTransfer]     = useState(false)
+  const [transferSaved, setTransferSaved]       = useState(false)
+  const [showTransferModal, setShowTransferModal] = useState(false)
+
   const loadAgents = async () => {
     try {
       const data = await apiClient.listOrgAgents()
@@ -491,8 +539,35 @@ export function Agents() {
     finally { setLoading(false) }
   }
 
+  const loadChatbotSettings = async () => {
+    try {
+      const bots = await apiClient.getChatbots()
+      const bot = bots?.[0]
+      if (bot) {
+        setChatbotSlug(bot.slug)
+        setHumanTransfer(bot.human_transfer_enabled ?? true)
+        setTransferMessage(bot.human_transfer_message || "You're being connected to a human agent. Please hold on.")
+      }
+    } catch {}
+  }
+
+  const saveTransferSettings = async () => {
+    if (!chatbotSlug) return
+    setSavingTransfer(true)
+    try {
+      await apiClient.updateChatbot(chatbotSlug, {
+        human_transfer_enabled: humanTransfer,
+        human_transfer_message: transferMessage,
+      })
+      setTransferSaved(true)
+      setTimeout(() => setTransferSaved(false), 2000)
+    } catch {}
+    finally { setSavingTransfer(false) }
+  }
+
   useEffect(() => {
     loadAgents()
+    loadChatbotSettings()
     apiClient.listDataSources().then(setDataSources).catch(() => {})
     apiClient.listOrgDocTypes().then(d => setDocTypes(d.doc_types || [])).catch(() => {})
   }, [])
@@ -530,11 +605,105 @@ export function Agents() {
 
   return (
     <div className="p-6 space-y-6">
+
+
+      {/* ── Transfer to Human modal ── */}
+      {showTransferModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Transfer to Human</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Triage agent escalation settings</p>
+              </div>
+              <button onClick={() => setShowTransferModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Enable auto-escalation</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Triage agent hands off unresolved chats to a human</p>
+                </div>
+                <button
+                  onClick={() => setHumanTransfer(v => !v)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200
+                    ${humanTransfer ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'}`}
+                >
+                  <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200
+                    ${humanTransfer ? 'translate-x-5' : 'translate-x-0'}`}
+                  />
+                </button>
+              </div>
+
+              {humanTransfer && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Handoff message shown to customer
+                  </label>
+                  <input
+                    value={transferMessage}
+                    onChange={e => setTransferMessage(e.target.value)}
+                    placeholder="e.g. Connecting you with a human agent…"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Shown when AI escalates or customer clicks "Talk to a human".</p>
+                </div>
+              )}
+            </div>
+            <div className="px-5 pb-5 flex items-center gap-3">
+              <button
+                onClick={async () => { await saveTransferSettings(); setShowTransferModal(false) }}
+                disabled={savingTransfer || !chatbotSlug}
+                className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl transition-colors"
+              >
+                {savingTransfer ? 'Saving…' : 'Save'}
+              </button>
+              <button onClick={() => setShowTransferModal(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                Cancel
+              </button>
+              {transferSaved && (
+                <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1 ml-auto">
+                  <CheckCircle className="w-3.5 h-3.5" /> Saved
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold text-gray-900 dark:text-white">Built-in Agents</h2>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Toggle on/off · customize prompts and knowledge base</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Test Chat */}
+          <button
+            onClick={() => navigate('/app/agents/test')}
+            title="Test your chatbot"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            <MessageCircle className="w-3.5 h-3.5" />
+            Test Chat
+          </button>
+
+          {/* Transfer to Human settings icon */}
+          <button
+            onClick={() => setShowTransferModal(true)}
+            title="Transfer to Human settings"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors
+              ${humanTransfer
+                ? 'border-indigo-200 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40'
+                : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            Human Handoff
+            <span className={`w-1.5 h-1.5 rounded-full ${humanTransfer ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
+          </button>
         </div>
         {saved && (
           <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5">
@@ -595,11 +764,6 @@ export function Agents() {
                     <button onClick={() => setEditingAgent(agent)}
                       className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 font-medium whitespace-nowrap">
                       <Settings2 className="w-3.5 h-3.5" /> Settings
-                    </button>
-                    <button onClick={() => setEditingAgent(agent)}
-                      className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 font-medium whitespace-nowrap">
-                      <Database className="w-3.5 h-3.5" />
-                      KB Docs {agent.doc_ids?.length > 0 && <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-1.5 rounded-full">{agent.doc_ids.length}</span>}
                     </button>
                   </div>
 
@@ -709,7 +873,7 @@ export function Agents() {
                       <button onClick={() => setEditingAgent(agent)}
                         className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 font-medium whitespace-nowrap">
                         <Database className="w-3.5 h-3.5" />
-                        KB Docs {agent.doc_ids?.length > 0 && <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-1.5 rounded-full">{agent.doc_ids.length}</span>}
+                        KBs {agent.kb_ids?.length > 0 && <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-1.5 rounded-full">{agent.kb_ids.length}</span>}
                       </button>
                       <button onClick={() => handleDeleteAgent(agent)}
                         className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-600 font-medium whitespace-nowrap">

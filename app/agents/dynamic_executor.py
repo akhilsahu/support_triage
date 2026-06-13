@@ -21,7 +21,8 @@ from typing import Any, Optional
 
 import structlog
 
-from app.models.org import Organization, AgentDefinition
+from app.models.space import Space
+from app.agents.resolved_agent import ResolvedAgent
 
 logger = structlog.get_logger()
 
@@ -29,8 +30,8 @@ logger = structlog.get_logger()
 class DynamicAgentExecutor:
     """Executes a brand-specific agent pipeline at runtime."""
 
-    def __init__(self, brand: Organization = None, active_agents: list[AgentDefinition] = None,
-                 org: Organization = None, mcp_server=None):
+    def __init__(self, brand: Space = None, active_agents: list[ResolvedAgent] = None,
+                 org: Space = None, mcp_server=None):
         self.org = org or brand
         self.active_agents = {a.slug: a for a in (active_agents or [])}
         self.mcp_server = mcp_server   # DataSourceMCPServer, loaded per org per request
@@ -50,10 +51,35 @@ class DynamicAgentExecutor:
         conversation_id: str,
     ) -> dict[str, Any]:
         """Route message and produce a reply dict."""
+        from app.services.memory_service import mem0
+        from app.config import settings
 
-        specialists = {s: a for s, a in self.active_agents.items() if s != "triage"}
+        # ── Mem0: retrieve past context + reformulate query ───────────────────
+        reformulated_query = message
+        if mem0 and session_id and session_id != "new":
+            try:
+                memories = mem0.search(message, user_id=session_id, limit=settings.MEM0_SEARCH_LIMIT)
+                if memories:
+                    context_summary = "\n".join(m["memory"] for m in memories)
+                    rewrite_result = await self._call_llm(
+                        system=(
+                            "Rewrite the user question as a standalone search query using the "
+                            "conversation context below. Return only the rewritten query, nothing else.\n\n"
+                            f"Conversation context:\n{context_summary}"
+                        ),
+                        user_message=message,
+                        temperature=0.1,
+                        max_tokens=settings.MEM0_REWRITE_MAX_TOKENS,
+                    )
+                    if rewrite_result:
+                        reformulated_query = rewrite_result
+                        logger.info("mem0.query_rewritten", original=message, reformulated=reformulated_query)
+            except Exception as e:
+                logger.warning("mem0.search_failed", error=str(e))
 
-        # If only Triage is active (no specialists), answer directly as general assistant
+        specialists = self.active_agents
+
+        # If no specialists, answer directly as general assistant
         if not specialists:
             reply = await self._call_llm(
                 system=self._GENERAL_FALLBACK_PROMPT.format(brand=self.org.display_name),
@@ -79,10 +105,11 @@ class DynamicAgentExecutor:
         rag_context = ""
         rag_hit = False
         rag_citations: list[dict] = []
-        if agent and agent.rag_enabled and agent.rag_doc_types_list:
+        if agent and agent.rag_enabled and (agent.rag_doc_types_list or agent.kb_ids):
             rag_context, rag_hit, rag_citations = await self._fetch_rag_context(
-                message=message,
+                message=reformulated_query,
                 doc_types=agent.rag_doc_types_list,
+                kb_ids=agent.kb_ids,
                 top_k=agent.rag_top_k,
             )
             # If RAG is enabled but nothing matched, return a canned "not found"
@@ -128,6 +155,16 @@ class DynamicAgentExecutor:
 
         # Include citations only if org has citations enabled
         citations = rag_citations if getattr(self.org, "show_rag_citations", False) else []
+
+        # ── Mem0: store turn for future context ───────────────────────────────
+        if mem0 and session_id and session_id != "new":
+            try:
+                mem0.add([
+                    {"role": "user",      "content": message},
+                    {"role": "assistant", "content": reply},
+                ], user_id=session_id)
+            except Exception as e:
+                logger.warning("mem0.add_failed", error=str(e))
 
         return {
             "reply": reply,
@@ -193,15 +230,15 @@ class DynamicAgentExecutor:
         """Use the LLM to classify intent and pick the best active agent slug."""
         from app.services.llm_service import llm_service as llm
 
-        # Build description of active specialist agents only
-        specialists = {s: a for s, a in self.active_agents.items() if s != "triage"}
+        specialists = self.active_agents
+        if not specialists:
+            return "general", "general"
+
         agent_descs = "\n".join(
             f"- {slug}: {agent.description or agent.name}"
             for slug, agent in specialists.items()
         )
-
-        if not agent_descs:
-            return "triage", "general"
+        slugs = list(specialists.keys())
 
         triage_prompt = (
             "You are a triage classifier. Given the customer message and "
@@ -221,28 +258,32 @@ class DynamicAgentExecutor:
             data = json.loads(raw.strip())
             slug = data.get("agent", "")
             intent = data.get("intent", "general")
-            if slug in self.active_agents:
+            if slug in specialists:
                 return slug, intent
         except Exception as e:
-            logger.warning("dynamic_triage.fallback", error=str(e))
+            logger.warning("dynamic_triage.primary_failed", error=str(e))
 
-        # Keyword fallback: pick agent whose keywords match
-        msg_lower = message.lower()
-        for slug, agent in self.active_agents.items():
-            if slug == "triage":
-                continue
-            for kw in agent.keywords_list:
-                if kw.lower() in msg_lower:
-                    return slug, "keyword_match"
-
-        # Default to first non-triage active agent
-        for slug in self.active_agents:
-            if slug != "triage":
+        # Retry with a simpler forced-choice prompt (handles malformed JSON from primary)
+        try:
+            result = await llm.generate_with_fallback(
+                messages=[{"role": "user", "content": message}],
+                system_prompt=(
+                    f"Pick the single best agent for this message from: {slugs}. "
+                    "Reply with only the agent slug, nothing else."
+                ),
+                temperature=0.0,
+                max_tokens=20,
+            )
+            slug = (result["content"] if result else "").strip().lower()
+            if slug in specialists:
                 return slug, "general"
+        except Exception as e:
+            logger.warning("dynamic_triage.retry_failed", error=str(e))
 
-        return "triage", "general"
+        # Final fallback: first available specialist
+        return next(iter(specialists)), "general"
 
-    async def _compose_system_prompt(self, agent: Optional[AgentDefinition]) -> str:
+    async def _compose_system_prompt(self, agent: Optional[Any]) -> str:
         """
         Build full system prompt in priority order:
           1. base_prompt   — platform guardrails (set by super admin, hidden from org)
@@ -268,7 +309,7 @@ class DynamicAgentExecutor:
         # 3. PromptSkill fragments
         if agent.skills_list:
             from app.core.database import AsyncSessionLocal
-            from app.models.org import PromptSkill
+            from app.models.space import PromptSkill
             from sqlalchemy import select
 
             async with AsyncSessionLocal() as db:
@@ -295,14 +336,16 @@ class DynamicAgentExecutor:
         message: str,
         doc_types: list[str],
         top_k: int,
+        kb_ids: list[str] | None = None,
     ) -> tuple[str, bool, list[dict]]:
-        """Query ChromaDB for relevant chunks across the agent's doc types.
+        """Query ChromaDB for relevant chunks across the agent's doc types and/or KB doc_ids.
 
         Returns (context_text, rag_hit, citations)
         where citations is a list of {filename, page, section, score, excerpt}.
         """
         try:
-            from app.rag.vector_store import get_vector_store, client_doc_type_where, COLLECTION_CLIENT
+            from app.rag.vector_store import get_vector_store, client_doc_type_where, client_where, COLLECTION_CLIENT
+            from app.orchestra.ai.rag.vectorstore_rag import _resolve_kb_doc_ids
 
             store = get_vector_store()
             client_id = str(self.org.id)   # always org UUID — immutable, never changes
@@ -317,6 +360,18 @@ class DynamicAgentExecutor:
                     where=where,
                 )
                 all_hits.extend(hits)
+
+            if kb_ids:
+                doc_ids = await _resolve_kb_doc_ids(kb_ids)
+                for doc_id in doc_ids:
+                    where = client_where(client_id, doc_id=doc_id)
+                    hits = store.query(
+                        collection=COLLECTION_CLIENT,
+                        query_text=message,
+                        top_k=top_k,
+                        where=where,
+                    )
+                    all_hits.extend(hits)
 
             if not all_hits:
                 return "", False, []

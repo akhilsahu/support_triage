@@ -3,7 +3,9 @@ import {
   Users, Bot, MessageSquare, BarChart3, Activity,
   Search, ChevronDown, ChevronUp, Shield, RefreshCw,
   CheckCircle, XCircle, Eye, EyeOff, Database, Zap, HardDrive, FileText, Layers, Trash2, Loader2, X,
+  Home as HomeIcon,
 } from 'lucide-react'
+import { useAppStore } from '../store/useAppStore'
 
 // ── Chunks Modal ──────────────────────────────────────────────────────────────
 
@@ -398,7 +400,7 @@ function AgentRow({ agent, adminKey, onToggled }: {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'orgs' | 'agents' | 'builtin' | 'activity' | 'vectordb'
+type Tab = 'overview' | 'orgs' | 'agents' | 'builtin' | 'activity' | 'vectordb' | 'nav' | 'homepage'
 
 // ── Builtin Agent Toggle Row ───────────────────────────────────────────────────
 
@@ -459,6 +461,330 @@ function BuiltinAgentRow({ agent, adminKey, onToggled }: {
             {loading ? '…' : agent.platform_enabled ? 'Disable' : 'Enable'}
           </button>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ── Nav Config ────────────────────────────────────────────────────────────────
+
+const ALL_NAV_LABELS: Record<string, string> = {
+  'dashboard':     'Dashboard',
+  'chat':          'Chat',
+  'agents':        'Agents',
+  'knowledge-base':'Knowledge Base',
+  'analytics':     'Analytics',
+  'data-sources':  'Data Sources',
+  'settings':      'Settings',
+}
+const ALL_NAV_IDS = Object.keys(ALL_NAV_LABELS)
+
+function NavToggle({ label, enabled, locked, onChange }: {
+  label: string; enabled: boolean; locked?: boolean; onChange: (v: boolean) => void
+}) {
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700 last:border-0">
+      <span className="text-sm text-gray-800 dark:text-gray-200">{label}</span>
+      {locked ? (
+        <span className="text-xs text-gray-400 italic">locked</span>
+      ) : (
+        <button
+          onClick={() => onChange(!enabled)}
+          className={`text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors ${
+            enabled
+              ? 'text-red-500 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20'
+              : 'text-emerald-600 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+          }`}
+        >
+          {enabled ? 'Disable' : 'Enable'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function NavConfigTab({ adminKey, orgs }: { adminKey: string; orgs: Org[] }) {
+  const [systemNav, setSystemNav] = useState<Record<string, boolean>>({})
+  const [spaceNavs, setSpaceNavs] = useState<Record<string, string[] | null>>({})
+  const [expandedOrg, setExpandedOrg] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    api(adminKey).get('/nav').then(d => setSystemNav(d.nav_config || {})).catch(() => {})
+  }, [adminKey])
+
+  const toggleSystem = async (id: string, val: boolean) => {
+    const next = { ...systemNav, [id]: val }
+    setSystemNav(next)
+    setSaving(true)
+    try {
+      await fetch(`${API}/nav`, {
+        method: 'PATCH',
+        headers: { 'X-Super-Admin-Key': adminKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nav_config: { [id]: val } }),
+      })
+    } finally { setSaving(false) }
+  }
+
+  const loadSpaceNav = async (spaceId: string) => {
+    if (expandedOrg === spaceId) { setExpandedOrg(null); return }
+    const d = await api(adminKey).get(`/spaces/${spaceId}/nav`)
+    setSpaceNavs(prev => ({ ...prev, [spaceId]: d.enabled_nav_items }))
+    setExpandedOrg(spaceId)
+  }
+
+  const toggleSpaceItem = async (spaceId: string, id: string) => {
+    const current = spaceNavs[spaceId] ?? ALL_NAV_IDS
+    const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id]
+    setSpaceNavs(prev => ({ ...prev, [spaceId]: next }))
+    await fetch(`${API}/spaces/${spaceId}/nav`, {
+      method: 'PATCH',
+      headers: { 'X-Super-Admin-Key': adminKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled_nav_items: next }),
+    })
+  }
+
+  const resetSpaceNav = async (spaceId: string) => {
+    setSpaceNavs(prev => ({ ...prev, [spaceId]: null }))
+    await fetch(`${API}/spaces/${spaceId}/nav`, {
+      method: 'PATCH',
+      headers: { 'X-Super-Admin-Key': adminKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled_nav_items: null }),
+    })
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* System-wide */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">System-wide Nav</p>
+            <p className="text-xs text-gray-500 mt-0.5">Disabling an item hides it from every space.</p>
+          </div>
+          {saving && <span className="text-xs text-gray-400">Saving…</span>}
+        </div>
+        {ALL_NAV_IDS.map(id => (
+          <NavToggle
+            key={id}
+            label={ALL_NAV_LABELS[id]}
+            enabled={systemNav[id] !== false}
+            onChange={val => toggleSystem(id, val)}
+          />
+        ))}
+      </div>
+
+      {/* Per-space overrides */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">Per-Space Nav Overrides</p>
+          <p className="text-xs text-gray-500 mt-0.5">Restrict specific spaces to fewer nav items.</p>
+        </div>
+        {orgs.map(org => (
+          <div key={org.id}>
+            <div
+              className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60"
+              onClick={() => loadSpaceNav(org.id)}
+            >
+              <div>
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{org.display_name}</p>
+                <p className="text-xs text-gray-400">@{org.slug}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {spaceNavs[org.id] === null && <span className="text-xs text-gray-400">using system defaults</span>}
+                {spaceNavs[org.id] !== undefined && spaceNavs[org.id] !== null && (
+                  <span className="text-xs text-indigo-500">{spaceNavs[org.id]!.length} items</span>
+                )}
+                {expandedOrg === org.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+              </div>
+            </div>
+            {expandedOrg === org.id && (
+              <div className="px-4 py-3 bg-indigo-50/40 dark:bg-indigo-900/10 border-b border-gray-100 dark:border-gray-700">
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {ALL_NAV_IDS.map(id => {
+                    const spaceItems = spaceNavs[org.id] ?? ALL_NAV_IDS
+                    const on = spaceItems.includes(id) && systemNav[id] !== false
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => toggleSpaceItem(org.id, id)}
+                        disabled={systemNav[id] === false}
+                        className={`text-xs px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                          on
+                            ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-700'
+                            : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-600'
+                        }`}
+                      >
+                        {ALL_NAV_LABELS[id]}
+                      </button>
+                    )
+                  })}
+                </div>
+                <button
+                  onClick={() => resetSpaceNav(org.id)}
+                  className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline"
+                >
+                  Reset to system defaults
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+        {orgs.length === 0 && <p className="px-4 py-6 text-center text-sm text-gray-400">No spaces yet.</p>}
+      </div>
+    </div>
+  )
+}
+
+// ── Homepage Config ──────────────────────────────────────────────────────────
+
+function HomepageConfigTab({ adminKey }: { adminKey: string }) {
+  const { activeHomepage, setActiveHomepage } = useAppStore()
+
+  const setHomepageGlobal = async (val: 'homepage1' | 'homepage2' | 'homepage3') => {
+    try {
+      const res = await fetch('/api/v1/super-admin/settings', {
+        method: 'PATCH',
+        headers: {
+          'X-Super-Admin-Key': adminKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ active_homepage: val }),
+      })
+      const data = await res.json()
+      if (data.active_homepage) {
+        setActiveHomepage(data.active_homepage)
+      }
+    } catch (e) {
+      console.error("Failed to update global homepage configuration:", e)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">Active Homepage Selection</p>
+          <p className="text-xs text-gray-500 mt-0.5">Select the active landing page layout displayed at the root route.</p>
+        </div>
+
+        <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Card 1: Homepage 1 */}
+          <button
+            onClick={() => setHomepageGlobal('homepage1')}
+            className={`flex flex-col text-left rounded-2xl border p-5 transition-all outline-none ${
+              activeHomepage === 'homepage1'
+                ? 'border-indigo-500 bg-indigo-50/10 ring-2 ring-indigo-500/20'
+                : 'border-gray-200 dark:border-gray-700 bg-transparent hover:border-gray-400 dark:hover:border-gray-600'
+            }`}
+          >
+            <div className="flex items-center justify-between w-full mb-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Layout 1</span>
+              {activeHomepage === 'homepage1' && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500 text-white">Active</span>
+              )}
+            </div>
+            <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Homepage 1 (Classic Centered)</h4>
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mb-6">
+              Features a clean, centered typography layout, unified organization search, and a structured outline of capabilities and setup steps.
+            </p>
+            <div className="w-full h-32 rounded-xl bg-slate-950/80 border border-white/5 flex flex-col p-3 overflow-hidden select-none pointer-events-none">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-[8px] font-bold text-white">SUPPORT247.chat</span>
+                <span className="text-[7px] text-white px-2 py-0.5 rounded bg-indigo-600">Get Started</span>
+              </div>
+              <div className="flex flex-col items-center justify-center flex-grow text-center">
+                <div className="w-16 h-1 bg-white/10 rounded mb-1" />
+                <div className="w-24 h-1.5 bg-gradient-to-r from-indigo-400 to-violet-400 rounded mb-2" />
+                <div className="w-32 h-3.5 rounded bg-white/5 border border-white/10 flex items-center px-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-indigo-500/20 flex items-center justify-center mr-1">
+                    <span className="w-1 h-1 rounded-full bg-indigo-400" />
+                  </div>
+                  <div className="w-12 h-1 bg-white/10 rounded" />
+                </div>
+              </div>
+            </div>
+          </button>
+
+          {/* Card 2: Homepage 2 */}
+          <button
+            onClick={() => setHomepageGlobal('homepage2')}
+            className={`flex flex-col text-left rounded-2xl border p-5 transition-all outline-none ${
+              activeHomepage === 'homepage2'
+                ? 'border-indigo-500 bg-indigo-50/10 ring-2 ring-indigo-500/20'
+                : 'border-gray-200 dark:border-gray-700 bg-transparent hover:border-gray-400 dark:hover:border-gray-600'
+            }`}
+          >
+            <div className="flex items-center justify-between w-full mb-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-violet-500 dark:text-violet-400">Layout 2</span>
+              {activeHomepage === 'homepage2' && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500 text-white">Active</span>
+              )}
+            </div>
+            <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Homepage 2 (Split Agent-Hub)</h4>
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mb-6">
+              Features a next-gen split design. Left side includes space search, and right side showcases animated floating active agent capsules.
+            </p>
+            <div className="w-full h-32 rounded-xl bg-slate-950/80 border border-white/5 flex p-3 overflow-hidden select-none pointer-events-none gap-3">
+              <div className="w-1/2 flex flex-col justify-center">
+                <div className="w-12 h-1 bg-white/10 rounded mb-1" />
+                <div className="w-16 h-1.5 bg-gradient-to-r from-violet-400 to-indigo-400 rounded mb-2" />
+                <div className="w-20 h-3 rounded bg-white/5 border border-white/10" />
+              </div>
+              <div className="w-1/2 border border-white/5 bg-white/2 rounded-lg relative flex flex-col items-center justify-center">
+                <div className="absolute top-2 left-2 w-10 h-3 rounded bg-white/5 border border-white/10 flex items-center px-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse" />
+                  <div className="w-5 h-0.5 bg-white/10 rounded" />
+                </div>
+                <div className="absolute bottom-2 right-2 w-10 h-3 rounded bg-white/5 border border-white/10 flex items-center px-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse" />
+                  <div className="w-5 h-0.5 bg-white/10 rounded" />
+                </div>
+                <div className="w-6 h-6 rounded-full border border-violet-500/20 flex items-center justify-center">
+                  <span className="w-2 h-2 rounded-full bg-violet-400" />
+                </div>
+              </div>
+            </div>
+          </button>
+
+          {/* Card 3: Homepage 3 */}
+          <button
+            onClick={() => setHomepageGlobal('homepage3')}
+            className={`flex flex-col text-left rounded-2xl border p-5 transition-all outline-none ${
+              activeHomepage === 'homepage3'
+                ? 'border-pink-500 bg-pink-50/10 ring-2 ring-pink-500/20'
+                : 'border-gray-200 dark:border-gray-700 bg-transparent hover:border-gray-400 dark:hover:border-gray-600'
+            }`}
+          >
+            <div className="flex items-center justify-between w-full mb-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-pink-500 dark:text-pink-400">Layout 3</span>
+              {activeHomepage === 'homepage3' && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-pink-500 text-white">Active</span>
+              )}
+            </div>
+            <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Homepage 3 (Vibrant Light)</h4>
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mb-6">
+              Features an extremely colorful, light-themed responsive bento grid design showcasing floating specialized support capsules.
+            </p>
+            <div className="w-full h-32 rounded-xl bg-slate-50 border border-slate-200/50 flex p-3 overflow-hidden select-none pointer-events-none gap-3 shadow-inner">
+              <div className="w-1/2 flex flex-col justify-center">
+                <div className="w-12 h-1 bg-slate-200 rounded mb-1" />
+                <div className="w-16 h-1.5 bg-gradient-to-r from-pink-400 to-amber-400 rounded mb-2" />
+                <div className="w-20 h-3 rounded bg-white border border-slate-200" />
+              </div>
+              <div className="w-1/2 border border-slate-100 bg-white rounded-lg relative flex flex-col items-center justify-center shadow-sm">
+                <div className="absolute top-2 left-2 w-10 h-3 rounded bg-indigo-500 text-white text-[5px] flex items-center px-1">
+                  <div className="w-1 h-1 rounded-full bg-white mr-1 animate-pulse" />
+                  <span className="scale-75 origin-left">triage</span>
+                </div>
+                <div className="absolute bottom-2 right-2 w-10 h-3 rounded bg-pink-500 text-white text-[5px] flex items-center px-1">
+                  <div className="w-1 h-1 rounded-full bg-white mr-1 animate-pulse" />
+                  <span className="scale-75 origin-left">support</span>
+                </div>
+              </div>
+            </div>
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -614,6 +940,8 @@ export function SuperAdmin() {
     { id: 'builtin',   label: 'Built-in',       icon: Zap        },
     { id: 'activity',  label: 'Activity',       icon: Activity   },
     { id: 'vectordb',  label: 'Vector DB',      icon: HardDrive  },
+    { id: 'nav',       label: 'Nav Config',     icon: Layers     },
+    { id: 'homepage',  label: 'Homepage',       icon: HomeIcon   },
   ]
 
   return (
@@ -808,6 +1136,12 @@ export function SuperAdmin() {
           </div>
         </div>
       )}
+
+      {/* ── Nav Config ── */}
+      {tab === 'nav' && <NavConfigTab adminKey={key} orgs={orgs} />}
+
+      {/* ── Homepage Config ── */}
+      {tab === 'homepage' && <HomepageConfigTab adminKey={key} />}
 
       {/* ── Vector DB ── */}
       {tab === 'vectordb' && (

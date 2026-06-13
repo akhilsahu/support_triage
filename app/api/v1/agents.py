@@ -270,7 +270,7 @@ async def get_available_models():
     return {
         "models": llm_service.get_available_models(),
         "default": {
-            "openai": "gpt-4-turbo-preview",
+            "openai": "gpt-4o-mini",
             "anthropic": "claude-3-opus-20240229"
         }
     }

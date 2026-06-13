@@ -9,18 +9,23 @@ POST /auth/logout    — stateless, returns 200
 
 from __future__ import annotations
 
+import re
+import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.database import get_db
-from app.core.auth import create_token, hash_password, verify_password, current_brand
-from app.models.org import Organization, AgentDefinition
+from app.core.auth import create_token, hash_password, verify_password, current_space
+from app.core.rate_limit import client_ip, enforce_rate_limit, reset_rate_limit
+from app.models.space import Space, BuiltinAgentCatalog, SpaceBuiltinAgentConfig
 from app.models.chatbot import Chatbot
 
 logger = structlog.get_logger()
@@ -151,30 +156,61 @@ BUILTIN_AGENTS = [
 ]
 
 
-async def _seed_builtin_agents(
-    db: AsyncSession, org_id: uuid.UUID, chatbot_id: uuid.UUID | None = None
-) -> None:
-    """Insert all built-in AgentDefinition rows for a new brand."""
+async def _ensure_catalog(db: AsyncSession) -> dict[str, BuiltinAgentCatalog]:
+    """
+    Idempotently ensure all BUILTIN_AGENTS exist in builtin_agent_catalog.
+    Returns a dict mapping agent_type → catalog row.
+    """
+    result = await db.execute(select(BuiltinAgentCatalog))
+    existing = {c.agent_type: c for c in result.scalars().all()}
+
     for cfg in BUILTIN_AGENTS:
-        agent = AgentDefinition(
-            org_id=org_id,
+        atype = cfg["agent_type"]
+        if atype not in existing:
+            cat = BuiltinAgentCatalog(
+                slug=cfg["slug"],
+                agent_type=atype,
+                name=cfg["name"],
+                description=cfg.get("description", ""),
+                icon=cfg.get("icon", "🤖"),
+                base_prompt=cfg.get("base_prompt", ""),
+                default_temperature=cfg.get("temperature", 0.4),
+                default_max_tokens=cfg.get("max_tokens", 500),
+                default_rag_enabled=cfg.get("rag_enabled", False),
+                default_rag_doc_types=cfg.get("rag_doc_types", ""),
+                default_rag_top_k=cfg.get("rag_top_k", 5),
+                platform_enabled=cfg["slug"] == "triage",
+                locked=cfg["slug"] == "triage",
+            )
+            db.add(cat)
+            existing[atype] = cat
+
+    await db.flush()
+    return existing
+
+
+async def _seed_org_builtin_configs(
+    db: AsyncSession,
+    space_id: uuid.UUID,
+    chatbot_id: uuid.UUID,
+    catalog: dict[str, BuiltinAgentCatalog],
+) -> None:
+    """
+    Create SpaceBuiltinAgentConfig rows ONLY for locked agents (triage),
+    scoped to the space's default chatbot.
+    All other builtins are opt-in — config row is created when chatbot enables them.
+    """
+    for cfg in BUILTIN_AGENTS:
+        cat_row = catalog.get(cfg["agent_type"])
+        if not cat_row or not cat_row.locked:
+            continue
+        db.add(SpaceBuiltinAgentConfig(
+            space_id=space_id,
             chatbot_id=chatbot_id,
-            slug=cfg["slug"],
-            name=cfg["name"],
-            description=cfg["description"],
-            agent_type=cfg["agent_type"],
-            icon=cfg["icon"],
-            is_builtin=True,
-            active=cfg["active"],
-            base_prompt=cfg.get("base_prompt", ""),
+            catalog_id=cat_row.id,
+            enabled=True,
             system_prompt=cfg.get("system_prompt", ""),
-            temperature=cfg.get("temperature", 0.4),
-            max_tokens=cfg.get("max_tokens", 500),
-            rag_enabled=cfg.get("rag_enabled", False),
-            rag_doc_types=cfg.get("rag_doc_types", ""),
-            rag_top_k=cfg.get("rag_top_k", 5),
-        )
-        db.add(agent)
+        ))
     await db.flush()
 
 
@@ -196,84 +232,191 @@ class LoginRequest(BaseModel):
 
 class AuthResponse(BaseModel):
     token: str
-    org: dict
+    space: dict
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+MIN_PASSWORD_LEN = 8
+MAX_PASSWORD_BYTES = 72                       # bcrypt only hashes the first 72 bytes
+SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$")   # 2–40 chars, no edge hyphens
+
+
 @router.post("/register", response_model=AuthResponse, status_code=201)
 async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    """Create a new org account and seed built-in agents."""
+    """Create a new space account and seed built-in agents."""
 
-    existing_slug = await db.execute(select(Organization).where(Organization.slug == req.slug))
+    # Normalize so case/whitespace variants can't create duplicate or route-breaking slugs.
+    slug = req.slug.strip().lower()
+    email = req.email.strip().lower()
+
+    # Slug format — it lives at /<slug>, so it must be URL-safe.
+    if not SLUG_RE.fullmatch(slug):
+        raise HTTPException(
+            status_code=400,
+            detail="Slug must be 2–40 characters: lowercase letters, numbers, and hyphens only.",
+        )
+
+    # Customer chat pages live at /<slug>, so the slug must not collide with a
+    # reserved frontend route or backend proxy prefix (config-driven list).
+    if slug in settings.RESERVED_SLUGS:
+        raise HTTPException(status_code=409, detail="This slug is reserved. Please choose another.")
+
+    # Password policy.
+    if len(req.password) < MIN_PASSWORD_LEN:
+        raise HTTPException(status_code=400, detail=f"Password must be at least {MIN_PASSWORD_LEN} characters.")
+    if len(req.password.encode("utf-8")) > MAX_PASSWORD_BYTES:
+        raise HTTPException(status_code=400, detail="Password is too long (max 72 bytes).")
+
+    existing_slug = await db.execute(select(Space).where(Space.slug == slug))
     if existing_slug.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Slug already taken.")
 
-    existing_email = await db.execute(select(Organization).where(Organization.email == req.email))
+    existing_email = await db.execute(select(Space).where(Space.email == email))
     if existing_email.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered.")
 
-    org = Organization(
-        slug=req.slug,
-        display_name=req.display_name,
-        email=req.email,
+    space = Space(
+        slug=slug,
+        display_name=req.display_name.strip(),
+        email=email,
         password_hash=hash_password(req.password),
         logo_url=req.logo_url,
         theme_color=req.theme_color or "#6366f1",
     )
-    db.add(org)
+    db.add(space)
     await db.flush()
 
-    # Create default chatbot for this org
+    # Create default chatbot for this space (api_key auto-generated)
     default_chatbot = Chatbot(
-        org_id=org.id,
-        slug=f"{org.slug}-default",
-        display_name=org.display_name,
+        space_id=space.id,
+        slug=f"{space.slug}-default",
+        display_name=space.display_name,
         description="",
-        logo_url=org.logo_url,
-        theme_color=org.theme_color,
+        logo_url=space.logo_url,
+        theme_color=space.theme_color,
         is_default=True,
         active=True,
+        api_key=str(uuid.uuid4()),
     )
     db.add(default_chatbot)
     await db.flush()
 
-    await _seed_builtin_agents(db, org.id, chatbot_id=default_chatbot.id)
+    catalog = await _ensure_catalog(db)
+    await _seed_org_builtin_configs(db, space.id, default_chatbot.id, catalog)
     await db.commit()
-    await db.refresh(org)
+    await db.refresh(space)
 
-    token = create_token({"sub": str(org.id), "slug": org.slug})
-    logger.info("org.registered", slug=org.slug, org_id=str(org.id))
-    return AuthResponse(token=token, org=org.to_dict())
+    token = create_token({"sub": str(space.id), "slug": space.slug})
+    logger.info("space.registered", slug=space.slug, space_id=str(space.id))
+    return AuthResponse(token=token, space=space.to_dict())
 
 
 @router.post("/login", response_model=AuthResponse)
-async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Authenticate and return a JWT."""
 
-    result = await db.execute(select(Organization).where(Organization.email == req.email))
-    org = result.scalar_one_or_none()
+    email = req.email.strip().lower()
+    ip = client_ip(request)
 
-    if not org or not verify_password(req.password, org.password_hash):
+    # Brute-force protection (checked before password verification, fails open).
+    await enforce_rate_limit("login_ip", ip, settings.LOGIN_RATELIMIT_IP_MAX, settings.LOGIN_RATELIMIT_WINDOW_SEC)
+    await enforce_rate_limit("login_email", email, settings.LOGIN_RATELIMIT_EMAIL_MAX, settings.LOGIN_RATELIMIT_WINDOW_SEC)
+
+    result = await db.execute(select(Space).where(Space.email == email))
+    space = result.scalar_one_or_none()
+
+    if not space or not verify_password(req.password, space.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password.",
         )
-    if not org.active:
+    if not space.active:
         raise HTTPException(status_code=403, detail="Account is deactivated.")
 
-    token = create_token({"sub": str(org.id), "slug": org.slug})
-    logger.info("org.login", slug=org.slug)
-    return AuthResponse(token=token, org=org.to_dict())
+    # Successful login — clear the per-email counter so legit users aren't penalized.
+    await reset_rate_limit("login_email", email)
+
+    token = create_token({"sub": str(space.id), "slug": space.slug})
+    logger.info("space.login", slug=space.slug)
+    return AuthResponse(token=token, space=space.to_dict())
 
 
 @router.get("/me")
-async def me(org: Organization = Depends(current_brand)):
-    """Return the authenticated org's profile."""
-    return org.to_dict()
+async def me(space: Space = Depends(current_space)):
+    """Return the authenticated space's profile."""
+    return space.to_dict()
 
 
 @router.post("/logout", status_code=200)
 async def logout():
     """Stateless logout — client should discard the token."""
     return {"detail": "Logged out."}
+
+
+@router.post("/forgot-password", status_code=200)
+async def forgot_password(req: ForgotPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Issue a password reset token and email a link to the user.
+    Always returns 200 to avoid leaking whether the email exists.
+    """
+    from app.services.inbox.email_notify import send_password_reset_email
+
+    email = req.email.strip().lower()
+    ip = client_ip(request)
+
+    # Light rate-limit to prevent email flooding
+    await enforce_rate_limit("forgot_ip", ip, 5, settings.LOGIN_RATELIMIT_WINDOW_SEC)
+
+    result = await db.execute(select(Space).where(Space.email == email))
+    space = result.scalar_one_or_none()
+
+    if space and space.active:
+        token = secrets.token_urlsafe(32)
+        expires = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=settings.PASSWORD_RESET_TTL_MINUTES)
+        space.password_reset_token   = token
+        space.password_reset_expires = expires
+        await db.commit()
+
+        frontend_base = str(request.base_url).rstrip("/")
+        reset_url = f"{frontend_base}/app/reset-password?token={token}"
+        send_password_reset_email(to=email, reset_url=reset_url)
+        logger.info("auth.forgot_password", email=email)
+
+    return {"detail": "If that email is registered you will receive a reset link shortly."}
+
+
+@router.post("/reset-password", status_code=200)
+async def reset_password(req: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Validate the reset token and set a new password."""
+    if len(req.password) < MIN_PASSWORD_LEN:
+        raise HTTPException(status_code=400, detail=f"Password must be at least {MIN_PASSWORD_LEN} characters.")
+    if len(req.password.encode("utf-8")) > MAX_PASSWORD_BYTES:
+        raise HTTPException(status_code=400, detail="Password is too long (max 72 bytes).")
+
+    result = await db.execute(
+        select(Space).where(Space.password_reset_token == req.token.strip())
+    )
+    space = result.scalar_one_or_none()
+
+    if not space or not space.password_reset_expires:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link.")
+    if datetime.now(timezone.utc).replace(tzinfo=None) > space.password_reset_expires:
+        raise HTTPException(status_code=400, detail="Reset link has expired. Please request a new one.")
+
+    space.password_hash            = hash_password(req.password)
+    space.password_reset_token     = None
+    space.password_reset_expires   = None
+    await db.commit()
+
+    logger.info("auth.password_reset", space_id=str(space.id))
+    return {"detail": "Password updated. You can now sign in with your new password."}

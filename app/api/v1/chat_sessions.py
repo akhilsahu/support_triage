@@ -24,11 +24,11 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_brand
+from app.core.auth import current_space
 from app.core.database import get_db
 from app.core.redis import get_redis, RedisClient
 from app.models.chat import ChatSession
-from app.models.org import ConversationLog, Organization
+from app.models.space import ConversationLog, Space
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/chat-sessions", tags=["Chat Sessions"])
@@ -75,7 +75,7 @@ async def _load_history_from_db(session_id: str, db: AsyncSession) -> list[dict]
     ]
 
 
-async def _get_session(session_id: str, org_id: UUID,
+async def _get_session(session_id: str, space_id: UUID,
                        db: AsyncSession) -> ChatSession:
     try:
         as_uuid = UUID(session_id)
@@ -84,7 +84,7 @@ async def _get_session(session_id: str, org_id: UUID,
     result = await db.execute(
         select(ChatSession).where(
             ChatSession.id == as_uuid,
-            ChatSession.org_id == org_id,
+            ChatSession.space_id == space_id,
         )
     )
     session = result.scalar_one_or_none()
@@ -115,7 +115,7 @@ class SessionUpdateRequest(BaseModel):
 async def upsert_session(
     db: AsyncSession,
     redis: RedisClient,
-    org_id: UUID,
+    space_id: UUID,
     session_id: str,
     user_message: str,
     agent_slug: str,
@@ -132,7 +132,7 @@ async def upsert_session(
     if not session:
         title = user_message[:100].strip()
         session = ChatSession(
-            org_id=org_id,
+            space_id=space_id,
             session_id=session_id,
             title=title,
             agent_slug=agent_slug,
@@ -159,13 +159,13 @@ async def list_sessions(
     status: Optional[str] = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     """List chat sessions for the authenticated org, newest first."""
     q = (
         select(ChatSession)
-        .where(ChatSession.org_id == org.id)
+        .where(ChatSession.space_id == org.id)
         .order_by(desc(ChatSession.last_message_at))
         .limit(limit)
         .offset(offset)
@@ -181,7 +181,7 @@ async def list_sessions(
 @router.get("/{session_id}", response_model=dict)
 async def get_session(
     session_id: str,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):
@@ -200,7 +200,7 @@ async def get_session(
 @router.get("/{session_id}/history")
 async def get_session_history(
     session_id: str,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):
@@ -220,7 +220,7 @@ async def get_session_history(
 async def update_session(
     session_id: str,
     req: SessionUpdateRequest,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     """Update session status."""
@@ -231,13 +231,19 @@ async def update_session(
     session.status = req.status
     await db.commit()
     await db.refresh(session)
+
+    # Evict from session agent pool when chatbox is closed
+    if req.status in ("closed", "escalated"):
+        from app.orchestra.ai.session.pool import pool as _session_pool
+        _session_pool.destroy(session_id)
+
     return SessionOut(**session.to_dict())
 
 
 @router.delete("/{session_id}", status_code=204)
 async def delete_session(
     session_id: str,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):

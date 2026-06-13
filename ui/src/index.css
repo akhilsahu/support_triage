@@ -1,9 +1,31 @@
+/* ── Satoshi font faces ────────────────────────────────────────────────────── */
+@font-face {
+  font-family: 'Satoshi';
+  src: url('./assets/fonts/Satoshi_Complete/Fonts/WEB/Satoshi-Variable.woff2') format('woff2'),
+       url('./assets/fonts/Satoshi_Complete/Fonts/WEB/Satoshi-Variable.woff') format('woff'),
+       url('./assets/fonts/Satoshi_Complete/Fonts/WEB/Satoshi-Variable.ttf') format('truetype');
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Satoshi';
+  src: url('./assets/fonts/Satoshi_Complete/Fonts/WEB/Satoshi-VariableItalic.woff2') format('woff2'),
+       url('./assets/fonts/Satoshi_Complete/Fonts/WEB/Satoshi-VariableItalic.woff') format('woff'),
+       url('./assets/fonts/Satoshi_Complete/Fonts/WEB/Satoshi-VariableItalic.ttf') format('truetype');
+  font-weight: 300 900;
+  font-style: italic;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  html { font-family: 'Inter', system-ui, sans-serif; }
+  /* Font size is set via JS (useTypography) on <html> from config/typography.ts */
+  html { font-family: 'Satoshi', system-ui, sans-serif; }
   body {
     margin: 0;
     min-height: 100vh;

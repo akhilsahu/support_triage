@@ -274,7 +274,7 @@ async def _hand_off(
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User message")
     conversation_id: Optional[str] = Field(None, description="Conversation ID for context")
-    org_id: Optional[str] = Field(None, description="Org UUID — scopes KB queries to this org")
+    space_id: Optional[str] = Field(None, description="Org UUID — scopes KB queries to this org")
 
 class ChatResponse(BaseModel):
     message_id: str
@@ -393,13 +393,13 @@ async def chat(request: ChatRequest):
 
         # ── Always query org KB if org_slug is provided ──────────────────────
         kb_context = ""
-        org_id = request.org_id or state.get("org_id")
-        if org_id:
-            state["org_id"] = org_id   # persist across turns
+        space_id = request.space_id or state.get("space_id")
+        if space_id:
+            state["space_id"] = space_id   # persist across turns
             try:
                 kb_result = await support_agent.answer(
                     question=request.message,
-                    client_id=org_id,
+                    client_id=space_id,
                     ticket_id=ticket_id,
                 )
                 if kb_result.rag_hit:
@@ -414,9 +414,9 @@ async def chat(request: ChatRequest):
                         f"{kb_result.answer}\n\n"
                         f"Sources:\n{source_lines}"
                     )
-                    logger.info("SupportAgent answered from KB", org_id=org_id, rag_hit=True)
+                    logger.info("SupportAgent answered from KB", space_id=space_id, rag_hit=True)
                 else:
-                    logger.info("SupportAgent: no KB hits", org_id=org_id)
+                    logger.info("SupportAgent: no KB hits", space_id=space_id)
             except Exception as e:
                 logger.error("SupportAgent failed", error=str(e))
 

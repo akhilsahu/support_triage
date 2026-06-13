@@ -54,6 +54,9 @@ export const apiClient = {
   deleteDoc: (docId: string) =>
     http.delete(API_CONFIG.endpoints.ragDelete(docId)).then(r => r.data),
 
+  scrapeUrl: (url: string, _clientId?: string, docType?: string, kbName?: string, description?: string) =>
+    http.post('/api/v1/documents/rag/ingest-url', { url, doc_type: docType ?? 'general', kb_name: kbName ?? '', description: description ?? '' }).then(r => r.data),
+
   chatWithDoc: (docId: string, question: string, topK = 5) =>
     http.post(API_CONFIG.endpoints.ragChat, { doc_id: docId, question, top_k: topK }).then(r => r.data),
 
@@ -81,9 +84,28 @@ export const apiClient = {
   deleteDataSource: (id: string) =>
     http.delete(`/api/v1/datasources/${id}`).then(r => r.data),
 
-  // Org Knowledge Base
+  // Org Knowledge Base (legacy chunks viewer)
   getDocChunks: (docId: string) =>
     http.get(`/api/v1/org/kb/${docId}/chunks`).then(r => r.data),
+
+  // Knowledge Bases (new structured KB API)
+  listKBs: () =>
+    http.get(API_CONFIG.endpoints.kbList).then(r => r.data),
+  createKB: (payload: { name: string; description?: string }) =>
+    http.post(API_CONFIG.endpoints.kbCreate, payload).then(r => r.data),
+  updateKB: (id: string, payload: { name?: string; description?: string; active?: boolean }) =>
+    http.patch(API_CONFIG.endpoints.kbUpdate(id), payload).then(r => r.data),
+  deleteKB: (id: string) =>
+    http.delete(API_CONFIG.endpoints.kbDelete(id)).then(r => r.data),
+  listKBItems: (kbId: string) =>
+    http.get(API_CONFIG.endpoints.kbItems(kbId)).then(r => r.data),
+  addKBItem: (kbId: string, payload: { item_type: string; title?: string; doc_id?: string; question?: string; content?: string }) =>
+    http.post(API_CONFIG.endpoints.kbItemAdd(kbId), payload).then(r => r.data),
+  deleteKBItem: (kbId: string, itemId: string) =>
+    http.delete(API_CONFIG.endpoints.kbItemDelete(kbId, itemId)).then(r => r.data),
+
+  updateKBItem: (kbId: string, itemId: string, payload: { question?: string; content?: string; title?: string }) =>
+    http.patch(API_CONFIG.endpoints.kbItemUpdate(kbId, itemId), payload).then(r => r.data),
 
   // Dashboard Stats
   getDashboardStats: () =>
@@ -96,13 +118,23 @@ export const apiClient = {
   updateProfile: (payload: { display_name?: string; logo_url?: string; theme_color?: string; show_rag_citations?: boolean }) =>
     http.patch('/api/v1/dashboard/profile', payload).then(r => r.data),
 
+  // Nav config
+  getNavConfig: () =>
+    http.get('/api/v1/dashboard/nav-config').then(r => r.data as { enabled_nav_items: string[] }),
+
   // Org Doc Types (distinct types from org's ChromaDB partition)
   listOrgDocTypes: () =>
     http.get('/api/v1/dashboard/doc-types').then(r => r.data),
 
   // Agent Meta Suggestions
-  generateAgentSuggestion: (doc_types: string[], doc_id?: string, force?: boolean) =>
-    http.post('/api/v1/dashboard/agent-suggestions', { doc_types, doc_id: doc_id ?? null, force: force ?? false }).then(r => r.data),
+  generateAgentSuggestion: (doc_types: string[], doc_id?: string, force?: boolean, agent_name?: string, kb_ids?: string[]) =>
+    http.post('/api/v1/dashboard/agent-suggestions', { 
+      doc_types, 
+      doc_id: doc_id ?? null, 
+      force: force ?? false, 
+      agent_name: agent_name ?? null,
+      kb_ids: kb_ids ?? []
+    }).then(r => r.data),
 
   linkSuggestionToAgent: (suggestion_id: string, agent_id: string) =>
     http.patch('/api/v1/dashboard/agent-suggestions/link', { suggestion_id, agent_id }).then(r => r.data),
@@ -115,7 +147,7 @@ export const apiClient = {
     name: string; description?: string; icon?: string; system_prompt?: string;
     temperature?: number; max_tokens?: number; rag_enabled?: boolean;
     rag_doc_types?: string[]; rag_top_k?: number; keywords?: string[];
-    doc_ids?: string[]
+    kb_ids?: string[]
   }) => http.post('/api/v1/org/agents', payload).then(r => r.data),
 
   updateOrgAgent: (id: string, payload: {
@@ -127,11 +159,41 @@ export const apiClient = {
     rag_enabled?: boolean
     rag_doc_types?: string[]
     rag_top_k?: number
-    doc_ids?: string[]
+    kb_ids?: string[]
   }) => http.patch(`/api/v1/org/agents/${id}`, payload).then(r => r.data),
 
   deleteOrgAgent: (id: string) =>
     http.delete(`/api/v1/org/agents/${id}`).then(r => r.data),
+
+  // Inbox (staff)
+  staffLogin: (email: string, password: string) =>
+    http.post('/api/v1/inbox/staff/login', { email, password }).then(r => r.data),
+  listInboxSessions: (token: string) =>
+    http.get('/api/v1/inbox/sessions', { headers: { Authorization: `Bearer ${token}` } }).then(r => Array.isArray(r.data) ? r.data : r.data?.sessions ?? []),
+  getInboxSession: (id: string, token: string) =>
+    http.get(`/api/v1/inbox/sessions/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
+  claimSession: (id: string, token: string) =>
+    http.post(`/api/v1/inbox/sessions/${id}/claim`, {}, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
+  replySession: (id: string, content: string, token: string) =>
+    http.post(`/api/v1/inbox/sessions/${id}/reply`, { content }, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
+  resolveSession: (id: string, token: string) =>
+    http.post(`/api/v1/inbox/sessions/${id}/resolve`, {}, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
+  staffHeartbeat: (token: string) =>
+    http.post('/api/v1/inbox/staff/heartbeat', {}, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
+
+  // Chatbot settings
+  getChatbots: () =>
+    http.get('/api/v1/chatbots').then(r => r.data),
+  updateChatbot: (slug: string, payload: { human_transfer_enabled?: boolean; human_transfer_message?: string }) =>
+    http.patch(`/api/v1/chatbots/${slug}`, payload).then(r => r.data),
+  listStaffMembers: (token: string) =>
+    http.get('/api/v1/inbox/staff', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
+  createStaffMember: (token: string, payload: { name: string; email: string; password: string }) =>
+    http.post('/api/v1/inbox/staff', payload, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
+  deleteStaffMember: (id: string, token: string) =>
+    http.delete(`/api/v1/inbox/staff/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
+  transferSession: (sessionId: string, targetStaffId: string, token: string) =>
+    http.post(`/api/v1/inbox/sessions/${sessionId}/transfer`, { target_staff_id: targetStaffId }, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
 }
 
 export default apiClient

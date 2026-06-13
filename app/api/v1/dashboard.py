@@ -1,6 +1,6 @@
 """
 Brand dashboard API — agent toggle/CRUD, skills CRUD, analytics, profile.
-All endpoints require JWT (current_brand dependency).
+All endpoints require JWT (current_space dependency).
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth import current_brand
-from app.models.org import Organization, AgentDefinition, PromptSkill
+from app.core.auth import current_space
+from app.models.space import Space, CustomAgent, PromptSkill
 from app.api.db_utils import (
     get_agent, list_agents, get_skill, list_skills, count_skills,
     analytics_for_org,
@@ -30,10 +30,10 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 @router.get("/agents")
 async def list_agents_endpoint(
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
-    agents = await list_agents(db, org_id=org.id)
+    agents = await list_agents(db, space_id=org.id)
     return [a.to_dict() for a in agents]
 
 
@@ -45,7 +45,7 @@ class AgentToggleRequest(BaseModel):
 async def toggle_agent(
     slug: str,
     req: AgentToggleRequest,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     agent = await get_agent(db, org.id, slug)
@@ -75,7 +75,7 @@ class AgentUpdateRequest(BaseModel):
 async def update_agent(
     slug: str,
     req: AgentUpdateRequest,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     agent = await get_agent(db, org.id, slug)
@@ -116,20 +116,18 @@ class CreateAgentRequest(BaseModel):
 @router.post("/agents", status_code=201)
 async def create_agent(
     req: CreateAgentRequest,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     if await get_agent(db, org.id, req.slug):
         raise HTTPException(409, f"Agent slug '{req.slug}' already exists.")
 
-    agent = AgentDefinition(
-        org_id=org.id,
+    agent = CustomAgent(
+        space_id=org.id,
         slug=req.slug,
         name=req.name,
         description=req.description,
-        agent_type="custom",
         icon=req.icon,
-        is_builtin=False,
         active=True,
         system_prompt=req.system_prompt,
         temperature=req.temperature,
@@ -149,14 +147,13 @@ async def create_agent(
 @router.delete("/agents/{slug}", status_code=204)
 async def delete_agent(
     slug: str,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     agent = await get_agent(db, org.id, slug)
     if not agent:
         raise HTTPException(404, f"Agent '{slug}' not found.")
-    if agent.is_builtin:
-        raise HTTPException(400, "Built-in agents cannot be deleted.")
+    # CustomAgent rows are all user-created — no is_builtin guard needed
     await db.delete(agent)
     await db.commit()
 
@@ -173,7 +170,7 @@ class SkillRequest(BaseModel):
 
 @router.get("/skills")
 async def list_skills_endpoint(
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     return [s.to_dict() for s in await list_skills(db, org.id)]
@@ -182,11 +179,11 @@ async def list_skills_endpoint(
 @router.post("/skills", status_code=201)
 async def create_skill(
     req: SkillRequest,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     skill = PromptSkill(
-        org_id=org.id,
+        space_id=org.id,
         name=req.name,
         description=req.description,
         skill_type=req.skill_type,
@@ -203,7 +200,7 @@ async def create_skill(
 async def update_skill(
     skill_id: uuid.UUID,
     req: SkillRequest,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     skill = await get_skill(db, skill_id, org.id)
@@ -222,7 +219,7 @@ async def update_skill(
 @router.delete("/skills/{skill_id}", status_code=204)
 async def delete_skill(
     skill_id: uuid.UUID,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     skill = await get_skill(db, skill_id, org.id)
@@ -237,7 +234,7 @@ async def delete_skill(
 @router.get("/analytics")
 async def analytics(
     days: int = Query(7, ge=1, le=90),
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     return await analytics_for_org(db, org.id, days)
@@ -254,14 +251,14 @@ class OrganizationUpdateRequest(BaseModel):
 
 @router.get("/profile")
 async def get_profile(
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
 ):
     return org.to_dict()
 
 
 @router.get("/doc-types")
 async def list_doc_types(
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
 ):
     """Return distinct doc_types present in this org's knowledge base (ChromaDB)."""
     from app.rag.vector_store import get_vector_store
@@ -277,7 +274,7 @@ async def list_doc_types(
 @router.patch("/profile")
 async def update_profile(
     req: OrganizationUpdateRequest,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     name_changed = req.display_name and req.display_name != org.display_name
@@ -306,7 +303,7 @@ async def update_profile(
 
 @router.get("/stats")
 async def dashboard_stats(
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -318,7 +315,7 @@ async def dashboard_stats(
     """
     from datetime import datetime, timedelta
     from sqlalchemy import select, func, cast, Date
-    from app.models.org import ConversationLog, AgentDefinition
+    from app.models.space import ConversationLog, CustomAgent
     from app.rag.vector_store import get_vector_store
     import asyncio
 
@@ -329,7 +326,7 @@ async def dashboard_stats(
     # Total messages (user turns only)
     total_msgs = (await db.execute(
         select(func.count()).select_from(ConversationLog).where(
-            ConversationLog.org_id == org.id,
+            ConversationLog.space_id == org.id,
             ConversationLog.role == "user",
         )
     )).scalar() or 0
@@ -337,7 +334,7 @@ async def dashboard_stats(
     # Messages in last 24h
     msgs_24h = (await db.execute(
         select(func.count()).select_from(ConversationLog).where(
-            ConversationLog.org_id == org.id,
+            ConversationLog.space_id == org.id,
             ConversationLog.role == "user",
             ConversationLog.timestamp >= since_24h,
         )
@@ -346,7 +343,7 @@ async def dashboard_stats(
     # RAG hits (last 7 days)
     rag_total = (await db.execute(
         select(func.count()).select_from(ConversationLog).where(
-            ConversationLog.org_id == org.id,
+            ConversationLog.space_id == org.id,
             ConversationLog.role == "user",
             ConversationLog.timestamp >= since_7d,
         )
@@ -354,7 +351,7 @@ async def dashboard_stats(
 
     rag_hits = (await db.execute(
         select(func.count()).select_from(ConversationLog).where(
-            ConversationLog.org_id == org.id,
+            ConversationLog.space_id == org.id,
             ConversationLog.rag_hit == True,
             ConversationLog.timestamp >= since_7d,
         )
@@ -364,9 +361,9 @@ async def dashboard_stats(
 
     # Active agents
     active_agents = (await db.execute(
-        select(func.count()).select_from(AgentDefinition).where(
-            AgentDefinition.org_id == org.id,
-            AgentDefinition.active == True,
+        select(func.count()).select_from(CustomAgent).where(
+            CustomAgent.space_id == org.id,
+            CustomAgent.active == True,
         )
     )).scalar() or 0
 
@@ -384,7 +381,7 @@ async def dashboard_stats(
             func.count().label("cnt"),
         )
         .where(
-            ConversationLog.org_id == org.id,
+            ConversationLog.space_id == org.id,
             ConversationLog.role == "user",
             ConversationLog.timestamp >= since_7d,
         )
@@ -407,7 +404,7 @@ async def dashboard_stats(
     recent_rows = (await db.execute(
         select(ConversationLog)
         .where(
-            ConversationLog.org_id == org.id,
+            ConversationLog.space_id == org.id,
             ConversationLog.role == "user",
         )
         .order_by(ConversationLog.timestamp.desc())
@@ -424,26 +421,19 @@ async def dashboard_stats(
         for r in recent_rows
     ]
 
-    # Agent fleet — exclude built-ins disabled by super admin
-    from sqlalchemy import or_
+    # Agent fleet — custom agents for this space
     agents = (await db.execute(
-        select(AgentDefinition).where(
-            AgentDefinition.org_id == org.id,
-            or_(
-                AgentDefinition.is_builtin == False,
-                AgentDefinition.platform_enabled == True,
-            ),
-        )
+        select(CustomAgent).where(CustomAgent.space_id == org.id)
     )).scalars().all()
 
     fleet = [
         {
-            "slug":       a.slug,
-            "name":       a.name,
-            "icon":       a.icon or "🤖",
-            "active":     a.active,
-            "is_builtin": a.is_builtin,
-            "agent_type": a.agent_type,
+            "slug":        a.slug,
+            "name":        a.name,
+            "icon":        a.icon or "🤖",
+            "active":      a.active,
+            "is_builtin":  False,
+            "agent_type":  "custom",
             "description": a.description or "",
         }
         for a in agents
@@ -461,12 +451,47 @@ async def dashboard_stats(
     }
 
 
+# ── Nav Config ────────────────────────────────────────────────────────────────
+
+@router.get("/nav-config")
+async def get_nav_config(
+    org: Space = Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns the list of nav item IDs this space can see.
+    Resolution: system-wide enabled ∩ space override (if set).
+    """
+    import json
+    from sqlalchemy import select as sa_select
+    from app.models.space import PlatformSettings, ALL_NAV_ITEMS
+
+    result = await db.execute(sa_select(PlatformSettings).limit(1))
+    ps = result.scalar_one_or_none()
+    system_cfg = ps.get_nav_config() if ps else {k: True for k in ALL_NAV_ITEMS}
+    system_enabled = {k for k, v in system_cfg.items() if v}
+
+    if org.enabled_nav_items:
+        try:
+            space_items = set(json.loads(org.enabled_nav_items))
+            enabled = system_enabled & space_items
+        except Exception:
+            enabled = system_enabled
+    else:
+        enabled = system_enabled
+
+    ordered = sorted(enabled, key=lambda x: ALL_NAV_ITEMS.index(x) if x in ALL_NAV_ITEMS else 99)
+    return {"enabled_nav_items": ordered}
+
+
 # ── Agent Meta Suggestions ────────────────────────────────────────────────────
 
 class AgentSuggestionRequest(BaseModel):
-    doc_types: List[str]
+    doc_types: List[str] = []
     doc_id: Optional[str] = None
+    agent_name: Optional[str] = None   # used when doc_types is empty
     force: bool = False
+    kb_ids: List[str] = []
 
 
 class LinkAgentRequest(BaseModel):
@@ -477,7 +502,7 @@ class LinkAgentRequest(BaseModel):
 @router.post("/agent-suggestions")
 async def get_agent_suggestion(
     req: AgentSuggestionRequest,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -487,16 +512,66 @@ async def get_agent_suggestion(
     Subsequent calls with the same doc_types return instantly from DB — no LLM call.
     """
     from app.utils.ai.agent_meta_suggestion import get_or_generate
+    from app.rag.vector_store import get_vector_store
+    import asyncio
 
-    if not req.doc_types:
-        raise HTTPException(400, "doc_types must not be empty.")
+    # 1. If doc_types is empty but kb_ids is provided, resolve doc_types from KB items
+    if not req.doc_types and req.kb_ids:
+        from sqlalchemy import select
+        from app.models.knowledge_base import KnowledgeBaseItem
+        from uuid import UUID as _UUID
+
+        try:
+            uuid_kb_ids = [_UUID(kb_id) for kb_id in req.kb_ids]
+        except ValueError:
+            uuid_kb_ids = []
+
+        if uuid_kb_ids:
+            result = await db.execute(
+                select(KnowledgeBaseItem).where(KnowledgeBaseItem.kb_id.in_(uuid_kb_ids))
+            )
+            items = result.scalars().all()
+            
+            doc_ids = []
+            for item in items:
+                if item.item_type == "doc" and item.doc_id:
+                    doc_ids.append(item.doc_id)
+                elif item.indexed_doc_id:
+                    doc_ids.append(item.indexed_doc_id)
+
+            kb_doc_types = set()
+            loop = asyncio.get_event_loop()
+            for doc_id in doc_ids:
+                meta = await loop.run_in_executor(
+                    None,
+                    lambda d=doc_id: get_vector_store().get_doc_meta(d)
+                )
+                if meta and meta.get("doc_type"):
+                    kb_doc_types.add(meta["doc_type"])
+            
+            if kb_doc_types:
+                req.doc_types = list(kb_doc_types)
+
+    # 2. If doc_types is still empty but doc_id is provided, resolve doc_type from doc_id metadata
+    if not req.doc_types and req.doc_id:
+        loop = asyncio.get_event_loop()
+        meta = await loop.run_in_executor(
+            None,
+            lambda: get_vector_store().get_doc_meta(req.doc_id)
+        )
+        if meta and meta.get("doc_type"):
+            req.doc_types = [meta["doc_type"]]
+
+    if not req.doc_types and not req.agent_name:
+        raise HTTPException(400, "Provide doc_types or agent_name.")
 
     return await get_or_generate(
         db=db,
-        org_id=org.id,
+        space_id=org.id,
         org_name=org.display_name,
         doc_types=req.doc_types,
         doc_id=req.doc_id,
+        agent_name=req.agent_name,
         force=req.force,
     )
 
@@ -504,7 +579,7 @@ async def get_agent_suggestion(
 @router.patch("/agent-suggestions/link")
 async def link_suggestion_to_agent(
     req: LinkAgentRequest,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     """

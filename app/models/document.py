@@ -20,7 +20,7 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
+    space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="CASCADE"), nullable=True, index=True)
     content = Column(Text, nullable=False)
     doc_metadata = Column(JSON, default={}, nullable=False)
     embedding = Column(Vector(384), nullable=True)  # Dimension matches embedding model
@@ -32,7 +32,7 @@ class Document(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    org = relationship("Organization", back_populates="documents")
+    space = relationship("Space", back_populates="documents")
 
     # Create vector index for efficient similarity search
     __table_args__ = (
@@ -55,7 +55,7 @@ class Document(Base):
         """Convert model to dictionary"""
         return {
             "id": str(self.id),
-            "org_id": str(self.org_id) if self.org_id else None,
+            "space_id": str(self.space_id) if self.space_id else None,
             "content": self.content,
             "metadata": self.doc_metadata,
             "source": self.source,

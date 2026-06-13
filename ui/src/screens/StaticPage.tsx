@@ -23,8 +23,8 @@ export function StaticPage({ title, subtitle, children }: StaticPageProps) {
           <span className="font-bold text-gray-900 tracking-tight">SUPPORT247.chat</span>
         </Link>
         <div className="flex items-center gap-3">
-          <Link to="/login" className="text-sm text-gray-600 hover:text-gray-900 font-medium px-3 py-1.5">Sign in</Link>
-          <Link to="/login" className="text-sm bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-semibold px-4 py-2 rounded-xl shadow-md shadow-indigo-500/25">Sign up free</Link>
+          <Link to="/app/login" className="text-sm text-gray-600 hover:text-gray-900 font-medium px-3 py-1.5">Sign in</Link>
+          <Link to="/app/login?tab=register" className="text-sm bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-semibold px-4 py-2 rounded-xl shadow-md shadow-indigo-500/25">Sign up free</Link>
         </div>
       </nav>
 
@@ -104,7 +104,7 @@ export function HowItWorksPage() {
       {[
         {
           step: '01', title: 'Create your organization',
-          body: 'Register with your email, choose a slug (e.g. acme-corp), and your branded chat page is live immediately at /s/acme-corp. No setup fee, no credit card required.',
+          body: 'Register with your email, choose a slug (e.g. acme-corp), and your branded chat page is live immediately at /acme-corp. No setup fee, no credit card required.',
         },
         {
           step: '02', title: 'Configure your agents',
@@ -167,7 +167,7 @@ export function PricingPage() {
             <ul className="space-y-2 flex-1 mb-6">
               {features.map(f => <li key={f} className="text-sm text-gray-600 flex gap-2"><span className="text-indigo-500">✓</span>{f}</li>)}
             </ul>
-            <Link to="/login" className={`block text-center text-sm font-semibold py-2.5 rounded-xl transition-colors ${highlight ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 shadow-md shadow-indigo-500/25' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'}`}>{cta}</Link>
+            <Link to="/app/login" className={`block text-center text-sm font-semibold py-2.5 rounded-xl transition-colors ${highlight ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 shadow-md shadow-indigo-500/25' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'}`}>{cta}</Link>
           </div>
         ))}
       </div>

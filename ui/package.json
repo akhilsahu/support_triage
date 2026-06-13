@@ -2,6 +2,7 @@
   "name": "orchestrasupport-ui",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "OrchestraSupport - AI Support Multi-Agent System UI",
   "scripts": {
     "dev": "vite",

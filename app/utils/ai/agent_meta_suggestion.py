@@ -6,7 +6,7 @@ the LLM + the org's existing ChromaDB knowledge base documents as context.
 
 Cache strategy
 ──────────────
-Results are stored in `agent_meta_suggestions` (org_id + doc_type_key unique).
+Results are stored in `agent_meta_suggestions` (space_id + doc_type_key unique).
 If the same org requests a suggestion for the same doc_type combination again
 (e.g. the user cancelled and re-opened the modal) the cached row is returned
 immediately — no LLM call.
@@ -16,7 +16,7 @@ When the user finally creates the agent the caller should update the row's
 
 Public API
 ──────────
-    result = await get_or_generate(db, org_id, org_name, doc_types)
+    result = await get_or_generate(db, space_id, org_name, doc_types)
     # result → {name, description, system_prompt, from_cache: bool, suggestion_id}
 
     await link_agent(db, suggestion_id, agent_id)
@@ -51,10 +51,11 @@ def build_cache_key(doc_types: list[str]) -> str:
 
 async def get_or_generate(
     db: AsyncSession,
-    org_id: UUID,
+    space_id: UUID,
     org_name: str,
     doc_types: list[str],
     doc_id: str | None = None,
+    agent_name: str | None = None,
     force: bool = False,
 ) -> dict:
     """
@@ -70,7 +71,7 @@ async def get_or_generate(
         "from_cache":    bool,
     }
     """
-    from app.models.org import AgentMetaSuggestion
+    from app.models.space import AgentMetaSuggestion
 
     _doc_id  = doc_id or ""
     type_key = build_doc_type_key(doc_types)
@@ -78,7 +79,7 @@ async def get_or_generate(
     # ── Check cache ──────────────────────────────────────────────────────────
     result = await db.execute(
         select(AgentMetaSuggestion).where(
-            AgentMetaSuggestion.org_id == org_id,
+            AgentMetaSuggestion.space_id == space_id,
             AgentMetaSuggestion.doc_id == _doc_id,
             AgentMetaSuggestion.doc_type_key == type_key,
         )
@@ -86,13 +87,13 @@ async def get_or_generate(
     cached = result.scalar_one_or_none()
     if cached:
         if force:
-            logger.info("agent_meta_suggestion.cache_bust", org_id=str(org_id),
+            logger.info("agent_meta_suggestion.cache_bust", space_id=str(space_id),
                         doc_id=_doc_id, type_key=type_key)
             await db.delete(cached)
             await db.commit()
             cached = None
         else:
-            logger.info("agent_meta_suggestion.cache_hit", org_id=str(org_id),
+            logger.info("agent_meta_suggestion.cache_hit", space_id=str(space_id),
                         doc_id=_doc_id, type_key=type_key)
             return {
                 "suggestion_id": str(cached.id),
@@ -103,12 +104,13 @@ async def get_or_generate(
             }
 
     # ── Generate via LLM ─────────────────────────────────────────────────────
-    generated = await _generate(org_id=str(org_id), org_name=org_name,
-                                doc_types=doc_types, doc_id=_doc_id)
+    generated = await _generate(space_id=str(space_id), org_name=org_name,
+                                doc_types=doc_types, doc_id=_doc_id,
+                                agent_name=agent_name)
 
     # ── Persist to cache ─────────────────────────────────────────────────────
     suggestion = AgentMetaSuggestion(
-        org_id=org_id,
+        space_id=space_id,
         doc_id=_doc_id,
         doc_type_key=type_key,
         name=generated["name"],
@@ -120,7 +122,7 @@ async def get_or_generate(
     await db.refresh(suggestion)
 
     logger.info("agent_meta_suggestion.generated",
-                org_id=str(org_id), doc_id=_doc_id, type_key=type_key,
+                space_id=str(space_id), doc_id=_doc_id, type_key=type_key,
                 suggestion_id=str(suggestion.id))
 
     return {
@@ -137,7 +139,7 @@ async def link_agent(db: AsyncSession, suggestion_id: str, agent_id: UUID) -> No
     After the user creates an agent from a suggestion, link the two rows.
     Safe to call even if suggestion_id is stale or missing.
     """
-    from app.models.org import AgentMetaSuggestion
+    from app.models.space import AgentMetaSuggestion
     try:
         result = await db.execute(
             select(AgentMetaSuggestion).where(
@@ -154,8 +156,8 @@ async def link_agent(db: AsyncSession, suggestion_id: str, agent_id: UUID) -> No
 
 # ── LLM generation ────────────────────────────────────────────────────────────
 
-async def _generate(org_id: str, org_name: str, doc_types: list[str],
-                    doc_id: str = "") -> dict:
+async def _generate(space_id: str, org_name: str, doc_types: list[str],
+                    doc_id: str = "", agent_name: str | None = None) -> dict:
     """
     Build context from ChromaDB + call LLM to produce name/description/system_prompt.
     Falls back to deterministic defaults if LLM fails.
@@ -163,13 +165,16 @@ async def _generate(org_id: str, org_name: str, doc_types: list[str],
     import asyncio
     from app.services.llm_service import llm_service
 
-    # Fetch doc metadata from ChromaDB in a thread (ChromaDB is sync)
+    # Fetch doc metadata from ChromaDB (only when doc_types provided)
     loop = asyncio.get_event_loop()
-    doc_context = await loop.run_in_executor(
-        None, lambda: _fetch_doc_context(org_id, doc_types, doc_id)
-    )
+    doc_context = ""
+    if doc_types:
+        doc_context = await loop.run_in_executor(
+            None, lambda: _fetch_doc_context(space_id, doc_types, doc_id)
+        )
 
-    prompt = _build_prompt(org_name=org_name, doc_types=doc_types, doc_context=doc_context)
+    prompt = _build_prompt(org_name=org_name, doc_types=doc_types,
+                           doc_context=doc_context, agent_name=agent_name)
 
     try:
         result = await llm_service.generate_with_fallback(
@@ -206,7 +211,7 @@ async def _generate(org_id: str, org_name: str, doc_types: list[str],
 
 # ── ChromaDB context builder ──────────────────────────────────────────────────
 
-def _fetch_doc_context(org_id: str, doc_types: list[str], doc_id: str = "") -> str:
+def _fetch_doc_context(space_id: str, doc_types: list[str], doc_id: str = "") -> str:
     """
     Collect distinct document metadata (filename, kb_name, description) for the
     given doc_types (and optionally a specific doc_id) from the org's ChromaDB partition.
@@ -223,23 +228,29 @@ def _fetch_doc_context(org_id: str, doc_types: list[str], doc_id: str = "") -> s
                 where_filter: dict
                 if doc_id:
                     where_filter = {"$and": [
-                        {"client_id": {"$eq": org_id}},
+                        {"client_id": {"$eq": space_id}},
                         {"doc_type":  {"$eq": doc_type}},
                         {"doc_id":    {"$eq": doc_id}},
                     ]}
                 else:
                     where_filter = {"$and": [
-                        {"client_id": {"$eq": org_id}},
+                        {"client_id": {"$eq": space_id}},
                         {"doc_type":  {"$eq": doc_type}},
                     ]}
 
                 results = col.get(
                     where=where_filter,
-                    include=["metadatas"],
+                    include=["metadatas", "documents"],
                     limit=5,
                 )
                 seen: set[str] = set()
-                for meta in results.get("metadatas") or []:
+                metas = results.get("metadatas") or []
+                docs = results.get("documents") or []
+                # Ensure we handle cases where documents list might be shorter or missing
+                while len(docs) < len(metas):
+                    docs.append("")
+                
+                for meta, doc in zip(metas, docs):
                     doc_id = meta.get("doc_id", "")
                     if doc_id in seen:
                         continue
@@ -249,8 +260,14 @@ def _fetch_doc_context(org_id: str, doc_types: list[str], doc_id: str = "") -> s
                         parts.append(f"file={meta['filename']}")
                     if meta.get("kb_name"):
                         parts.append(f"kb={meta['kb_name']}")
-                    if meta.get("description"):
+                    if meta.get("semantic_summary"):
+                        parts.append(f"summary={meta['semantic_summary']}")
+                    elif meta.get("description"):
                         parts.append(f"desc={meta['description'][:120]}")
+                    if doc:
+                        snippet = " ".join(doc.split())[:250].strip()
+                        if snippet:
+                            parts.append(f"excerpt=\"{snippet}...\"")
                     lines.append("• " + " | ".join(parts))
             except Exception:
                 lines.append(f"• type={doc_type}")
@@ -264,33 +281,39 @@ def _fetch_doc_context(org_id: str, doc_types: list[str], doc_id: str = "") -> s
 
 # ── Prompt builder ────────────────────────────────────────────────────────────
 
-def _build_prompt(org_name: str, doc_types: list[str], doc_context: str) -> str:
-    types_str = ", ".join(doc_types)
+def _build_prompt(org_name: str, doc_types: list[str], doc_context: str,
+                  agent_name: str | None = None) -> str:
+    if doc_types and doc_context:
+        types_str = ", ".join(doc_types)
+        context_block = (
+            f"The agent will answer questions using these knowledge base documents:\n"
+            f"{doc_context}\n\n"
+            f"Document types covered: {types_str}\n\n"
+            "Name the agent after the specific product or topic in the documents. "
+            "For example: a doc about PS5 → 'PS5 Support', not 'Tech Support Agent'.\n\n"
+        )
+    else:
+        # Name-only mode — no documents available
+        context_block = (
+            f"The agent is named: \"{agent_name}\".\n\n"
+            "Generate a description and system prompt based on what this agent name suggests. "
+            "Infer the topic or product from the name.\n\n"
+        )
+
     return (
         f'You are configuring a customer support agent for "{org_name}".\n\n'
-        f"The agent will answer questions using these specific knowledge base documents:\n"
-        f"{doc_context}\n\n"
-        f"Document types covered: {types_str}\n\n"
-        "Your job is to name this agent after the product or topic in the documents above — "
-        "specific enough to be recognisable, but not tied to a version number or doc type.\n"
-        "For example:\n"
-        "• A doc about PS5 → 'PS5 Support'\n"
-        "• A doc about iPhone warranty → 'iPhone Warranty Support'\n"
-        "• A doc about company travel policy → 'Travel Policy'\n"
-        "and NOT generic like 'Tech Support Agent'.\n\n"
+        f"{context_block}"
         "Return a JSON object with exactly these three fields:\n"
         "{\n"
-        '  "name": "<2–5 words — named after the specific product/topic in the docs above>",\n'
-        '  "description": "<1–2 sentences — what specific product or topic this agent covers; '
-        'used by the triage system to route customers to the right agent>",\n'
-        '  "system_prompt": "<3–5 sentences — introduce the agent by its specific product/topic, '
-        'state what it can help with, instruct it to be accurate and concise, '
-        'and tell it to escalate to human support if it cannot answer>"\n'
+        '  "name": "<2–5 words — specific agent name>",\n'
+        '  "description": "<1–2 sentences — what this agent covers; used by triage to route customers>",\n'
+        '  "system_prompt": "<Structured prompt with: (1) Role, (2) Responsibilities, '
+        "(3) Constraints — stay on topic, don't make up info, "
+        "(4) Escalation — escalate unresolved issues to human support. "
+        'No greetings.>"\n'
         "}\n\n"
-        "Rules:\n"
-        "• name — must reflect the actual product/topic, not the doc_type\n"
-        "• description — triage uses this to decide which agent to route to; be specific\n"
-        "• system_prompt — reference the actual product/topic by name"
+        "Rules: name reflects actual topic · description is specific for triage routing · "
+        "system_prompt is written as instructions to the agent, not a customer greeting."
     )
 
 
@@ -317,11 +340,14 @@ def _fallback(org_name: str, doc_types: list[str]) -> dict:
             f"Handles customer questions related to {types_str}."
         ),
         "system_prompt": (
-            f"You are a {primary} specialist for {org_name}. "
-            f"Help customers with questions about {types_str} "
-            "using the knowledge base provided. "
-            "Be accurate, professional, and concise. "
-            "If the answer is not in the knowledge base, "
-            "apologise and direct the customer to human support."
+            f"You are a {primary} support agent for {org_name}.\n\n"
+            f"Your role:\n"
+            f"- Answer questions about {types_str} using the knowledge base provided\n"
+            "- Be accurate, concise, and professional\n"
+            "- If you cannot resolve the issue, inform the user that their inquiry is being escalated to human support\n\n"
+            "Constraints:\n"
+            f"- Only answer questions related to {primary}\n"
+            "- Do not make up information — if unsure, say so\n"
+            "- Do not discuss competitor products"
         ),
     }

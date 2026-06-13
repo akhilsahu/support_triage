@@ -1,5 +1,5 @@
 """
-OrgDataSource — per-org external API connection with LLM-normalized field mapping.
+SpaceDataSource — per-org external API connection with LLM-normalized field mapping.
 """
 
 import uuid
@@ -19,11 +19,11 @@ CANONICAL_ORDER_FIELDS = [
 ]
 
 
-class OrgDataSource(Base):
-    __tablename__ = "org_data_sources"
+class SpaceDataSource(Base):
+    __tablename__ = "space_data_sources"
 
     id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id     = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+    space_id     = Column(UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="CASCADE"),
                         nullable=False, index=True)
 
     name       = Column(String(200), nullable=False)
@@ -49,10 +49,10 @@ class OrgDataSource(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    org = relationship("Organization", back_populates="data_sources")
+    space = relationship("Space", back_populates="data_sources")
 
     __table_args__ = (
-        Index("ix_org_data_source_org_agent", "org_id", "agent_type"),
+        Index("ix_space_data_source_space_agent", "space_id", "agent_type"),
     )
 
     # ── JSON properties ───────────────────────────────────────────────────────
@@ -106,7 +106,7 @@ class OrgDataSource(Base):
     def to_dict(self) -> dict:
         return {
             "id":             str(self.id),
-            "org_id":         str(self.org_id),
+            "space_id":         str(self.space_id),
             "name":           self.name,
             "agent_type":     self.agent_type,
             "api_url":        self.api_url,

@@ -141,7 +141,12 @@ bob_sessions/
 
 # ChromaDB / vector store
 chroma_db/
+.chroma_db/
 .chroma/
+
+# Database backups
+*.sql
+multiagent_data_backup.sql
 
 # UI env files
 ui/.env
@@ -150,3 +155,7 @@ ui/.env.*.local
 
 # OS
 Thumbs.db
+
+
+# my things-to-do list
+thingstodo/

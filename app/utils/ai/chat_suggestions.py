@@ -22,17 +22,17 @@ _FALLBACKS = [
 ]
 
 _CACHE_TTL = 60 * 60
-_CACHE_KEY  = "chat:suggestions:{org_id}"
+_CACHE_KEY  = "chat:suggestions:{space_id}"
 
 
 async def get_suggestions(
-    org_id: UUID,
+    space_id: UUID,
     org_name: str,
     active_agents: list,
     doc_types: list[str],
 ) -> list[str]:
     """Return 4 suggestion strings — always returns something."""
-    cache_key = _CACHE_KEY.format(org_id=str(org_id))
+    cache_key = _CACHE_KEY.format(space_id=str(space_id))
 
     # Redis cache
     try:
@@ -43,7 +43,7 @@ async def get_suggestions(
     except Exception:
         pass
 
-    suggestions = await _generate(org_id, org_name, active_agents, doc_types)
+    suggestions = await _generate(space_id, org_name, active_agents, doc_types)
 
     try:
         from app.core.redis import redis_client
@@ -54,13 +54,13 @@ async def get_suggestions(
     return suggestions
 
 
-async def _sample_rag_content(org_id: UUID, rag_agents: list, doc_types: list[str]) -> str:
+async def _sample_rag_content(space_id: UUID, rag_agents: list, doc_types: list[str]) -> str:
     """Sample a handful of ChromaDB chunks to give the LLM real context."""
     try:
         from app.rag.vector_store import get_vector_store, COLLECTION_CLIENT
 
         store = get_vector_store()
-        client_id = str(org_id)
+        client_id = str(space_id)
         sample_texts: list[str] = []
 
         # Use doc_types from RAG agents if available, else all org doc_types
@@ -91,7 +91,7 @@ async def _sample_rag_content(org_id: UUID, rag_agents: list, doc_types: list[st
 
 
 async def _generate(
-    org_id: UUID,
+    space_id: UUID,
     org_name: str,
     active_agents: list,
     doc_types: list[str],
@@ -114,7 +114,7 @@ async def _generate(
         # Sample real KB content if RAG agents exist
         rag_context = ""
         if rag_agents:
-            rag_context = await _sample_rag_content(org_id, rag_agents, doc_types)
+            rag_context = await _sample_rag_content(space_id, rag_agents, doc_types)
 
         system = (
             "You generate short suggested questions for a customer support chat widget.\n"

@@ -20,6 +20,15 @@
   status = 200
   force  = true
 
+[[redirects]]
+  from   = "/space/*"
+  to     = "https://api.support247.chat/space/:splat"
+  status = 200
+  force  = true
+
+# widget.js is served as a static file from ui/public/ — no redirect needed.
+# The SPA fallback below would catch it, so Netlify serves the real file first.
+
 # ── SPA fallback (React Router) ──────────────────────────────────────────
 
 [[redirects]]

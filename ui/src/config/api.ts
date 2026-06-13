@@ -14,6 +14,16 @@ export const API_CONFIG = {
     ragList:    '/api/v1/documents/rag/list',
     ragDelete:  (id: string) => `/api/v1/documents/rag/${id}`,
     ragClient:  (clientId: string) => `/api/v1/documents/rag/client/${clientId}`,
+    // Knowledge Bases
+    kbList:       '/api/v1/space/knowledge-bases',
+    kbCreate:     '/api/v1/space/knowledge-bases',
+    kbGet:        (id: string) => `/api/v1/space/knowledge-bases/${id}`,
+    kbUpdate:     (id: string) => `/api/v1/space/knowledge-bases/${id}`,
+    kbDelete:     (id: string) => `/api/v1/space/knowledge-bases/${id}`,
+    kbItems:      (id: string) => `/api/v1/space/knowledge-bases/${id}/items`,
+    kbItemAdd:    (id: string) => `/api/v1/space/knowledge-bases/${id}/items`,
+    kbItemDelete: (kbId: string, itemId: string) => `/api/v1/space/knowledge-bases/${kbId}/items/${itemId}`,
+    kbItemUpdate: (kbId: string, itemId: string) => `/api/v1/space/knowledge-bases/${kbId}/items/${itemId}`,
     // Admin KB
     adminKB:    (clientId: string) => `/api/v1/admin/clients/${clientId}/knowledge-base`,
     adminStats: '/api/v1/admin/stats',

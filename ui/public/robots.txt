@@ -1,0 +1,8 @@
+# SUPPORT247.chat
+User-agent: *
+Allow: /
+
+# Private app — don't index the dashboard / authed product
+Disallow: /app/
+
+Sitemap: https://support247.chat/sitemap.xml

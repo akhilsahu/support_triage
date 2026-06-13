@@ -1,26 +1,31 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Layout } from './components/layout/Layout'
 import { Dashboard } from './screens/Dashboard'
-import { Home } from './screens/Home'
+import { DynamicHome, DynamicLogin, DynamicHowItWorks, DynamicPricing } from './screens/home/ThemeSwitcher'
 import { Chat } from './screens/Chat'
 import { Agents } from './screens/Agents'
 import { KnowledgeBase } from './screens/KnowledgeBase'
 import { Analytics } from './screens/Analytics'
 import { Settings } from './screens/Settings'
-import { Login } from './screens/Login'
 import { NotFound } from './screens/NotFound'
 import { SuperAdmin } from './screens/SuperAdmin'
 import { DataSourceSetup } from './screens/DataSourceSetup'
 import { CustomerChat } from './screens/CustomerChat'
+import { Inbox } from './screens/Inbox'
+import { TestChat } from './screens/TestChat'
+import { EmbedWidget } from './screens/EmbedWidget'
+import { ForgotPassword } from './screens/ForgotPassword'
+import { ResetPassword } from './screens/ResetPassword'
 import {
-  AboutPage, WhatWeDoPage, HowItWorksPage, FeaturesPage,
+  AboutPage, WhatWeDoPage, FeaturesPage,
   PrivacyPage, TermsPage, CookiesPage, ContactPage, SecurityPage,
 } from './screens/StaticPage'
-import { Pricing } from './screens/Pricing'
 import { useAppStore } from './store/useAppStore'
+
 import { apiClient } from './api/client'
+import { RouteSeo } from './lib/RouteSeo'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,17 +35,43 @@ const queryClient = new QueryClient({
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAppStore()
-  return token ? <>{children}</> : <Navigate to="/" replace />
+  return token ? <>{children}</> : <Navigate to="/app/login" replace />
+}
+
+// Back-compat: old /s/:slug links redirect to the new root /:slug (query preserved)
+function LegacyChatRedirect() {
+  const { slug } = useParams<{ slug: string }>()
+  const { search } = useLocation()
+  return <Navigate to={`/${slug ?? ''}${search}`} replace />
 }
 
 export default function App() {
-  const { isDark, setBackendStatus } = useAppStore()
+  const { isDark, fontSize, setBackendStatus, setActiveHomepage } = useAppStore()
+
+  // Fetch active homepage on mount
+  useEffect(() => {
+    fetch('/api/v1/super-admin/settings/public')
+      .then(r => r.json())
+      .then(d => {
+        if (d.active_homepage) {
+          setActiveHomepage(d.active_homepage)
+        }
+      })
+      .catch(() => {})
+  }, [setActiveHomepage])
 
   // Restore dark mode class on mount
   useEffect(() => {
     if (isDark) document.documentElement.classList.add('dark')
     else document.documentElement.classList.remove('dark')
   }, [isDark])
+
+  // Apply persisted font size on mount
+  useEffect(() => {
+    import('./config/typography').then(({ typography }) => {
+      document.documentElement.style.fontSize = `${typography.fontSizes[fontSize]}px`
+    })
+  }, [fontSize])
 
   // Poll backend health
   useEffect(() => {
@@ -56,30 +87,45 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <RouteSeo />
         <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/dashboard" element={<PrivateRoute><Layout title="Dashboard" subtitle="SUPPORT247.chat overview"><Dashboard /></Layout></PrivateRoute>} />
-          <Route path="/chat" element={<PrivateRoute><Layout title="Chat" subtitle="AI-powered customer support"><Chat /></Layout></PrivateRoute>} />
-          <Route path="/agents" element={<PrivateRoute><Layout title="Agents" subtitle="Manage your AI agent fleet"><Agents /></Layout></PrivateRoute>} />
-          <Route path="/agents/datasource" element={<PrivateRoute><DataSourceSetup /></PrivateRoute>} />
-          <Route path="/knowledge-base" element={<PrivateRoute><Layout title="Knowledge Docs" subtitle="Upload and manage your agent knowledge base"><KnowledgeBase /></Layout></PrivateRoute>} />
-          <Route path="/analytics" element={<PrivateRoute><Layout title="Analytics" subtitle="Usage insights and performance"><Analytics /></Layout></PrivateRoute>} />
-          <Route path="/settings" element={<PrivateRoute><Layout title="Settings" subtitle="Configure SUPPORT247.chat"><Settings /></Layout></PrivateRoute>} />
-          <Route path="/super-admin" element={<SuperAdmin />} />
-          <Route path="/s/:slug" element={<CustomerChat />} />
-
-          {/* Static / marketing pages */}
+          {/* ── Marketing / landing (root namespace, reserved) ── */}
+          <Route path="/" element={<DynamicHome />} />
           <Route path="/about"         element={<AboutPage />} />
           <Route path="/what-we-do"    element={<WhatWeDoPage />} />
-          <Route path="/how-it-works"  element={<HowItWorksPage />} />
+          <Route path="/how-it-works"  element={<DynamicHowItWorks />} />
           <Route path="/features"      element={<FeaturesPage />} />
-          <Route path="/pricing"       element={<Pricing />} />
+          <Route path="/pricing"       element={<DynamicPricing />} />
           <Route path="/privacy"       element={<PrivacyPage />} />
           <Route path="/terms"         element={<TermsPage />} />
           <Route path="/cookies"       element={<CookiesPage />} />
           <Route path="/contact"       element={<ContactPage />} />
           <Route path="/security"      element={<SecurityPage />} />
+
+          {/* ── App (authenticated product) under /app/* ── */}
+          <Route path="/app/login"          element={<DynamicLogin />} />
+          <Route path="/app/forgot-password" element={<ForgotPassword />} />
+          <Route path="/app/reset-password"  element={<ResetPassword />} />
+          <Route path="/app/dashboard" element={<PrivateRoute><Layout title="Dashboard" subtitle="SUPPORT247.chat overview"><Dashboard /></Layout></PrivateRoute>} />
+          <Route path="/app/chat" element={<PrivateRoute><Layout title="Chat" subtitle="AI-powered customer support"><Chat /></Layout></PrivateRoute>} />
+          <Route path="/app/agents" element={<PrivateRoute><Layout title="Agents" subtitle="Manage your AI agent fleet"><Agents /></Layout></PrivateRoute>} />
+          <Route path="/app/agents/datasource" element={<PrivateRoute><DataSourceSetup /></PrivateRoute>} />
+          <Route path="/app/agents/test" element={<PrivateRoute><Layout title="Test Chat" subtitle="Preview your chatbot as a customer would see it"><TestChat /></Layout></PrivateRoute>} />
+          <Route path="/app/data-sources" element={<PrivateRoute><Layout title="Data Sources" subtitle="Connect external APIs and live data feeds to your agents"><DataSourceSetup /></Layout></PrivateRoute>} />
+          <Route path="/app/inbox" element={<PrivateRoute><Layout title="Inbox" subtitle="Human support sessions"><Inbox /></Layout></PrivateRoute>} />
+          <Route path="/app/knowledge-base" element={<PrivateRoute><Layout title="Knowledge Bases" subtitle="Group documents, text, and Q&A · assign to agents for targeted RAG"><KnowledgeBase /></Layout></PrivateRoute>} />
+          <Route path="/app/analytics" element={<PrivateRoute><Layout title="Analytics" subtitle="Usage insights and performance"><Analytics /></Layout></PrivateRoute>} />
+          <Route path="/app/settings" element={<PrivateRoute><Layout title="Settings" subtitle="Configure SUPPORT247.chat"><Settings /></Layout></PrivateRoute>} />
+          <Route path="/app/embed-widget" element={<PrivateRoute><Layout title="Embed Widget" subtitle="Copy the embed snippet for any of your chatbots"><EmbedWidget /></Layout></PrivateRoute>} />
+          <Route path="/app/super-admin" element={<SuperAdmin />} />
+          {/* Bare /app → dashboard */}
+          <Route path="/app" element={<Navigate to="/app/dashboard" replace />} />
+
+          {/* ── Back-compat: old /s/:slug → /:slug ── */}
+          <Route path="/s/:slug" element={<LegacyChatRedirect />} />
+
+          {/* ── Customer chat lives at the root namespace: /<slug> ── */}
+          <Route path="/:slug" element={<CustomerChat />} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>

@@ -61,8 +61,10 @@ async def init_db() -> None:
         async with engine.begin() as conn:
             # Test database connection
             await conn.execute(text("SELECT 1"))
+            # Auto-migrate: Add active_homepage column to platform_settings if it doesn't exist
+            await conn.execute(text("ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS active_homepage VARCHAR(50) DEFAULT 'homepage1'"))
             
-        logger.info("Database connection verified successfully")
+        logger.info("Database connection verified successfully and auto-migrations applied")
     except Exception as e:
         logger.error(f"Failed to connect to database: {e}")
         # Don't raise - allow app to start even if DB is temporarily unavailable

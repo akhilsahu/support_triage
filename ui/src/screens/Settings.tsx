@@ -7,11 +7,13 @@ import { Toggle } from '../components/ui/Toggle'
 import { useAppStore } from '../store/useAppStore'
 import { API_CONFIG } from '../config/api'
 import { apiClient } from '../api/client'
+import type { FontSizeKey } from '../config/typography'
 
 export function Settings() {
   const navigate = useNavigate()
   const {
     isDark, toggleTheme,
+    fontSize, setFontSize,
     apiKey, setApiKey,
     clientId, setClientId,
     clearChat,
@@ -20,7 +22,6 @@ export function Settings() {
   const [backendUrl, setBackendUrl] = useState(API_CONFIG.baseURL)
   const [localApiKey, setLocalApiKey] = useState(apiKey)
   const [localClientId, setLocalClientId] = useState(clientId)
-  const [fontSize, setFontSize] = useState('medium')
   const [showKey, setShowKey] = useState(false)
   const [saved, setSaved] = useState(false)
   const [chatCleared, setChatCleared] = useState(false)
@@ -75,12 +76,12 @@ export function Settings() {
             </div>
             <select
               value={fontSize}
-              onChange={e => setFontSize(e.target.value)}
+              onChange={e => setFontSize(e.target.value as FontSizeKey)}
               className="px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white"
             >
-              <option value="small">Small</option>
-              <option value="medium">Medium</option>
-              <option value="large">Large</option>
+              <option value="sm">Small (14px)</option>
+              <option value="md">Medium (16px)</option>
+              <option value="lg">Large (18px)</option>
             </select>
           </div>
         </div>
@@ -152,7 +153,7 @@ export function Settings() {
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Agents</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Manage which agents are active in your fleet</p>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => navigate('/agents')}>
+          <Button variant="secondary" size="sm" onClick={() => navigate('/app/agents')}>
             Configure <ExternalLink className="w-3 h-3" />
           </Button>
         </div>

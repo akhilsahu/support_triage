@@ -405,11 +405,16 @@ class LLMService:
         max_tokens: int = 500,
     ) -> Optional[Dict[str, Any]]:
         """
-        Try Anthropic first, fall back to OpenAI, log if both unavailable.
+        Try OpenAI first, fall back to WatsonX, then Anthropic, log if all unavailable.
 
         Returns the LLM response dict on success, or None if all providers fail.
         """
         providers = []
+
+        if self.openai_client:
+            providers.append(("openai", LLMModel.GPT_4O_MINI.value))
+        else:
+            logger.warning("OpenAI unavailable — skipping")
 
         if self.watsonx_client:
             providers.append(("watsonx", settings.WATSONX_MODEL))
@@ -420,11 +425,6 @@ class LLMService:
             providers.append(("anthropic", LLMModel.CLAUDE_35_SONNET.value))
         else:
             logger.warning("Anthropic unavailable — skipping")
-
-        if self.openai_client:
-            providers.append(("openai", LLMModel.GPT_4O_MINI.value))
-        else:
-            logger.warning("OpenAI unavailable — skipping")
 
         if not providers:
             logger.error("No LLM providers available — falling back to keyword responses")

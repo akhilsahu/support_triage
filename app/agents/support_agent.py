@@ -7,7 +7,7 @@ knowledge base stored in ChromaDB. Searches ALL doc types uploaded by the org
 
 Flow:
   Customer question
-    → query client_documents WHERE client_id = org_slug
+    → query client_documents WHERE client_id = str(org.id)   # UUID, never slug
     → inject retrieved chunks as context
     → LLM generates a grounded answer
     → return answer + source citations
@@ -84,7 +84,7 @@ class SupportAgent:
 
         Args:
             question:  The customer's question.
-            client_id: Org slug — scopes the ChromaDB search to this org only.
+            client_id: str(org.id) UUID — scopes the ChromaDB search to this org only. Never use slug.
             doc_id:    Optional — narrow to a specific uploaded doc.
             top_k:     Max chunks to retrieve.
             ticket_id: For logging.

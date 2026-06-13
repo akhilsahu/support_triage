@@ -1,9 +1,18 @@
 """
-Org Agents API — JWT-protected endpoints for managing an org's AgentDefinitions.
+Org Agents API — JWT-protected endpoints for managing an org's agents.
 
-GET  /org/agents          — list all agents for the authenticated org
+Built-in agents live in:
+  builtin_agent_catalog  (platform definitions)
+  org_builtin_agent_configs  (per-org opt-in + overrides)
+
+Custom agents live in:
+  custom_agents
+
+GET  /org/agents          — list all visible agents for the org
 GET  /org/agents/{id}     — get single agent
-PATCH /org/agents/{id}    — update system_prompt, temperature, max_tokens, active, keywords
+PATCH /org/agents/{id}   — update config (builtin or custom)
+POST  /org/agents         — create new custom agent
+DELETE /org/agents/{id}   — delete custom agent
 """
 
 from __future__ import annotations
@@ -17,34 +26,56 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import current_brand
+from app.core.auth import current_space
 from app.core.database import get_db
-from app.models.org import AgentDefinition, AgentDocLink, Organization
-from app.rag.vector_store import get_vector_store
+from app.models.space import (
+    Space,
+    BuiltinAgentCatalog,
+    SpaceBuiltinAgentConfig,
+    CustomAgent,
+    CustomAgentDocLink,
+    ChatbotCustomAgent,
+)
+from app.models.chatbot import Chatbot
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/org/agents", tags=["Org Agents"])
 
 
+async def _get_default_chatbot(db: AsyncSession, org: Space) -> Chatbot:
+    """Resolve the org's default chatbot. Raises 503 if none configured."""
+    result = await db.execute(
+        select(Chatbot).where(
+            Chatbot.space_id == org.id,
+            Chatbot.is_default == True,
+            Chatbot.active == True,
+        )
+    )
+    chatbot = result.scalar_one_or_none()
+    if not chatbot:
+        raise HTTPException(503, "No default chatbot configured for this org.")
+    return chatbot
+
+
 # ── Request / Response ────────────────────────────────────────────────────────
 
 class AgentUpdateRequest(BaseModel):
-    """Fields an org admin can edit. All optional — only provided fields are updated."""
-    system_prompt: Optional[str] = Field(None, description="Org-customised system prompt")
+    system_prompt: Optional[str] = None
     temperature:   Optional[float] = Field(None, ge=0.0, le=1.0)
     max_tokens:    Optional[int] = Field(None, ge=50, le=4000)
-    active:        Optional[bool] = None
+    active:        Optional[bool] = None   # custom agents only
+    enabled:       Optional[bool] = None   # builtin configs only
     keywords:      Optional[List[str]] = None
     rag_enabled:   Optional[bool] = None
     rag_doc_types: Optional[List[str]] = None
     rag_top_k:     Optional[int] = Field(None, ge=1, le=20)
-    doc_ids:       Optional[List[str]] = None   # replace linked docs (None = no change)
+    doc_ids:       Optional[List[str]] = None   # custom agents only
 
 
 class CreateAgentRequest(BaseModel):
-    """Fields required to create a new custom agent."""
     name:          str
     description:   str = ""
     icon:          str = "🤖"
@@ -55,7 +86,7 @@ class CreateAgentRequest(BaseModel):
     rag_doc_types: List[str] = []
     rag_top_k:     int = Field(5, ge=1, le=20)
     keywords:      List[str] = []
-    doc_ids:       List[str] = []   # ChromaDB doc IDs to link to this agent
+    doc_ids:       List[str] = []
 
 
 class AgentOut(BaseModel):
@@ -66,7 +97,7 @@ class AgentOut(BaseModel):
     agent_type:    str
     icon:          str
     is_builtin:    bool
-    active:        bool
+    active:        bool   # for custom; for builtin = config.enabled
     system_prompt: str
     temperature:   float
     max_tokens:    int
@@ -75,37 +106,41 @@ class AgentOut(BaseModel):
     rag_top_k:     int
     keywords:      List[str]
     doc_ids:       List[str]
-    # base_prompt intentionally NOT exposed here — org can't see it
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-async def _get_agent_for_org(
-    agent_id: UUID,
-    org: Organization,
-    db: AsyncSession,
-) -> AgentDefinition:
-    result = await db.execute(
-        select(AgentDefinition).where(
-            AgentDefinition.id == agent_id,
-            AgentDefinition.org_id == org.id,
-        )
+def _builtin_out(config: SpaceBuiltinAgentConfig) -> AgentOut:
+    cat = config.catalog
+    return AgentOut(
+        id=str(config.id),
+        slug=cat.slug,
+        name=cat.name,
+        description=cat.description or "",
+        agent_type=cat.agent_type,
+        icon=cat.icon or "🤖",
+        is_builtin=True,
+        active=config.enabled,
+        system_prompt=config.system_prompt or "",
+        temperature=config.effective_temperature,
+        max_tokens=config.effective_max_tokens,
+        rag_enabled=config.effective_rag_enabled,
+        rag_doc_types=config.effective_rag_doc_types_list,
+        rag_top_k=config.effective_rag_top_k,
+        keywords=config.keywords_list,
+        doc_ids=[],   # builtins use rag_doc_types, not doc-level links
     )
-    agent = result.scalar_one_or_none()
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found.")
-    return agent
 
 
-def _agent_out(agent: AgentDefinition) -> AgentOut:
+def _custom_out(agent: CustomAgent) -> AgentOut:
     return AgentOut(
         id=str(agent.id),
         slug=agent.slug,
         name=agent.name,
         description=agent.description or "",
-        agent_type=agent.agent_type,
+        agent_type="custom",
         icon=agent.icon or "🤖",
-        is_builtin=agent.is_builtin,
+        is_builtin=False,
         active=agent.active,
         system_prompt=agent.system_prompt or "",
         temperature=agent.temperature,
@@ -120,54 +155,196 @@ def _agent_out(agent: AgentDefinition) -> AgentOut:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+def _builtin_out_from_catalog(cat: BuiltinAgentCatalog) -> AgentOut:
+    """AgentOut for a platform-enabled builtin the org has not yet configured."""
+    return AgentOut(
+        id=str(cat.id),          # use catalog id as placeholder
+        slug=cat.slug,
+        name=cat.name,
+        description=cat.description or "",
+        agent_type=cat.agent_type,
+        icon=cat.icon or "🤖",
+        is_builtin=True,
+        active=False,            # org hasn't enabled it yet
+        system_prompt="",
+        temperature=cat.default_temperature,
+        max_tokens=cat.default_max_tokens,
+        rag_enabled=cat.default_rag_enabled,
+        rag_doc_types=cat.default_rag_doc_types_list,
+        rag_top_k=cat.default_rag_top_k,
+        keywords=[],
+        doc_ids=[],
+    )
+
+
 @router.get("", response_model=List[AgentOut])
 async def list_org_agents(
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all agents for the authenticated org.
-    Built-in agents are only returned when platform_enabled=True (super-admin control).
     """
-    from sqlalchemy import or_
-    result = await db.execute(
-        select(AgentDefinition)
-        .where(
-            AgentDefinition.org_id == org.id,
-            or_(
-                AgentDefinition.is_builtin == False,
-                AgentDefinition.platform_enabled == True,
-            ),
-        )
-        .order_by(AgentDefinition.created_at)
+    Return all agents visible to the org's default chatbot:
+    - Built-ins: all platform_enabled catalog entries (Factor 1).
+      Config row may or may not exist (chatbot may not have enabled it yet).
+    - Custom: all custom agents for this chatbot.
+    """
+    chatbot = await _get_default_chatbot(db, org)
+
+    # All platform-enabled catalog entries
+    catalog_result = await db.execute(
+        select(BuiltinAgentCatalog)
+        .where(BuiltinAgentCatalog.platform_enabled == True)
+        .order_by(BuiltinAgentCatalog.agent_type)
     )
-    agents = result.scalars().all()
-    return [_agent_out(a) for a in agents]
+    catalog_entries = catalog_result.scalars().all()
+
+    # Existing configs for this chatbot (only for platform-enabled catalog entries)
+    catalog_ids = [c.id for c in catalog_entries]
+    config_result = await db.execute(
+        select(SpaceBuiltinAgentConfig)
+        .options(selectinload(SpaceBuiltinAgentConfig.catalog))
+        .where(
+            SpaceBuiltinAgentConfig.chatbot_id == chatbot.id,
+            SpaceBuiltinAgentConfig.catalog_id.in_(catalog_ids) if catalog_ids else False,
+        )
+    )
+    configs_by_catalog = {c.catalog_id: c for c in config_result.scalars().all()}
+
+    # Custom agents linked to this chatbot via junction
+    custom_result = await db.execute(
+        select(CustomAgent)
+        .options(selectinload(CustomAgent.doc_links))
+        .join(ChatbotCustomAgent, ChatbotCustomAgent.agent_id == CustomAgent.id)
+        .where(ChatbotCustomAgent.chatbot_id == chatbot.id)
+        .order_by(CustomAgent.created_at)
+    )
+    custom_agents = custom_result.scalars().all()
+
+    agents: List[AgentOut] = []
+    for cat in catalog_entries:
+        config = configs_by_catalog.get(cat.id)
+        if config:
+            agents.append(_builtin_out(config))
+        else:
+            agents.append(_builtin_out_from_catalog(cat))
+    for ca in custom_agents:
+        agents.append(_custom_out(ca))
+
+    return agents
 
 
 @router.get("/{agent_id}", response_model=AgentOut)
 async def get_org_agent(
     agent_id: UUID,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a single agent for the authenticated org."""
-    agent = await _get_agent_for_org(agent_id, org, db)
-    return _agent_out(agent)
+    # Try builtin config first
+    bc = await db.execute(
+        select(SpaceBuiltinAgentConfig)
+        .options(selectinload(SpaceBuiltinAgentConfig.catalog))
+        .where(SpaceBuiltinAgentConfig.id == agent_id, SpaceBuiltinAgentConfig.space_id == org.id)
+    )
+    config = bc.scalar_one_or_none()
+    if config:
+        return _builtin_out(config)
+
+    # Try custom agent
+    ca = await db.execute(
+        select(CustomAgent)
+        .options(selectinload(CustomAgent.doc_links))
+        .where(CustomAgent.id == agent_id, CustomAgent.space_id == org.id)
+    )
+    agent = ca.scalar_one_or_none()
+    if agent:
+        return _custom_out(agent)
+
+    raise HTTPException(status_code=404, detail="Agent not found.")
 
 
 @router.patch("/{agent_id}", response_model=AgentOut)
 async def update_org_agent(
     agent_id: UUID,
     req: AgentUpdateRequest,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Update org-editable fields on an agent.
-    - system_prompt, temperature, max_tokens, active, keywords
-    - base_prompt is NOT editable here — super admin only
-    """
-    agent = await _get_agent_for_org(agent_id, org, db)
+    # ── Builtin: agent_id may be catalog.id (no config yet) or config.id ────────
+    # First check if it's a catalog id with no config (org enabling for first time)
+    cat_result = await db.execute(
+        select(BuiltinAgentCatalog).where(BuiltinAgentCatalog.id == agent_id)
+    )
+    catalog_entry = cat_result.scalar_one_or_none()
+
+    if catalog_entry:
+        if not catalog_entry.platform_enabled:
+            raise HTTPException(403, "This agent is not available on the platform.")
+        if catalog_entry.locked and req.enabled is False:
+            raise HTTPException(400, f"{catalog_entry.name} cannot be disabled.")
+
+        chatbot = await _get_default_chatbot(db, org)
+
+        # Check if config already exists for this chatbot
+        existing = await db.execute(
+            select(SpaceBuiltinAgentConfig)
+            .options(selectinload(SpaceBuiltinAgentConfig.catalog))
+            .where(
+                SpaceBuiltinAgentConfig.chatbot_id == chatbot.id,
+                SpaceBuiltinAgentConfig.catalog_id == catalog_entry.id,
+            )
+        )
+        config = existing.scalar_one_or_none()
+
+        if config is None:
+            # Only create config row when chatbot is enabling for the first time
+            if not req.enabled:
+                raise HTTPException(400, "Enable the agent before configuring it.")
+            config = SpaceBuiltinAgentConfig(
+                space_id=org.id,
+                chatbot_id=chatbot.id,
+                catalog_id=catalog_entry.id,
+                enabled=True,
+                system_prompt=req.system_prompt or "",
+                temperature=req.temperature,
+                max_tokens=req.max_tokens,
+                rag_enabled=req.rag_enabled,
+                rag_doc_types=",".join(req.rag_doc_types) if req.rag_doc_types else None,
+                rag_top_k=req.rag_top_k,
+                keywords_json=json.dumps(req.keywords) if req.keywords else "[]",
+            )
+            db.add(config)
+        else:
+            # Update existing config
+            if req.enabled is not None:
+                config.enabled = req.enabled
+            if req.system_prompt is not None:
+                config.system_prompt = req.system_prompt
+            if req.temperature is not None:
+                config.temperature = req.temperature
+            if req.max_tokens is not None:
+                config.max_tokens = req.max_tokens
+            if req.rag_enabled is not None:
+                config.rag_enabled = req.rag_enabled
+            if req.rag_doc_types is not None:
+                config.rag_doc_types = ",".join(req.rag_doc_types)
+            if req.rag_top_k is not None:
+                config.rag_top_k = req.rag_top_k
+            if req.keywords is not None:
+                config.keywords_json = json.dumps(req.keywords)
+
+        await db.commit()
+        await db.refresh(config)
+        return _builtin_out(config)
+
+    # ── Custom agent update ────────────────────────────────────────────────────
+    ca = await db.execute(
+        select(CustomAgent)
+        .options(selectinload(CustomAgent.doc_links))
+        .where(CustomAgent.id == agent_id, CustomAgent.space_id == org.id)  # org check for ownership
+    )
+    agent = ca.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(404, "Agent not found.")
 
     if req.system_prompt is not None:
         agent.system_prompt = req.system_prompt
@@ -176,8 +353,6 @@ async def update_org_agent(
     if req.max_tokens is not None:
         agent.max_tokens = req.max_tokens
     if req.active is not None:
-        if agent.slug == "triage" and req.active is False:
-            raise HTTPException(status_code=400, detail="Triage agent cannot be deactivated.")
         agent.active = req.active
     if req.keywords is not None:
         agent.keywords_json = json.dumps(req.keywords)
@@ -188,52 +363,43 @@ async def update_org_agent(
     if req.rag_top_k is not None:
         agent.rag_top_k = req.rag_top_k
     if req.doc_ids is not None:
-        # Replace all doc links for this agent
-        await db.execute(
-            delete(AgentDocLink).where(AgentDocLink.agent_id == agent.id)
-        )
+        await db.execute(delete(CustomAgentDocLink).where(CustomAgentDocLink.agent_id == agent.id))
         for doc_id in set(req.doc_ids):
-            db.add(AgentDocLink(agent_id=agent.id, doc_id=doc_id))
+            db.add(CustomAgentDocLink(agent_id=agent.id, doc_id=doc_id))
 
     await db.commit()
+    from app.orchestra.ai.session.pool import pool as _pool
+    _pool.invalidate_bot_agents(str(org.id))
     await db.refresh(agent)
-
-    logger.info("org_agent.updated", org_id=str(org.id), agent_id=str(agent_id))
-    return _agent_out(agent)
+    return _custom_out(agent)
 
 
 @router.post("", response_model=AgentOut, status_code=201)
 async def create_org_agent(
     req: CreateAgentRequest,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new custom agent scoped to the authenticated org."""
-    # Auto-generate slug from name; ensure uniqueness within org
     base_slug = re.sub(r"[^a-z0-9_]", "_", req.name.lower().strip())[:40].strip("_")
     slug = base_slug
     i = 1
     while True:
         existing = await db.execute(
-            select(AgentDefinition).where(
-                AgentDefinition.org_id == org.id,
-                AgentDefinition.slug == slug,
-            )
+            select(CustomAgent).where(CustomAgent.space_id == org.id, CustomAgent.slug == slug)
         )
         if not existing.scalar_one_or_none():
             break
         slug = f"{base_slug}_{i}"
         i += 1
 
-    agent = AgentDefinition(
-        org_id=org.id,
+    chatbot = await _get_default_chatbot(db, org)
+
+    agent = CustomAgent(
+        space_id=org.id,
         slug=slug,
         name=req.name,
         description=req.description,
-        agent_type="custom",
         icon=req.icon,
-        is_builtin=False,
-        active=True,
         system_prompt=req.system_prompt,
         temperature=req.temperature,
         max_tokens=req.max_tokens,
@@ -241,25 +407,43 @@ async def create_org_agent(
         rag_doc_types=",".join(req.rag_doc_types),
         rag_top_k=req.rag_top_k,
         keywords_json=json.dumps(req.keywords),
-        skills_json="[]",
+        active=True,
     )
     db.add(agent)
-    await db.flush()  # get agent.id before linking docs
+    await db.flush()
+
+    # Link to the default chatbot (many-to-many junction)
+    db.add(ChatbotCustomAgent(chatbot_id=chatbot.id, agent_id=agent.id))
 
     for doc_id in set(req.doc_ids):
-        db.add(AgentDocLink(agent_id=agent.id, doc_id=doc_id))
+        db.add(CustomAgentDocLink(agent_id=agent.id, doc_id=doc_id))
 
     await db.commit()
     await db.refresh(agent)
-    logger.info("org_agent.created", org_id=str(org.id), slug=slug,
-                doc_ids=req.doc_ids)
-    return _agent_out(agent)
+    logger.info("custom_agent.created", space_id=str(org.id), slug=slug)
+    return _custom_out(agent)
+
+
+@router.delete("/{agent_id}", status_code=204)
+async def delete_org_agent(
+    agent_id: UUID,
+    org: Space = Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    ca = await db.execute(
+        select(CustomAgent).where(CustomAgent.id == agent_id, CustomAgent.space_id == org.id)
+    )
+    agent = ca.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(404, "Custom agent not found.")
+    await db.delete(agent)
+    await db.commit()
+    from app.orchestra.ai.session.pool import pool as _pool
+    _pool.invalidate_bot_agents(str(org.id))
+    logger.info("custom_agent.deleted", space_id=str(org.id), agent_id=str(agent_id))
 
 
 # ── Knowledge base chunks ─────────────────────────────────────────────────────
-
-# Note: org_agents router has prefix /org/agents — KB chunks live at a separate path.
-# We add a separate router here mounted at /org/kb.
 
 kb_router = APIRouter(prefix="/org/kb", tags=["Org Knowledge Base"])
 
@@ -267,9 +451,9 @@ kb_router = APIRouter(prefix="/org/kb", tags=["Org Knowledge Base"])
 @kb_router.get("/{doc_id}/chunks")
 async def get_org_doc_chunks(
     doc_id: str,
-    org: Organization = Depends(current_brand),
+    org: Space = Depends(current_space),
 ):
-    """Return all chunks for a specific doc belonging to the authenticated org."""
+    from app.rag.vector_store import get_vector_store
     store = get_vector_store()
     chunks = store.get_doc_chunks(client_id=str(org.id), doc_id=doc_id)
     return {"doc_id": doc_id, "org_slug": org.slug, "chunks": chunks, "total": len(chunks)}

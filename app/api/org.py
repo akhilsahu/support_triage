@@ -33,7 +33,7 @@ async def brand_root():
 async def org_search(q: str = ""):
     """Public org search — returns matching active orgs by name or slug."""
     from app.core.database import AsyncSessionLocal
-    from app.models.org import Organization
+    from app.models.space import Space
     from sqlalchemy import or_, func
     if not q or len(q.strip()) < 1:
         return {"results": []}
@@ -41,12 +41,12 @@ async def org_search(q: str = ""):
     try:
         term = f"%{q.strip().lower()}%"
         result = await db.execute(
-            select(Organization)
+            select(Space)
             .where(
-                Organization.active == True,
+                Space.active == True,
                 or_(
-                    func.lower(Organization.display_name).like(term),
-                    func.lower(Organization.slug).like(term),
+                    func.lower(Space.display_name).like(term),
+                    func.lower(Space.slug).like(term),
                 )
             )
             .limit(6)
@@ -64,11 +64,11 @@ async def org_search(q: str = ""):
 async def org_public_info(slug: str):
     """Public org branding info for the customer chat UI."""
     from app.core.database import AsyncSessionLocal
-    from app.models.org import Organization
+    from app.models.space import Space
     db = AsyncSessionLocal()
     try:
         result = await db.execute(
-            select(Organization).where(Organization.slug == slug, Organization.active == True)
+            select(Space).where(Space.slug == slug, Space.active == True)
         )
         org = result.scalar_one_or_none()
         if not org:
