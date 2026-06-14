@@ -413,8 +413,9 @@ def upgrade():
 
         if _table_exists(conn, "org_data_sources"):
             conn.execute(sa.text("""
-                INSERT INTO space_data_sources
-                SELECT * FROM org_data_sources ON CONFLICT DO NOTHING
+                INSERT INTO space_data_sources (id, space_id, name, agent_type, api_url, auth_header, sample_response, active, created_at, updated_at)
+                SELECT id, space_id, name, agent_type, api_url, auth_header, sample_response, active, created_at, updated_at
+                FROM org_data_sources ON CONFLICT DO NOTHING
             """))
 
     # ── chat_sessions ─────────────────────────────────────────────────────────
@@ -617,10 +618,8 @@ def upgrade():
         # Seed single row with all nav items enabled
         conn.execute(sa.text(
             "INSERT INTO platform_settings (id, nav_config, created_at) "
-            "VALUES (gen_random_uuid(), "
-            "'{\"dashboard\":true,\"chat\":true,\"agents\":true,\"knowledge-base\":true,"
-            "\"analytics\":true,\"data-sources\":true,\"settings\":true}', NOW())"
-        ))
+            "VALUES (gen_random_uuid(), :nav, NOW())"
+        ), {"nav": '{"dashboard":true,"chat":true,"agents":true,"knowledge-base":true,"analytics":true,"data-sources":true,"settings":true}'})
 
     # ── Drop old tables (data already copied above) ───────────────────────────
     for old_table in [
