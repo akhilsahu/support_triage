@@ -235,6 +235,11 @@ class AuthResponse(BaseModel):
     space: dict
 
 
+class RegisterResponse(BaseModel):
+    needs_verification: bool
+    email: str
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
@@ -251,9 +256,12 @@ MAX_PASSWORD_BYTES = 72                       # bcrypt only hashes the first 72 
 SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$")   # 2–40 chars, no edge hyphens
 
 
-@router.post("/register", response_model=AuthResponse, status_code=201)
-async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    """Create a new space account and seed built-in agents."""
+@router.post("/register", response_model=RegisterResponse, status_code=201)
+async def register(req: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    """Create a new space account, send verification email, and await confirmation."""
+
+    ip = client_ip(request)
+    await enforce_rate_limit("register_ip", ip, 10, settings.LOGIN_RATELIMIT_WINDOW_SEC)
 
     # Normalize so case/whitespace variants can't create duplicate or route-breaking slugs.
     slug = req.slug.strip().lower()
@@ -313,12 +321,22 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
     catalog = await _ensure_catalog(db)
     await _seed_org_builtin_configs(db, space.id, default_chatbot.id, catalog)
+
+    # Generate verification token (24 h expiry) and send email before committing
+    verification_token = secrets.token_urlsafe(32)
+    space.email_verified = False  # type: ignore[assignment]
+    space.email_verification_token = verification_token  # type: ignore[assignment]
+    space.email_verification_expires = datetime.utcnow() + timedelta(hours=24)  # type: ignore[assignment]
     await db.commit()
     await db.refresh(space)
 
-    token = create_token({"sub": str(space.id), "slug": space.slug})
+    frontend_base = str(request.base_url).rstrip("/")
+    verify_url = f"{frontend_base}/app/verify-email?token={verification_token}"
+    from app.services.inbox.email_notify import send_verification_email
+    send_verification_email(to=email, verify_url=verify_url)
+
     logger.info("space.registered", slug=space.slug, space_id=str(space.id))
-    return AuthResponse(token=token, space=space.to_dict())
+    return RegisterResponse(needs_verification=True, email=email)
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -342,11 +360,16 @@ async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(
         )
     if not space.active:
         raise HTTPException(status_code=403, detail="Account is deactivated.")
+    if not space.email_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Please verify your email before logging in. Check your inbox for the verification link.",
+        )
 
     # Successful login — clear the per-email counter so legit users aren't penalized.
     await reset_rate_limit("login_email", email)
 
-    token = create_token({"sub": str(space.id), "slug": space.slug})
+    token = create_token({"sub": str(space.id), "slug": space.slug, "tv": space.token_version or 1})
     logger.info("space.login", slug=space.slug)
     return AuthResponse(token=token, space=space.to_dict())
 
@@ -358,9 +381,40 @@ async def me(space: Space = Depends(current_space)):
 
 
 @router.post("/logout", status_code=200)
-async def logout():
-    """Stateless logout — client should discard the token."""
+async def logout(space: Space = Depends(current_space), db: AsyncSession = Depends(get_db)):
+    """
+    Invalidate all live tokens for this space by incrementing token_version.
+    Any JWT issued before this point will fail the version check on next use.
+    """
+    space.token_version = (space.token_version or 1) + 1
+    await db.commit()
+    logger.info("space.logout", slug=space.slug)
     return {"detail": "Logged out."}
+
+
+@router.get("/verify-email", status_code=200)
+async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
+    """
+    Confirm email ownership. Called when the user clicks the link in their inbox.
+    Marks email_verified=True and clears the token.
+    """
+    result = await db.execute(
+        select(Space).where(Space.email_verification_token == token.strip())
+    )
+    space = result.scalar_one_or_none()
+
+    if not space:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link.")
+    if space.email_verification_expires and datetime.utcnow() > space.email_verification_expires:
+        raise HTTPException(status_code=400, detail="Verification link has expired. Please register again or request a new link.")
+
+    space.email_verified = True  # type: ignore[assignment]
+    space.email_verification_token = None  # type: ignore[assignment]
+    space.email_verification_expires = None  # type: ignore[assignment]
+    await db.commit()
+
+    logger.info("space.email_verified", space_id=str(space.id), slug=space.slug)
+    return {"detail": "Email verified. You can now log in."}
 
 
 @router.post("/forgot-password", status_code=200)
@@ -396,8 +450,11 @@ async def forgot_password(req: ForgotPasswordRequest, request: Request, db: Asyn
 
 
 @router.post("/reset-password", status_code=200)
-async def reset_password(req: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+async def reset_password(req: ResetPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Validate the reset token and set a new password."""
+    ip = client_ip(request)
+    await enforce_rate_limit("reset_ip", ip, 10, settings.LOGIN_RATELIMIT_WINDOW_SEC)
+
     if len(req.password) < MIN_PASSWORD_LEN:
         raise HTTPException(status_code=400, detail=f"Password must be at least {MIN_PASSWORD_LEN} characters.")
     if len(req.password.encode("utf-8")) > MAX_PASSWORD_BYTES:
@@ -416,6 +473,8 @@ async def reset_password(req: ResetPasswordRequest, db: AsyncSession = Depends(g
     space.password_hash            = hash_password(req.password)
     space.password_reset_token     = None
     space.password_reset_expires   = None
+    # Invalidate all live tokens — anyone holding an old JWT can no longer use it.
+    space.token_version            = (space.token_version or 1) + 1
     await db.commit()
 
     logger.info("auth.password_reset", space_id=str(space.id))

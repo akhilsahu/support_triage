@@ -18,6 +18,7 @@ import { TestChat } from './screens/TestChat'
 import { EmbedWidget } from './screens/EmbedWidget'
 import { ForgotPassword } from './screens/ForgotPassword'
 import { ResetPassword } from './screens/ResetPassword'
+import { VerifyEmail } from './screens/VerifyEmail'
 import {
   AboutPage, WhatWeDoPage, FeaturesPage,
   PrivacyPage, TermsPage, CookiesPage, ContactPage, SecurityPage,
@@ -106,6 +107,7 @@ export default function App() {
           <Route path="/app/login"          element={<DynamicLogin />} />
           <Route path="/app/forgot-password" element={<ForgotPassword />} />
           <Route path="/app/reset-password"  element={<ResetPassword />} />
+          <Route path="/app/verify-email"    element={<VerifyEmail />} />
           <Route path="/app/dashboard" element={<PrivateRoute><Layout title="Dashboard" subtitle="SUPPORT247.chat overview"><Dashboard /></Layout></PrivateRoute>} />
           <Route path="/app/chat" element={<PrivateRoute><Layout title="Chat" subtitle="AI-powered customer support"><Chat /></Layout></PrivateRoute>} />
           <Route path="/app/agents" element={<PrivateRoute><Layout title="Agents" subtitle="Manage your AI agent fleet"><Agents /></Layout></PrivateRoute>} />

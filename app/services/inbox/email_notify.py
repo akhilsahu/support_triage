@@ -53,6 +53,28 @@ def _send_email(to: str, subject: str, body_html: str) -> None:
         logger.error("email.send_failed", to=to, error=str(e))
 
 
+def send_verification_email(to: str, verify_url: str) -> None:
+    """Send an email verification link after registration.
+    SMTP settings come from env vars: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM.
+    """
+    body = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto">
+      <h2 style="color:#6366f1">Verify your email</h2>
+      <p>Thanks for signing up for SUPPORT247.chat! Click below to verify your email and activate your account.</p>
+      <p style="margin:28px 0">
+        <a href="{verify_url}"
+           style="background:#6366f1;color:#fff;padding:12px 28px;border-radius:99px;text-decoration:none;font-weight:bold;font-size:14px">
+          Verify Email
+        </a>
+      </p>
+      <p style="color:#888;font-size:13px">If you didn't sign up for SUPPORT247.chat, you can safely ignore this email.</p>
+      <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+      <p style="color:#bbb;font-size:11px">SUPPORT247.chat · Automated notification</p>
+    </div>
+    """
+    _send_email(to=to, subject="Verify your SUPPORT247.chat email", body_html=body)
+
+
 def send_password_reset_email(to: str, reset_url: str) -> None:
     """Send a password reset link to the user's email address."""
     body = f"""

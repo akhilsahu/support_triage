@@ -159,8 +159,7 @@ export function Login3() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || 'Registration failed')
-      setAuth(data.token, data.space?.id || '', data.space?.slug || '', data.space?.display_name || '')
-      navigate('/app/dashboard')
+      navigate('/app/verify-email')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Registration failed')
     } finally {

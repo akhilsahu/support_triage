@@ -61,7 +61,12 @@ def verify_password(plain: str, hashed: str) -> bool:
 # ── Token helpers ─────────────────────────────────────────────────────────────
 
 def create_token(data: dict, expires_hours: int = TOKEN_TTL_H) -> str:
-    """Create a signed JWT with an expiry claim."""
+    """Create a signed JWT with an expiry claim.
+
+    Callers must include "tv" (token_version) from the Space row so that
+    logout and password-change can invalidate all live tokens by incrementing
+    the version counter.
+    """
     payload = {**data, "exp": datetime.utcnow() + timedelta(hours=expires_hours)}
     return jwt.encode(payload, _secret(), algorithm=ALGORITHM)
 
@@ -105,4 +110,15 @@ async def current_space(
     org = result.scalar_one_or_none()
     if not org or not org.active:
         raise HTTPException(status_code=401, detail="Space account not found or inactive.")
+
+    # Revocation check — token_version in JWT must match the DB value.
+    # Logout and password-change increment the DB counter, invalidating all prior tokens.
+    token_tv = payload.get("tv")
+    if token_tv is None or int(token_tv) != int(org.token_version or 1):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     return org

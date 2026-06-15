@@ -18,13 +18,27 @@ logger = structlog.get_logger()
 
 def client_ip(request: Request) -> str:
     """
-    Resolve the real client IP. Behind nginx, request.client.host is always
-    127.0.0.1, so prefer the left-most X-Forwarded-For entry when present.
+    Resolve the real client IP.
+
+    X-Forwarded-For is attacker-controlled when the direct connection comes from
+    a non-trusted host. We only trust it when the direct TCP connection is from
+    a known reverse-proxy (localhost or a private subnet). In that case, the
+    right-most entry is the one the trusted proxy appended — not the left-most,
+    which the client can forge.
     """
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    direct_ip = request.client.host if request.client else "unknown"
+    # Treat loopback and RFC-1918 ranges as trusted proxy addresses.
+    _trusted = ("127.", "10.", "172.16.", "172.17.", "172.18.", "172.19.",
+                 "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
+                 "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
+                 "192.168.", "::1", "fd", "fc")
+    behind_proxy = any(direct_ip.startswith(p) for p in _trusted)
+    if behind_proxy:
+        xff = request.headers.get("x-forwarded-for", "")
+        if xff:
+            # Right-most entry = added by our proxy; left entries may be forged.
+            return xff.split(",")[-1].strip()
+    return direct_ip
 
 
 async def enforce_rate_limit(bucket: str, identifier: str, limit: int, window_sec: int) -> None:

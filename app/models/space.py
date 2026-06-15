@@ -36,9 +36,17 @@ class Space(Base):
     email        = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
 
+    # Email verification
+    email_verified              = Column(Boolean, default=False, nullable=False)
+    email_verification_token    = Column(String(255), nullable=True, index=True)
+    email_verification_expires  = Column(DateTime, nullable=True)
+
     # Password reset
     password_reset_token   = Column(String(255), nullable=True, index=True)
     password_reset_expires = Column(DateTime, nullable=True)
+
+    # JWT revocation — increment to invalidate all existing tokens for this space
+    token_version = Column(Integer, default=1, nullable=False)
 
     # White-label customisation
     logo_url     = Column(String(500), nullable=True)
