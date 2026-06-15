@@ -16,8 +16,6 @@ const FOOTER_LINKS = {
   ],
   Company: [
     { label: 'About us',           to: '/about'        },
-    { label: 'Blog',               to: '/blog'         },
-    { label: 'Careers',            to: '/careers'      },
     { label: 'Contact',            to: '/contact'      },
   ],
   Legal: [
@@ -25,12 +23,6 @@ const FOOTER_LINKS = {
     { label: 'Terms & Conditions', to: '/terms'        },
     { label: 'Cookie Policy',      to: '/cookies'      },
     { label: 'Security',           to: '/security'     },
-  ],
-  Support: [
-    { label: 'Documentation',      to: '/docs'         },
-    { label: 'Help Center',        to: '/help'         },
-    { label: 'API Reference',      to: '/api-reference'},
-    { label: 'Status',             to: '/status'       },
   ],
 }
 

@@ -48,6 +48,16 @@ const THEMES = {
     contactCard:    'p-5 rounded-2xl',
     contactLabel:   'text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1',
     contactLink:    'text-sm font-medium text-indigo-400 hover:underline',
+    authCard:       'bg-[#181b28]/50 border border-white/10',
+    authInput:      'bg-[#181b28] border border-white/10 text-white placeholder-slate-500 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10',
+    authBtn:        'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-lg shadow-indigo-500/20',
+    authBackLink:   'text-slate-500 hover:text-slate-300',
+    authHomeBtn:    'bg-[#181b28]/60 border border-white/10 text-slate-400 hover:text-white',
+    authCopyright:  'text-slate-600',
+    authIconBg:     'bg-gradient-to-tr from-indigo-600 to-violet-600 shadow-lg shadow-indigo-500/20',
+    authLabelText:  'text-slate-350',
+    authGlow1:      'bg-indigo-500/10',
+    authGlow2:      'bg-violet-500/10',
   },
   homepage2: {
     page:           'bg-[#090a15] text-slate-100',
@@ -87,6 +97,16 @@ const THEMES = {
     contactCard:    'p-5 rounded-2xl',
     contactLabel:   'text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1',
     contactLink:    'text-sm font-medium text-violet-400 hover:underline',
+    authCard:       'bg-slate-900/50 border border-white/10',
+    authInput:      'bg-slate-900/80 border border-white/10 text-white placeholder-slate-500 focus:border-violet-500/50 focus:ring-4 focus:ring-violet-500/10',
+    authBtn:        'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-lg shadow-indigo-600/20',
+    authBackLink:   'text-slate-500 hover:text-slate-300',
+    authHomeBtn:    'bg-slate-900/60 border border-white/10 text-slate-400 hover:text-white',
+    authCopyright:  'text-slate-600',
+    authIconBg:     'bg-gradient-to-tr from-violet-600 to-indigo-600 shadow-lg shadow-violet-500/20',
+    authLabelText:  'text-slate-400',
+    authGlow1:      'bg-violet-600/10',
+    authGlow2:      'bg-indigo-600/10',
   },
   homepage3: {
     page:           'bg-[#FAF7F0] text-slate-800',
@@ -126,10 +146,20 @@ const THEMES = {
     contactCard:    'p-5 rounded-2xl',
     contactLabel:   'text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1',
     contactLink:    'text-sm font-medium text-amber-700 hover:underline',
+    authCard:       'bg-white border border-amber-200/60',
+    authInput:      'bg-white border border-amber-200/60 text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10',
+    authBtn:        'bg-gradient-to-r from-amber-600 via-rose-500 to-pink-500 hover:opacity-95 text-white shadow-md',
+    authBackLink:   'text-slate-500 hover:text-slate-800',
+    authHomeBtn:    'bg-white border border-amber-200/40 text-slate-500 hover:text-slate-900',
+    authCopyright:  'text-slate-400',
+    authIconBg:     'bg-gradient-to-tr from-amber-600 to-rose-500 shadow-md',
+    authLabelText:  'text-slate-700',
+    authGlow1:      'bg-amber-400/10',
+    authGlow2:      'bg-rose-400/10',
   },
 }
 
-function usePublicTheme() {
+export function usePublicTheme() {
   const { activeHomepage } = useAppStore()
   return THEMES[activeHomepage] ?? THEMES.homepage1
 }

@@ -11,21 +11,13 @@ const FOOTER_LINKS = {
   ],
   Company: [
     { label: 'About us',           to: '/about'        },
-    { label: 'Blog',               to: '/about'         },
-    { label: 'Careers',            to: '/about'      },
-    { label: 'Contact',            to: '/about'      },
+    { label: 'Contact',            to: '/contact'      },
   ],
   Legal: [
     { label: 'Privacy Policy',     to: '/privacy'      },
     { label: 'Terms & Conditions', to: '/terms'        },
     { label: 'Cookie Policy',      to: '/cookies'      },
     { label: 'Security',           to: '/security'     },
-  ],
-  Support: [
-    { label: 'Documentation',      to: '/docs'         },
-    { label: 'Help Center',        to: '/help'         },
-    { label: 'API Reference',      to: '/api-reference'},
-    { label: 'Status',             to: '/status'       },
   ],
 }
 
