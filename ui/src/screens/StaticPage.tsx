@@ -9,12 +9,32 @@ import { useAppStore } from '../store/useAppStore'
 
 // ── Theme tokens ──────────────────────────────────────────────────────────────
 
+const FOOTER_LINKS = {
+  Product: [
+    { label: 'How it works', to: '/how-it-works' },
+    { label: 'What we do',   to: '/what-we-do'   },
+    { label: 'Features',     to: '/features'     },
+    { label: 'Pricing',      to: '/pricing'      },
+  ],
+  Company: [
+    { label: 'About us', to: '/about'   },
+    { label: 'Contact',  to: '/contact' },
+  ],
+  Legal: [
+    { label: 'Privacy Policy',     to: '/privacy'  },
+    { label: 'Terms & Conditions', to: '/terms'    },
+    { label: 'Cookie Policy',      to: '/cookies'  },
+    { label: 'Security',           to: '/security' },
+  ],
+}
+
 const THEMES = {
   homepage1: {
     page:           'bg-[#0d0f1c] text-slate-100',
     font:           "'Google Sans', 'Plus Jakarta Sans', Inter, system-ui, sans-serif",
     navBg:          'sticky top-0 z-40 flex items-center justify-between px-8 py-4 bg-[#0d0f1c]/80 backdrop-blur-md border-b border-white/5',
     logoText:       'font-bold text-white tracking-tight',
+    navMidLink:     'text-sm text-gray-400 hover:text-white transition-colors',
     signInLink:     'text-sm text-slate-400 hover:text-white font-medium px-3 py-1.5',
     ctaBtn:         'text-sm bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-semibold px-4 py-2 rounded-xl shadow-md shadow-indigo-500/25',
     headerBg:       'bg-[#181b28]/50 border-b border-white/5 px-8 py-16 text-center',
@@ -27,6 +47,13 @@ const THEMES = {
     strong:         'text-white',
     cardBg:         'bg-[#181b28]/70 border border-white/10',
     accentLink:     'text-indigo-400 hover:underline',
+    footerWrap:     'border-t border-white/5 text-gray-500 px-8 pt-14 pb-8 bg-[#07080f]',
+    footerTagline:  'text-xs leading-relaxed text-gray-500 font-medium',
+    footerColHead:  'text-white text-xs font-semibold uppercase tracking-wider mb-4',
+    footerColLink:  'text-xs text-gray-600 hover:text-gray-300 transition-colors',
+    footerCopyBd:   'border-white/5',
+    footerCopyText: 'text-xs text-gray-700',
+    footerCopyLink: 'text-xs text-gray-700 hover:text-gray-400 transition-colors',
     footerBorder:   'border-t border-white/5 px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-slate-600',
     footerLink:     'hover:text-slate-300',
     stepIcon:       'bg-gradient-to-br from-indigo-500 to-violet-600',
@@ -64,6 +91,7 @@ const THEMES = {
     font:           "'Satoshi', 'Google Sans', Inter, system-ui, sans-serif",
     navBg:          'sticky top-0 z-40 flex items-center justify-between px-8 py-4 bg-[#090a15]/80 backdrop-blur-md border-b border-white/5',
     logoText:       'font-bold text-white tracking-tight',
+    navMidLink:     'text-sm text-gray-400 hover:text-white transition-colors',
     signInLink:     'text-sm text-slate-400 hover:text-white font-medium px-3 py-1.5',
     ctaBtn:         'text-sm bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold px-4 py-2 rounded-xl shadow-lg shadow-indigo-600/20',
     headerBg:       'bg-slate-900/40 border-b border-white/5 px-8 py-16 text-center',
@@ -76,6 +104,13 @@ const THEMES = {
     strong:         'text-white',
     cardBg:         'bg-slate-900/50 border border-white/10',
     accentLink:     'text-violet-400 hover:underline',
+    footerWrap:     'border-t border-white/5 text-gray-500 px-8 pt-14 pb-8 bg-[#07080f]',
+    footerTagline:  'text-xs leading-relaxed text-gray-500 font-medium',
+    footerColHead:  'text-white text-xs font-semibold uppercase tracking-wider mb-4',
+    footerColLink:  'text-xs text-gray-600 hover:text-gray-300 transition-colors',
+    footerCopyBd:   'border-white/5',
+    footerCopyText: 'text-xs text-gray-700',
+    footerCopyLink: 'text-xs text-gray-700 hover:text-gray-400 transition-colors',
     footerBorder:   'border-t border-white/5 px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-slate-600',
     footerLink:     'hover:text-slate-300',
     stepIcon:       'bg-gradient-to-br from-violet-500 to-indigo-600',
@@ -113,6 +148,7 @@ const THEMES = {
     font:           "'Satoshi', 'Google Sans', Inter, system-ui, sans-serif",
     navBg:          'sticky top-0 z-40 flex items-center justify-between px-8 py-4 bg-[#FAF7F0]/85 backdrop-blur-md border-b border-amber-200/30',
     logoText:       'font-extrabold text-slate-900 tracking-tight',
+    navMidLink:     'text-xs font-bold tracking-wider uppercase text-slate-500 hover:text-amber-700 transition-colors',
     signInLink:     'text-sm text-slate-600 hover:text-slate-900 font-medium px-3 py-1.5',
     ctaBtn:         'text-sm bg-gradient-to-r from-amber-600 via-rose-500 to-pink-500 text-white font-extrabold px-4 py-2 rounded-xl shadow-md',
     headerBg:       'bg-gradient-to-b from-amber-50/70 to-transparent border-b border-amber-100/60 px-8 py-16 text-center',
@@ -125,6 +161,13 @@ const THEMES = {
     strong:         'text-slate-900',
     cardBg:         'bg-white border border-amber-100',
     accentLink:     'text-amber-700 hover:underline',
+    footerWrap:     'border-t border-amber-200/20 text-slate-500 px-8 pt-14 pb-8 bg-white',
+    footerTagline:  'text-xs leading-relaxed text-slate-400 font-medium',
+    footerColHead:  'text-slate-900 text-xs font-semibold uppercase tracking-wider mb-4',
+    footerColLink:  'text-xs text-slate-400 hover:text-slate-700 transition-colors',
+    footerCopyBd:   'border-amber-200/20',
+    footerCopyText: 'text-xs text-slate-400',
+    footerCopyLink: 'text-xs text-slate-400 hover:text-slate-700 transition-colors',
     footerBorder:   'border-t border-amber-100 px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-gray-400',
     footerLink:     'hover:text-gray-600',
     stepIcon:       'bg-gradient-to-br from-amber-500 to-rose-500',
@@ -184,6 +227,12 @@ export function StaticPage({ title, subtitle, children }: StaticPageProps) {
             <img src={IMAGES.logo} alt="SUPPORT247.chat" className="w-8 h-8 rounded-lg object-cover shadow-sm" />
             <span className={theme.logoText}>SUPPORT247.chat</span>
           </Link>
+          <div className="hidden md:flex items-center gap-7">
+            <Link to="/"            className={theme.navMidLink}>Home</Link>
+            <Link to="/how-it-works" className={theme.navMidLink}>How it works</Link>
+            <Link to="/features"     className={theme.navMidLink}>Features</Link>
+            <Link to="/pricing"      className={theme.navMidLink}>Pricing</Link>
+          </div>
           <div className="flex items-center gap-3">
             <Link to="/app/login" className={theme.signInLink}>Sign in</Link>
             <Link to="/app/login?tab=register" className={theme.ctaBtn}>Sign up free</Link>
@@ -207,12 +256,37 @@ export function StaticPage({ title, subtitle, children }: StaticPageProps) {
         </main>
 
         {/* Footer */}
-        <footer className={theme.footerBorder}>
-          <p>© {new Date().getFullYear()} SUPPORT247.chat</p>
-          <div className="flex items-center gap-5">
-            <Link to="/privacy" className={theme.footerLink}>Privacy</Link>
-            <Link to="/terms"   className={theme.footerLink}>Terms</Link>
-            <Link to="/contact" className={theme.footerLink}>Contact</Link>
+        <footer className={theme.footerWrap}>
+          <div className="max-w-6xl mx-auto">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12">
+              <div className="col-span-2 md:col-span-1">
+                <div className="flex items-center gap-2 mb-3">
+                  <img src={IMAGES.logo} alt="SUPPORT247.chat" className="w-7 h-7 rounded-md object-cover" />
+                  <span className={`text-sm font-semibold ${theme.logoText}`}>SUPPORT247.chat</span>
+                </div>
+                <p className={theme.footerTagline}>AI-powered multi-agent support for modern businesses.</p>
+              </div>
+              {Object.entries(FOOTER_LINKS).map(([group, links]) => (
+                <div key={group}>
+                  <p className={theme.footerColHead}>{group}</p>
+                  <ul className="space-y-2.5">
+                    {links.map(({ label, to }) => (
+                      <li key={label}>
+                        <Link to={to} className={theme.footerColLink}>{label}</Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <div className={`border-t ${theme.footerCopyBd} pt-6 flex flex-col md:flex-row items-center justify-between gap-3`}>
+              <p className={theme.footerCopyText}>© {new Date().getFullYear()} SUPPORT247.chat. All rights reserved.</p>
+              <div className="flex items-center gap-5">
+                <Link to="/privacy" className={theme.footerCopyLink}>Privacy</Link>
+                <Link to="/terms"   className={theme.footerCopyLink}>Terms</Link>
+                <Link to="/cookies" className={theme.footerCopyLink}>Cookies</Link>
+              </div>
+            </div>
           </div>
         </footer>
       </div>
