@@ -9,6 +9,7 @@ POST /auth/logout    — stateless, returns 200
 
 from __future__ import annotations
 
+import asyncio
 import re
 import secrets
 import uuid
@@ -330,10 +331,9 @@ async def register(req: RegisterRequest, request: Request, db: AsyncSession = De
     await db.commit()
     await db.refresh(space)
 
-    frontend_base = str(request.base_url).rstrip("/")
-    verify_url = f"{frontend_base}/app/verify-email?token={verification_token}"
+    verify_url = f"{settings.FRONTEND_URL.rstrip('/')}/app/verify-email?token={verification_token}"
     from app.services.inbox.email_notify import send_verification_email
-    send_verification_email(to=email, verify_url=verify_url)
+    await asyncio.to_thread(send_verification_email, email, verify_url)
 
     logger.info("space.registered", slug=space.slug, space_id=str(space.id))
     return RegisterResponse(needs_verification=True, email=email)
@@ -417,6 +417,26 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
     return {"detail": "Email verified. You can now log in."}
 
 
+@router.post("/resend-verification", status_code=200)
+async def resend_verification(req: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Re-send the email verification link. Always returns 200 to prevent enumeration."""
+    email = req.email.strip().lower()
+    result = await db.execute(select(Space).where(Space.email == email))
+    space = result.scalar_one_or_none()
+
+    if space and not space.email_verified:
+        token = secrets.token_urlsafe(32)
+        space.email_verification_token = token  # type: ignore[assignment]
+        space.email_verification_expires = datetime.utcnow() + timedelta(hours=24)  # type: ignore[assignment]
+        await db.commit()
+        verify_url = f"{settings.FRONTEND_URL.rstrip('/')}/app/verify-email?token={token}"
+        from app.services.inbox.email_notify import send_verification_email
+        await asyncio.to_thread(send_verification_email, email, verify_url)
+        logger.info("space.resend_verification", email=email)
+
+    return {"detail": "If that email is registered and unverified, a new link is on its way."}
+
+
 @router.post("/forgot-password", status_code=200)
 async def forgot_password(req: ForgotPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """
@@ -441,9 +461,8 @@ async def forgot_password(req: ForgotPasswordRequest, request: Request, db: Asyn
         space.password_reset_expires = expires
         await db.commit()
 
-        frontend_base = str(request.base_url).rstrip("/")
-        reset_url = f"{frontend_base}/app/reset-password?token={token}"
-        send_password_reset_email(to=email, reset_url=reset_url)
+        reset_url = f"{settings.FRONTEND_URL.rstrip('/')}/app/reset-password?token={token}"
+        await asyncio.to_thread(send_password_reset_email, email, reset_url)
         logger.info("auth.forgot_password", email=email)
 
     return {"detail": "If that email is registered you will receive a reset link shortly."}

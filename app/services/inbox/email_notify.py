@@ -44,10 +44,15 @@ def _send_email(to: str, subject: str, body_html: str) -> None:
     msg.attach(MIMEText(body_html, "html"))
 
     try:
-        with smtplib.SMTP(cfg["host"], cfg["port"]) as server:
-            server.starttls()
-            server.login(cfg["user"], cfg["password"])
-            server.sendmail(cfg["from_addr"], to, msg.as_string())
+        if cfg["port"] == 465:
+            with smtplib.SMTP_SSL(cfg["host"], cfg["port"]) as server:
+                server.login(cfg["user"], cfg["password"])
+                server.sendmail(cfg["from_addr"], to, msg.as_string())
+        else:
+            with smtplib.SMTP(cfg["host"], cfg["port"]) as server:
+                server.starttls()
+                server.login(cfg["user"], cfg["password"])
+                server.sendmail(cfg["from_addr"], to, msg.as_string())
         logger.info("email.sent", to=to, subject=subject)
     except Exception as e:
         logger.error("email.send_failed", to=to, error=str(e))

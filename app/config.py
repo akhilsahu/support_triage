@@ -198,7 +198,11 @@ class Settings(BaseSettings):
     # Set ORCHESTRATOR=agno in .env to enable Agno-backed routing.
     ORCHESTRATOR: str = "agno"
 
-    # SMTP — used for password reset emails
+    # Frontend base URL — used to build email verification / password reset links
+    # Set this to the public site URL (e.g. https://support247.chat) in production
+    FRONTEND_URL: str = "http://localhost:5173"
+
+    # SMTP — used for email verification and password reset emails
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USER: str = ""

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Mail, CheckCircle, XCircle, Loader2, Home } from 'lucide-react'
+import { Mail, CheckCircle, XCircle, Loader2, Home, RefreshCw } from 'lucide-react'
 import { usePublicTheme } from './StaticPage'
 
 const API = '/api/v1'
@@ -13,10 +13,13 @@ export function VerifyEmail() {
   const [status, setStatus] = useState<'idle' | 'verifying' | 'success' | 'error'>('idle')
   const [error, setError] = useState('')
 
+  // Resend state
+  const [resendEmail, setResendEmail] = useState('')
+  const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+
   useEffect(() => {
     if (!token) return
     setStatus('verifying')
-
     fetch(`${API}/auth/verify-email?token=${encodeURIComponent(token)}`)
       .then(async (res) => {
         if (res.ok) {
@@ -32,6 +35,22 @@ export function VerifyEmail() {
         setStatus('error')
       })
   }, [token])
+
+  const handleResend = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!resendEmail.trim()) return
+    setResendStatus('sending')
+    try {
+      await fetch(`${API}/auth/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resendEmail.trim() }),
+      })
+      setResendStatus('sent')
+    } catch {
+      setResendStatus('error')
+    }
+  }
 
   return (
     <div
@@ -54,57 +73,90 @@ export function VerifyEmail() {
         </Link>
       </div>
 
-      <div className={`relative z-10 w-full max-w-md rounded-2xl p-10 shadow-2xl backdrop-blur-md text-center ${t.authCard}`}>
+      <div className={`relative z-10 w-full max-w-lg rounded-2xl p-10 shadow-2xl backdrop-blur-md text-center ${t.authCard}`}>
 
         {/* No token — "check your inbox" state */}
         {!token && (
           <>
-            <div className="flex justify-center mb-6">
-              <div className={`w-16 h-16 rounded-full flex items-center justify-center ${t.authGlow1} border ${t.cardBg.replace('bg-', 'border-')}`}>
-                <Mail className={`w-8 h-8 ${t.accentLink.replace(' hover:underline', '')}`} />
+            <div className="flex justify-center mb-7">
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center ${t.authGlow1} border ${t.cardBg.replace('bg-', 'border-')}`}>
+                <Mail className={`w-10 h-10 ${t.accentLink.replace(' hover:underline', '')}`} />
               </div>
             </div>
-            <h1 className={`text-2xl font-bold mb-3 ${t.h1.replace('text-4xl', 'text-2xl').replace(' mb-3 tracking-tight', '')}`}>Check your email</h1>
-            <p className={`text-sm leading-relaxed mb-8 ${t.subtitle}`}>
+            <h1 className={`text-3xl font-bold mb-4 ${t.h1.replace('text-4xl', 'text-3xl').replace(' mb-3 tracking-tight', '')}`}>
+              Check your email
+            </h1>
+            <p className={`text-base leading-relaxed mb-10 ${t.subtitle}`}>
               We've sent a verification link to your email address.<br />
               Click the link to activate your account and log in.
             </p>
-            <p className={`text-xs ${t.prose}`}>
-              Didn't receive it? Check your spam folder, or{' '}
-              <Link to="/app/login?tab=register" className={t.accentLink}>
-                register again
-              </Link>
-              .
-            </p>
+
+            {/* Resend form */}
+            <div className={`rounded-xl p-5 text-left ${t.cardBg}`}>
+              <p className={`text-sm font-semibold mb-3 ${t.prose}`}>Didn't receive it?</p>
+              {resendStatus === 'sent' ? (
+                <div className="flex items-center gap-2 text-emerald-500 text-sm font-semibold">
+                  <CheckCircle className="w-4 h-4" />
+                  New link sent — check your inbox.
+                </div>
+              ) : (
+                <form onSubmit={handleResend} className="flex gap-2">
+                  <input
+                    type="email"
+                    value={resendEmail}
+                    onChange={e => setResendEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    required
+                    className={`flex-1 px-4 py-2.5 text-sm rounded-xl focus:outline-none transition-all ${t.authInput}`}
+                  />
+                  <button
+                    type="submit"
+                    disabled={resendStatus === 'sending'}
+                    className={`px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all ${t.authBtn}`}
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${resendStatus === 'sending' ? 'animate-spin' : ''}`} />
+                    Resend
+                  </button>
+                </form>
+              )}
+              {resendStatus === 'error' && (
+                <p className="text-xs text-red-500 mt-2">Something went wrong. Try again.</p>
+              )}
+              <p className={`text-xs mt-3 ${t.prose} opacity-60`}>Also check your spam / junk folder.</p>
+            </div>
           </>
         )}
 
         {/* Verifying */}
         {token && status === 'verifying' && (
           <>
-            <div className="flex justify-center mb-6">
-              <Loader2 className={`w-12 h-12 animate-spin ${t.accentLink.replace(' hover:underline', '')}`} />
+            <div className="flex justify-center mb-7">
+              <Loader2 className={`w-14 h-14 animate-spin ${t.accentLink.replace(' hover:underline', '')}`} />
             </div>
-            <h1 className={`text-2xl font-bold mb-3 ${t.h1.replace('text-4xl', 'text-2xl').replace(' mb-3 tracking-tight', '')}`}>Verifying your email…</h1>
-            <p className={`text-sm ${t.subtitle}`}>Just a moment.</p>
+            <h1 className={`text-3xl font-bold mb-4 ${t.h1.replace('text-4xl', 'text-3xl').replace(' mb-3 tracking-tight', '')}`}>
+              Verifying your email…
+            </h1>
+            <p className={`text-base ${t.subtitle}`}>Just a moment.</p>
           </>
         )}
 
         {/* Success */}
         {token && status === 'success' && (
           <>
-            <div className="flex justify-center mb-6">
-              <div className="w-16 h-16 rounded-full bg-emerald-500/15 flex items-center justify-center">
-                <CheckCircle className="w-8 h-8 text-emerald-500" />
+            <div className="flex justify-center mb-7">
+              <div className="w-20 h-20 rounded-full bg-emerald-500/15 flex items-center justify-center">
+                <CheckCircle className="w-10 h-10 text-emerald-500" />
               </div>
             </div>
-            <h1 className={`text-2xl font-bold mb-3 ${t.h1.replace('text-4xl', 'text-2xl').replace(' mb-3 tracking-tight', '')}`}>Email verified!</h1>
-            <p className={`text-sm mb-8 ${t.subtitle}`}>
+            <h1 className={`text-3xl font-bold mb-4 ${t.h1.replace('text-4xl', 'text-3xl').replace(' mb-3 tracking-tight', '')}`}>
+              Email verified!
+            </h1>
+            <p className={`text-base mb-10 ${t.subtitle}`}>
               Your account is active. You can now log in.
             </p>
             <Link
               to="/app/login"
-              className={`inline-flex items-center gap-2 font-semibold text-sm px-7 py-3 rounded-xl transition-all ${t.authBtn}`}
+              className={`inline-flex items-center gap-2 font-bold text-base px-8 py-3.5 rounded-xl transition-all ${t.authBtn}`}
             >
               Go to Login
             </Link>
@@ -114,22 +166,62 @@ export function VerifyEmail() {
         {/* Error */}
         {token && status === 'error' && (
           <>
-            <div className="flex justify-center mb-6">
-              <div className="w-16 h-16 rounded-full bg-red-500/15 flex items-center justify-center">
-                <XCircle className="w-8 h-8 text-red-500" />
+            <div className="flex justify-center mb-7">
+              <div className="w-20 h-20 rounded-full bg-red-500/15 flex items-center justify-center">
+                <XCircle className="w-10 h-10 text-red-500" />
               </div>
             </div>
-            <h1 className={`text-2xl font-bold mb-3 ${t.h1.replace('text-4xl', 'text-2xl').replace(' mb-3 tracking-tight', '')}`}>Verification failed</h1>
-            <p className={`text-sm mb-8 ${t.subtitle}`}>{error}</p>
+            <h1 className={`text-3xl font-bold mb-4 ${t.h1.replace('text-4xl', 'text-3xl').replace(' mb-3 tracking-tight', '')}`}>
+              Verification failed
+            </h1>
+            <p className={`text-base mb-8 ${t.subtitle}`}>{error}</p>
+
+            {/* Resend form on error too */}
+            <div className={`rounded-xl p-5 text-left mb-6 ${t.cardBg}`}>
+              <p className={`text-sm font-semibold mb-3 ${t.prose}`}>Request a new link</p>
+              {resendStatus === 'sent' ? (
+                <div className="flex items-center gap-2 text-emerald-500 text-sm font-semibold">
+                  <CheckCircle className="w-4 h-4" />
+                  New link sent — check your inbox.
+                </div>
+              ) : (
+                <form onSubmit={handleResend} className="flex gap-2">
+                  <input
+                    type="email"
+                    value={resendEmail}
+                    onChange={e => setResendEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    required
+                    className={`flex-1 px-4 py-2.5 text-sm rounded-xl focus:outline-none transition-all ${t.authInput}`}
+                  />
+                  <button
+                    type="submit"
+                    disabled={resendStatus === 'sending'}
+                    className={`px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all ${t.authBtn}`}
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${resendStatus === 'sending' ? 'animate-spin' : ''}`} />
+                    Resend
+                  </button>
+                </form>
+              )}
+              {resendStatus === 'error' && (
+                <p className="text-xs text-red-500 mt-2">Something went wrong. Try again.</p>
+              )}
+            </div>
+
             <Link
               to="/app/login?tab=register"
-              className={`inline-flex items-center gap-2 font-semibold text-sm px-7 py-3 rounded-xl transition-all ${t.authBtn}`}
+              className={`inline-flex items-center gap-2 font-semibold text-sm ${t.accentLink}`}
             >
               Back to Register
             </Link>
           </>
         )}
       </div>
+
+      <p className={`absolute bottom-6 left-1/2 -translate-x-1/2 text-[10px] font-semibold tracking-wider ${t.authCopyright}`}>
+        © {new Date().getFullYear()} SUPPORT247.chat
+      </p>
     </div>
   )
 }
