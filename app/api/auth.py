@@ -286,13 +286,41 @@ async def register(req: RegisterRequest, request: Request, db: AsyncSession = De
     if len(req.password.encode("utf-8")) > MAX_PASSWORD_BYTES:
         raise HTTPException(status_code=400, detail="Password is too long (max 72 bytes).")
 
-    existing_slug = await db.execute(select(Space).where(Space.slug == slug))
-    if existing_slug.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Slug already taken.")
+    # ── Email check (takes priority over slug) ───────────────────────────────
+    existing_email_result = await db.execute(select(Space).where(Space.email == email))
+    existing_by_email = existing_email_result.scalar_one_or_none()
+    if existing_by_email:
+        if existing_by_email.email_verified:
+            raise HTTPException(status_code=409, detail="Email already registered.")
+        # Unverified account exists — resend verification to the original account
+        # and return early. Never create a second account for the same email.
+        new_token = secrets.token_urlsafe(32)
+        existing_by_email.email_verification_token = new_token  # type: ignore[assignment]
+        existing_by_email.email_verification_expires = datetime.utcnow() + timedelta(hours=24)  # type: ignore[assignment]
+        await db.commit()
+        verify_url = f"{settings.FRONTEND_URL.rstrip('/')}/app/verify-email?token={new_token}"
+        from app.services.inbox.email_notify import send_verification_email
+        await asyncio.to_thread(send_verification_email, email, verify_url)
+        logger.info("space.register_resend_verification", email=email, slug=existing_by_email.slug)
+        return RegisterResponse(needs_verification=True, email=email)
 
-    existing_email = await db.execute(select(Space).where(Space.email == email))
-    if existing_email.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Email already registered.")
+    # ── Slug check ────────────────────────────────────────────────────────────
+    existing_slug_result = await db.execute(select(Space).where(Space.slug == slug))
+    existing_by_slug = existing_slug_result.scalar_one_or_none()
+    if existing_by_slug:
+        if existing_by_slug.email_verified:
+            raise HTTPException(status_code=409, detail="Slug already taken.")
+        # Unverified account holds the slug — honour their 24 h claim window.
+        # Once expired, treat the stale account as abandoned and reclaim the slug.
+        token_expired = (
+            existing_by_slug.email_verification_expires is None
+            or datetime.utcnow() > existing_by_slug.email_verification_expires
+        )
+        if not token_expired:
+            raise HTTPException(status_code=409, detail="Slug already taken.")
+        # Expired unverified account — delete it so the slug can be reused.
+        await db.delete(existing_by_slug)
+        await db.flush()
 
     space = Space(
         slug=slug,
