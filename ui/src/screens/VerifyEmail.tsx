@@ -54,6 +54,42 @@ export function VerifyEmail() {
     }
   }
 
+  const resendForm = (
+    <div className={`rounded-xl p-5 text-left ${t.cardBg}`}>
+      <p className={`text-sm font-semibold mb-3 ${t.prose}`}>Didn't receive it?</p>
+      {resendStatus === 'sent' ? (
+        <div className="flex items-center gap-2 text-emerald-500 text-sm font-semibold">
+          <CheckCircle className="w-4 h-4" />
+          New link sent — check your inbox.
+        </div>
+      ) : (
+        <form onSubmit={handleResend} className="flex gap-2">
+          <input
+            type="email"
+            value={resendEmail}
+            onChange={e => !emailFromState && setResendEmail(e.target.value)}
+            placeholder="Enter your email"
+            readOnly={!!emailFromState}
+            required
+            className={`flex-1 px-4 py-2.5 text-sm rounded-xl focus:outline-none transition-all ${t.authInput} ${emailFromState ? 'cursor-default select-none opacity-80' : ''}`}
+          />
+          <button
+            type="submit"
+            disabled={resendStatus === 'sending'}
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all ${t.authBtn}`}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${resendStatus === 'sending' ? 'animate-spin' : ''}`} />
+            Resend
+          </button>
+        </form>
+      )}
+      {resendStatus === 'error' && (
+        <p className="text-xs text-red-500 mt-2">Something went wrong. Try again.</p>
+      )}
+      <p className={`text-xs mt-3 ${t.prose} opacity-60`}>Also check your spam / junk folder.</p>
+    </div>
+  )
+
   return (
     <div
       className={`min-h-screen flex flex-col items-center justify-center p-6 relative ${t.page}`}
@@ -93,40 +129,7 @@ export function VerifyEmail() {
               Click the link to activate your account and log in.
             </p>
 
-            {/* Resend form */}
-            <div className={`rounded-xl p-5 text-left ${t.cardBg}`}>
-              <p className={`text-sm font-semibold mb-3 ${t.prose}`}>Didn't receive it?</p>
-              {resendStatus === 'sent' ? (
-                <div className="flex items-center gap-2 text-emerald-500 text-sm font-semibold">
-                  <CheckCircle className="w-4 h-4" />
-                  New link sent — check your inbox.
-                </div>
-              ) : (
-                <form onSubmit={handleResend} className="flex gap-2">
-                  <input
-                    type="email"
-                    value={resendEmail}
-                    onChange={e => !emailFromState && setResendEmail(e.target.value)}
-                    placeholder="Enter your email"
-                    readOnly={!!emailFromState}
-                    required
-                    className={`flex-1 px-4 py-2.5 text-sm rounded-xl focus:outline-none transition-all ${t.authInput} ${emailFromState ? 'cursor-default select-none opacity-80' : ''}`}
-                  />
-                  <button
-                    type="submit"
-                    disabled={resendStatus === 'sending'}
-                    className={`px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all ${t.authBtn}`}
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${resendStatus === 'sending' ? 'animate-spin' : ''}`} />
-                    Resend
-                  </button>
-                </form>
-              )}
-              {resendStatus === 'error' && (
-                <p className="text-xs text-red-500 mt-2">Something went wrong. Try again.</p>
-              )}
-              <p className={`text-xs mt-3 ${t.prose} opacity-60`}>Also check your spam / junk folder.</p>
-            </div>
+            {resendForm}
           </>
         )}
 
@@ -179,39 +182,7 @@ export function VerifyEmail() {
             </h1>
             <p className={`text-base mb-8 ${t.subtitle}`}>{error}</p>
 
-            {/* Resend form on error too */}
-            <div className={`rounded-xl p-5 text-left mb-6 ${t.cardBg}`}>
-              <p className={`text-sm font-semibold mb-3 ${t.prose}`}>Request a new link</p>
-              {resendStatus === 'sent' ? (
-                <div className="flex items-center gap-2 text-emerald-500 text-sm font-semibold">
-                  <CheckCircle className="w-4 h-4" />
-                  New link sent — check your inbox.
-                </div>
-              ) : (
-                <form onSubmit={handleResend} className="flex gap-2">
-                  <input
-                    type="email"
-                    value={resendEmail}
-                    onChange={e => !emailFromState && setResendEmail(e.target.value)}
-                    placeholder="Enter your email"
-                    readOnly={!!emailFromState}
-                    required
-                    className={`flex-1 px-4 py-2.5 text-sm rounded-xl focus:outline-none transition-all ${t.authInput} ${emailFromState ? 'cursor-default select-none opacity-80' : ''}`}
-                  />
-                  <button
-                    type="submit"
-                    disabled={resendStatus === 'sending'}
-                    className={`px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all ${t.authBtn}`}
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${resendStatus === 'sending' ? 'animate-spin' : ''}`} />
-                    Resend
-                  </button>
-                </form>
-              )}
-              {resendStatus === 'error' && (
-                <p className="text-xs text-red-500 mt-2">Something went wrong. Try again.</p>
-              )}
-            </div>
+            <div className="mb-6">{resendForm}</div>
 
             <Link
               to="/app/login?tab=register"
