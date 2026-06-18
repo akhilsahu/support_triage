@@ -5,9 +5,9 @@ const Homepage1 = lazy(() => import('./home1/Homepage').then(m => ({ default: m.
 const Homepage2 = lazy(() => import('./home2/Homepage').then(m => ({ default: m.Homepage2 })))
 const Homepage3 = lazy(() => import('./home3/Homepage').then(m => ({ default: m.Homepage3 })))
 
-const Login1 = lazy(() => import('./home1/Login').then(m => ({ default: m.Login1 })))
-const Login2 = lazy(() => import('./home2/Login').then(m => ({ default: m.Login2 })))
-const Login3 = lazy(() => import('./home3/Login').then(m => ({ default: m.Login3 })))
+const AuthPage1 = lazy(() => import('./home1/AuthPage').then(m => ({ default: m.AuthPage1 })))
+const AuthPage2 = lazy(() => import('./home2/AuthPage').then(m => ({ default: m.AuthPage2 })))
+const AuthPage3 = lazy(() => import('./home3/AuthPage').then(m => ({ default: m.AuthPage3 })))
 
 const HowItWorks1 = lazy(() => import('./home1/HowItWorks').then(m => ({ default: m.HowItWorks1 })))
 const HowItWorks2 = lazy(() => import('./home2/HowItWorks').then(m => ({ default: m.HowItWorks2 })))
@@ -30,7 +30,7 @@ export function DynamicLogin() {
   const { activeHomepage } = useAppStore()
   return (
     <Suspense fallback={null}>
-      {activeHomepage === 'homepage3' ? <Login3 /> : activeHomepage === 'homepage2' ? <Login2 /> : <Login1 />}
+      {activeHomepage === 'homepage3' ? <AuthPage3 /> : activeHomepage === 'homepage2' ? <AuthPage2 /> : <AuthPage1 />}
     </Suspense>
   )
 }

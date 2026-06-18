@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams, useLocation } from 'react-router-dom'
 import { Mail, CheckCircle, XCircle, Loader2, Home, RefreshCw } from 'lucide-react'
 import { usePublicTheme } from './StaticPage'
 
@@ -9,12 +9,14 @@ export function VerifyEmail() {
   const t = usePublicTheme()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token') ?? ''
+  const location = useLocation()
+  const emailFromState = (location.state as { email?: string } | null)?.email ?? ''
 
   const [status, setStatus] = useState<'idle' | 'verifying' | 'success' | 'error'>('idle')
   const [error, setError] = useState('')
 
-  // Resend state
-  const [resendEmail, setResendEmail] = useState('')
+  // Resend state — pre-filled with email from registration flow
+  const [resendEmail, setResendEmail] = useState(emailFromState)
   const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
 
   useEffect(() => {
