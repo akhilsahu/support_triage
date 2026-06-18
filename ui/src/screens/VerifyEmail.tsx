@@ -106,10 +106,11 @@ export function VerifyEmail() {
                   <input
                     type="email"
                     value={resendEmail}
-                    onChange={e => setResendEmail(e.target.value)}
+                    onChange={e => !emailFromState && setResendEmail(e.target.value)}
                     placeholder="Enter your email"
+                    readOnly={!!emailFromState}
                     required
-                    className={`flex-1 px-4 py-2.5 text-sm rounded-xl focus:outline-none transition-all ${t.authInput}`}
+                    className={`flex-1 px-4 py-2.5 text-sm rounded-xl focus:outline-none transition-all ${t.authInput} ${emailFromState ? 'cursor-default select-none opacity-80' : ''}`}
                   />
                   <button
                     type="submit"
@@ -191,10 +192,11 @@ export function VerifyEmail() {
                   <input
                     type="email"
                     value={resendEmail}
-                    onChange={e => setResendEmail(e.target.value)}
+                    onChange={e => !emailFromState && setResendEmail(e.target.value)}
                     placeholder="Enter your email"
+                    readOnly={!!emailFromState}
                     required
-                    className={`flex-1 px-4 py-2.5 text-sm rounded-xl focus:outline-none transition-all ${t.authInput}`}
+                    className={`flex-1 px-4 py-2.5 text-sm rounded-xl focus:outline-none transition-all ${t.authInput} ${emailFromState ? 'cursor-default select-none opacity-80' : ''}`}
                   />
                   <button
                     type="submit"
