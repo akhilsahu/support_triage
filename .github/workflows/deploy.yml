@@ -25,7 +25,8 @@ jobs:
             set -e
             cd /var/www/support247
 
-            # Pull latest code
+            # Discard any local changes and pull latest code
+            git reset --hard HEAD
             git pull origin main
 
             # Write .env from GitHub secrets — no manual SSH needed
