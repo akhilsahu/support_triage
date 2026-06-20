@@ -205,8 +205,9 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Health check endpoint
+# Health check endpoint (also available at /api/v1/health for frontend proxy compatibility)
 @app.get("/health", tags=["Health"])
+@app.get("/api/v1/health", tags=["Health"])
 async def health_check():
     """Health check endpoint"""
     db_status = await check_db_connection()

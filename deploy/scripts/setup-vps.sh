@@ -12,8 +12,8 @@ apt-get update
 apt-get install -y nginx certbot python3-certbot-nginx
 
 echo "▶ Creating app directory..."
-mkdir -p /opt/support247
-cd /opt/support247
+mkdir -p /var/www/support247
+cd /var/www/support247
 
 echo "▶ Cloning repo (or pull if already exists)..."
 # Replace with your actual GitHub repo URL
@@ -39,6 +39,6 @@ echo ""
 echo "✅ VPS setup complete!"
 echo ""
 echo "Next steps:"
-echo "  1. Copy your .env file: scp .env user@YOUR_VPS_IP:/opt/support247/.env"
+echo "  1. Copy your .env file: scp .env user@YOUR_VPS_IP:/var/www/support247/.env"
 echo "  2. Add GitHub Actions secrets (see .env.example for the list)"
 echo "  3. Push to main — GitHub Actions will auto-deploy"

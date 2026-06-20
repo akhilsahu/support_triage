@@ -1,10 +1,9 @@
 // All backend endpoint paths in one place — update base URL or paths here only.
-const BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
-
+// Empty string = relative URLs, routed via Netlify proxy (prod) or Vite proxy (dev).
 export const API_CONFIG = {
-  baseURL: BASE,
+  baseURL: '',
   endpoints: {
-    health:     '/health',
+    health:     '/api/v1/health',
     chat:       '/api/v1/chat',
     agents:     '/api/v1/agents/status',
     sentiment:  '/api/v1/empathy/analyze',
