@@ -13,16 +13,38 @@ jobs:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host:         ${{ secrets.VPS_HOST }}
-          username:     ${{ secrets.VPS_USER }}
-          key:          ${{ secrets.VPS_SSH_KEY }}
-          key_path:     ""
+          host:     ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key:      ${{ secrets.VPS_SSH_KEY }}
+          envs: >-
+            SECRET_KEY,FRONTEND_URL,
+            POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,
+            SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,SMTP_FROM,
+            ANTHROPIC_API_KEY,OPENAI_API_KEY,SUPER_ADMIN_KEY
           script: |
             set -e
             cd /var/www/support247
 
             # Pull latest code
             git pull origin main
+
+            # Write .env from GitHub secrets — no manual SSH needed
+            printf '%s\n' \
+              "ENVIRONMENT=production" \
+              "FRONTEND_URL=${FRONTEND_URL}" \
+              "SECRET_KEY=${SECRET_KEY}" \
+              "POSTGRES_DB=${POSTGRES_DB}" \
+              "POSTGRES_USER=${POSTGRES_USER}" \
+              "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" \
+              "SMTP_HOST=${SMTP_HOST}" \
+              "SMTP_PORT=${SMTP_PORT}" \
+              "SMTP_USER=${SMTP_USER}" \
+              "SMTP_PASS=${SMTP_PASS}" \
+              "SMTP_FROM=${SMTP_FROM}" \
+              "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" \
+              "OPENAI_API_KEY=${OPENAI_API_KEY}" \
+              "SUPER_ADMIN_KEY=${SUPER_ADMIN_KEY}" \
+              > .env
 
             # Rebuild image natively on VPS (fast, no cross-compilation)
             docker compose -f deploy/docker-compose.prod.yml --env-file .env up --build -d --remove-orphans
@@ -33,4 +55,4 @@ jobs:
             # Clean up dangling images
             docker image prune -f
 
-            echo "✅ Deploy complete"
+            echo "Deploy complete"
