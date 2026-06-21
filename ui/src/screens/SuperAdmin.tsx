@@ -81,7 +81,8 @@ function ChunksModal({ clientId, docId, docName, adminKey, onClose }: {
   )
 }
 
-const API = '/api/v1/super-admin'
+import { API_CONFIG } from '@/config/api'
+const API = `${API_CONFIG.baseURL}/api/v1/super-admin`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -644,7 +645,7 @@ function HomepageConfigTab({ adminKey }: { adminKey: string }) {
 
   const setHomepageGlobal = async (val: 'homepage1' | 'homepage2' | 'homepage3') => {
     try {
-      const res = await fetch('/api/v1/super-admin/settings', {
+      const res = await fetch(`${API_CONFIG.baseURL}/api/v1/super-admin/settings`, {
         method: 'PATCH',
         headers: {
           'X-Super-Admin-Key': adminKey,

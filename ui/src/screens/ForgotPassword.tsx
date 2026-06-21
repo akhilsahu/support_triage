@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Mail, ArrowRight, Home, ArrowLeft } from 'lucide-react'
 import { usePublicTheme } from './StaticPage'
+import { API_CONFIG } from '@/config/api'
 
-const API = '/api/v1'
+const API = `${API_CONFIG.baseURL}/api/v1`
 
 export function ForgotPassword() {
   const t = usePublicTheme()

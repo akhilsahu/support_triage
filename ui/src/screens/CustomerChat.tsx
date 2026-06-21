@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useAppStore } from '../store/useAppStore'
+import { API_CONFIG } from '../config/api'
 import { Send, Plus, Sun, Moon, Waves, X } from 'lucide-react'
 import { SourceCitation } from '../components/ui/SourceCitation'
 import { NotFound } from './NotFound'
@@ -411,7 +412,7 @@ export function CustomerChat() {
     if (escalating || escalated) return
     setEscalating(true)
     try {
-      const res = await fetch('/api/v1/inbox/escalate', {
+      const res = await fetch(`${API_CONFIG.baseURL}/api/v1/inbox/escalate`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ session_id: sessionId, reason: 'customer_request' }),

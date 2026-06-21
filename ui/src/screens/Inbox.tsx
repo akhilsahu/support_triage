@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import apiClient from '../api/client'
 import { useAppStore } from '../store/useAppStore'
+import { API_CONFIG } from '../config/api'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -167,7 +168,7 @@ function ChatView({ session: initialSession, token, onClose, onResolved, reloadT
     try {
       // If AI session, escalate first then claim
       if (session.status === 'open') {
-        await fetch('/api/v1/inbox/escalate', {
+        await fetch(`${API_CONFIG.baseURL}/api/v1/inbox/escalate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ session_id: session.id, reason: 'manual_takeover' }),

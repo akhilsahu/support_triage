@@ -7,6 +7,7 @@ import { StatusDot } from '../ui/StatusDot'
 import { useAppStore } from '../../store/useAppStore'
 import { NAV_ITEMS, DEFAULT_ENABLED } from '../../config/navigation'
 import { apiClient } from '../../api/client'
+import { API_CONFIG } from '../../config/api'
 import { useInboxStream } from '../../lib/useInboxStream'
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -33,7 +34,7 @@ export function Sidebar() {
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/v1/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+      await fetch(`${API_CONFIG.baseURL}/api/v1/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
     } catch { /* ignore — logout is stateless server-side */ }
     logout()
     navigate('/app/login')

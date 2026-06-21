@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom'
+import { API_CONFIG } from './config/api'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Layout } from './components/layout/Layout'
 import { Dashboard } from './screens/Dashboard'
@@ -51,7 +52,7 @@ export default function App() {
 
   // Fetch active homepage on mount
   useEffect(() => {
-    fetch('/api/v1/super-admin/settings/public')
+    fetch(`${API_CONFIG.baseURL}/api/v1/super-admin/settings/public`)
       .then(r => r.json())
       .then(d => {
         if (d.active_homepage) {

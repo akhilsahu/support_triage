@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { Link, useSearchParams, useLocation } from 'react-router-dom'
 import { Mail, CheckCircle, XCircle, Loader2, Home, RefreshCw } from 'lucide-react'
 import { usePublicTheme } from './StaticPage'
+import { API_CONFIG } from '@/config/api'
 
-const API = '/api/v1'
+const API = `${API_CONFIG.baseURL}/api/v1`
 
 export function VerifyEmail() {
   const t = usePublicTheme()

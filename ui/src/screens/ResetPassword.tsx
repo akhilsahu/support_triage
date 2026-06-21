@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Lock, Eye, EyeOff, ArrowRight, Home, ArrowLeft, CheckCircle } from 'lucide-react'
 import { usePublicTheme } from './StaticPage'
+import { API_CONFIG } from '@/config/api'
 
-const API = '/api/v1'
+const API = `${API_CONFIG.baseURL}/api/v1`
 
 export function ResetPassword() {
   const t = usePublicTheme()

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAppStore } from '../../store/useAppStore'
+import { API_CONFIG } from '@/config/api'
 
-const API = '/api/v1'
+const API = `${API_CONFIG.baseURL}/api/v1`
 export type Tab = 'login' | 'register'
 
 export function useAuthForm() {
