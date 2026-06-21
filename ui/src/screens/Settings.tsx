@@ -19,7 +19,7 @@ export function Settings() {
     clearChat,
   } = useAppStore()
 
-  const [backendUrl, setBackendUrl] = useState(API_CONFIG.baseURL)
+  const [backendUrl, setBackendUrl] = useState<string>(API_CONFIG.baseURL)
   const [localApiKey, setLocalApiKey] = useState(apiKey)
   const [localClientId, setLocalClientId] = useState(clientId)
   const [showKey, setShowKey] = useState(false)

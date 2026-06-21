@@ -410,6 +410,7 @@ interface BuiltinAgentType {
   icon: string
   slug: string
   platform_enabled: boolean
+  locked?: boolean
 }
 
 function BuiltinAgentRow({ agent, adminKey, onToggled }: {

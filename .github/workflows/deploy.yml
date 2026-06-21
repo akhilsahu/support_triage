@@ -65,6 +65,9 @@ jobs:
               "CORS_ORIGINS=${CORS_ORIGINS}" \
               > .env
 
+            # Build frontend (relative API URLs — nginx proxies /api/* to backend)
+            cd ui && npm ci --prefer-offline && npm run build && cd ..
+
             # Rebuild image natively on VPS (fast, no cross-compilation)
             docker compose -f deploy/docker-compose.prod.yml --env-file .env up --build -d --remove-orphans
 

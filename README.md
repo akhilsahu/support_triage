@@ -948,6 +948,25 @@ builtin_agent_catalog  (global, super-admin managed)
 
 ---
 
+## Docker
+
+# Postgres logs
+docker logs deploy-postgres-1
+
+# API logs
+docker logs deploy-api-1
+
+# Follow live logs (ctrl+c to stop)
+docker logs -f deploy-api-1
+
+# Last 50 lines only
+docker logs --tail 50 deploy-postgres-1
+
+
+
+___
+
+
 ## 📝 License
 
 MIT License - see LICENSE file for details

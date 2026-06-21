@@ -1,7 +1,8 @@
 // All backend endpoint paths in one place — update base URL or paths here only.
-// Empty string = relative URLs, routed via Netlify proxy (prod) or Vite proxy (dev).
+// Empty string = relative URLs (Vite proxy in dev, or same-domain nginx in prod).
+// Set VITE_API_URL=https://api.support247.chat when frontend is on a different domain.
 export const API_CONFIG = {
-  baseURL: '',
+  baseURL: import.meta.env.VITE_API_URL ?? '',
   endpoints: {
     health:     '/api/v1/health',
     chat:       '/api/v1/chat',

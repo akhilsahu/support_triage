@@ -11,6 +11,10 @@ echo "▶ Installing Nginx + Certbot..."
 apt-get update
 apt-get install -y nginx certbot python3-certbot-nginx
 
+echo "▶ Installing Node.js 20 (for UI builds)..."
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt-get install -y nodejs
+
 echo "▶ Creating app directory..."
 mkdir -p /var/www/support247
 cd /var/www/support247
@@ -25,12 +29,15 @@ fi
 
 echo "▶ Configuring Nginx..."
 cp deploy/nginx/api.support247.chat.conf /etc/nginx/sites-available/
+cp deploy/nginx/support247.chat.conf     /etc/nginx/sites-available/
 ln -sf /etc/nginx/sites-available/api.support247.chat.conf /etc/nginx/sites-enabled/
+ln -sf /etc/nginx/sites-available/support247.chat.conf     /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
-echo "▶ Issuing SSL certificate via Let's Encrypt..."
+echo "▶ Issuing SSL certificates via Let's Encrypt..."
 certbot --nginx -d api.support247.chat --non-interactive --agree-tos -m admin@support247.chat
+certbot --nginx -d support247.chat -d www.support247.chat --non-interactive --agree-tos -m admin@support247.chat
 
 echo "▶ Setting up auto-renew..."
 systemctl enable --now certbot.timer
