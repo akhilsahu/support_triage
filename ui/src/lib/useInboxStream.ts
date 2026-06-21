@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { fetchSSE } from './fetchSSE'
 import { useAppStore } from '../store/useAppStore'
+import { API_CONFIG } from '../config/api'
 
 /**
  * App-level inbox SSE connection.
@@ -27,7 +28,7 @@ export function useInboxStream(token: string) {
       while (!cancelled) {
         ctrl = new AbortController()
         await fetchSSE({
-          url: '/api/v1/inbox/stream',
+          url: `${API_CONFIG.baseURL}/api/v1/inbox/stream`,
           headers: { Authorization: `Bearer ${token}` },
           signal: ctrl.signal,
           onEvent: (type, data) => {

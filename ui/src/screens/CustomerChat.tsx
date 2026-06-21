@@ -258,7 +258,7 @@ export function CustomerChat() {
     if (!sessionId) return
     sseRef.current?.close()
 
-    const es = new EventSource(`/api/v1/inbox/customer-stream?session_id=${sessionId}`)
+    const es = new EventSource(`${API_CONFIG.baseURL}/api/v1/inbox/customer-stream?session_id=${sessionId}`)
     sseRef.current = es
 
     es.addEventListener('human_message', (e) => {

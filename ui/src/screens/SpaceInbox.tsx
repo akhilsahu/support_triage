@@ -13,6 +13,7 @@ import {
 import apiClient from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import { fetchSSE } from '../lib/fetchSSE'
+import { API_CONFIG } from '../config/api'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -589,7 +590,7 @@ export function SpaceInbox() {
     sseRef.current = ctrl
 
     fetchSSE({
-      url: '/api/v1/inbox/stream',
+      url: `${API_CONFIG.baseURL}/api/v1/inbox/stream`,
       headers: { Authorization: `Bearer ${token}` },
       signal: ctrl.signal,
       onEvent: (type) => {
