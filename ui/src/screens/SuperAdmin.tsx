@@ -448,7 +448,7 @@ function BuiltinAgentRow({ agent, adminKey, onToggled }: {
         <span className={`text-xs font-medium ${agent.platform_enabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
           {agent.platform_enabled ? 'Enabled for all orgs' : 'Hidden from all orgs'}
         </span>
-        {agent.locked ? (
+        {agent.locked && agent.platform_enabled ? (
           <span className="text-xs text-gray-400 italic">locked</span>
         ) : (
           <button
