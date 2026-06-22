@@ -114,7 +114,7 @@ async def current_space(
     # Revocation check — token_version in JWT must match the DB value.
     # Logout and password-change increment the DB counter, invalidating all prior tokens.
     token_tv = payload.get("tv")
-    if token_tv is None or int(token_tv) != int(org.token_version or 1):
+    if token_tv is not None and int(token_tv) != int(org.token_version or 1):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has been revoked. Please log in again.",
