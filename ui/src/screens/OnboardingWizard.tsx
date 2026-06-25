@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { Upload, FileText, CheckCircle, ArrowRight, Loader2, Sparkles, X, Copy, ExternalLink, SkipForward, Bot, BookOpen, Rocket, PartyPopper } from 'lucide-react'
 import { apiClient } from '../api/client'
@@ -19,7 +19,6 @@ export function OnboardingWizard() {
   const [searchParams] = useSearchParams()
   const isQuick = searchParams.get('quick') === 'true'
   const { token, spaceSlug, spaceName, setOnboardingComplete } = useAppStore()
-  if (!token) return <Navigate to="/app/login" replace />
 
   const [step, setStep] = useState(isQuick ? 2 : 1)
   const [kbTab, setKbTab]         = useState<KnowledgeTab>('file')
@@ -38,14 +37,6 @@ export function OnboardingWizard() {
   const [creatingAgent, setCreatingAgent]     = useState(false)
   const [copied, setCopied]                   = useState(false)
 
-  const embedCode = `<script src="https://api.support247.chat/api/v1/widget/embed.js" data-space="${spaceSlug}" defer></script>`
-
-  const skipAll = async () => {
-    await apiClient.markOnboardingComplete().catch(() => {})
-    setOnboardingComplete(true)
-    navigate('/app/dashboard')
-  }
-
   const fetchSuggestion = async (resolvedKbId: string) => {
     setLoadingSugg(true)
     try {
@@ -55,6 +46,25 @@ export function OnboardingWizard() {
       setSystemPrompt(r.system_prompt || '')
     } catch { setAgentName(`${spaceName} Support Agent`) }
     finally { setLoadingSugg(false) }
+  }
+
+  // Fire suggestion fetch whenever the agent step becomes active
+  useEffect(() => {
+    if (step === 3 && !loadingSuggestion && !suggestion) {
+      fetchSuggestion(kbId)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step])
+
+  // Guard after all hooks
+  if (!token) return <Navigate to="/app/login" replace />
+
+  const embedCode = `<script src="https://api.support247.chat/api/v1/widget/embed.js" data-space="${spaceSlug}" defer></script>`
+
+  const skipAll = async () => {
+    await apiClient.markOnboardingComplete().catch(() => {})
+    setOnboardingComplete(true)
+    navigate('/app/dashboard')
   }
 
   const handleKnowledgeNext = async () => {
@@ -73,7 +83,6 @@ export function OnboardingWizard() {
       }
       setKbId(id)
       setStep(3)
-      await fetchSuggestion(id)
     } catch (e) { console.error(e) }
     finally { setUploading(false) }
   }
@@ -330,7 +339,7 @@ export function OnboardingWizard() {
 
                 <div className="flex gap-3 mt-7">
                   <button
-                    onClick={() => { setStep(3); fetchSuggestion('') }}
+                    onClick={() => setStep(3)}
                     disabled={uploading}
                     className="px-6 py-4 text-sm font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-2xl transition-colors flex-shrink-0"
                   >

@@ -565,15 +565,37 @@ async def get_agent_suggestion(
     if not req.doc_types and not req.agent_name:
         raise HTTPException(400, "Provide doc_types or agent_name.")
 
-    return await get_or_generate(
-        db=db,
-        space_id=org.id,
-        org_name=org.display_name,
-        doc_types=req.doc_types,
-        doc_id=req.doc_id,
-        agent_name=req.agent_name,
-        force=req.force,
-    )
+    try:
+        return await get_or_generate(
+            db=db,
+            space_id=org.id,
+            org_name=org.display_name,
+            doc_types=req.doc_types,
+            doc_id=req.doc_id,
+            agent_name=req.agent_name,
+            force=req.force,
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error("agent_suggestions_failed: %s", e)
+        # Return a usable fallback so the wizard doesn't break
+        name = req.agent_name or (org.display_name + " Support Agent")
+        return {
+            "suggestion_id": None,
+            "name": name,
+            "description": f"Handles customer support questions for {org.display_name}.",
+            "system_prompt": (
+                f"You are a customer support agent for {org.display_name}.\n\n"
+                "Your role:\n"
+                "- Answer customer questions accurately using the knowledge base provided\n"
+                "- Be professional, concise, and helpful\n"
+                "- If you cannot resolve the issue, escalate to human support\n\n"
+                "Constraints:\n"
+                "- Do not make up information — if unsure, say so\n"
+                "- Stay on topic relevant to the business"
+            ),
+            "from_cache": False,
+        }
 
 
 @router.patch("/agent-suggestions/link")
