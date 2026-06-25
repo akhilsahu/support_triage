@@ -63,6 +63,8 @@ async def _get_default_chatbot(db: AsyncSession, org: Space) -> Chatbot:
 # ── Request / Response ────────────────────────────────────────────────────────
 
 class AgentUpdateRequest(BaseModel):
+    name:          Optional[str] = None
+    description:   Optional[str] = None
     system_prompt: Optional[str] = None
     temperature:   Optional[float] = Field(None, ge=0.0, le=1.0)
     max_tokens:    Optional[int] = Field(None, ge=50, le=4000)
@@ -348,6 +350,21 @@ async def update_org_agent(
     if not agent:
         raise HTTPException(404, "Agent not found.")
 
+    if req.name is not None:
+        name_stripped = req.name.strip()
+        if name_stripped and name_stripped.lower() != agent.name.lower():
+            dupe = await db.execute(
+                select(CustomAgent).where(
+                    CustomAgent.space_id == org.id,
+                    CustomAgent.name.ilike(name_stripped),
+                    CustomAgent.id != agent.id,
+                )
+            )
+            if dupe.scalar_one_or_none():
+                raise HTTPException(409, f"An agent named '{name_stripped}' already exists.")
+        agent.name = name_stripped
+    if req.description is not None:
+        agent.description = req.description
     if req.system_prompt is not None:
         agent.system_prompt = req.system_prompt
     if req.temperature is not None:
@@ -388,6 +405,16 @@ async def create_org_agent(
     org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
+    # Reject duplicate names within the same space (case-insensitive)
+    name_check = await db.execute(
+        select(CustomAgent).where(
+            CustomAgent.space_id == org.id,
+            CustomAgent.name.ilike(req.name.strip()),
+        )
+    )
+    if name_check.scalar_one_or_none():
+        raise HTTPException(409, f"An agent named '{req.name.strip()}' already exists.")
+
     base_slug = re.sub(r"[^a-z0-9_]", "_", req.name.lower().strip())[:40].strip("_")
     slug = base_slug
     i = 1

@@ -36,6 +36,7 @@ export function OnboardingWizard() {
   const [systemPrompt, setSystemPrompt]     = useState('')
   const [loadingSuggestion, setLoadingSugg] = useState(false)
   const [creatingAgent, setCreatingAgent]   = useState(false)
+  const [agentError, setAgentError]         = useState('')
   const [copied, setCopied]                 = useState(false)
 
   const fetchSuggestion = async (resolvedKbId: string) => {
@@ -100,6 +101,7 @@ export function OnboardingWizard() {
 
   const handleCreateAgent = async () => {
     setCreatingAgent(true)
+    setAgentError('')
     try {
       await apiClient.createOrgAgent({
         name: agentName.trim() || `${spaceName} Agent`,
@@ -112,8 +114,9 @@ export function OnboardingWizard() {
       await apiClient.markOnboardingComplete()
       setOnboardingComplete(true)
       setStep(4)
-    } catch (e) { console.error(e) }
-    finally { setCreatingAgent(false) }
+    } catch (e: any) {
+      setAgentError(e?.response?.data?.detail || 'Failed to create agent.')
+    } finally { setCreatingAgent(false) }
   }
 
   const copyEmbed = () => {
@@ -398,6 +401,10 @@ export function OnboardingWizard() {
                       <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                       <p className="text-sm text-emerald-700 font-medium">Knowledge base attached</p>
                     </div>
+                  )}
+
+                  {agentError && (
+                    <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{agentError}</p>
                   )}
 
                   <button

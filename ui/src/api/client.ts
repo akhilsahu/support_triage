@@ -157,6 +157,8 @@ export const apiClient = {
   }) => http.post('/api/v1/org/agents', payload).then(r => r.data),
 
   updateOrgAgent: (id: string, payload: {
+    name?: string
+    description?: string
     system_prompt?: string
     temperature?: number
     max_tokens?: number

@@ -88,6 +88,8 @@ function PromptModal({ agent, docTypes, onClose, onSaved }: {
   onClose: () => void
   onSaved: (updated: OrgAgent) => void
 }) {
+  const [agentName, setAgentName]       = useState(agent.name)
+  const [description, setDescription]  = useState(agent.description)
   const [systemPrompt, setSystemPrompt] = useState(agent.system_prompt)
   const [temperature, setTemperature]   = useState(agent.temperature)
   const [maxTokens, setMaxTokens]       = useState(agent.max_tokens)
@@ -112,6 +114,8 @@ function PromptModal({ agent, docTypes, onClose, onSaved }: {
     setError('')
     try {
       const updated = await apiClient.updateOrgAgent(agent.id, {
+        name: agentName.trim() || undefined,
+        description,
         system_prompt: systemPrompt,
         temperature,
         max_tokens: maxTokens,
@@ -146,6 +150,35 @@ function PromptModal({ agent, docTypes, onClose, onSaved }: {
         </div>
 
         <div className="p-5 space-y-5">
+          {/* Name */}
+          {!agent.is_builtin && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                Agent Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={agentName}
+                onChange={e => setAgentName(e.target.value)}
+                className={inputCls}
+              />
+            </div>
+          )}
+
+          {/* Description */}
+          {!agent.is_builtin && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Description</label>
+              <input
+                type="text"
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                placeholder="Short description of what this agent handles"
+                className={inputCls}
+              />
+            </div>
+          )}
+
           {/* System prompt */}
           <div>
             <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">System Prompt</label>
@@ -271,7 +304,7 @@ function PromptModal({ agent, docTypes, onClose, onSaved }: {
 
         <div className="flex gap-2 p-5 border-t border-gray-200 dark:border-gray-700">
           <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
-          <Button onClick={save} disabled={saving || (ragEnabled && ragDocTypes.length === 0)} loading={saving} className="flex-1">
+          <Button onClick={save} disabled={saving || (!agent.is_builtin && !agentName.trim()) || (ragEnabled && ragDocTypes.length === 0)} loading={saving} className="flex-1">
             {saving ? 'Saving…' : 'Save Changes'}
           </Button>
         </div>
