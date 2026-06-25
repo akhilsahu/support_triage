@@ -6,9 +6,9 @@ import { typography, type FontSizeKey } from '../config/typography'
 interface AppState {
   // Auth
   token: string
-  orgId: string
-  orgSlug: string
-  orgName: string
+  spaceId: string
+  spaceSlug: string
+  spaceName: string
   onboardingComplete: boolean
   setOnboardingComplete: (v: boolean) => void
   setAuth: (token: string, id: string, slug: string, name: string, onboardingComplete?: boolean) => void
@@ -74,13 +74,13 @@ export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
       token: '',
-      orgId: '',
-      orgSlug: '',
-      orgName: '',
+      spaceId: '',
+      spaceSlug: '',
+      spaceName: '',
       onboardingComplete: false,
       setOnboardingComplete: (v) => set({ onboardingComplete: v }),
-      setAuth: (token, orgId, orgSlug, orgName, onboardingComplete = false) => set({ token, orgId, orgSlug, orgName, onboardingComplete }),
-      logout: () => set({ token: '', orgId: '', orgSlug: '', orgName: '', onboardingComplete: false, messages: [], conversationId: undefined, enabledNavItems: null, unreadSessionIds: [], activeInboxSessionId: null, inboxEvent: null }),
+      setAuth: (token, spaceId, spaceSlug, spaceName, onboardingComplete = false) => set({ token, spaceId, spaceSlug, spaceName, onboardingComplete }),
+      logout: () => set({ token: '', spaceId: '', spaceSlug: '', spaceName: '', onboardingComplete: false, messages: [], conversationId: undefined, enabledNavItems: null, unreadSessionIds: [], activeInboxSessionId: null, inboxEvent: null }),
 
       isDark: typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : false,
       toggleTheme: () => set((s) => {
@@ -140,7 +140,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'support247-store',
-      partialize: (s) => ({ isDark: s.isDark, fontSize: s.fontSize, sidebarCollapsed: s.sidebarCollapsed, apiKey: s.apiKey, clientId: s.clientId, token: s.token, orgId: s.orgId, orgSlug: s.orgSlug, orgName: s.orgName, onboardingComplete: s.onboardingComplete, activeHomepage: s.activeHomepage }),
+      partialize: (s) => ({ isDark: s.isDark, fontSize: s.fontSize, sidebarCollapsed: s.sidebarCollapsed, apiKey: s.apiKey, clientId: s.clientId, token: s.token, spaceId: s.spaceId, spaceSlug: s.spaceSlug, spaceName: s.spaceName, onboardingComplete: s.onboardingComplete, activeHomepage: s.activeHomepage }),
     }
   )
 )

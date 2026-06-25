@@ -3,10 +3,10 @@ import { ArrowLeft } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 
 export function TestChat() {
-  const orgSlug  = useAppStore(s => s.orgSlug)
+  const spaceSlug  = useAppStore(s => s.spaceSlug)
   const navigate = useNavigate()
 
-  if (!orgSlug) return (
+  if (!spaceSlug) return (
     <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
       No chatbot slug found.
     </div>
@@ -25,8 +25,8 @@ export function TestChat() {
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
         <iframe
-          key={orgSlug}
-          src={`/${orgSlug}`}
+          key={spaceSlug}
+          src={`/${spaceSlug}`}
           className="w-full h-full border-0"
           title="Test Chat"
         />

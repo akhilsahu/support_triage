@@ -23,8 +23,8 @@ http.interceptors.request.use(config => {
 export const apiClient = {
   healthCheck: () => http.get(API_CONFIG.endpoints.health).then(r => r.data),
 
-  sendMessage: (message: string, conversationId?: string, orgId?: string) =>
-    http.post(API_CONFIG.endpoints.chat, { message, conversation_id: conversationId, org_id: orgId }).then(r => r.data),
+  sendMessage: (message: string, conversationId?: string, spaceId?: string) =>
+    http.post(API_CONFIG.endpoints.chat, { message, conversation_id: conversationId, org_id: spaceId }).then(r => r.data),
 
   getAgentStatus: () =>
     http.get(API_CONFIG.endpoints.agents).then(r => r.data),

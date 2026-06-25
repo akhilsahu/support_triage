@@ -170,7 +170,7 @@ interface SpaceInfo {
 
 export function CustomerChat() {
   const { slug: slugParam }             = useParams<{ slug?: string }>()
-  const storeSlug                       = useAppStore(s => s.orgSlug)
+  const storeSlug                       = useAppStore(s => s.spaceSlug)
   const slug                            = slugParam || storeSlug || ''
   const [searchParams, setSearchParams] = useSearchParams()
   const chatParam                       = searchParams.get('chat')

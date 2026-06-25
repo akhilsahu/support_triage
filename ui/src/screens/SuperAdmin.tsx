@@ -96,7 +96,7 @@ interface Stats {
   total_skills: number
 }
 
-interface Org {
+interface Space {
   id: string
   slug: string
   display_name: string
@@ -112,8 +112,8 @@ interface Org {
 
 interface Agent {
   id: string
-  org_slug: string
-  org_name: string
+  space_slug: string
+  space_name: string
   slug: string
   name: string
   agent_type: string
@@ -125,8 +125,8 @@ interface Agent {
 
 interface LogEntry {
   id: string
-  org_slug: string
-  org_name: string
+  space_slug: string
+  space_name: string
   session_id: string
   role: string
   message: string
@@ -170,7 +170,7 @@ function Badge({ children, color }: { children: React.ReactNode, color: string }
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${color}`}>{children}</span>
 }
 
-// ── OrgRow ────────────────────────────────────────────────────────────────────
+// ── SpaceRow ────────────────────────────────────────────────────────────────────
 
 interface KbDoc {
   doc_id: string
@@ -183,8 +183,8 @@ interface KbDoc {
   expires_at: string
 }
 
-function OrgRow({ org, adminKey, onRefresh, onViewChunks }: {
-  org: Org, adminKey: string, onRefresh: () => void,
+function SpaceRow({ space, adminKey, onRefresh, onViewChunks }: {
+  space: Space, adminKey: string, onRefresh: () => void,
   onViewChunks: (clientId: string, docId: string, docName: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -193,7 +193,7 @@ function OrgRow({ org, adminKey, onRefresh, onViewChunks }: {
 
   const loadDetail = async () => {
     if (detail) { setExpanded(e => !e); return }
-    const data = await api(adminKey).get(`/orgs/${org.id}`)
+    const data = await api(adminKey).get(`/orgs/${space.id}`)
     setDetail({ agents: data.agents, skills: data.skills, kb_docs: data.kb_docs || [] })
     setExpanded(true)
   }
@@ -201,7 +201,7 @@ function OrgRow({ org, adminKey, onRefresh, onViewChunks }: {
   const toggleActive = async () => {
     setToggling(true)
     try {
-      await api(adminKey).patch(`/orgs/${org.id}`, { active: !org.active })
+      await api(adminKey).patch(`/orgs/${space.id}`, { active: !space.active })
       onRefresh()
     } finally {
       setToggling(false)
@@ -209,7 +209,7 @@ function OrgRow({ org, adminKey, onRefresh, onViewChunks }: {
   }
 
   const changePlan = async (plan: string) => {
-    await api(adminKey).patch(`/orgs/${org.id}`, { plan })
+    await api(adminKey).patch(`/orgs/${space.id}`, { plan })
     onRefresh()
   }
 
@@ -218,14 +218,14 @@ function OrgRow({ org, adminKey, onRefresh, onViewChunks }: {
       <tr className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
         <td className="px-4 py-3">
           <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">{org.display_name}</p>
-            <p className="text-xs text-gray-500">@{org.slug}</p>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">{space.display_name}</p>
+            <p className="text-xs text-gray-500">@{space.slug}</p>
           </div>
         </td>
-        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{org.email}</td>
+        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{space.email}</td>
         <td className="px-4 py-3">
           <select
-            value={org.plan}
+            value={space.plan}
             onChange={e => changePlan(e.target.value)}
             className="text-xs px-2 py-1 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300"
           >
@@ -233,22 +233,22 @@ function OrgRow({ org, adminKey, onRefresh, onViewChunks }: {
           </select>
         </td>
         <td className="px-4 py-3">
-          {org.active
+          {space.active
             ? <Badge color="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">Active</Badge>
             : <Badge color="bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400">Inactive</Badge>}
         </td>
-        <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-400 text-center">{org.active_agents}/{org.agent_count}</td>
-        <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-400 text-center">{org.message_count.toLocaleString()}</td>
-        <td className="px-4 py-3 text-xs text-gray-500">{new Date(org.created_at).toLocaleDateString()}</td>
+        <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-400 text-center">{space.active_agents}/{space.agent_count}</td>
+        <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-400 text-center">{space.message_count.toLocaleString()}</td>
+        <td className="px-4 py-3 text-xs text-gray-500">{new Date(space.created_at).toLocaleDateString()}</td>
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
             <button
               onClick={toggleActive}
               disabled={toggling}
-              title={org.active ? 'Deactivate' : 'Activate'}
-              className={`p-1.5 rounded-lg transition-colors ${org.active ? 'hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-500'}`}
+              title={space.active ? 'Deactivate' : 'Activate'}
+              className={`p-1.5 rounded-lg transition-colors ${space.active ? 'hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-500'}`}
             >
-              {org.active ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+              {space.active ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
             </button>
             <button
               onClick={loadDetail}
@@ -304,7 +304,7 @@ function OrgRow({ org, adminKey, onRefresh, onViewChunks }: {
                         <span className="font-medium text-gray-700 dark:text-gray-300">{d.doc_name || d.filename}</span>
                         <Badge color="bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400">{d.doc_type}</Badge>
                         <button
-                          onClick={() => onViewChunks(org.slug, d.doc_id, d.doc_name || d.filename)}
+                          onClick={() => onViewChunks(space.slug, d.doc_id, d.doc_name || d.filename)}
                           className="flex items-center gap-0.5 text-indigo-500 hover:text-indigo-700 hover:underline"
                         >
                           <Eye className="w-3 h-3" /> View chunks
@@ -363,8 +363,8 @@ function AgentRow({ agent, adminKey, onToggled }: {
         </div>
       </td>
       <td className="px-4 py-3">
-        <p className="text-sm text-gray-700 dark:text-gray-300">{agent.org_name}</p>
-        <p className="text-xs text-gray-400">@{agent.org_slug}</p>
+        <p className="text-sm text-gray-700 dark:text-gray-300">{agent.space_name}</p>
+        <p className="text-xs text-gray-400">@{agent.space_slug}</p>
       </td>
       <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{agent.agent_type}</td>
       <td className="px-4 py-3">
@@ -446,7 +446,7 @@ function BuiltinAgentRow({ agent, adminKey, onToggled }: {
       </div>
       <div className="flex items-center gap-3">
         <span className={`text-xs font-medium ${agent.platform_enabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
-          {agent.platform_enabled ? 'Enabled for all orgs' : 'Hidden from all orgs'}
+          {agent.platform_enabled ? 'Enabled for all spaces' : 'Hidden from all spaces'}
         </span>
         {agent.locked && agent.platform_enabled ? (
           <span className="text-xs text-gray-400 italic">locked</span>
@@ -505,10 +505,10 @@ function NavToggle({ label, enabled, locked, onChange }: {
   )
 }
 
-function NavConfigTab({ adminKey, orgs }: { adminKey: string; orgs: Org[] }) {
+function NavConfigTab({ adminKey, spaces }: { adminKey: string; spaces: Space[] }) {
   const [systemNav, setSystemNav] = useState<Record<string, boolean>>({})
   const [spaceNavs, setSpaceNavs] = useState<Record<string, string[] | null>>({})
-  const [expandedOrg, setExpandedOrg] = useState<string | null>(null)
+  const [expandedSpace, setExpandedSpace] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -529,10 +529,10 @@ function NavConfigTab({ adminKey, orgs }: { adminKey: string; orgs: Org[] }) {
   }
 
   const loadSpaceNav = async (spaceId: string) => {
-    if (expandedOrg === spaceId) { setExpandedOrg(null); return }
+    if (expandedSpace === spaceId) { setExpandedSpace(null); return }
     const d = await api(adminKey).get(`/spaces/${spaceId}/nav`)
     setSpaceNavs(prev => ({ ...prev, [spaceId]: d.enabled_nav_items }))
-    setExpandedOrg(spaceId)
+    setExpandedSpace(spaceId)
   }
 
   const toggleSpaceItem = async (spaceId: string, id: string) => {
@@ -582,34 +582,34 @@ function NavConfigTab({ adminKey, orgs }: { adminKey: string; orgs: Org[] }) {
           <p className="text-sm font-semibold text-gray-900 dark:text-white">Per-Space Nav Overrides</p>
           <p className="text-xs text-gray-500 mt-0.5">Restrict specific spaces to fewer nav items.</p>
         </div>
-        {orgs.map(org => (
-          <div key={org.id}>
+        {spaces.map(space => (
+          <div key={space.id}>
             <div
               className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60"
-              onClick={() => loadSpaceNav(org.id)}
+              onClick={() => loadSpaceNav(space.id)}
             >
               <div>
-                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{org.display_name}</p>
-                <p className="text-xs text-gray-400">@{org.slug}</p>
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{space.display_name}</p>
+                <p className="text-xs text-gray-400">@{space.slug}</p>
               </div>
               <div className="flex items-center gap-2">
-                {spaceNavs[org.id] === null && <span className="text-xs text-gray-400">using system defaults</span>}
-                {spaceNavs[org.id] !== undefined && spaceNavs[org.id] !== null && (
-                  <span className="text-xs text-indigo-500">{spaceNavs[org.id]!.length} items</span>
+                {spaceNavs[space.id] === null && <span className="text-xs text-gray-400">using system defaults</span>}
+                {spaceNavs[space.id] !== undefined && spaceNavs[space.id] !== null && (
+                  <span className="text-xs text-indigo-500">{spaceNavs[space.id]!.length} items</span>
                 )}
-                {expandedOrg === org.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                {expandedSpace === space.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
               </div>
             </div>
-            {expandedOrg === org.id && (
+            {expandedSpace === space.id && (
               <div className="px-4 py-3 bg-indigo-50/40 dark:bg-indigo-900/10 border-b border-gray-100 dark:border-gray-700">
                 <div className="flex flex-wrap gap-2 mb-3">
                   {ALL_NAV_IDS.map(id => {
-                    const spaceItems = spaceNavs[org.id] ?? ALL_NAV_IDS
+                    const spaceItems = spaceNavs[space.id] ?? ALL_NAV_IDS
                     const on = spaceItems.includes(id) && systemNav[id] !== false
                     return (
                       <button
                         key={id}
-                        onClick={() => toggleSpaceItem(org.id, id)}
+                        onClick={() => toggleSpaceItem(space.id, id)}
                         disabled={systemNav[id] === false}
                         className={`text-xs px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                           on
@@ -623,7 +623,7 @@ function NavConfigTab({ adminKey, orgs }: { adminKey: string; orgs: Org[] }) {
                   })}
                 </div>
                 <button
-                  onClick={() => resetSpaceNav(org.id)}
+                  onClick={() => resetSpaceNav(space.id)}
                   className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline"
                 >
                   Reset to system defaults
@@ -632,7 +632,7 @@ function NavConfigTab({ adminKey, orgs }: { adminKey: string; orgs: Org[] }) {
             )}
           </div>
         ))}
-        {orgs.length === 0 && <p className="px-4 py-6 text-center text-sm text-gray-400">No spaces yet.</p>}
+        {spaces.length === 0 && <p className="px-4 py-6 text-center text-sm text-gray-400">No spaces yet.</p>}
       </div>
     </div>
   )
@@ -792,9 +792,9 @@ function HomepageConfigTab({ adminKey }: { adminKey: string }) {
   )
 }
 
-interface VectorDBOrg {
+interface VectorDBSpace {
   client_id: string
-  org_name: string
+  space_name: string
   doc_count: number
   chunk_count: number
   docs: { doc_id: string; doc_name: string; doc_type: string; kb_name: string; uploaded_at: string; expires_at: string; chunk_count: number }[]
@@ -802,7 +802,7 @@ interface VectorDBOrg {
 
 interface VectorDBData {
   summary: { policy_documents: number; product_catalog: number; client_documents: number; persist_dir: string }
-  orgs: VectorDBOrg[]
+  spaces: VectorDBSpace[]
 }
 
 export function SuperAdmin() {
@@ -813,7 +813,7 @@ export function SuperAdmin() {
   const [tab, setTab] = useState<Tab>('overview')
 
   const [stats, setStats] = useState<Stats | null>(null)
-  const [orgs, setOrgs] = useState<Org[]>([])
+  const [spaces, setOrgs] = useState<Space[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [builtinAgents, setBuiltinAgents] = useState<BuiltinAgentType[]>([])
   const [logs, setLogs] = useState<LogEntry[]>([])
@@ -837,7 +837,7 @@ export function SuperAdmin() {
         api(k).get('/vectordb'),
       ])
       setStats(s)
-      setOrgs(o.orgs)
+      setSpaces(o.orgs)
       setAgents(a.agents)
       setLogs(l.logs)
       setVectorDB(v)
@@ -877,12 +877,12 @@ export function SuperAdmin() {
     }
   }
 
-  const filteredOrgs = orgs.filter(o =>
+  const filteredSpaces = spaces.filter(o =>
     !search || o.slug.includes(search.toLowerCase()) || o.display_name.toLowerCase().includes(search.toLowerCase())
   )
 
   const filteredLogs = logs.filter(l =>
-    !search || l.org_slug.includes(search.toLowerCase()) || l.message.toLowerCase().includes(search.toLowerCase())
+    !search || l.space_slug.includes(search.toLowerCase()) || l.message.toLowerCase().includes(search.toLowerCase())
   )
 
   const inputCls = 'w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 text-gray-900 dark:text-white'
@@ -937,7 +937,7 @@ export function SuperAdmin() {
 
   const TABS: { id: Tab, label: string, icon: any }[] = [
     { id: 'overview',  label: 'Overview',       icon: BarChart3  },
-    { id: 'orgs',      label: 'Organizations',  icon: Users      },
+    { id: 'spaces',      label: 'Spaces',  icon: Users      },
     { id: 'agents',    label: 'Agents',         icon: Bot        },
     { id: 'builtin',   label: 'Built-in',       icon: Zap        },
     { id: 'activity',  label: 'Activity',       icon: Activity   },
@@ -981,7 +981,7 @@ export function SuperAdmin() {
       {/* Stats row */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard icon={Users}         label="Total Orgs"       value={stats.total_orgs}      sub={`${stats.active_orgs} active`}          color="bg-indigo-500" />
+          <StatCard icon={Users}         label="Total Spaces"       value={stats.total_orgs}      sub={`${stats.active_orgs} active`}          color="bg-indigo-500" />
           <StatCard icon={Bot}           label="Agents"           value={stats.total_agents}    sub={`${stats.active_agents} active`}         color="bg-violet-500" />
           <StatCard icon={MessageSquare} label="Total Messages"   value={stats.total_messages.toLocaleString()} sub={`${stats.messages_24h} last 24h`} color="bg-emerald-500" />
           <StatCard icon={Database}      label="Prompt Skills"    value={stats.total_skills}                                                  color="bg-amber-500" />
@@ -1004,13 +1004,13 @@ export function SuperAdmin() {
       </div>
 
       {/* Search */}
-      {(tab === 'orgs' || tab === 'activity') && (
+      {(tab === 'spaces' || tab === 'activity') && (
         <div className="relative w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder={tab === 'orgs' ? 'Search orgs…' : 'Search logs…'}
+            placeholder={tab === 'spaces' ? 'Search spaces…' : 'Search logs…'}
             className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 text-gray-900 dark:text-white"
           />
         </div>
@@ -1022,8 +1022,8 @@ export function SuperAdmin() {
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
             <p className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Organizations by Plan</p>
             {['free', 'starter', 'pro', 'enterprise'].map(plan => {
-              const count = orgs.filter(o => o.plan === plan).length
-              const pct = orgs.length ? Math.round(count / orgs.length * 100) : 0
+              const count = spaces.filter(o => o.plan === plan).length
+              const pct = spaces.length ? Math.round(count / spaces.length * 100) : 0
               return (
                 <div key={plan} className="mb-3">
                   <div className="flex justify-between text-xs mb-1">
@@ -1039,9 +1039,9 @@ export function SuperAdmin() {
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-            <p className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Top Orgs by Messages</p>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Top Spaces by Messages</p>
             <div className="space-y-2.5">
-              {[...orgs].sort((a, b) => b.message_count - a.message_count).slice(0, 6).map(o => (
+              {[...spaces].sort((a, b) => b.message_count - a.message_count).slice(0, 6).map(o => (
                 <div key={o.id} className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-gray-800 dark:text-gray-200">{o.display_name}</p>
@@ -1050,14 +1050,14 @@ export function SuperAdmin() {
                   <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{o.message_count.toLocaleString()} msgs</span>
                 </div>
               ))}
-              {orgs.length === 0 && <p className="text-xs text-gray-400">No organizations yet.</p>}
+              {spaces.length === 0 && <p className="text-xs text-gray-400">No spaces yet.</p>}
             </div>
           </div>
         </div>
       )}
 
       {/* ── Organizations ── */}
-      {tab === 'orgs' && (
+      {tab === 'spaces' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
           <table className="w-full text-left">
             <thead>
@@ -1068,12 +1068,12 @@ export function SuperAdmin() {
               </tr>
             </thead>
             <tbody>
-              {filteredOrgs.map(org => (
-                <OrgRow key={org.id} org={org} adminKey={key} onRefresh={() => fetchAll(key)}
+              {filteredSpaces.map(space => (
+                <SpaceRow key={space.id} space={space} adminKey={key} onRefresh={() => fetchAll(key)}
                   onViewChunks={(cid, did, name) => setViewingChunks({ clientId: cid, docId: did, docName: name })} />
               ))}
-              {filteredOrgs.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-400">No organizations found.</td></tr>
+              {filteredSpaces.length === 0 && (
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-400">No spaces found.</td></tr>
               )}
             </tbody>
           </table>
@@ -1121,7 +1121,7 @@ export function SuperAdmin() {
           </div>
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             {builtinAgents.length === 0 && (
-              <p className="px-4 py-8 text-center text-sm text-gray-400">No built-in agents found. Make sure at least one org exists.</p>
+              <p className="px-4 py-8 text-center text-sm text-gray-400">No built-in agents found. Make sure at least one space exists.</p>
             )}
             {builtinAgents.map(agent => (
               <BuiltinAgentRow
@@ -1140,7 +1140,7 @@ export function SuperAdmin() {
       )}
 
       {/* ── Nav Config ── */}
-      {tab === 'nav' && <NavConfigTab adminKey={key} orgs={orgs} />}
+      {tab === 'nav' && <NavConfigTab adminKey={key} spaces={spaces} />}
 
       {/* ── Homepage Config ── */}
       {tab === 'homepage' && <HomepageConfigTab adminKey={key} />}
@@ -1160,8 +1160,8 @@ export function SuperAdmin() {
               <p>col = c.get_collection("client_documents")</p>
               <p>col.count()                          # total chunks</p>
               <p>col.get(limit=5, include=["metadatas"])  # sample metadata</p>
-              <p className="mt-2"># Filter by org (client_id = org UUID)</p>
-              <p>{'col.get(where={"client_id": {"$eq": "<org-uuid>"}}, include=["metadatas"])'}</p>
+              <p className="mt-2"># Filter by space (client_id = space UUID)</p>
+              <p>{'col.get(where={"client_id": {"$eq": "<space-uuid>"}}, include=["metadatas"])'}</p>
             </div>
           </div>
 
@@ -1200,15 +1200,15 @@ export function SuperAdmin() {
 
               <p className="text-xs text-gray-400 dark:text-gray-500">Persist dir: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{vectorDB.summary.persist_dir}</code></p>
 
-              {/* Per-org breakdown */}
+              {/* Per-space breakdown */}
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Client Documents — per org</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Client Documents — per space</p>
                 </div>
-                {vectorDB.orgs.length === 0 && (
+                {vectorDB.spaces.length === 0 && (
                   <p className="px-4 py-8 text-center text-sm text-gray-400">No client documents in vector DB.</p>
                 )}
-                {vectorDB.orgs.map(o => (
+                {vectorDB.spaces.map(o => (
                   <div key={o.client_id} className="border-b border-gray-100 dark:border-gray-700 last:border-0">
                     <button
                       onClick={() => setExpandedVecOrg(expandedVecOrg === o.client_id ? null : o.client_id)}
@@ -1219,7 +1219,7 @@ export function SuperAdmin() {
                           <Database className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-900 dark:text-white">{o.org_name || 'Unknown org'}</p>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{o.space_name || 'Unknown space'}</p>
                           <p className="text-xs text-gray-400">{o.client_id}</p>
                         </div>
                       </div>
@@ -1288,7 +1288,7 @@ export function SuperAdmin() {
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
-                {['Time', 'Org', 'Role', 'Message', 'Agent', 'Intent', 'ms'].map(h => (
+                {['Time', 'Space', 'Role', 'Message', 'Agent', 'Intent', 'ms'].map(h => (
                   <th key={h} className="px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400">{h}</th>
                 ))}
               </tr>
@@ -1298,7 +1298,7 @@ export function SuperAdmin() {
                 <tr key={l.id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                   <td className="px-4 py-2.5 text-xs text-gray-400 whitespace-nowrap">{new Date(l.timestamp).toLocaleTimeString()}</td>
                   <td className="px-4 py-2.5">
-                    <p className="text-xs font-medium text-gray-700 dark:text-gray-300">@{l.org_slug}</p>
+                    <p className="text-xs font-medium text-gray-700 dark:text-gray-300">@{l.space_slug}</p>
                   </td>
                   <td className="px-4 py-2.5">
                     <Badge color={l.role === 'user' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-500' : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'}>

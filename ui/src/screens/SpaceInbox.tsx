@@ -563,7 +563,7 @@ function SessionGroup({ label, count, color, sessions, selectedId, onSelect }: S
 
 export function SpaceInbox() {
   const token = useAppStore(s => s.token)
-  const displayName = useAppStore(s => s.orgName)
+  const displayName = useAppStore(s => s.spaceName)
   const [sessions, setSessions]     = useState<Session[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loading, setLoading]       = useState(false)

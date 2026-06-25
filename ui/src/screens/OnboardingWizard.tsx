@@ -18,7 +18,7 @@ export function OnboardingWizard() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const isQuick = searchParams.get('quick') === 'true'
-  const { token, orgSlug, orgName, setOnboardingComplete } = useAppStore()
+  const { token, spaceSlug, spaceName, setOnboardingComplete } = useAppStore()
   if (!token) return <Navigate to="/app/login" replace />
 
   const [step, setStep] = useState(isQuick ? 2 : 1)
@@ -33,11 +33,12 @@ export function OnboardingWizard() {
 
   const [suggestion, setSuggestion]           = useState<Suggestion | null>(null)
   const [agentName, setAgentName]             = useState('')
+  const [systemPrompt, setSystemPrompt]       = useState('')
   const [loadingSuggestion, setLoadingSugg]   = useState(false)
   const [creatingAgent, setCreatingAgent]     = useState(false)
   const [copied, setCopied]                   = useState(false)
 
-  const embedCode = `<script src="https://api.support247.chat/api/v1/widget/embed.js" data-space="${orgSlug}" defer></script>`
+  const embedCode = `<script src="https://api.support247.chat/api/v1/widget/embed.js" data-space="${spaceSlug}" defer></script>`
 
   const skipAll = async () => {
     await apiClient.markOnboardingComplete().catch(() => {})
@@ -48,10 +49,11 @@ export function OnboardingWizard() {
   const fetchSuggestion = async (resolvedKbId: string) => {
     setLoadingSugg(true)
     try {
-      const r = await apiClient.getAgentSuggestion(resolvedKbId ? { kb_ids: [resolvedKbId] } : { agent_name: orgName })
+      const r = await apiClient.getAgentSuggestion(resolvedKbId ? { kb_ids: [resolvedKbId] } : { agent_name: spaceName })
       setSuggestion(r)
-      setAgentName(r.name || `${orgName} Support Agent`)
-    } catch { setAgentName(`${orgName} Support Agent`) }
+      setAgentName(r.name || `${spaceName} Support Agent`)
+      setSystemPrompt(r.system_prompt || '')
+    } catch { setAgentName(`${spaceName} Support Agent`) }
     finally { setLoadingSugg(false) }
   }
 
@@ -59,7 +61,7 @@ export function OnboardingWizard() {
     setUploading(true)
     try {
       let id = ''
-      const kb = await apiClient.createKB({ name: `${orgName} Knowledge Base` })
+      const kb = await apiClient.createKB({ name: `${spaceName} Knowledge Base` })
       id = kb.id
       if (kbTab === 'file' && file) {
         const doc = await apiClient.uploadDoc(file, undefined, 'general', kb.name)
@@ -80,10 +82,10 @@ export function OnboardingWizard() {
     setCreatingAgent(true)
     try {
       await apiClient.createOrgAgent({
-        name: agentName.trim() || `${orgName} Agent`,
+        name: agentName.trim() || `${spaceName} Agent`,
         description: suggestion?.description || '',
         icon: suggestion?.icon || '🤖',
-        system_prompt: suggestion?.system_prompt || '',
+        system_prompt: systemPrompt.trim() || suggestion?.system_prompt || '',
         rag_enabled: !!kbId,
         kb_ids: kbId ? [kbId] : [],
       })
@@ -193,7 +195,7 @@ export function OnboardingWizard() {
                   🎉
                 </div>
                 <h1 className="text-4xl font-black text-gray-900 mb-3 tracking-tight">
-                  Welcome, <span className="text-indigo-600">{orgName}</span>!
+                  Welcome, <span className="text-indigo-600">{spaceName}</span>!
                 </h1>
                 <p className="text-lg text-gray-500 mb-10 leading-relaxed">
                   You're <strong className="text-gray-700">3 steps away</strong> from a live AI support agent.<br />No technical skills needed.
@@ -392,6 +394,23 @@ export function OnboardingWizard() {
                         onChange={e => setAgentName(e.target.value)}
                         className="w-full px-4 py-3 text-base border-2 border-indigo-100 rounded-xl bg-white text-gray-900 font-bold focus:outline-none focus:border-indigo-400 transition-colors"
                       />
+
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-black text-gray-500 uppercase tracking-widest">System Prompt</label>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-600 text-[10px] font-black">
+                            <Sparkles className="w-2.5 h-2.5" /> AI Written
+                          </span>
+                        </div>
+                        <textarea
+                          value={systemPrompt}
+                          onChange={e => setSystemPrompt(e.target.value)}
+                          rows={5}
+                          placeholder="Describe how your agent should behave, its tone, and what it should help customers with…"
+                          className="w-full px-4 py-3 text-sm border-2 border-indigo-100 rounded-xl bg-white text-gray-700 placeholder-indigo-200 focus:outline-none focus:border-indigo-400 resize-none leading-relaxed transition-colors font-medium"
+                        />
+                        <p className="text-[11px] text-indigo-400 mt-1.5 font-medium">✦ AI-generated — edit freely to match your brand voice</p>
+                      </div>
                     </div>
 
                     {kbId && (
@@ -441,10 +460,10 @@ export function OnboardingWizard() {
                     </div>
                     <div className="flex items-center gap-2">
                       <code className="flex-1 text-sm font-bold text-indigo-700 bg-white px-4 py-2.5 rounded-xl border border-indigo-100 truncate">
-                        support247.chat/{orgSlug}
+                        support247.chat/{spaceSlug}
                       </code>
                       <a
-                        href={`https://support247.chat/${orgSlug}`}
+                        href={`https://support247.chat/${spaceSlug}`}
                         target="_blank"
                         rel="noreferrer"
                         className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white transition-colors shadow-sm"

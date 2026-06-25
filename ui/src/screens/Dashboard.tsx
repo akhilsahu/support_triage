@@ -32,7 +32,7 @@ function timeAgo(iso: string | null): string {
 
 export function Dashboard() {
   const navigate = useNavigate()
-  const { orgSlug, token, unreadSessionIds } = useAppStore()
+  const { spaceSlug, token, unreadSessionIds } = useAppStore()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [waitingCount, setWaitingCount] = useState(0)
@@ -98,9 +98,9 @@ export function Dashboard() {
             <p className="text-indigo-100 text-sm">Your AI-powered multi-agent customer support platform is running.</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            {orgSlug && (
+            {spaceSlug && (
               <a
-                href={`/${orgSlug}`}
+                href={`/${spaceSlug}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors"

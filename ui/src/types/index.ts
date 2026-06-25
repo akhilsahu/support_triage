@@ -36,7 +36,7 @@ export interface RagDoc {
   doc_type?: string
   client_id?: string
   kb_name?: string
-  org_name?: string
+  space_name?: string
   description?: string
   uploaded_at?: string
   expires_at?: string

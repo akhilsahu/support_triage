@@ -81,7 +81,7 @@ function renderMarkdown(text: string): React.ReactNode {
 }
 
 export function Chat() {
-  const { messages, conversationId, activeAgent, addMessage, setConversationId, setActiveAgent, clearChat, orgId } = useAppStore()
+  const { messages, conversationId, activeAgent, addMessage, setConversationId, setActiveAgent, clearChat, spaceId } = useAppStore()
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -117,7 +117,7 @@ export function Chat() {
     setIsLoading(true)
 
     try {
-      const data = await apiClient.sendMessage(trimmed, conversationId, orgId || undefined)
+      const data = await apiClient.sendMessage(trimmed, conversationId, spaceId || undefined)
       if (data.conversation_id) setConversationId(data.conversation_id)
 
       const agent = data.agent_used || data.agent || activeAgent

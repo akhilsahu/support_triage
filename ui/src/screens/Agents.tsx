@@ -381,7 +381,7 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
         <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
           <div>
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">Create Custom Agent</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Scoped to your org · Triage will route to it automatically</p>
+            <p className="text-xs text-gray-500 mt-0.5">Scoped to your space · Triage will route to it automatically</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500">
             <X className="w-4 h-4" />
@@ -513,7 +513,7 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
 
 export function Agents() {
   const navigate  = useNavigate()
-  const orgSlug   = useAppStore(s => s.orgSlug)
+  const spaceSlug   = useAppStore(s => s.spaceSlug)
   const [agents, setAgents]             = useState<OrgAgent[]>([])
   const [loading, setLoading]           = useState(true)
   const [dataSources, setDataSources]   = useState<DataSource[]>([])

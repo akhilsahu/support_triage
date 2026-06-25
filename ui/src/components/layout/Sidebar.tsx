@@ -15,7 +15,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 }
 
 export function Sidebar() {
-  const { sidebarCollapsed, toggleSidebar, backendStatus, orgName, orgSlug, logout, token, enabledNavItems, setEnabledNavItems, unreadSessionIds } = useAppStore()
+  const { sidebarCollapsed, toggleSidebar, backendStatus, spaceName, spaceSlug, logout, token, enabledNavItems, setEnabledNavItems, unreadSessionIds } = useAppStore()
   const unreadCount = unreadSessionIds?.length ?? 0
   const navigate = useNavigate()
   const location = useLocation()
@@ -118,10 +118,10 @@ export function Sidebar() {
 
       {/* Bottom */}
       <div className="p-3 border-t border-gray-200 dark:border-white/10 space-y-2">
-        {!sidebarCollapsed && orgName && (
+        {!sidebarCollapsed && spaceName && (
           <div className="px-2 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-500/20">
-            <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 truncate">{orgName}</p>
-            <p className="text-xs text-indigo-400 truncate">@{orgSlug}</p>
+            <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 truncate">{spaceName}</p>
+            <p className="text-xs text-indigo-400 truncate">@{spaceSlug}</p>
           </div>
         )}
 

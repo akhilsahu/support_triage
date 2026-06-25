@@ -4,6 +4,16 @@ Critical rules established through debugging. Do not violate these.
 
 ---
 
+## Naming — Space vs Org
+
+- **Never use `org` terminology in frontend code.** The entity is called a **space** everywhere.
+- Store fields: `spaceId`, `spaceSlug`, `spaceName` — not `orgId`, `orgSlug`, `orgName`.
+- TypeScript interfaces and local variables must use `space` / `Space` — not `org` / `Org`.
+- Display text must say "space" — not "org" or "organization".
+- API endpoint paths (e.g. `/orgs/...`) and backend response field names (e.g. `total_orgs`, `org_id`) are backend contract — do not rename those in fetch URLs or response type field names that map directly to wire format. But rename the local variable that holds the data (e.g. `setSpaces(o.orgs)`).
+
+---
+
 ## Identity & Auth
 
 - **`org.id` (UUID) is the `client_id`** everywhere — ChromaDB metadata, KB queries, ownership checks, chat pipeline. Never use `org.slug` as an identifier. Slugs are display-only.
@@ -16,8 +26,8 @@ Critical rules established through debugging. Do not violate these.
 ## Frontend Store
 
 - **Zustand localStorage key is `orchestra-store`**, not `app-storage`. The axios interceptor must read from `orchestra-store`.
-- **Store fields**: `token`, `orgId`, `orgSlug`, `orgName`. All four are persisted. `orgId` is the UUID; `orgSlug` is display-only.
-- **`setAuth` signature**: `(token, orgId, orgSlug, orgName)` — four args, `orgId` first after token.
+- **Store fields**: `token`, `spaceId`, `spaceSlug`, `spaceName`. All four are persisted. `spaceId` is the UUID; `spaceSlug` is display-only.
+- **`setAuth` signature**: `(token, spaceId, spaceSlug, spaceName)` — four args, `spaceId` first after token.
 
 ---
 
