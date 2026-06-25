@@ -643,7 +643,7 @@ function NavConfigTab({ adminKey, spaces }: { adminKey: string; spaces: Space[] 
 function HomepageConfigTab({ adminKey }: { adminKey: string }) {
   const { activeHomepage, setActiveHomepage } = useAppStore()
 
-  const setHomepageGlobal = async (val: 'homepage1' | 'homepage2' | 'homepage3') => {
+  const setHomepageGlobal = async (val: 'homepage1' | 'homepage2' | 'homepage3' | 'homepage4') => {
     try {
       const res = await fetch(`${API_CONFIG.baseURL}/api/v1/super-admin/settings`, {
         method: 'PATCH',
@@ -670,7 +670,7 @@ function HomepageConfigTab({ adminKey }: { adminKey: string }) {
           <p className="text-xs text-gray-500 mt-0.5">Select the active landing page layout displayed at the root route.</p>
         </div>
 
-        <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
           {/* Card 1: Homepage 1 */}
           <button
             onClick={() => setHomepageGlobal('homepage1')}
@@ -782,6 +782,47 @@ function HomepageConfigTab({ adminKey }: { adminKey: string }) {
                 <div className="absolute bottom-2 right-2 w-10 h-3 rounded bg-pink-500 text-white text-[5px] flex items-center px-1">
                   <div className="w-1 h-1 rounded-full bg-white mr-1 animate-pulse" />
                   <span className="scale-75 origin-left">support</span>
+                </div>
+              </div>
+            </div>
+          </button>
+
+          {/* Card 4: Homepage 4 */}
+          <button
+            onClick={() => setHomepageGlobal('homepage4')}
+            className={`flex flex-col text-left rounded-2xl border p-5 transition-all outline-none ${
+              activeHomepage === 'homepage4'
+                ? 'border-violet-500 bg-violet-50/10 ring-2 ring-violet-500/20'
+                : 'border-gray-200 dark:border-gray-700 bg-transparent hover:border-gray-400 dark:hover:border-gray-600'
+            }`}
+          >
+            <div className="flex items-center justify-between w-full mb-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-violet-500 dark:text-violet-400">Layout 4</span>
+              {activeHomepage === 'homepage4' && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-500 text-white">Active</span>
+              )}
+            </div>
+            <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Homepage 4 (Sunrise Light)</h4>
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mb-6">
+              Light-mode split hero with violet-to-teal gradients. Chat preview mockup on the right, bold stats strip, tinted feature cards.
+            </p>
+            <div className="w-full h-32 rounded-xl bg-white border border-slate-200/60 flex p-3 overflow-hidden select-none pointer-events-none gap-3 shadow-inner">
+              <div className="w-1/2 flex flex-col justify-center gap-1.5">
+                <div className="w-12 h-1 bg-slate-200 rounded" />
+                <div className="w-20 h-2 bg-gradient-to-r from-violet-500 to-teal-400 rounded" />
+                <div className="w-16 h-1 bg-slate-100 rounded" />
+                <div className="w-20 h-3 rounded bg-gradient-to-r from-violet-500 to-teal-500 mt-1" />
+              </div>
+              <div className="w-1/2 border border-violet-100 bg-violet-50/30 rounded-lg flex flex-col p-1.5 gap-1 shadow-sm">
+                <div className="w-full h-3 rounded bg-white border border-violet-100 flex items-center px-1 gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-violet-300 flex-shrink-0" />
+                  <div className="flex-1 h-0.5 bg-violet-100 rounded" />
+                </div>
+                <div className="w-3/4 h-3 rounded bg-white border border-violet-100 ml-auto flex items-center px-1">
+                  <div className="flex-1 h-0.5 bg-teal-100 rounded" />
+                </div>
+                <div className="mt-auto w-full h-3 rounded bg-gradient-to-r from-violet-500 to-teal-400 flex items-center justify-center">
+                  <div className="w-8 h-0.5 bg-white/70 rounded" />
                 </div>
               </div>
             </div>

@@ -66,8 +66,8 @@ interface AppState {
   dispatchInboxEvent: (type: string, data: string) => void
 
   // Active Homepage Layout
-  activeHomepage: 'homepage1' | 'homepage2' | 'homepage3'
-  setActiveHomepage: (homepage: 'homepage1' | 'homepage2' | 'homepage3') => void
+  activeHomepage: 'homepage1' | 'homepage2' | 'homepage3' | 'homepage4'
+  setActiveHomepage: (homepage: 'homepage1' | 'homepage2' | 'homepage3' | 'homepage4') => void
 }
 
 export const useAppStore = create<AppState>()(

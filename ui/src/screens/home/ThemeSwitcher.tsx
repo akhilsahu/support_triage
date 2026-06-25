@@ -4,6 +4,7 @@ import { useAppStore } from '../../store/useAppStore'
 const Homepage1 = lazy(() => import('./home1/Homepage').then(m => ({ default: m.Homepage1 })))
 const Homepage2 = lazy(() => import('./home2/Homepage').then(m => ({ default: m.Homepage2 })))
 const Homepage3 = lazy(() => import('./home3/Homepage').then(m => ({ default: m.Homepage3 })))
+const Homepage4 = lazy(() => import('./home4/Homepage').then(m => ({ default: m.Homepage4 })))
 
 const AuthPage1 = lazy(() => import('./home1/AuthPage').then(m => ({ default: m.AuthPage1 })))
 const AuthPage2 = lazy(() => import('./home2/AuthPage').then(m => ({ default: m.AuthPage2 })))
@@ -21,7 +22,10 @@ export function DynamicHome() {
   const { activeHomepage } = useAppStore()
   return (
     <Suspense fallback={null}>
-      {activeHomepage === 'homepage3' ? <Homepage3 /> : activeHomepage === 'homepage2' ? <Homepage2 /> : <Homepage1 />}
+      {activeHomepage === 'homepage4' ? <Homepage4 /> :
+       activeHomepage === 'homepage3' ? <Homepage3 /> :
+       activeHomepage === 'homepage2' ? <Homepage2 /> :
+       <Homepage1 />}
     </Suspense>
   )
 }
@@ -52,4 +56,3 @@ export function DynamicPricing() {
     </Suspense>
   )
 }
-
