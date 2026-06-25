@@ -60,6 +60,8 @@ class Space(Base):
     # Nav — null means "use system-wide defaults"; a JSON list restricts to those items
     enabled_nav_items  = Column(Text, nullable=True)   # JSON list of nav item IDs
 
+    onboarding_complete = Column(Boolean, default=False, nullable=False)
+
     created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -90,9 +92,10 @@ class Space(Base):
             "logo_url":     self.logo_url,
             "theme_color":  self.theme_color,
             "plan":         self.plan,
-            "active":             self.active,
-            "show_rag_citations": self.show_rag_citations,
-            "created_at":         self.created_at.isoformat() if self.created_at else None,
+            "active":               self.active,
+            "show_rag_citations":   self.show_rag_citations,
+            "onboarding_complete":  self.onboarding_complete,
+            "created_at":           self.created_at.isoformat() if self.created_at else None,
         }
 
 

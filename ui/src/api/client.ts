@@ -107,6 +107,12 @@ export const apiClient = {
   updateKBItem: (kbId: string, itemId: string, payload: { question?: string; content?: string; title?: string }) =>
     http.patch(API_CONFIG.endpoints.kbItemUpdate(kbId, itemId), payload).then(r => r.data),
 
+  markOnboardingComplete: () =>
+    http.patch('/api/v1/auth/onboarding-complete').then(r => r.data),
+
+  getAgentSuggestion: (payload: { doc_types?: string[]; kb_ids?: string[]; agent_name?: string; force?: boolean }) =>
+    http.post('/api/v1/dashboard/agent-suggestions', payload).then(r => r.data),
+
   // Dashboard Stats
   getDashboardStats: () =>
     http.get('/api/v1/dashboard/stats').then(r => r.data),

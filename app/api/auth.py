@@ -408,6 +408,14 @@ async def me(space: Space = Depends(current_space)):
     return space.to_dict()
 
 
+@router.patch("/onboarding-complete")
+async def mark_onboarding_complete(space: Space = Depends(current_space), db: AsyncSession = Depends(get_db)):
+    """Mark onboarding wizard as completed for this space."""
+    space.onboarding_complete = True
+    await db.commit()
+    return {"ok": True}
+
+
 @router.post("/logout", status_code=200)
 async def logout(space: Space = Depends(current_space), db: AsyncSession = Depends(get_db)):
     """

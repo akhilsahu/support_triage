@@ -17,6 +17,7 @@ import { CustomerChat } from './screens/CustomerChat'
 import { Inbox } from './screens/Inbox'
 import { TestChat } from './screens/TestChat'
 import { EmbedWidget } from './screens/EmbedWidget'
+import { OnboardingWizard } from './screens/OnboardingWizard'
 import { ForgotPassword } from './screens/ForgotPassword'
 import { ResetPassword } from './screens/ResetPassword'
 import { VerifyEmail } from './screens/VerifyEmail'
@@ -105,6 +106,7 @@ export default function App() {
           <Route path="/security"      element={<SecurityPage />} />
 
           {/* ── App (authenticated product) under /app/* ── */}
+          <Route path="/app/onboarding"      element={<PrivateRoute><OnboardingWizard /></PrivateRoute>} />
           <Route path="/app/login"          element={<DynamicLogin />} />
           <Route path="/app/forgot-password" element={<ForgotPassword />} />
           <Route path="/app/reset-password"  element={<ResetPassword />} />

@@ -39,8 +39,8 @@ export function useAuthForm() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || 'Login failed')
-      setAuth(data.token, data.space?.id || '', data.space?.slug || '', data.space?.display_name || '')
-      navigate('/app/dashboard')
+      setAuth(data.token, data.space?.id || '', data.space?.slug || '', data.space?.display_name || '', data.space?.onboarding_complete ?? false)
+      navigate(data.space?.onboarding_complete ? '/app/dashboard' : '/app/onboarding')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {

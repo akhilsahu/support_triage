@@ -9,7 +9,9 @@ interface AppState {
   orgId: string
   orgSlug: string
   orgName: string
-  setAuth: (token: string, id: string, slug: string, name: string) => void
+  onboardingComplete: boolean
+  setOnboardingComplete: (v: boolean) => void
+  setAuth: (token: string, id: string, slug: string, name: string, onboardingComplete?: boolean) => void
   logout: () => void
 
   // Theme
@@ -75,8 +77,10 @@ export const useAppStore = create<AppState>()(
       orgId: '',
       orgSlug: '',
       orgName: '',
-      setAuth: (token, orgId, orgSlug, orgName) => set({ token, orgId, orgSlug, orgName }),
-      logout: () => set({ token: '', orgId: '', orgSlug: '', orgName: '', messages: [], conversationId: undefined, enabledNavItems: null, unreadSessionIds: [], activeInboxSessionId: null, inboxEvent: null }),
+      onboardingComplete: false,
+      setOnboardingComplete: (v) => set({ onboardingComplete: v }),
+      setAuth: (token, orgId, orgSlug, orgName, onboardingComplete = false) => set({ token, orgId, orgSlug, orgName, onboardingComplete }),
+      logout: () => set({ token: '', orgId: '', orgSlug: '', orgName: '', onboardingComplete: false, messages: [], conversationId: undefined, enabledNavItems: null, unreadSessionIds: [], activeInboxSessionId: null, inboxEvent: null }),
 
       isDark: typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : false,
       toggleTheme: () => set((s) => {
@@ -136,7 +140,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'support247-store',
-      partialize: (s) => ({ isDark: s.isDark, fontSize: s.fontSize, sidebarCollapsed: s.sidebarCollapsed, apiKey: s.apiKey, clientId: s.clientId, token: s.token, orgId: s.orgId, orgSlug: s.orgSlug, orgName: s.orgName, activeHomepage: s.activeHomepage }),
+      partialize: (s) => ({ isDark: s.isDark, fontSize: s.fontSize, sidebarCollapsed: s.sidebarCollapsed, apiKey: s.apiKey, clientId: s.clientId, token: s.token, orgId: s.orgId, orgSlug: s.orgSlug, orgName: s.orgName, onboardingComplete: s.onboardingComplete, activeHomepage: s.activeHomepage }),
     }
   )
 )
