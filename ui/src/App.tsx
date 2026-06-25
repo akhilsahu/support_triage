@@ -37,8 +37,10 @@ const queryClient = new QueryClient({
 })
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
-  const { token } = useAppStore()
-  return token ? <>{children}</> : <Navigate to="/app/login" replace />
+  const { token, onboardingComplete } = useAppStore()
+  if (!token) return <Navigate to="/app/login" replace />
+  if (!onboardingComplete) return <Navigate to="/app/onboarding" replace />
+  return <>{children}</>
 }
 
 // Back-compat: old /s/:slug links redirect to the new root /:slug (query preserved)
@@ -106,7 +108,7 @@ export default function App() {
           <Route path="/security"      element={<SecurityPage />} />
 
           {/* ── App (authenticated product) under /app/* ── */}
-          <Route path="/app/onboarding"      element={<PrivateRoute><OnboardingWizard /></PrivateRoute>} />
+          <Route path="/app/onboarding"      element={<OnboardingWizard />} />
           <Route path="/app/login"          element={<DynamicLogin />} />
           <Route path="/app/forgot-password" element={<ForgotPassword />} />
           <Route path="/app/reset-password"  element={<ResetPassword />} />

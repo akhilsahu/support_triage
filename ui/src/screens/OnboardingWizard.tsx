@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Upload, FileText, MessageSquare, CheckCircle, ArrowRight, Loader2, Sparkles, X, Copy, ExternalLink } from 'lucide-react'
+import { useNavigate, useSearchParams, Navigate } from 'react-router-dom'
+import { Upload, FileText, CheckCircle, ArrowRight, Loader2, Sparkles, X, Copy, ExternalLink } from 'lucide-react'
 import { apiClient } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 
@@ -19,7 +19,8 @@ export function OnboardingWizard() {
   const [searchParams] = useSearchParams()
   const isQuick = searchParams.get('quick') === 'true'
 
-  const { orgSlug, orgName, setOnboardingComplete } = useAppStore()
+  const { token, orgSlug, orgName, setOnboardingComplete } = useAppStore()
+  if (!token) return <Navigate to="/app/login" replace />
 
   // Step: 1=welcome, 2=knowledge, 3=agent, 4=live
   const [step, setStep] = useState(isQuick ? 2 : 1)
