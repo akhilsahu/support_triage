@@ -40,6 +40,19 @@ export function OnboardingWizard() {
   const [kbId, setKbId]           = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // Resolved from API on mount — store values can be stale on second visit
+  const [resolvedSlug, setResolvedSlug] = useState(spaceSlug)
+  const [resolvedName, setResolvedName] = useState(spaceName)
+
+  useEffect(() => {
+    apiClient.getProfile()
+      .then((profile: any) => {
+        if (profile?.slug) setResolvedSlug(profile.slug)
+        if (profile?.display_name) setResolvedName(profile.display_name)
+      })
+      .catch(() => {})
+  }, [])
+
   const [suggestion, setSuggestion]       = useState<Suggestion | null>(null)
   const [agentName, setAgentName]         = useState('')
   const [systemPrompt, setSystemPrompt]   = useState('')
@@ -52,15 +65,15 @@ export function OnboardingWizard() {
     setLoadingSugg(true)
     try {
       const r = await apiClient.getAgentSuggestion(
-        resolvedKbId ? { kb_ids: [resolvedKbId] } : { agent_name: spaceName }
+        resolvedKbId ? { kb_ids: [resolvedKbId] } : { agent_name: resolvedName }
       )
       setSuggestion(r)
-      setAgentName(r.name || `${spaceName} Support Agent`)
+      setAgentName(r.name || `${resolvedName} Support Agent`)
       setSystemPrompt(r.system_prompt || '')
     } catch {
-      setAgentName(`${spaceName} Support Agent`)
+      setAgentName(`${resolvedName} Support Agent`)
       setSystemPrompt(
-        `You are a customer support agent for ${spaceName}.\n\n` +
+        `You are a customer support agent for ${resolvedName}.\n\n` +
         `Your role:\n- Answer questions accurately using the knowledge base\n` +
         `- Be professional, concise, and helpful\n` +
         `- Escalate to human support when needed\n\n` +
@@ -76,7 +89,7 @@ export function OnboardingWizard() {
 
   if (!token) return <Navigate to="/app/login" replace />
 
-  const embedCode = `<script src="https://api.support247.chat/api/v1/widget/embed.js" data-space="${spaceSlug}" defer></script>`
+  const embedCode = `<script src="https://api.support247.chat/api/v1/widget/embed.js" data-space="${resolvedSlug}" defer></script>`
 
   const skipAll = async () => {
     await apiClient.markOnboardingComplete().catch(() => {})
@@ -87,7 +100,7 @@ export function OnboardingWizard() {
   const handleKnowledgeNext = async () => {
     setUploading(true)
     try {
-      const kb = await apiClient.createKB({ name: `${spaceName} Knowledge Base` })
+      const kb = await apiClient.createKB({ name: `${resolvedName} Knowledge Base` })
       const id = kb.id
       if (kbTab === 'file' && file) {
         const doc = await apiClient.uploadDoc(file, undefined, 'general', kb.name)
@@ -108,7 +121,7 @@ export function OnboardingWizard() {
     setAgentError('')
     try {
       await apiClient.createOrgAgent({
-        name: agentName.trim() || `${spaceName} Agent`,
+        name: agentName.trim() || `${resolvedName} Agent`,
         description: suggestion?.description || '',
         icon: suggestion?.icon || '',
         system_prompt: systemPrompt.trim() || suggestion?.system_prompt || '',
@@ -218,7 +231,7 @@ export function OnboardingWizard() {
                     <img src={gemLogo} alt="" className="w-8 h-8 rounded-lg object-cover" />
                   </div>
                   <div>
-                    <h1 className="text-xl font-bold text-gray-900 leading-tight">Welcome, {spaceName}!</h1>
+                    <h1 className="text-xl font-bold text-gray-900 leading-tight">Welcome, {resolvedName}!</h1>
                     <p className="text-sm text-gray-500 mt-0.5">Set up your AI support agent in 3 quick steps.</p>
                   </div>
                 </div>
@@ -439,9 +452,9 @@ export function OnboardingWizard() {
                     </div>
                     <div className="flex items-center gap-2">
                       <code className="flex-1 text-xs font-medium text-gray-800 bg-white border border-gray-200 px-3 py-2 rounded-lg truncate">
-                        support247.chat/{spaceSlug}
+                        support247.chat/{resolvedSlug}
                       </code>
-                      <a href={`https://support247.chat/${spaceSlug}`} target="_blank" rel="noreferrer"
+                      <a href={`https://support247.chat/${resolvedSlug}`} target="_blank" rel="noreferrer"
                         className="p-2 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors flex-shrink-0">
                         <ExternalLink className="w-3.5 h-3.5" />
                       </a>
