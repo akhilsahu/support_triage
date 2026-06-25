@@ -68,6 +68,10 @@ interface AppState {
   // Active Homepage Layout
   activeHomepage: 'homepage1' | 'homepage2' | 'homepage3' | 'homepage4'
   setActiveHomepage: (homepage: 'homepage1' | 'homepage2' | 'homepage3' | 'homepage4') => void
+
+  // Dashboard colour theme
+  dashboardTheme: 'violet' | 'ocean' | 'sunset' | 'forest'
+  setDashboardTheme: (t: 'violet' | 'ocean' | 'sunset' | 'forest') => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -137,10 +141,13 @@ export const useAppStore = create<AppState>()(
 
       activeHomepage: 'homepage1',
       setActiveHomepage: (homepage) => set({ activeHomepage: homepage }),
+
+      dashboardTheme: 'violet',
+      setDashboardTheme: (t) => set({ dashboardTheme: t }),
     }),
     {
       name: 'support247-store',
-      partialize: (s) => ({ isDark: s.isDark, fontSize: s.fontSize, sidebarCollapsed: s.sidebarCollapsed, apiKey: s.apiKey, clientId: s.clientId, token: s.token, spaceId: s.spaceId, spaceSlug: s.spaceSlug, spaceName: s.spaceName, onboardingComplete: s.onboardingComplete, activeHomepage: s.activeHomepage }),
+      partialize: (s) => ({ isDark: s.isDark, fontSize: s.fontSize, sidebarCollapsed: s.sidebarCollapsed, apiKey: s.apiKey, clientId: s.clientId, token: s.token, spaceId: s.spaceId, spaceSlug: s.spaceSlug, spaceName: s.spaceName, onboardingComplete: s.onboardingComplete, activeHomepage: s.activeHomepage, dashboardTheme: s.dashboardTheme }),
     }
   )
 )

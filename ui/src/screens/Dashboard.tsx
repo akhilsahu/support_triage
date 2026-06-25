@@ -33,9 +33,61 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
+const DASHBOARD_THEMES = {
+  violet: {
+    banner:  'from-violet-600 via-indigo-600 to-teal-500',
+    shadow:  'shadow-violet-200 dark:shadow-violet-900/30',
+    stat0:   ['from-violet-500',  'to-indigo-500'],
+    stat1:   ['from-teal-500',    'to-emerald-500'],
+    stat2:   ['from-indigo-500',  'to-blue-500'],
+    stat3:   ['from-orange-400',  'to-pink-500'],
+    chart0:  '#7c3aed',
+    chart1:  '#14b8a6',
+    activity: 'from-violet-100 to-teal-100',
+    actIcon:  'text-violet-600',
+  },
+  ocean: {
+    banner:  'from-blue-600 via-cyan-600 to-teal-500',
+    shadow:  'shadow-blue-200 dark:shadow-blue-900/30',
+    stat0:   ['from-blue-500',    'to-cyan-500'],
+    stat1:   ['from-teal-500',    'to-emerald-500'],
+    stat2:   ['from-cyan-500',    'to-sky-500'],
+    stat3:   ['from-sky-400',     'to-blue-500'],
+    chart0:  '#2563eb',
+    chart1:  '#06b6d4',
+    activity: 'from-blue-100 to-cyan-100',
+    actIcon:  'text-blue-600',
+  },
+  sunset: {
+    banner:  'from-orange-500 via-pink-500 to-purple-600',
+    shadow:  'shadow-orange-200 dark:shadow-orange-900/30',
+    stat0:   ['from-orange-500',  'to-pink-500'],
+    stat1:   ['from-pink-500',    'to-rose-500'],
+    stat2:   ['from-purple-500',  'to-indigo-500'],
+    stat3:   ['from-amber-400',   'to-orange-500'],
+    chart0:  '#f97316',
+    chart1:  '#a855f7',
+    activity: 'from-orange-100 to-pink-100',
+    actIcon:  'text-orange-600',
+  },
+  forest: {
+    banner:  'from-emerald-600 via-teal-600 to-cyan-500',
+    shadow:  'shadow-emerald-200 dark:shadow-emerald-900/30',
+    stat0:   ['from-emerald-500', 'to-teal-500'],
+    stat1:   ['from-teal-500',    'to-cyan-500'],
+    stat2:   ['from-green-500',   'to-emerald-500'],
+    stat3:   ['from-cyan-400',    'to-teal-500'],
+    chart0:  '#059669',
+    chart1:  '#06b6d4',
+    activity: 'from-emerald-100 to-teal-100',
+    actIcon:  'text-emerald-600',
+  },
+} as const
+
 export function Dashboard() {
   const navigate = useNavigate()
-  const { spaceSlug, token, unreadSessionIds } = useAppStore()
+  const { spaceSlug, token, unreadSessionIds, dashboardTheme } = useAppStore()
+  const dt = DASHBOARD_THEMES[dashboardTheme ?? 'violet']
   const [stats, setStats]           = useState<DashboardStats | null>(null)
   const [loading, setLoading]       = useState(true)
   const [waitingCount, setWaiting]  = useState(0)
@@ -57,57 +109,17 @@ export function Dashboard() {
   }, [token])
 
   const statCards = stats ? [
-    {
-      label: 'Total Messages',
-      value: stats.total_messages.toLocaleString(),
-      icon: MessageSquare,
-      from: 'from-violet-500',
-      to:   'to-indigo-500',
-      bg:   'bg-violet-50 dark:bg-violet-900/20',
-      text: 'text-violet-700 dark:text-violet-300',
-      delta: `+${stats.messages_24h} today`,
-      deltaColor: 'text-violet-600 dark:text-violet-400',
-    },
-    {
-      label: 'RAG Hit Rate',
-      value: `${stats.rag_hit_rate}%`,
-      icon: TrendingUp,
-      from: 'from-teal-500',
-      to:   'to-emerald-500',
-      bg:   'bg-teal-50 dark:bg-teal-900/20',
-      text: 'text-teal-700 dark:text-teal-300',
-      delta: 'Last 7 days',
-      deltaColor: 'text-teal-600 dark:text-teal-400',
-    },
-    {
-      label: 'Active Agents',
-      value: stats.active_agents.toString(),
-      icon: Bot,
-      from: 'from-indigo-500',
-      to:   'to-blue-500',
-      bg:   'bg-indigo-50 dark:bg-indigo-900/20',
-      text: 'text-indigo-700 dark:text-indigo-300',
-      delta: stats.active_agents > 0 ? 'Running now' : 'None active',
-      deltaColor: 'text-indigo-600 dark:text-indigo-400',
-    },
-    {
-      label: 'Knowledge Docs',
-      value: stats.kb_doc_count.toString(),
-      icon: Database,
-      from: 'from-orange-400',
-      to:   'to-pink-500',
-      bg:   'bg-orange-50 dark:bg-orange-900/20',
-      text: 'text-orange-700 dark:text-orange-300',
-      delta: `${stats.kb_doc_count} document${stats.kb_doc_count !== 1 ? 's' : ''}`,
-      deltaColor: 'text-orange-600 dark:text-orange-400',
-    },
+    { label: 'Total Messages',  value: stats.total_messages.toLocaleString(), icon: MessageSquare, from: dt.stat0[0], to: dt.stat0[1], delta: `+${stats.messages_24h} today`                                       },
+    { label: 'RAG Hit Rate',    value: `${stats.rag_hit_rate}%`,              icon: TrendingUp,   from: dt.stat1[0], to: dt.stat1[1], delta: 'Last 7 days'                                                         },
+    { label: 'Active Agents',   value: stats.active_agents.toString(),        icon: Bot,          from: dt.stat2[0], to: dt.stat2[1], delta: stats.active_agents > 0 ? 'Running now' : 'None active'               },
+    { label: 'Knowledge Docs',  value: stats.kb_doc_count.toString(),         icon: Database,     from: dt.stat3[0], to: dt.stat3[1], delta: `${stats.kb_doc_count} document${stats.kb_doc_count !== 1 ? 's' : ''}` },
   ] : []
 
   return (
     <div className="p-5 sm:p-7 space-y-6">
 
       {/* ── Welcome banner ──────────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-600 via-indigo-600 to-teal-500 p-6 text-white shadow-lg shadow-violet-200 dark:shadow-violet-900/30">
+      <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${dt.banner} p-6 text-white shadow-lg ${dt.shadow}`}>
         {/* Soft inner glow */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.12),transparent_60%)] pointer-events-none" />
 
@@ -190,7 +202,7 @@ export function Dashboard() {
                   </div>
                   <p className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight">{s.value}</p>
                   <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-0.5">{s.label}</p>
-                  <p className={`text-xs mt-1.5 font-bold ${s.deltaColor}`}>{s.delta}</p>
+                  <p className="text-xs mt-1.5 font-bold text-gray-500 dark:text-gray-400">{s.delta}</p>
                 </div>
               )
             })}
@@ -221,8 +233,8 @@ export function Dashboard() {
                   <AreaChart data={stats?.messages_per_day || []} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="chatGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%"   stopColor="#7c3aed" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#14b8a6" stopOpacity={0.02} />
+                        <stop offset="0%"   stopColor={dt.chart0} stopOpacity={0.35} />
+                        <stop offset="100%" stopColor={dt.chart1} stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-gray-100 dark:stroke-gray-700" />
@@ -248,8 +260,8 @@ export function Dashboard() {
                     />
                     <defs>
                       <linearGradient id="strokeGrad" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%"   stopColor="#7c3aed" />
-                        <stop offset="100%" stopColor="#14b8a6" />
+                        <stop offset="0%"   stopColor={dt.chart0} />
+                        <stop offset="100%" stopColor={dt.chart1} />
                       </linearGradient>
                     </defs>
                   </AreaChart>
@@ -269,8 +281,8 @@ export function Dashboard() {
                 )}
                 {stats?.recent_activity.map((a, i) => (
                   <div key={i} className="flex gap-3">
-                    <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-violet-100 to-teal-100 border border-violet-100 flex items-center justify-center flex-shrink-0">
-                      <Bot className="w-3.5 h-3.5 text-violet-600" />
+                    <div className={`w-7 h-7 rounded-xl bg-gradient-to-br ${dt.activity} flex items-center justify-center flex-shrink-0`}>
+                      <Bot className={`w-3.5 h-3.5 ${dt.actIcon}`} />
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed truncate font-medium">{a.message}</p>
