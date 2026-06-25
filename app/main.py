@@ -104,7 +104,12 @@ app = FastAPI(
 )
 
 
-# Add CORS middleware
+# Add GZip compression middleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Add CORS middleware for authenticated dashboard API calls.
+# Public /api/chat/ and /api/v1/widget/ endpoints bypass this via the
+# PublicCORSMiddleware below, which runs first (outermost layer).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -113,26 +118,39 @@ app.add_middleware(
     allow_headers=settings.CORS_ALLOW_HEADERS,
 )
 
+# Public CORS — must be added LAST so it wraps everything and runs FIRST.
+# Intercepts OPTIONS preflights and injects Access-Control-Allow-Origin: *
+# for public endpoints before CORSMiddleware can reject them.
+_PUBLIC_CORS_PREFIXES = (
+    "/api/v1/widget/",
+    "/api/v1/space/public/",
+    "/api/chat/",
+)
+_PUBLIC_CORS_HEADERS = {
+    "Access-Control-Allow-Origin":  "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+}
 
-# Add GZip compression middleware
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response as StarletteResponse
 
-# CORS passthrough for public widget + chat endpoints from external origins
-@app.middleware("http")
-async def widget_cors_middleware(request: Request, call_next):
-    """Add Access-Control-Allow-Origin: * for public widget paths."""
-    public_prefixes = (
-        "/api/v1/widget/",
-        "/api/v1/space/public/",
-        "/api/chat/",
-    )
-    is_public = any(request.url.path.startswith(p) for p in public_prefixes)
-    response = await call_next(request)
-    if is_public:
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    return response
+class PublicCORSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        is_public = any(request.url.path.startswith(p) for p in _PUBLIC_CORS_PREFIXES)
+        if is_public and request.method == "OPTIONS":
+            # Return 200 directly — don't let CORSMiddleware see this preflight.
+            return StarletteResponse(
+                status_code=200,
+                headers=_PUBLIC_CORS_HEADERS,
+            )
+        response = await call_next(request)
+        if is_public:
+            for k, v in _PUBLIC_CORS_HEADERS.items():
+                response.headers[k] = v
+        return response
+
+app.add_middleware(PublicCORSMiddleware)
 
 
 # Security headers middleware

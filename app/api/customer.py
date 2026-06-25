@@ -16,6 +16,7 @@ from typing import List, Optional
 
 import structlog
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,14 @@ from app.models.chatbot import Chatbot
 
 logger = structlog.get_logger()
 router = APIRouter(tags=["Customer"])
+
+# CORS headers applied to every /api/chat/ response so cross-origin widget
+# embeds and external sites can reach these public endpoints.
+_CORS = {
+    "Access-Control-Allow-Origin":  "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+}
 
 
 # ── Request / Response ────────────────────────────────────────────────────────
@@ -330,6 +339,29 @@ async def _persist_turn(
 
     await redis_client.expire(_history_key(session_id), HISTORY_TTL)
     return session_id
+
+
+# ── OPTIONS preflights (widget embeds / cross-origin callers) ─────────────────
+
+@router.options("/api/chat/{slug}")
+async def preflight_chat(slug: str):
+    return JSONResponse({}, headers=_CORS)
+
+@router.options("/api/chat/{slug}/suggestions")
+async def preflight_suggestions(slug: str):
+    return JSONResponse({}, headers=_CORS)
+
+@router.options("/api/chat/{slug}/session/init")
+async def preflight_session_init(slug: str):
+    return JSONResponse({}, headers=_CORS)
+
+@router.options("/api/chat/{slug}/session/{session_id}")
+async def preflight_session(slug: str, session_id: str):
+    return JSONResponse({}, headers=_CORS)
+
+@router.options("/api/chat/{slug}/session/{session_id}/close")
+async def preflight_session_close(slug: str, session_id: str):
+    return JSONResponse({}, headers=_CORS)
 
 
 # ── Customer chat API ─────────────────────────────────────────────────────────

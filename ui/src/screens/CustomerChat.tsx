@@ -217,7 +217,7 @@ export function CustomerChat() {
   // Fetch space branding
   useEffect(() => {
     if (!slug) return
-    fetch(`/api/v1/space/public/${slug}`)
+    fetch(`${API_CONFIG.baseURL}/api/v1/space/public/${slug}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data) {
@@ -327,7 +327,7 @@ export function CustomerChat() {
   // Fetch suggestions
   useEffect(() => {
     if (!slug) return
-    fetch(`/api/chat/${slug}/suggestions`)
+    fetch(`${API_CONFIG.baseURL}/api/chat/${slug}/suggestions`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.suggestions) setSuggestions(data.suggestions) })
       .catch(() => {})
@@ -337,7 +337,7 @@ export function CustomerChat() {
   useEffect(() => {
     if (!chatParam || !slug) return
     setRestoring(true)
-    fetch(`/api/chat/${slug}/session/${chatParam}`)
+    fetch(`${API_CONFIG.baseURL}/api/chat/${slug}/session/${chatParam}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data?.history?.length) return
@@ -447,7 +447,7 @@ export function CustomerChat() {
     setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', text: msg }])
     setLoading(true)
     try {
-      const res = await fetch(`/api/chat/${slug}`, {
+      const res = await fetch(`${API_CONFIG.baseURL}/api/chat/${slug}`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ message: msg, session_id: sessionId }),
