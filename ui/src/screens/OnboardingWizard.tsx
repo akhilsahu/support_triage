@@ -44,7 +44,20 @@ export function OnboardingWizard() {
       setSuggestion(r)
       setAgentName(r.name || `${spaceName} Support Agent`)
       setSystemPrompt(r.system_prompt || '')
-    } catch { setAgentName(`${spaceName} Support Agent`) }
+    } catch {
+      const fallbackName = `${spaceName} Support Agent`
+      setAgentName(fallbackName)
+      setSystemPrompt(
+        `You are a customer support agent for ${spaceName}.\n\n` +
+        `Your role:\n` +
+        `- Answer customer questions accurately using the knowledge base provided\n` +
+        `- Be professional, concise, and helpful\n` +
+        `- If you cannot resolve the issue, escalate to human support\n\n` +
+        `Constraints:\n` +
+        `- Do not make up information — if unsure, say so\n` +
+        `- Stay on topic relevant to the business`
+      )
+    }
     finally { setLoadingSugg(false) }
   }
 
@@ -404,22 +417,23 @@ export function OnboardingWizard() {
                         className="w-full px-4 py-3 text-base border-2 border-indigo-100 rounded-xl bg-white text-gray-900 font-bold focus:outline-none focus:border-indigo-400 transition-colors"
                       />
 
-                      <div className="mt-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="text-xs font-black text-gray-500 uppercase tracking-widest">System Prompt</label>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-600 text-[10px] font-black">
-                            <Sparkles className="w-2.5 h-2.5" /> AI Written
-                          </span>
-                        </div>
-                        <textarea
-                          value={systemPrompt}
-                          onChange={e => setSystemPrompt(e.target.value)}
-                          rows={5}
-                          placeholder="Describe how your agent should behave, its tone, and what it should help customers with…"
-                          className="w-full px-4 py-3 text-sm border-2 border-indigo-100 rounded-xl bg-white text-gray-700 placeholder-indigo-200 focus:outline-none focus:border-indigo-400 resize-none leading-relaxed transition-colors font-medium"
-                        />
-                        <p className="text-[11px] text-indigo-400 mt-1.5 font-medium">✦ AI-generated — edit freely to match your brand voice</p>
+                    </div>
+
+                    <div className="rounded-2xl border-2 border-indigo-100 bg-white p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="text-xs font-black text-gray-600 uppercase tracking-widest">System Prompt</label>
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest">
+                          <Sparkles className="w-3 h-3" /> AI Written
+                        </span>
                       </div>
+                      <textarea
+                        value={systemPrompt}
+                        onChange={e => setSystemPrompt(e.target.value)}
+                        rows={7}
+                        placeholder="Describe how your agent should behave, its tone, and what it should help customers with…"
+                        className="w-full px-4 py-3 text-sm border-2 border-gray-100 rounded-xl bg-gray-50 text-gray-700 placeholder-gray-300 focus:outline-none focus:border-indigo-300 focus:bg-white resize-none leading-relaxed transition-all font-medium"
+                      />
+                      <p className="text-[11px] text-indigo-400 mt-2 font-medium">✦ Edit freely to match your brand voice</p>
                     </div>
 
                     {kbId && (

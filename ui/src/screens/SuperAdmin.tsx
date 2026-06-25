@@ -401,7 +401,7 @@ function AgentRow({ agent, adminKey, onToggled }: {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'orgs' | 'agents' | 'builtin' | 'activity' | 'vectordb' | 'nav' | 'homepage'
+type Tab = 'overview' | 'spaces' | 'agents' | 'builtin' | 'activity' | 'vectordb' | 'nav' | 'homepage'
 
 // ── Builtin Agent Toggle Row ───────────────────────────────────────────────────
 
@@ -813,7 +813,7 @@ export function SuperAdmin() {
   const [tab, setTab] = useState<Tab>('overview')
 
   const [stats, setStats] = useState<Stats | null>(null)
-  const [spaces, setOrgs] = useState<Space[]>([])
+  const [spaces, setSpaces] = useState<Space[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [builtinAgents, setBuiltinAgents] = useState<BuiltinAgentType[]>([])
   const [logs, setLogs] = useState<LogEntry[]>([])
