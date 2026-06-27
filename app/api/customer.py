@@ -370,20 +370,27 @@ async def preflight_session_close(slug: str, session_id: str):
 async def customer_chat(slug: str, req: CustomerChatRequest):
     from app.orchestra.ai.core.factory import build_executor
 
-    org, chatbot, db = await _get_brand(slug)
-    t0 = time.time()
+    try:
+        org, chatbot, db = await _get_brand(slug)
+    except HTTPException as e:
+        return JSONResponse({"detail": e.detail}, status_code=e.status_code, headers=_CORS)
 
+    t0 = time.time()
     try:
         # 1. Human handoff — return early if session is owned by staff
         if req.session_id:
             handoff = await _handle_human_session(db, org, chatbot, req.session_id, req.message)
             if handoff:
-                return handoff
+                return JSONResponse(handoff.model_dump(), headers=_CORS)
 
         # 2. Run AI
         active_agents = await _get_active_agents_cached(db, chatbot.id, str(org.id))
         if not active_agents:
-            raise HTTPException(503, "No active agents configured for this bot.")
+            return JSONResponse(
+                {"detail": "No active agents configured for this bot."},
+                status_code=503,
+                headers=_CORS,
+            )
 
         executor = build_executor(
             org=org,
@@ -400,16 +407,26 @@ async def customer_chat(slug: str, req: CustomerChatRequest):
         elapsed_ms = int((time.time() - t0) * 1000)
         session_id = await _persist_turn(db, org, chatbot, req.session_id, result, elapsed_ms, req.message)
 
-        return CustomerChatResponse(
-            reply=result.get("reply", ""),
-            agent=result.get("agent", "unknown"),
-            intent=result.get("intent", "unknown"),
-            session_id=session_id,
-            rag_hit=result.get("rag_hit", False),
-            response_ms=elapsed_ms,
-            citations=result.get("citations", []),
+        return JSONResponse(
+            CustomerChatResponse(
+                reply=result.get("reply", ""),
+                agent=result.get("agent", "unknown"),
+                intent=result.get("intent", "unknown"),
+                session_id=session_id,
+                rag_hit=result.get("rag_hit", False),
+                response_ms=elapsed_ms,
+                citations=result.get("citations", []),
+            ).model_dump(),
+            headers=_CORS,
         )
 
+    except Exception as e:
+        logger.error("customer_chat.failed", slug=slug, error=str(e))
+        return JSONResponse(
+            {"detail": "Chat processing failed. Please try again."},
+            status_code=500,
+            headers=_CORS,
+        )
     finally:
         await db.close()
 
@@ -459,11 +476,19 @@ async def init_chat_session(slug: str):
     """
     from app.orchestra.ai.core.factory import build_executor
 
-    org, chatbot, db = await _get_brand(slug)
+    try:
+        org, chatbot, db = await _get_brand(slug)
+    except HTTPException as e:
+        return JSONResponse({"detail": e.detail}, status_code=e.status_code, headers=_CORS)
+
     try:
         active_agents = await _get_active_agents_cached(db, chatbot.id, str(org.id))
         if not active_agents:
-            raise HTTPException(503, "No active agents configured for this bot.")
+            return JSONResponse(
+                {"detail": "No active agents configured for this bot."},
+                status_code=503,
+                headers=_CORS,
+            )
 
         session_id = str(uuid.uuid4())
         executor = build_executor(
@@ -473,7 +498,10 @@ async def init_chat_session(slug: str):
         )
         await executor.warmup()
 
-        return SessionInitResponse(session_id=session_id)
+        return JSONResponse(SessionInitResponse(session_id=session_id).model_dump(), headers=_CORS)
+    except Exception as e:
+        logger.error("init_chat_session.failed", slug=slug, error=str(e))
+        return JSONResponse({"detail": "Session init failed."}, status_code=500, headers=_CORS)
     finally:
         await db.close()
 

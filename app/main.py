@@ -214,12 +214,16 @@ async def global_exception_handler(request: Request, exc: Exception):
         path=request.url.path,
         method=request.method,
     )
+    headers = {}
+    if any(request.url.path.startswith(p) for p in _PUBLIC_CORS_PREFIXES):
+        headers = dict(_PUBLIC_CORS_HEADERS)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "error": "Internal server error",
             "message": str(exc) if settings.DEBUG else "An unexpected error occurred",
         },
+        headers=headers or None,
     )
 
 
