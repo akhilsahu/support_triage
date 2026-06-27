@@ -1,0 +1,23 @@
+{
+  "skill_name": "db-query",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "How many agents are in the database?",
+      "expected_output": "A count of agents from the agents table",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "Show me the 5 most recent conversations",
+      "expected_output": "A table showing the 5 most recent rows from the conversations table",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Are there any workflow records? Show me a sample.",
+      "expected_output": "Either a sample of workflow rows or a clear message that the table is empty",
+      "files": []
+    }
+  ]
+}

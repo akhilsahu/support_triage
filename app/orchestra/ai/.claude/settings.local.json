@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/mac/Projects/bob-watson-hackathon/**)",
+      "Bash(python3 -c \"from agno.team import TeamMode; print\\([\\(m.name, m.value\\) for m in TeamMode]\\)\")",
+      "Bash(python3 -c \"from agno.run.agent import RunResponse; import inspect; print\\([f for f in RunResponse.__dataclass_fields__] if hasattr\\(RunResponse, '__dataclass_fields__'\\) else 'not dataclass'\\); help\\(RunResponse\\)\")",
+      "Bash(sed -i '' 's/Enabled for all orgs/Enabled for all spaces/g;    s/Hidden from all orgs/Hidden from all spaces/g;    s/label: '\\\\''Organizations'\\\\''/label: '\\\\''Spaces'\\\\''/g;    s/label=\"Total Orgs\"/label=\"Total Spaces\"/g' /Users/mac/Projects/bob-watson-hackathon/ui/src/screens/SuperAdmin.tsx)",
+      "Bash(sed -i '' 's/<NavConfigTab adminKey={key} orgs={orgs}/<NavConfigTab adminKey={key} spaces={spaces}/' /Users/mac/Projects/bob-watson-hackathon/ui/src/screens/SuperAdmin.tsx)",
+      "Bash(sed -i '' 's/vectorDB\\\\.orgs/vectorDB.spaces/g' /Users/mac/Projects/bob-watson-hackathon/ui/src/screens/SuperAdmin.tsx)",
+      "Bash(sed -i '' 's/placeholder={tab === '\\\\''orgs'\\\\'' ? '\\\\''Search orgs…'\\\\''/placeholder={tab === '\\\\''spaces'\\\\'' ? '\\\\''Search spaces…'\\\\''/' /Users/mac/Projects/bob-watson-hackathon/ui/src/screens/SuperAdmin.tsx)",
+      "Bash(sed -i '' 's/{ id: '\\\\''orgs'\\\\'',/{ id: '\\\\''spaces'\\\\'',/' /Users/mac/Projects/bob-watson-hackathon/ui/src/screens/SuperAdmin.tsx)",
+      "Bash(sed -i '' 's/\\(tab === '\\\\''orgs'\\\\'' || tab === '\\\\''activity'\\\\''\\)/\\(tab === '\\\\''spaces'\\\\'' || tab === '\\\\''activity'\\\\''\\)/g;    s/tab === '\\\\''orgs'\\\\''/tab === '\\\\''spaces'\\\\''/g' /Users/mac/Projects/bob-watson-hackathon/ui/src/screens/SuperAdmin.tsx)",
+      "Bash(sed -i '' 's/'\\\\''Time'\\\\'', '\\\\''Org'\\\\'', '\\\\''Role'\\\\''/'\\\\''Time'\\\\'', '\\\\''Space'\\\\'', '\\\\''Role'\\\\''/' /Users/mac/Projects/bob-watson-hackathon/ui/src/screens/SuperAdmin.tsx)",
+      "Bash(sed -i '' s/org_name?:/space_name?:/ /Users/mac/Projects/bob-watson-hackathon/ui/src/types/index.ts)",
+      "Bash(sed -i '' 's/Scoped to your org/Scoped to your space/' /Users/mac/Projects/bob-watson-hackathon/ui/src/screens/Agents.tsx)",
+      "WebSearch",
+      "Bash(npx tsc *)",
+      "Bash(python -c \"from app.main import app; print\\('OK'\\)\")"
+    ]
+  }
+}
