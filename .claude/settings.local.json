@@ -4,7 +4,8 @@
       "Bash(node_modules/.bin/tsc --noEmit)",
       "Read(//usr/local/bin/**)",
       "Read(//Users/aks/.nvm/versions/**)",
-      "Bash(find /Users/aks -name \"node\" -type f 2>/dev/null | head -5; find /usr -name \"node\" -type f 2>/dev/null | head -5)"
+      "Bash(find /Users/aks -name \"node\" -type f 2>/dev/null | head -5; find /usr -name \"node\" -type f 2>/dev/null | head -5)",
+      "Bash(ls /usr/local/bin/npm /opt/homebrew/bin/npm 2>/dev/null; find /usr/local -name \"npm\" -type f 2>/dev/null | head -3; find /opt/homebrew -name \"npm\" -type f 2>/dev/null | head -3)"
     ]
   }
 }
