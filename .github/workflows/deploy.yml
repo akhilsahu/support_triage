@@ -1,0 +1,80 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Build on VPS and restart
+    runs-on: ubuntu-latest
+
+    env:
+      SECRET_KEY:          ${{ secrets.SECRET_KEY }}
+      FRONTEND_URL:        ${{ secrets.FRONTEND_URL }}
+      POSTGRES_DB:         ${{ secrets.POSTGRES_DB }}
+      POSTGRES_USER:       ${{ secrets.POSTGRES_USER }}
+      POSTGRES_PASSWORD:   ${{ secrets.POSTGRES_PASSWORD }}
+      SMTP_HOST:           ${{ secrets.SMTP_HOST }}
+      SMTP_PORT:           ${{ secrets.SMTP_PORT }}
+      SMTP_USER:           ${{ secrets.SMTP_USER }}
+      SMTP_PASS:           ${{ secrets.SMTP_PASS }}
+      SMTP_FROM:           ${{ secrets.SMTP_FROM }}
+      ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
+      SUPER_ADMIN_KEY:     ${{ secrets.SUPER_ADMIN_KEY }}
+      CORS_ORIGINS:        ${{ secrets.CORS_ORIGINS }}
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key:      ${{ secrets.VPS_SSH_KEY }}
+          envs: >-
+            SECRET_KEY,FRONTEND_URL,
+            POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,
+            SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,SMTP_FROM,
+            ANTHROPIC_API_KEY,OPENAI_API_KEY,SUPER_ADMIN_KEY,CORS_ORIGINS
+          script: |
+            set -e
+            cd /var/www/support247
+
+            # Discard any local changes and pull latest code
+            git reset --hard HEAD
+            git pull origin main
+
+            # Write .env from GitHub secrets — no manual SSH needed
+            printf '%s\n' \
+              "ENVIRONMENT=production" \
+              "FRONTEND_URL=${FRONTEND_URL}" \
+              "SECRET_KEY=${SECRET_KEY}" \
+              "DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}" \
+              "POSTGRES_DB=${POSTGRES_DB}" \
+              "POSTGRES_USER=${POSTGRES_USER}" \
+              "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" \
+              "SMTP_HOST=${SMTP_HOST}" \
+              "SMTP_PORT=${SMTP_PORT:-465}" \
+              "SMTP_USER=${SMTP_USER}" \
+              "SMTP_PASS=${SMTP_PASS}" \
+              "SMTP_FROM=${SMTP_FROM}" \
+              "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" \
+              "OPENAI_API_KEY=${OPENAI_API_KEY}" \
+              "SUPER_ADMIN_KEY=${SUPER_ADMIN_KEY}" \
+              "CORS_ORIGINS=${CORS_ORIGINS}" \
+              > .env
+
+            # Build frontend (relative API URLs — nginx proxies /api/* to backend)
+            cd ui && npm ci --prefer-offline && npm run build && cd ..
+
+            # Rebuild image natively on VPS (fast, no cross-compilation)
+            docker compose -f deploy/docker-compose.prod.yml --env-file .env up --build -d --remove-orphans
+
+            # Run migrations
+            docker compose -f deploy/docker-compose.prod.yml --env-file .env exec -T api alembic upgrade head
+
+            # Clean up dangling images
+            docker image prune -f
+
+            echo "Deploy complete"
