@@ -9,6 +9,7 @@ POST /api/chat/{slug}/session/{session_id}/close — chatbox unmount signal
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from datetime import datetime
@@ -17,6 +18,7 @@ from typing import List, Optional
 import structlog
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
+from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -307,7 +309,15 @@ async def _persist_turn(
             pass
 
     if not chat_session:
+        # Create with the canonical id the orchestrator already ran under, so the
+        # persisted ChatSession, the Agno session store, and citations all share
+        # one id. Fall back to a fresh uuid only if the incoming id is unusable.
+        try:
+            new_id = uuid.UUID(incoming_session_id) if incoming_session_id else uuid.uuid4()
+        except (ValueError, TypeError):
+            new_id = uuid.uuid4()
         chat_session = ChatSession(
+            id=new_id,
             space_id=org.id,
             chatbot_id=chatbot.id,
             title=message[:100].strip(),
@@ -334,6 +344,8 @@ async def _persist_turn(
         space_id=org.id, chatbot_id=chatbot.id, session_id=session_id,
         role="assistant", message=result.get("reply", ""),
         intent=result.get("intent"), agent_slug=agent_slug,
+        rag_hit=result.get("rag_hit", False),
+        citations=result.get("citations") or None,
     ))
     await db.commit()
 
@@ -351,6 +363,10 @@ async def preflight_chat(slug: str):
 async def preflight_suggestions(slug: str):
     return JSONResponse({}, headers=_CORS)
 
+@router.options("/api/chat/{slug}/stream")
+async def preflight_chat_stream(slug: str):
+    return JSONResponse({}, headers=_CORS)
+
 @router.options("/api/chat/{slug}/session/init")
 async def preflight_session_init(slug: str):
     return JSONResponse({}, headers=_CORS)
@@ -362,6 +378,25 @@ async def preflight_session(slug: str, session_id: str):
 @router.options("/api/chat/{slug}/session/{session_id}/close")
 async def preflight_session_close(slug: str, session_id: str):
     return JSONResponse({}, headers=_CORS)
+
+
+def _canonical_session_id(incoming: Optional[str]) -> str:
+    """
+    Resolve the session id to use for THIS request, BEFORE the AI runs.
+
+    Returning user → reuse their id. First turn (missing / "new" / invalid) →
+    mint a fresh UUID. This only generates the *identifier*; the ChatSession DB
+    row is still created lazily in _persist_turn on the first real message, so
+    opening the widget without sending anything persists nothing. The same id is
+    passed to the orchestrator (session_id + user_id) and to _persist_turn, so
+    history/memory thread from turn 1.
+    """
+    if incoming:
+        try:
+            return str(uuid.UUID(incoming))   # valid existing id → keep it
+        except (ValueError, TypeError):
+            pass
+    return str(uuid.uuid4())
 
 
 # ── Customer chat API ─────────────────────────────────────────────────────────
@@ -392,11 +427,14 @@ async def customer_chat(slug: str, req: CustomerChatRequest):
                 headers=_CORS,
             )
 
+        # Resolve the canonical session id BEFORE the run so session_id + user_id
+        # thread into the orchestrator's memory from the very first turn.
+        session_id = _canonical_session_id(req.session_id)
         executor = build_executor(
             org=org,
             active_agents=active_agents,
-            session_id=req.session_id or "new",
-            conversation_id=req.conversation_id or req.session_id or "new",
+            session_id=session_id,
+            conversation_id=req.conversation_id or session_id,
         )
         result = await executor.run(message=req.message)
 
@@ -405,7 +443,7 @@ async def customer_chat(slug: str, req: CustomerChatRequest):
 
         # 4. Persist both turns and return
         elapsed_ms = int((time.time() - t0) * 1000)
-        session_id = await _persist_turn(db, org, chatbot, req.session_id, result, elapsed_ms, req.message)
+        session_id = await _persist_turn(db, org, chatbot, session_id, result, elapsed_ms, req.message)
 
         return JSONResponse(
             CustomerChatResponse(
@@ -429,6 +467,96 @@ async def customer_chat(slug: str, req: CustomerChatRequest):
         )
     finally:
         await db.close()
+
+
+# ── Streaming chat ───────────────────────────────────────────────────────────
+
+@router.post("/api/chat/{slug}/stream")
+async def customer_chat_stream(slug: str, req: CustomerChatRequest):
+    """
+    Stream reply chunks as SSE.
+
+    Flow:
+      1. Frontend calls POST /session/init → Team is pre-warmed
+      2. Frontend calls POST /stream with the same session_id
+      3. Cached Team runs arun(stream=True) → chunks arrive immediately
+      4. After last chunk: persist turn + escalation check → send 'done' event
+
+    Events:
+      data: <text chunk>           — one per streamed token/sentence
+      event: done  data: <JSON>   — {session_id, agent, rag_hit} — stream complete
+      event: error data: <msg>    — on failure
+    """
+    from app.orchestra.ai.core.factory import build_executor
+
+    try:
+        org, chatbot, db = await _get_brand(slug)
+    except HTTPException as e:
+        return JSONResponse({"detail": e.detail}, status_code=e.status_code, headers=_CORS)
+
+    # Human handoff must be resolved before we open the stream
+    if req.session_id:
+        handoff = await _handle_human_session(db, org, chatbot, req.session_id, req.message)
+        if handoff:
+            await db.close()
+            return JSONResponse(handoff.model_dump(), headers=_CORS)
+
+    active_agents = await _get_active_agents_cached(db, chatbot.id, str(org.id))
+    if not active_agents:
+        await db.close()
+        return JSONResponse(
+            {"detail": "No active agents configured for this bot."},
+            status_code=503, headers=_CORS,
+        )
+
+    # Canonical session id before the stream opens → history threads from turn 1.
+    session_id = _canonical_session_id(req.session_id)
+    executor = build_executor(
+        org=org,
+        active_agents=active_agents,
+        session_id=session_id,
+    )
+    t0 = time.time()
+
+    async def generate():
+        chunks: List[str] = []
+        try:
+            async for chunk in executor.stream(req.message):
+                chunks.append(chunk)
+                yield {"data": chunk}
+
+            # Stream complete — pull structured metadata the SSE text stream
+            # couldn't carry inline (agent/rag_hit/citations from the final run).
+            reply_text = "".join(chunks)
+            meta = getattr(executor, "last_result", None) or {}
+            result = {
+                "reply":     reply_text,
+                "agent":     meta.get("agent", "team"),
+                "intent":    meta.get("intent", meta.get("agent", "team")),
+                "rag_hit":   meta.get("rag_hit", False),
+                "citations": meta.get("citations", []),
+            }
+            elapsed_ms = int((time.time() - t0) * 1000)
+            await _maybe_escalate(db, chatbot, org, result, session_id, req.message)
+            await _persist_turn(
+                db, org, chatbot, session_id, result, elapsed_ms, req.message
+            )
+            yield {
+                "event": "done",
+                "data":  json.dumps({
+                    "session_id": session_id,
+                    "agent":      result.get("agent", "team"),
+                    "rag_hit":    result.get("rag_hit", False),
+                    "citations":  result.get("citations", []),
+                }),
+            }
+        except Exception:
+            logger.exception("customer_chat_stream.failed", slug=slug)
+            yield {"event": "error", "data": "Stream failed. Please try again."}
+        finally:
+            await db.close()
+
+    return EventSourceResponse(generate(), headers=_CORS)
 
 
 # ── Chat suggestions ──────────────────────────────────────────────────────────

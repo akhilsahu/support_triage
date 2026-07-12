@@ -146,7 +146,7 @@ export const useAppStore = create<AppState>()(
       setDashboardTheme: (t) => set({ dashboardTheme: t }),
     }),
     {
-      name: 'support247-store',
+      name: import.meta.env.PROD ? 'support247-store' : 'support247-store-dev',
       partialize: (s) => ({ isDark: s.isDark, fontSize: s.fontSize, sidebarCollapsed: s.sidebarCollapsed, apiKey: s.apiKey, clientId: s.clientId, token: s.token, spaceId: s.spaceId, spaceSlug: s.spaceSlug, spaceName: s.spaceName, onboardingComplete: s.onboardingComplete, activeHomepage: s.activeHomepage, dashboardTheme: s.dashboardTheme }),
     }
   )

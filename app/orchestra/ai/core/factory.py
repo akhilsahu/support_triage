@@ -51,6 +51,11 @@ def build_executor(
         async def run(self, message: str) -> dict:
             return await _exec.run(message=message, session_id=_sid, conversation_id=_cid)
 
+        async def stream(self, message: str):
+            # DynamicAgentExecutor has no native streaming — yield one complete chunk
+            result = await _exec.run(message=message, session_id=_sid, conversation_id=_cid)
+            yield result.get("reply", "")
+
         async def warmup(self) -> None:
             pass  # DynamicAgentExecutor is stateless — nothing to pre-build
 

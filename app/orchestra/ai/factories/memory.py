@@ -33,51 +33,31 @@ class MemoryFactory:
     def __init__(self, cfg: AgnoConfig):
         self.cfg = cfg
 
-    def build(self, session_id: str) -> Optional[Any]:
+    def build(self, session_id: str = "") -> Optional[Any]:
         """
-        Build a MemoryManager scoped to this session.
+        Build an Agno MemoryManager (the extraction engine).
 
-        session_id is a UUID that uniquely identifies one chat session,
-        so it alone is sufficient as the memory scope key.
+        Scope is NOT baked in here: memories are keyed by the run-time `user_id`
+        and persisted to the Agno `db` on the runner. One MemoryManager serves
+        all users of a space runner. `session_id` is accepted only for logging.
 
         Returns:
             Agno MemoryManager or None if disabled / agno not available.
         """
-        if not self.cfg.memory_enabled:
+        if not self.cfg.user_memories_enabled:
             return None
 
-        return self._build_agno_memory(session_id)
-
-    # ── Private ───────────────────────────────────────────────────────────────
-
-    def _build_agno_memory(self, session_id: str) -> Optional[Any]:
         try:
             from agno.memory import MemoryManager
             from app.orchestra.ai.factories.llm import LLMFactory
 
             llm = LLMFactory(self.cfg).build()
-            memory = MemoryManager(model=llm, user_id=session_id)
-            logger.info(
-                "memory_factory.built",
-                session_id=session_id,
-                provider=self.cfg.mem0_llm_provider,
-            )
+            memory = MemoryManager(model=llm)
+            logger.info("memory_factory.built", provider=self.cfg.mem0_llm_provider)
             return memory
         except ImportError:
             logger.warning("agno.memory not available — memory disabled")
             return None
-        except TypeError:
-            # Older agno builds may not accept user_id in MemoryManager constructor
-            try:
-                from agno.memory import MemoryManager
-                from app.orchestra.ai.factories.llm import LLMFactory
-                llm = LLMFactory(self.cfg).build()
-                memory = MemoryManager(model=llm)
-                logger.info("memory_factory.built_no_user_id", session_id=session_id)
-                return memory
-            except Exception as e:
-                logger.error("memory_factory.error", error=str(e))
-                return None
         except Exception as e:
             logger.error("memory_factory.error", error=str(e))
             return None

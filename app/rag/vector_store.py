@@ -264,16 +264,10 @@ class VectorStore:
         return self._client
 
     def _get_chroma_ef(self):
-        try:
-            from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
-            from app.config import settings
-            return OpenAIEmbeddingFunction(
-                api_key=settings.OPENAI_API_KEY,
-                model_name="text-embedding-3-small",
-            )
-        except Exception as e:
-            logger.warning("OpenAI EF unavailable, falling back to default", error=str(e))
-            return None
+        # Built from the shared embedding config so the write-path model +
+        # dimensions always match the Agno read path (see app/orchestra/ai/embedding).
+        from app.orchestra.ai.embedding import build_chroma_embedding_function
+        return build_chroma_embedding_function()
 
     def _collection(self, name: str):
         if name not in self._collections:

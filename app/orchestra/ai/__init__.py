@@ -10,5 +10,5 @@ Key wins over the custom executor:
   - Model-validated tool schemas (no hand-parsed JSON)
   - Built-in mem0 memory backend
 
-Entry point: OrchestraExecutor (executor.py)
+Entry point: build_executor (core/factory.py)
 """

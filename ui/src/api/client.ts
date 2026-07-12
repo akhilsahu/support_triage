@@ -10,7 +10,7 @@ const http = axios.create({
 // Attach JWT token from Zustand store on every request
 http.interceptors.request.use(config => {
   try {
-    const stored = localStorage.getItem('support247-store')
+    const stored = localStorage.getItem(import.meta.env.PROD ? 'support247-store' : 'support247-store-dev')
     if (stored) {
       const parsed = JSON.parse(stored)
       const token = parsed?.state?.token

@@ -6,6 +6,20 @@ A production-ready FastAPI backend for AI Support multi-agent systems with RAG (
 
 - **Multi-Agent System**: Support for multiple AI agent types with orchestration
 - **RAG Implementation**: Document storage with vector embeddings using pgvector
+- **Per-Agent Knowledge Base Scoping**: Every custom agent is wired to one or more
+  Knowledge Bases (`agent_knowledge_bases` join table) and, at retrieval time,
+  searches **only** the KB(s) it is assigned to. Scoping is enforced as a layered
+  ChromaDB metadata filter built in `_make_filters()`
+  (`app/orchestra/ai/knowledge/agno_chroma.py`), all conditions ANDed:
+    - `client_id == space_id` — hard tenant/space isolation (always applied)
+    - `kb_id $in [linked KB ids]` — custom agents: only their assigned Knowledge Bases
+    - `doc_type $in [categories]` — builtin agents: only their configured categories
+
+  Every chunk is tagged with `client_id`, `kb_id`, `doc_id`, and `doc_type` at
+  ingestion, so an agent with no matching KB documents retrieves nothing rather than
+  leaking another KB's content. **An agent with no scoping at all (no linked KB and
+  no builtin category) is given no knowledge and performs no retrieval — it never
+  falls back to searching the whole space.**
 - **Workflow Engine**: Sequential, parallel, and conditional agent execution
 - **Vector Search**: Efficient similarity search with PostgreSQL pgvector extension
 - **Real-time Communication**: WebSocket support for live updates
@@ -234,6 +248,93 @@ RAG_TOP_K=5
 RAG_SIMILARITY_THRESHOLD=0.7
 RAG_CHUNK_SIZE=1000
 ```
+
+## 🧠 RAG Pipeline, Reranking & Session Memory
+
+The `app/orchestra/ai/` pipeline is: **ingestion → chunking → embedding →
+retrieval (hybrid + optional rerank) → Agno agent (knowledge + session memory)**.
+Standalone demo scripts (functional params at the top of each `main()`, no CLI
+args) validate each stage:
+
+```bash
+python -m app.orchestra.ai.ingestion.demo    # parse a file → ParsedDocument
+python -m app.orchestra.ai.chunking.demo      # parse → chunk (strategy per type)
+python -m app.orchestra.ai.knowledge.demo     # ingest → hybrid retrieval (+ rerank)
+python -m app.orchestra.ai.demochat           # full chat via the real orchestrator
+```
+
+### Embedding
+
+Write path (ChromaDB) and read path (Agno) build from one shared config so model
+and dimensions can never drift.
+
+```bash
+EMBEDDING_MODEL=text-embedding-3-small       # or text-embedding-3-large
+EMBEDDING_DIMENSION=1536                      # 3072 for -large
+```
+
+### Reranking (optional — off by default)
+
+Pluggable providers. Disabled unless `RERANK_ENABLED=true`; if enabled without the
+provider installed it **degrades gracefully to no-rerank** (logs a warning, chat
+still works).
+
+```bash
+RERANK_ENABLED=false                          # true to turn on
+RERANK_PROVIDER=cohere                         # cohere | sentence_transformer | none
+RERANK_MODEL=                                  # blank = provider's own default
+RERANK_TOP_N=5                                 # final chunks after rerank
+RERANK_FETCH_K=20                              # candidates fetched before rerank
+COHERE_API_KEY=                                # required for provider=cohere
+```
+
+Provider install (only one needed, only if you enable reranking):
+
+| Provider | Install | Notes |
+|---|---|---|
+| `cohere` | `pip install cohere` (in requirements) + set `COHERE_API_KEY` | Hosted, lightweight, best quality |
+| `sentence_transformer` | `pip install sentence-transformers` | **Local, no API key**, but pulls in **PyTorch (~1.5 GB)** — install only if you deliberately want the local reranker (commented out in `requirements.txt`) |
+
+To plug in a new reranker: register a builder under a name in
+`app/orchestra/ai/knowledge/reranking/` (`@register("name")`) and set
+`RERANK_PROVIDER=name` — no other code changes.
+
+### Session store — history, user memory, summaries (Agno-native)
+
+Conversation history, per-user memory, and rolling summaries are Agno features
+backed by **one `db`**. It lives on its **own Postgres database** (`agno_sessions`),
+separate from the app DB, so Agno's auto-created tables never collide with the
+Alembic-managed schema. `session_id` and `user_id` are both the `ChatSession` id.
+
+```bash
+SESSION_STORE=postgres                         # postgres | sqlite | none
+AGNO_SESSION_DB_NAME=agno_sessions             # separate DB on the same PG server
+AGNO_SESSION_DB_URL=                           # explicit url; blank = derive from DATABASE_URL
+AGNO_SESSION_DB_SCHEMA=public
+HISTORY_ENABLED=true
+NUM_HISTORY_RUNS=5                             # prior turns fed back into context
+USER_MEMORIES_ENABLED=true                     # extract/recall user facts
+SESSION_SUMMARIES_ENABLED=true                 # condense long conversations
+ADD_KNOWLEDGE_TO_CONTEXT=true                  # reliable RAG grounding (not agentic-only)
+```
+
+**Required one-time setup** — create the separate database (Agno auto-creates its
+*tables* inside it, but not the database itself):
+
+```bash
+createdb agno_sessions
+# or: psql -c "CREATE DATABASE agno_sessions;"
+```
+
+If that database is missing/unreachable, `build_session_db` runs a `SELECT 1`
+preflight, logs `session.db.unreachable`, and **degrades to stateless chat**
+(session features off, but messages still answer) rather than failing every
+request. Set `SESSION_STORE=sqlite` for local/dev (auto-creates a file) or
+`SESSION_STORE=none` to disable session persistence entirely.
+
+> **Cost note:** `USER_MEMORIES_ENABLED` and `SESSION_SUMMARIES_ENABLED` each add
+> an LLM call per turn. Set them to `false` and rely on `NUM_HISTORY_RUNS` alone
+> to minimise token usage until you need them.
 
 ## 📖 Usage Examples
 

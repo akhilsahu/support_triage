@@ -32,6 +32,21 @@ mem0ai>=0.1.0
 agno>=1.5.0
 ibm-watsonx-ai>=1.0.0
 
+# Document Ingestion — extended format support
+openpyxl>=3.1.0          # .xlsx parsing (XlsxParser)
+xlrd>=2.0.1              # .xls legacy Excel conversion
+python-pptx>=1.0.0       # .pptx / slide extraction (PptxParser)
+markdown-it-py>=3.0.0    # Markdown heading-aware parsing (TextParser)
+
+# Retrieval reranking (optional; off unless RERANK_ENABLED=true)
+cohere>=5.0.0            # RERANK_PROVIDER=cohere (hosted; needs COHERE_API_KEY)
+# sentence-transformers>=3.0.0   # RERANK_PROVIDER=sentence_transformer (LOCAL, no key,
+#                                # but pulls in PyTorch ~1.5GB — install only if you
+#                                # deliberately want the local reranker)
+
+# Agno session store (history / user-memory / summaries) uses PostgresDb via
+# SQLAlchemy + psycopg2-binary (already pinned above). No extra package needed.
+
 # Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4

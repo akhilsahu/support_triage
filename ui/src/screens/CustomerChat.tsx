@@ -1,152 +1,261 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { useAppStore } from '../store/useAppStore'
 import { API_CONFIG } from '../config/api'
-import { Send, Plus, Sun, Moon, Waves, X } from 'lucide-react'
+import { Send, Sun, Moon, Sparkles, X, User, Bot, Palette } from 'lucide-react'
 import { SourceCitation } from '../components/ui/SourceCitation'
 import { NotFound } from './NotFound'
 import type { SourceItem } from '../types'
 
-// Detect if we're embedded inside an iframe (widget mode)
 const IS_EMBEDDED = window.self !== window.top
 
-// ── Theme definitions ─────────────────────────────────────────────────────────
+// ── Design tokens per theme ───────────────────────────────────────────────────
+// Research refs:
+//  - Avoid #000 (halation) → use #121212 (YouTube/Figma standard)
+//  - Avoid #fff text → #e0e0e0 for dark, #0f172a for light (4.5:1 contrast)
+//  - Glassmorphism: backdrop-blur + rgba fill + subtle border
+//  - WCAG 2.1: min 44×44 px touch targets on interactive elements
 
-type ThemeKey = 'dark' | 'blue' | 'light'
+type ThemeKey = 'indigo' | 'dark' | 'light'
 
-const THEMES: Record<ThemeKey, {
-  bg: string
-  bgMsg: string
-  text: string
-  subtext: string
-  inputBg: string
-  inputBorder: string
-  inputText: string
-  userBubble: string
-  aiBubble: string
-  aiText: string
-  chipBg: string
-  chipBorder: string
-  chipText: string
-  chipHover: string
+interface ThemeTokens {
+  // Layout
+  pageBg: string
   headerBg: string
-  icon: string
-}> = {
+  headerBorder: string
+  divider: string
+  // Text
+  textPrimary: string
+  textSecondary: string
+  textMuted: string
+  // Bubbles
+  userBubbleCls: string          // className
+  userBubbleBg: string           // inline CSS background — theme-specific user bubble color
+  aiBubbleCls: string
+  aiAccentBar: string            // gradient class for the top bar
+  // Input
+  inputWrapCls: string
+  inputFieldCls: string
+  inputBorderFocus: string
+  // Chips / suggestions
+  chipCls: string
+  chipHoverCls: string
+  // Badge
+  agentBadgeCls: string
+  // Icon buttons
+  iconBtnCls: string
+  // Send button (bg handled by inline accentColor)
+  sendBtnShadow: string
+  // Typing dots
+  typingDotCls: string
+  // Avatar
+  botAvatarCls: string
+}
+
+const THEMES: Record<ThemeKey, ThemeTokens> = {
+  // ── Indigo dark — glassmorphism on deep navy ─────────────────────────────
+  indigo: {
+    pageBg:          'bg-[#0c0b1e]',
+    headerBg:        'bg-[#0c0b1e]/80 backdrop-blur-md',
+    headerBorder:    'border-white/[0.07]',
+    divider:         'border-white/[0.07]',
+    textPrimary:     'text-[#e8e8ff]',
+    textSecondary:   'text-indigo-200/60',
+    textMuted:       'text-indigo-300/35',
+    userBubbleCls:   'text-white rounded-2xl rounded-br-sm shadow-lg',
+    userBubbleBg:    'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',  // blue — no purple, pops on the navy bg
+    aiBubbleCls:     'bg-white/[0.06] backdrop-blur-sm border border-white/[0.09] text-[#dde0ff] rounded-2xl rounded-bl-sm shadow-sm',
+    aiAccentBar:     'from-indigo-500 via-violet-500 to-fuchsia-500',
+    inputWrapCls:    'bg-white/[0.06] backdrop-blur-sm border border-white/[0.09] focus-within:border-indigo-400/50 focus-within:ring-2 focus-within:ring-indigo-500/15',
+    inputFieldCls:   'text-[#e8e8ff] placeholder-indigo-300/30',
+    inputBorderFocus:'',
+    chipCls:         'bg-white/[0.05] border border-white/[0.09] text-indigo-200/70',
+    chipHoverCls:    'hover:bg-indigo-500/20 hover:border-indigo-400/40 hover:text-indigo-100',
+    agentBadgeCls:   'bg-indigo-500/15 border border-indigo-400/25 text-indigo-300',
+    iconBtnCls:      'text-indigo-300/45 hover:text-indigo-100 hover:bg-white/5',
+    sendBtnShadow:   'shadow-indigo-500/30',
+    typingDotCls:    'bg-indigo-400',
+    botAvatarCls:    'bg-gradient-to-br from-indigo-500 to-violet-600',
+  },
+
+  // ── Dark — #121212 standard (Figma/YouTube/Slack spec) ──────────────────
   dark: {
-    bg:          'bg-[#0f0f0f]',
-    bgMsg:       'bg-[#0f0f0f]',
-    text:        'text-white',
-    subtext:     'text-gray-400',
-    inputBg:     'bg-[#1e1e1e]',
-    inputBorder: 'border-[#333]',
-    inputText:   'text-white placeholder-gray-500',
-    userBubble:  'bg-[#2a2a2a] text-white',
-    aiBubble:    'bg-[#1e1e1e] text-gray-100',
-    aiText:      'text-gray-100',
-    chipBg:      'bg-[#1a1a1a]',
-    chipBorder:  'border-[#2f2f2f]',
-    chipText:    'text-gray-300',
-    chipHover:   'hover:bg-[#252525] hover:border-[#444]',
-    headerBg:    'bg-[#0f0f0f]/80',
-    icon:        'text-gray-400 hover:text-white',
+    pageBg:          'bg-[#121212]',
+    headerBg:        'bg-[#121212]/95 backdrop-blur-sm',
+    headerBorder:    'border-[#2a2a2a]',
+    divider:         'border-[#2a2a2a]',
+    textPrimary:     'text-[#e0e0e0]',
+    textSecondary:   'text-[#888]',
+    textMuted:       'text-[#555]',
+    userBubbleCls:   'text-white rounded-2xl rounded-br-sm shadow-md',
+    userBubbleBg:    'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',  // ocean blue — high contrast on near-black
+    aiBubbleCls:     'bg-[#1e1e1e] border border-[#303030] text-[#e0e0e0] rounded-2xl rounded-bl-sm',
+    aiAccentBar:     'from-violet-500 via-purple-500 to-fuchsia-400',
+    inputWrapCls:    'bg-[#1e1e1e] border border-[#303030] focus-within:border-[#555] focus-within:ring-2 focus-within:ring-white/5',
+    inputFieldCls:   'text-[#e0e0e0] placeholder-[#444]',
+    inputBorderFocus:'',
+    chipCls:         'bg-[#1c1c1c] border border-[#2e2e2e] text-[#aaa]',
+    chipHoverCls:    'hover:bg-[#252525] hover:border-[#444] hover:text-[#ddd]',
+    agentBadgeCls:   'bg-[#1f1f1f] border border-[#303030] text-[#888]',
+    iconBtnCls:      'text-[#555] hover:text-[#ccc] hover:bg-white/5',
+    sendBtnShadow:   'shadow-violet-500/25',
+    typingDotCls:    'bg-[#666]',
+    botAvatarCls:    'bg-[#252525] border border-[#333]',
   },
-  blue: {
-    bg:          'bg-gradient-to-b from-[#080818] via-[#0b1535] to-[#0d1b3e]',
-    bgMsg:       'bg-[#080c1f]',
-    text:        'text-white',
-    subtext:     'text-blue-200/60',
-    inputBg:     'bg-white/8 backdrop-blur-xl',
-    inputBorder: 'border-white/15',
-    inputText:   'text-white placeholder-blue-200/40',
-    userBubble:  'bg-blue-600/80 text-white',
-    aiBubble:    'bg-white/8 text-blue-50',
-    aiText:      'text-blue-50',
-    chipBg:      'bg-white/6',
-    chipBorder:  'border-white/12',
-    chipText:    'text-blue-100/80',
-    chipHover:   'hover:bg-white/10 hover:border-white/20',
-    headerBg:    'bg-transparent',
-    icon:        'text-blue-200/60 hover:text-white',
-  },
+
+  // ── Light — slate-50 base, clean card surfaces (WCAG AA contrast) ───────
   light: {
-    bg:          'bg-gray-50',
-    bgMsg:       'bg-gray-50',
-    text:        'text-gray-900',
-    subtext:     'text-gray-600',
-    inputBg:     'bg-white',
-    inputBorder: 'border-gray-300',
-    inputText:   'text-gray-900 placeholder-gray-500',
-    userBubble:  'text-white',
-    aiBubble:    'bg-white text-gray-900 shadow-sm border border-gray-200',
-    aiText:      'text-gray-900',
-    chipBg:      'bg-white',
-    chipBorder:  'border-gray-300',
-    chipText:    'text-gray-700',
-    chipHover:   'hover:bg-gray-50 hover:border-gray-400',
-    headerBg:    'bg-white border-b border-gray-200',
-    icon:        'text-gray-500 hover:text-gray-800',
+    pageBg:          'bg-[#f4f6fb]',
+    headerBg:        'bg-white/95 backdrop-blur-sm',
+    headerBorder:    'border-[#e2e8f0]',
+    divider:         'border-[#e2e8f0]',
+    textPrimary:     'text-[#0f172a]',
+    textSecondary:   'text-[#64748b]',
+    textMuted:       'text-[#94a3b8]',
+    userBubbleCls:   'text-white rounded-2xl rounded-br-sm shadow-md shadow-indigo-200/50',
+    userBubbleBg:    'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',  // blue — no purple, strong on light bg
+    aiBubbleCls:     'bg-white border border-[#e2e8f0] text-[#1e293b] rounded-2xl rounded-bl-sm shadow-sm',
+    aiAccentBar:     'from-indigo-500 via-violet-500 to-purple-500',
+    inputWrapCls:    'bg-white border border-[#e2e8f0] focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-500/10',
+    inputFieldCls:   'text-[#0f172a] placeholder-[#94a3b8]',
+    inputBorderFocus:'',
+    chipCls:         'bg-white border border-[#e2e8f0] text-[#475569]',
+    chipHoverCls:    'hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700',
+    agentBadgeCls:   'bg-indigo-50 border border-indigo-200 text-indigo-700',
+    iconBtnCls:      'text-[#94a3b8] hover:text-[#475569] hover:bg-slate-100',
+    sendBtnShadow:   'shadow-indigo-200/60',
+    typingDotCls:    'bg-indigo-400',
+    botAvatarCls:    'bg-gradient-to-br from-indigo-500 to-violet-600',
   },
 }
 
-const THEME_ORDER: ThemeKey[] = ['dark', 'blue', 'light']
-const THEME_ICON: Record<ThemeKey, typeof Moon> = { dark: Moon, blue: Waves, light: Sun }
-const THEME_NEXT: Record<ThemeKey, ThemeKey>    = { dark: 'blue', blue: 'light', light: 'dark' }
+const THEME_CYCLE: ThemeKey[] = ['indigo', 'dark', 'light']
+const THEME_LABELS: Record<ThemeKey, string> = { indigo: 'Indigo', dark: 'Dark', light: 'Light' }
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
-function MarkdownMessage({ text }: { text: string }) {
-  const lines = text.split('\n')
-  const elements: React.ReactNode[] = []
-  let listItems: string[] = []
-
-  const flushList = (key: string) => {
-    if (listItems.length === 0) return
-    const captured = [...listItems]
-    elements.push(
-      <ol key={key} className="space-y-3 my-3 pl-1">
-        {captured.map((item, i) => (
-          <li key={i} className="flex gap-3">
-            <span className="font-semibold flex-shrink-0 opacity-60 mt-0.5">{i + 1}.</span>
-            <span className="leading-[1.85]"><InlineMarkdown text={item} /></span>
-          </li>
-        ))}
-      </ol>
-    )
-    listItems = []
-  }
-
-  lines.forEach((line, i) => {
-    const listMatch = line.match(/^\s*\d+[.)]\s+(.*)/)
-    if (listMatch) { listItems.push(listMatch[1]); return }
-
-    if (line.trim() === '') {
-      const nextNonEmpty = lines.slice(i + 1).find(l => l.trim() !== '')
-      if (nextNonEmpty && /^\s*\d+[.)]\s+/.test(nextNonEmpty)) return
-    }
-
-    flushList(`list-${i}`)
-    if (line.trim() === '') {
-      elements.push(<div key={i} className="h-3" />)
-    } else {
-      elements.push(<p key={i} className="leading-[1.85]"><InlineMarkdown text={line} /></p>)
-    }
-  })
-  flushList('list-end')
-  return <div className="space-y-2 text-[15px]">{elements}</div>
-}
-
-function InlineMarkdown({ text }: { text: string }) {
-  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g)
+function MarkdownMessage({ text, isDark }: { text: string; isDark: boolean }) {
   return (
-    <>
-      {parts.map((part, i) => {
-        if (part.startsWith('**') && part.endsWith('**'))
-          return <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>
-        if (part.startsWith('*') && part.endsWith('*'))
-          return <em key={i}>{part.slice(1, -1)}</em>
-        return <span key={i}>{part}</span>
-      })}
-    </>
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex]}
+      components={{
+        p:  ({ children }) => <p className="text-[15px] leading-[1.8] mb-2.5 last:mb-0">{children}</p>,
+        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        em: ({ children }) => <em className="italic opacity-80">{children}</em>,
+
+        h1: ({ children }) => (
+          <h1 className="text-[15px] font-bold mt-4 mb-2 flex items-center gap-2">
+            <span className="w-1 h-4 rounded-full bg-gradient-to-b from-indigo-400 to-violet-500 flex-shrink-0" />
+            {children}
+          </h1>
+        ),
+        h2: ({ children }) => (
+          <h2 className="text-[14px] font-semibold mt-3.5 mb-1.5 flex items-center gap-2 opacity-90">
+            <span className="w-1 h-3 rounded-full bg-indigo-400/70 flex-shrink-0" />
+            {children}
+          </h2>
+        ),
+        h3: ({ children }) => (
+          <h3 className="text-[12.5px] font-semibold mt-2.5 mb-1 uppercase tracking-widest text-indigo-400">
+            {children}
+          </h3>
+        ),
+
+        ul: ({ children }) => (
+          <ul className="my-2.5 space-y-2 pl-4 list-none
+                         [&>li]:relative
+                         [&>li]:before:absolute [&>li]:before:-left-3.5
+                         [&>li]:before:top-[10px] [&>li]:before:w-1.5 [&>li]:before:h-1.5
+                         [&>li]:before:rounded-full [&>li]:before:bg-indigo-400/70">
+            {children}
+          </ul>
+        ),
+        ol: ({ children }) => (
+          <ol className="my-2.5 space-y-2.5 pl-0 list-none">
+            {children}
+          </ol>
+        ),
+        li: ({ children, node }) => {
+          const isOrdered = (node as any)?.parent?.tagName === 'ol'
+          if (isOrdered) {
+            return (
+              <li className="flex gap-3 items-start">
+                <span className={`flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center mt-0.5
+                                  ${isDark ? 'bg-indigo-500/25 text-indigo-300 ring-1 ring-indigo-500/30'
+                                           : 'bg-indigo-100 text-indigo-600 ring-1 ring-indigo-200'}`}>
+                  ·
+                </span>
+                <span className="flex-1 text-[15px] leading-[1.8]">{children}</span>
+              </li>
+            )
+          }
+          return <li className="text-[15px] leading-[1.8]">{children}</li>
+        },
+
+        code: ({ className, children }) => {
+          if (className?.includes('language-')) {
+            return <code className="block font-mono text-[12.5px]">{children}</code>
+          }
+          return (
+            <code className={`px-1.5 py-0.5 rounded-md text-[12.5px] font-mono align-middle
+                              ${isDark ? 'bg-indigo-950/60 text-indigo-300 border border-indigo-900/60'
+                                       : 'bg-indigo-50 text-indigo-700 border border-indigo-100'}`}>
+              {children}
+            </code>
+          )
+        },
+        pre: ({ children }) => (
+          <pre className={`my-3 p-4 rounded-xl text-[12.5px] font-mono overflow-x-auto leading-relaxed
+                           ${isDark ? 'bg-black/40 border border-white/10 text-[#e0e0e0]'
+                                    : 'bg-[#1e1e2e] border border-[#2a2a3a] text-[#cdd6f4]'}`}>
+            {children}
+          </pre>
+        ),
+        blockquote: ({ children }) => (
+          <blockquote className={`my-2.5 pl-3.5 border-l-2 rounded-r-lg py-1.5 italic text-[14px]
+                                  ${isDark ? 'border-indigo-400/60 bg-indigo-950/30 opacity-80'
+                                           : 'border-indigo-400 bg-indigo-50 text-slate-600'}`}>
+            {children}
+          </blockquote>
+        ),
+        table: ({ children }) => (
+          <div className={`my-3 overflow-x-auto rounded-xl border text-[13px]
+                           ${isDark ? 'border-white/10' : 'border-[#e2e8f0]'}`}>
+            <table className="w-full border-collapse">{children}</table>
+          </div>
+        ),
+        thead: ({ children }) => (
+          <thead className={isDark ? 'bg-indigo-950/50' : 'bg-slate-50'}>{children}</thead>
+        ),
+        th: ({ children }) => (
+          <th className={`px-4 py-2.5 text-left text-[11.5px] font-semibold uppercase tracking-wide border-b
+                          ${isDark ? 'text-indigo-300 border-white/10' : 'text-slate-500 border-[#e2e8f0]'}`}>
+            {children}
+          </th>
+        ),
+        td: ({ children }) => (
+          <td className={`px-4 py-2 border-b
+                          ${isDark ? 'border-white/5' : 'border-[#f1f5f9]'}`}>
+            {children}
+          </td>
+        ),
+        hr:  () => <hr className={`my-3 ${isDark ? 'border-white/10' : 'border-[#e2e8f0]'}`} />,
+        a: ({ href, children }) => (
+          <a href={href} target="_blank" rel="noopener noreferrer"
+            className="underline underline-offset-2 transition-colors text-indigo-400 hover:text-indigo-300 decoration-indigo-500/40">
+            {children}
+          </a>
+        ),
+      }}
+    >
+      {text}
+    </ReactMarkdown>
   )
 }
 
@@ -158,6 +267,7 @@ interface Message {
   text: string
   agent?: string
   citations?: SourceItem[]
+  ts?: Date
 }
 
 interface SpaceInfo {
@@ -175,46 +285,47 @@ export function CustomerChat() {
   const [searchParams, setSearchParams] = useSearchParams()
   const chatParam                       = searchParams.get('chat')
 
-  const [space, setSpace]           = useState<SpaceInfo | null>(null)
-  const [notFound, setNotFound]     = useState(false)
-  const [messages, setMessages]     = useState<Message[]>([])
-  const [suggestions, setSuggestions] = useState<string[]>([
+  const [space, setSpace]               = useState<SpaceInfo | null>(null)
+  const [notFound, setNotFound]         = useState(false)
+  const [messages, setMessages]         = useState<Message[]>([])
+  const [suggestions, setSuggestions]   = useState<string[]>([
     'How can I track my order?',
     'What is your return policy?',
     'I need help with my account',
     'How do I contact support?',
   ])
-  const [input, setInput]           = useState('')
-  const [loading, setLoading]       = useState(false)
-  const [restoring, setRestoring]   = useState(!!chatParam)
-  const [sessionId, setSessionId]   = useState(() => chatParam || crypto.randomUUID())
-  const [escalated, setEscalated]   = useState(false)
-  const [escalating, setEscalating] = useState(false)
+  const [input, setInput]               = useState('')
+  const [loading, setLoading]           = useState(false)
+  const [restoring, setRestoring]       = useState(!!chatParam)
+  const [sessionId, setSessionId]       = useState(() => chatParam || crypto.randomUUID())
+  const [escalated, setEscalated]       = useState(false)
+  const [escalating, setEscalating]     = useState(false)
   const [humanTransferEnabled, setHumanTransferEnabled] = useState(true)
-  const sseRef = useRef<EventSource | null>(null)
-  // Tab-title notification — only flashes a count while the tab is in the background
-  const titleBaseRef   = useRef<string>('Live Chat')
-  const awayUnreadRef  = useRef<number>(0)
-  const [theme, setTheme]           = useState<ThemeKey>(() => {
-    return (localStorage.getItem('chat-theme') as ThemeKey) || 'blue'
+  const sseRef        = useRef<EventSource | null>(null)
+  const titleBaseRef  = useRef<string>('Live Chat')
+  const awayUnreadRef = useRef<number>(0)
+
+  const [theme, setTheme] = useState<ThemeKey>(() => {
+    const stored = localStorage.getItem('chat-theme') as ThemeKey
+    return stored && stored in THEMES ? stored : 'indigo'
   })
 
-  // When embedded in the widget iframe, start hidden until parent sends support247:show
   const [isVisible, setIsVisible] = useState(!IS_EMBEDDED)
 
-  const bottomRef  = useRef<HTMLDivElement>(null)
-  const inputRef   = useRef<HTMLInputElement>(null)
-  const t          = THEMES[theme]
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef  = useRef<HTMLInputElement>(null)
+  const t         = THEMES[theme]
+  const isDark    = theme !== 'light'
   const accentColor = space?.theme_color || '#6366f1'
 
-  // Cycle theme
   const cycleTheme = () => {
-    const next = THEME_NEXT[theme]
+    const idx  = THEME_CYCLE.indexOf(theme)
+    const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length]
     setTheme(next)
     localStorage.setItem('chat-theme', next)
   }
 
-  // Fetch space branding
+  // ── Data fetching ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!slug) return
     fetch(`${API_CONFIG.baseURL}/api/v1/space/public/${slug}`)
@@ -224,21 +335,18 @@ export function CustomerChat() {
           setSpace(data)
           if (data.human_transfer_enabled === false) setHumanTransferEnabled(false)
         } else {
-          // Unknown slug at the root namespace — show 404 instead of a fake chat
           setNotFound(true)
         }
       })
-      .catch(() => setSpace({ name: slug }))  // network blip → keep a usable fallback
+      .catch(() => setSpace({ name: slug }))
   }, [slug])
 
-  // Keep the base tab title in sync with the brand name
   useEffect(() => {
     const name = space?.name || slug || 'Live Chat'
     titleBaseRef.current = name
     if (document.visibilityState === 'visible') document.title = name
   }, [space, slug])
 
-  // Clear the unread count + restore the title when the customer returns to the tab
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
@@ -247,84 +355,48 @@ export function CustomerChat() {
       }
     }
     document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      document.removeEventListener('visibilitychange', onVisible)
-      document.title = titleBaseRef.current
-    }
+    return () => { document.removeEventListener('visibilitychange', onVisible); document.title = titleBaseRef.current }
   }, [])
 
-  // SSE — always connect once we have a sessionId (server pushes human messages in real time)
   useEffect(() => {
     if (!sessionId) return
     sseRef.current?.close()
-
     const es = new EventSource(`${API_CONFIG.baseURL}/api/v1/inbox/customer-stream?session_id=${sessionId}`)
     sseRef.current = es
 
     es.addEventListener('human_message', (e) => {
       const d = JSON.parse(e.data)
       setEscalated(true)
-      setMessages(prev => [...prev, {
-        id:    crypto.randomUUID(),
-        role:  'ai',
-        text:  d.content,
-        agent: d.staff_name || 'Agent',
-      }])
-      // Notify parent SDK of unread message when widget is hidden
-      if (IS_EMBEDDED && !isVisible) {
-        window.parent.postMessage({
-          type:    'support247:unread',
-          count:   1,
-          preview: d.content,
-        }, '*')
-      }
-      // Flash a count in the browser tab title only while the customer is away
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: d.content, agent: d.staff_name || 'Agent', ts: new Date() }])
+      if (IS_EMBEDDED && !isVisible) window.parent.postMessage({ type: 'support247:unread', count: 1, preview: d.content }, '*')
       if (document.hidden) {
         awayUnreadRef.current += 1
-        const n = awayUnreadRef.current
-        document.title = `(${n}) New repl${n > 1 ? 'ies' : 'y'} · ${titleBaseRef.current}`
+        document.title = `(${awayUnreadRef.current}) New repl${awayUnreadRef.current > 1 ? 'ies' : 'y'} · ${titleBaseRef.current}`
       }
     })
-
     es.addEventListener('staff_assigned', (e) => {
       const d = JSON.parse(e.data)
       setEscalated(true)
-      setMessages(prev => [...prev, {
-        id:   crypto.randomUUID(),
-        role: 'ai',
-        text: `${d.staff_name || 'A support agent'} has joined the conversation.`,
-      }])
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: `${d.staff_name || 'A support agent'} has joined the conversation.`, ts: new Date() }])
     })
-
     es.addEventListener('queue_position_update', (e) => {
       const d = JSON.parse(e.data)
       setEscalated(true)
       setMessages(prev => {
-        const last = prev[prev.length - 1]
         const posMsg = `You are #${d.position} in queue. We'll be with you shortly.`
-        if (last?.text?.startsWith('You are #')) {
-          return [...prev.slice(0, -1), { ...last, text: posMsg }]
-        }
-        return [...prev, { id: crypto.randomUUID(), role: 'ai', text: posMsg }]
+        const last = prev[prev.length - 1]
+        if (last?.text?.startsWith('You are #')) return [...prev.slice(0, -1), { ...last, text: posMsg }]
+        return [...prev, { id: crypto.randomUUID(), role: 'ai', text: posMsg, ts: new Date() }]
       })
     })
-
     es.addEventListener('session_closed', () => {
-      setMessages(prev => [...prev, {
-        id:   crypto.randomUUID(),
-        role: 'ai',
-        text: 'This support session has been closed. Thank you for contacting us.',
-      }])
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: 'This support session has been closed. Thank you for contacting us.', ts: new Date() }])
       es.close()
     })
-
-    // Ignore errors on sessions that aren't escalated — SSE just stays silent
     es.onerror = () => {}
-
     return () => { es.close(); sseRef.current = null }
   }, [sessionId])
 
-  // Fetch suggestions
   useEffect(() => {
     if (!slug) return
     fetch(`${API_CONFIG.baseURL}/api/chat/${slug}/suggestions`)
@@ -333,7 +405,6 @@ export function CustomerChat() {
       .catch(() => {})
   }, [slug])
 
-  // Restore session
   useEffect(() => {
     if (!chatParam || !slug) return
     setRestoring(true)
@@ -342,57 +413,34 @@ export function CustomerChat() {
       .then(data => {
         if (!data?.history?.length) return
         setMessages(data.history.map((h: any) => ({
-          id:    crypto.randomUUID(),
-          role:  h.role === 'user' ? 'user' : 'ai',
-          text:  h.message,
-          agent: h.agent_slug ?? undefined,
+          id: crypto.randomUUID(), role: h.role === 'user' ? 'user' : 'ai',
+          text: h.message, agent: h.agent_slug ?? undefined, ts: new Date(h.created_at || Date.now()),
         })))
         setSessionId(chatParam)
-        // Restore escalated state if session was handed off to human
-        if (data.ai_disabled || data.status === 'active' || data.status === 'queued' || data.status === 'escalated') {
-          setEscalated(true)
-        }
+        if (data.ai_disabled || ['active','queued','escalated'].includes(data.status)) setEscalated(true)
       })
       .catch(() => {})
       .finally(() => setRestoring(false))
   }, [chatParam, slug])
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
 
-  // ── postMessage bridge (widget mode) ────────────────────────────────────
-  // Tell the parent SDK that the iframe is ready
-  useEffect(() => {
-    if (!IS_EMBEDDED) return
-    window.parent.postMessage({ type: 'support247:ready' }, '*')
-  }, [])
-
-  // Listen for commands from the parent SDK
+  // ── postMessage bridge ───────────────────────────────────────────────────
+  useEffect(() => { if (IS_EMBEDDED) window.parent.postMessage({ type: 'support247:ready' }, '*') }, [])
   useEffect(() => {
     if (!IS_EMBEDDED) return
     const handler = (e: MessageEvent) => {
       if (!e.data || typeof e.data !== 'object') return
       switch (e.data.type) {
-        case 'support247:show':
-          setIsVisible(true)
-          setTimeout(() => inputRef.current?.focus(), 100)
-          break
-        case 'support247:hide':
-          setIsVisible(false)
-          break
+        case 'support247:show': setIsVisible(true); setTimeout(() => inputRef.current?.focus(), 100); break
+        case 'support247:hide': setIsVisible(false); break
         case 'support247:config':
-          // Customer identity pushed by the SDK — store for future requests
-          if (e.data.customer_email || e.data.customer_name || e.data.customer_id) {
-            // Stored in sessionStorage so the send() fn can include them
-            if (e.data.customer_email) sessionStorage.setItem('s247_email', e.data.customer_email)
-            if (e.data.customer_name)  sessionStorage.setItem('s247_name',  e.data.customer_name)
-            if (e.data.customer_id)    sessionStorage.setItem('s247_cid',   e.data.customer_id)
-          }
+          if (e.data.customer_email) sessionStorage.setItem('s247_email', e.data.customer_email)
+          if (e.data.customer_name)  sessionStorage.setItem('s247_name',  e.data.customer_name)
+          if (e.data.customer_id)    sessionStorage.setItem('s247_cid',   e.data.customer_id)
           break
         case 'support247:page':
-          // Host page navigation context — stored for next chat message
-          if (e.data.url) sessionStorage.setItem('s247_page_url', e.data.url)
+          if (e.data.url)   sessionStorage.setItem('s247_page_url',   e.data.url)
           if (e.data.title) sessionStorage.setItem('s247_page_title', e.data.title)
           break
       }
@@ -401,42 +449,26 @@ export function CustomerChat() {
     return () => window.removeEventListener('message', handler)
   }, [])
 
-  // Close handler — tells parent SDK to hide the panel
   const closeWidget = useCallback(() => {
-    if (IS_EMBEDDED) {
-      window.parent.postMessage({ type: 'support247:close' }, '*')
-    }
+    if (IS_EMBEDDED) window.parent.postMessage({ type: 'support247:close' }, '*')
   }, [])
 
   const escalateToHuman = async () => {
     if (escalating || escalated) return
     setEscalating(true)
     try {
-      const res = await fetch(`${API_CONFIG.baseURL}/api/v1/inbox/escalate`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ session_id: sessionId, reason: 'customer_request' }),
+      const res  = await fetch(`${API_CONFIG.baseURL}/api/v1/inbox/escalate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, reason: 'customer_request' }),
       })
       const data = await res.json()
       if (!res.ok) {
-        setMessages(prev => [...prev, {
-          id:   crypto.randomUUID(),
-          role: 'ai',
-          text: data.detail || 'Human support is not available right now.',
-        }])
+        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: data.detail || 'Human support is not available right now.', ts: new Date() }])
         return
       }
       setEscalated(true)
-      setMessages(prev => [...prev, {
-        id:   crypto.randomUUID(),
-        role: 'ai',
-        text: data.message || "You've been connected to a human agent. They'll be with you shortly.",
-      }])
-    } catch {
-      // silently ignore
-    } finally {
-      setEscalating(false)
-    }
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: data.message || "You've been connected to a human agent. They'll be with you shortly.", ts: new Date() }])
+    } catch { /* silent */ } finally { setEscalating(false) }
   }
 
   const send = async (text?: string) => {
@@ -444,111 +476,114 @@ export function CustomerChat() {
     if (!msg || loading) return
     setInput('')
     const isFirst = messages.length === 0
-    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', text: msg }])
+    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', text: msg, ts: new Date() }])
     setLoading(true)
     try {
-      const res = await fetch(`${API_CONFIG.baseURL}/api/chat/${slug}`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ message: msg, session_id: sessionId }),
+      const res  = await fetch(`${API_CONFIG.baseURL}/api/chat/${slug}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, session_id: sessionId }),
       })
       const data = await res.json()
-      if (isFirst && data.session_id) {
-        setSearchParams({ chat: data.session_id }, { replace: true })
-        setSessionId(data.session_id)
-      }
-      // Only add AI reply if there is one — human sessions return empty reply
-      if (data.reply) {
-        setMessages(prev => [...prev, {
-          id:        crypto.randomUUID(),
-          role:      'ai',
-          text:      data.reply,
-          agent:     data.agent,
-          citations: data.citations ?? [],
-        }])
-      }
+      if (isFirst && data.session_id) { setSearchParams({ chat: data.session_id }, { replace: true }); setSessionId(data.session_id) }
+      if (data.reply) setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: data.reply, agent: data.agent, citations: data.citations ?? [], ts: new Date() }])
     } catch {
-      setMessages(prev => [...prev, {
-        id:   crypto.randomUUID(),
-        role: 'ai',
-        text: 'Connection error. Please try again.',
-      }])
-    } finally {
-      setLoading(false)
-      setTimeout(() => inputRef.current?.focus(), 50)
-    }
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: 'Connection error. Please try again.', ts: new Date() }])
+    } finally { setLoading(false); setTimeout(() => inputRef.current?.focus(), 50) }
   }
 
-  const ThemeIcon = THEME_ICON[theme]
-  const isEmpty   = messages.length === 0 && !restoring
-
-  // Unknown slug at the root namespace → 404
+  const isEmpty = messages.length === 0 && !restoring
   if (notFound) return <NotFound />
 
-  return (
-    <div className={`flex flex-col h-screen ${t.bg} transition-colors duration-300`}>
+  // ── Time formatter ───────────────────────────────────────────────────────
+  const fmt = (d: Date | undefined) =>
+    d instanceof Date && !isNaN(d.getTime())
+      ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : ''
 
-      {/* Header */}
-      <header className={`flex items-center justify-between px-5 py-3 flex-shrink-0 backdrop-blur-sm ${t.headerBg} transition-colors duration-300`}>
-        <div className="flex items-center gap-2.5">
-          {space?.logo_url && (
-            <img src={space.logo_url} alt="logo" className="w-7 h-7 rounded-lg object-cover opacity-90" />
+  return (
+    <div className={`flex flex-col h-screen transition-colors duration-300 ${t.pageBg}`}>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          HEADER
+      ══════════════════════════════════════════════════════════════════ */}
+      <header className={`flex items-center justify-between px-4 sm:px-5 py-3 flex-shrink-0 border-b transition-colors duration-300 ${t.headerBg} ${t.headerBorder}`}>
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Brand avatar */}
+          {space?.logo_url ? (
+            <img src={space.logo_url} alt={space.name} className="w-9 h-9 rounded-xl object-cover flex-shrink-0 ring-1 ring-white/10" />
+          ) : (
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg shadow-indigo-500/20">
+              <Sparkles className="w-4.5 h-4.5 text-white" />
+            </div>
           )}
-          <span className={`text-base font-bold tracking-tight ${t.text} transition-colors duration-300`}
-            style={{ fontFamily: "'Inter', 'SF Pro Display', system-ui, sans-serif", letterSpacing: '-0.02em' }}>
-            {space?.name || slug}
-          </span>
+          <div className="min-w-0">
+            <p className={`text-[14.5px] font-bold truncate ${t.textPrimary}`} style={{ letterSpacing: '-0.01em' }}>
+              {space?.name || slug}
+            </p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+              <span className={`text-[11px] truncate ${t.textSecondary}`}>Online · replies instantly</span>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={cycleTheme}
-            className={`p-2 rounded-full transition-all duration-200 ${t.icon}`}
-            title={`Switch theme (${THEME_NEXT[theme]})`}
-          >
-            <ThemeIcon className="w-4 h-4" />
+
+        {/* Header actions */}
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          {/* Theme toggle — 44×44 touch target */}
+          <button onClick={cycleTheme} title={`Theme: ${THEME_LABELS[theme]}`}
+            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${t.iconBtnCls}`}>
+            {theme === 'indigo' ? <Palette className="w-4 h-4" />
+              : theme === 'dark' ? <Moon className="w-4 h-4" />
+              : <Sun className="w-4 h-4" />}
           </button>
           {IS_EMBEDDED && (
-            <button
-              onClick={closeWidget}
-              className={`p-2 rounded-full transition-all duration-200 ${t.icon}`}
-              title="Close chat"
-              aria-label="Close chat"
-            >
+            <button onClick={closeWidget} title="Close"
+              className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${t.iconBtnCls}`}>
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
       </header>
 
-      {/* Messages / Empty state */}
-      <div className="flex-1 overflow-y-auto">
+      {/* ══════════════════════════════════════════════════════════════════
+          MESSAGES
+      ══════════════════════════════════════════════════════════════════ */}
+      <div className="flex-1 overflow-y-auto overscroll-contain">
+
+        {/* Restoring indicator */}
         {restoring && (
-          <div className={`flex items-center justify-center h-full ${t.subtext} text-sm animate-pulse`}>
+          <div className={`flex items-center justify-center h-full text-[13px] animate-pulse ${t.textSecondary}`}>
             Restoring conversation…
           </div>
         )}
 
-        {/* Empty state — centered greeting + suggestions */}
+        {/* ── Empty / welcome state ── */}
         {isEmpty && (
-          <div className="flex flex-col items-center justify-center h-full px-6 pb-32">
-            <div className="text-center mb-10 select-none">
-              <h1 className={`text-3xl md:text-4xl font-light mb-2 ${t.text} transition-colors duration-300`}>
-                Hi there,
-              </h1>
-              <h2 className={`text-3xl md:text-4xl font-light ${t.subtext} transition-colors duration-300`}>
-                How can we help?
-              </h2>
+          <div className="flex flex-col items-center justify-center h-full px-6 pb-32 select-none text-center">
+            {/* Hero */}
+            <div className="relative mb-6">
+              <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-2xl shadow-indigo-500/30 mx-auto">
+                <Sparkles className="w-9 h-9 text-white" />
+              </div>
+              <span className="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full bg-emerald-400 flex items-center justify-center ring-2 ring-white/10 shadow-md">
+                <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+              </span>
             </div>
+            <h1 className={`text-[28px] font-semibold mb-1 ${t.textPrimary}`} style={{ letterSpacing: '-0.02em' }}>
+              Hi there 👋
+            </h1>
+            <p className={`text-[15px] mb-8 ${t.textSecondary}`}>
+              How can we help you today?
+            </p>
 
             {/* Suggestion chips */}
             {suggestions.length > 0 && (
-              <div className="flex flex-wrap justify-center gap-2.5 max-w-2xl">
+              <div className="flex flex-wrap justify-center gap-2.5 max-w-xl w-full">
                 {suggestions.map((s, i) => (
-                  <button
-                    key={i}
-                    onClick={() => send(s)}
-                    className={`px-4 py-2.5 rounded-full border text-sm transition-all duration-200 ${t.chipBg} ${t.chipBorder} ${t.chipText} ${t.chipHover}`}
-                  >
+                  <button key={i} onClick={() => send(s)}
+                    className={`px-4 py-2.5 rounded-full border text-[13.5px] font-medium
+                                transition-all duration-200 active:scale-95 shadow-sm
+                                ${t.chipCls} ${t.chipHoverCls}`}>
                     {s}
                   </button>
                 ))}
@@ -557,95 +592,151 @@ export function CustomerChat() {
           </div>
         )}
 
-        {/* Messages */}
+        {/* ── Message thread ── */}
         {!isEmpty && (
-          <div className="px-6 py-6 space-y-4 max-w-4xl mx-auto w-full">
-            {messages.map(msg => (
-              <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                {msg.role === 'ai' && msg.agent && (
-                  <p className={`text-xs mb-1 px-1 ${t.subtext}`}>
-                    🤖 {msg.agent.replace(/_/g, ' ')}
-                  </p>
-                )}
-                <div
-                  className={`max-w-[92%] px-5 py-4 rounded-2xl ${
-                    msg.role === 'user'
-                      ? `${t.userBubble} rounded-br-sm`
-                      : `${t.aiBubble} rounded-bl-sm`
-                  } transition-colors duration-300`}
-                  style={msg.role === 'user' ? { backgroundColor: accentColor } : {}}
-                >
-                  {msg.role === 'user'
-                    ? <span className="text-sm leading-relaxed">{msg.text}</span>
-                    : <MarkdownMessage text={msg.text} />
-                  }
-                  {msg.role === 'ai' && msg.citations && msg.citations.length > 0 && (
-                    <SourceCitation sources={msg.citations} />
-                  )}
-                </div>
-              </div>
-            ))}
+          <div className="px-4 sm:px-5 py-5 space-y-4 max-w-3xl mx-auto w-full">
+            {messages.map((msg, idx) => {
+              const isUser       = msg.role === 'user'
+              const prevMsg      = messages[idx - 1]
+              const showAvatar   = !isUser && (idx === 0 || prevMsg?.role !== 'ai')
+              const showTime     = idx === messages.length - 1 ||
+                                   messages[idx + 1]?.role !== msg.role
 
-            {/* Typing indicator */}
+              return (
+                <div key={msg.id} className={`flex gap-2.5 animate-fadeIn ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+
+                  {/* Avatar — 32×32, only on first in a group */}
+                  <div className="flex-shrink-0 w-8">
+                    {showAvatar && !isUser && (
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${t.botAvatarCls}`}>
+                        <Bot className="w-4 h-4" />
+                      </div>
+                    )}
+                    {isUser && showAvatar && (
+                      <div className="w-8 h-8 rounded-full bg-slate-500 flex items-center justify-center text-white">
+                        <User className="w-4 h-4" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Bubble column */}
+                  <div className={`flex flex-col gap-1 min-w-0 ${isUser ? 'items-end max-w-[82%]' : 'items-start max-w-[86%]'}`}>
+
+                    {/* Agent badge — shown once at top of AI group */}
+                    {!isUser && showAvatar && msg.agent && (
+                      <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full mb-0.5 ${t.agentBadgeCls}`}>
+                        {msg.agent.replace(/_/g, ' ')}
+                      </span>
+                    )}
+
+                    {/* Bubble */}
+                    {isUser ? (
+                      /* ── User bubble ── */
+                      <div className={`px-4 py-3 ${t.userBubbleCls}`}
+                        style={{ background: t.userBubbleBg }}>
+                        <p className="text-[14.5px] leading-[1.75] whitespace-pre-wrap">{msg.text}</p>
+                      </div>
+                    ) : (
+                      /* ── AI bubble — glassmorphism card ── */
+                      <div className={`overflow-hidden ${t.aiBubbleCls}`}>
+                        <div className="px-4 py-3.5">
+                          <MarkdownMessage text={msg.text} isDark={isDark} />
+                          {msg.citations && msg.citations.length > 0 && (
+                            <div className={`mt-3 pt-3 border-t ${isDark ? 'border-white/[0.08]' : 'border-slate-100'}`}>
+                              <SourceCitation sources={msg.citations} dark={isDark} />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Timestamp — shown at bottom of each group */}
+                    {showTime && (
+                      <span className={`text-[10.5px] px-0.5 ${t.textMuted}`}>{fmt(msg.ts)}</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* ── Typing indicator ── */}
             {loading && (
-              <div className="flex items-start">
-                <div className={`${t.aiBubble} rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1.5 items-center`}>
-                  {[0, 150, 300].map(delay => (
-                    <span
-                      key={delay}
-                      className="w-1.5 h-1.5 rounded-full animate-bounce opacity-60"
-                      style={{ backgroundColor: accentColor, animationDelay: `${delay}ms` }}
-                    />
-                  ))}
+              <div className="flex gap-2.5 animate-fadeIn">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white flex-shrink-0 ${t.botAvatarCls}`}>
+                  <Bot className="w-4 h-4" />
+                </div>
+                <div className={`overflow-hidden ${t.aiBubbleCls}`}>
+                  <div className="px-4 py-4 flex items-center gap-2">
+                    <div className="flex gap-1.5">
+                      {[0, 160, 320].map(d => (
+                        <span key={d} className={`w-2 h-2 rounded-full animate-bounce ${t.typingDotCls}`}
+                          style={{ animationDelay: `${d}ms`, animationDuration: '900ms' }} />
+                      ))}
+                    </div>
+                    <span className={`text-[12px] ${t.textSecondary}`}>Thinking…</span>
+                  </div>
                 </div>
               </div>
             )}
+
             <div ref={bottomRef} />
           </div>
         )}
       </div>
 
-      {/* Input bar */}
-      <div className={`px-4 pb-6 pt-3 flex-shrink-0 transition-colors duration-300 ${isEmpty ? '' : 'border-t border-white/5'}`}>
-        <div className={`max-w-4xl mx-auto flex items-center gap-2 px-4 py-3 rounded-full border shadow-lg ${t.inputBg} ${t.inputBorder} transition-all duration-300`}>
-          <button className={`flex-shrink-0 ${t.icon} transition-colors`}>
-            <Plus className="w-4 h-4" />
-          </button>
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
-            placeholder={`Ask ${space?.name || 'us'} anything…`}
-            disabled={loading}
-            autoFocus
-            className={`flex-1 bg-transparent text-sm outline-none disabled:opacity-50 ${t.inputText} transition-colors duration-300`}
-          />
-          <button
-            onClick={() => send()}
-            disabled={loading || !input.trim()}
-            className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-30 transition-all duration-200 hover:scale-105"
-            style={{ backgroundColor: accentColor }}
-          >
-            <Send className="w-3.5 h-3.5 text-white" />
-          </button>
-        </div>
-        <div className="flex items-center justify-between mt-2.5 px-1">
-          <p className={`text-xs ${t.subtext} opacity-50`}>
-            Powered by AI · Responses may not always be accurate
-          </p>
-          {!escalated && messages.length > 0 && humanTransferEnabled && (
-            <button
-              onClick={escalateToHuman}
-              disabled={escalating}
-              className={`text-xs ${t.subtext} opacity-60 hover:opacity-100 transition-opacity underline underline-offset-2`}
-            >
-              {escalating ? 'Connecting…' : 'Talk to a human'}
+      {/* ══════════════════════════════════════════════════════════════════
+          INPUT BAR
+      ══════════════════════════════════════════════════════════════════ */}
+      <div className={`flex-shrink-0 px-4 sm:px-5 pb-5 pt-3 transition-colors duration-300 ${!isEmpty ? `border-t ${t.headerBorder}` : ''}`}>
+        <div className="max-w-3xl mx-auto">
+          {/* Input pill — WCAG: min height 44px */}
+          <div className={`flex items-center gap-3 px-4 py-2.5 rounded-2xl border transition-all duration-200 min-h-[52px] ${t.inputWrapCls}`}>
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
+              placeholder={`Ask ${space?.name || 'us'} anything…`}
+              disabled={loading}
+              autoFocus
+              className={`flex-1 bg-transparent text-[14.5px] outline-none disabled:opacity-40 min-w-0 ${t.inputFieldCls}`}
+            />
+            {/* Send — 44×44 touch target (WCAG AA) */}
+            <button onClick={() => send()} disabled={loading || !input.trim()}
+              className={`flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center
+                          transition-all duration-200 hover:scale-105 active:scale-95
+                          disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100
+                          text-white shadow-lg ${t.sendBtnShadow}`}
+              style={{ background: loading || !input.trim()
+                ? '#6366f1'
+                : `linear-gradient(135deg, ${accentColor} 0%, #7c3aed 100%)` }}>
+              {loading
+                ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : <Send className="w-4 h-4" />
+              }
             </button>
-          )}
-          {escalated && (
-            <span className={`text-xs ${t.subtext} opacity-60`}>👤 Human agent</span>
-          )}
+          </div>
+
+          {/* Footer row */}
+          <div className="flex items-center justify-between mt-2 px-1">
+            <p className={`text-[11.5px] ${t.textMuted}`}>
+              Powered by AI · Responses may not always be accurate
+            </p>
+            <div>
+              {!escalated && messages.length > 0 && humanTransferEnabled && (
+                <button onClick={escalateToHuman} disabled={escalating}
+                  className={`text-[11.5px] font-medium underline underline-offset-2 transition-opacity
+                              ${t.textSecondary} hover:opacity-100 opacity-70`}>
+                  {escalating ? 'Connecting…' : 'Talk to a human'}
+                </button>
+              )}
+              {escalated && (
+                <span className={`text-[11.5px] font-medium ${t.textSecondary} opacity-70`}>
+                  👤 Human agent active
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

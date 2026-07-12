@@ -23,13 +23,9 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.core.auth import current_space
-from app.rag.document_parser import (
-    SUPPORTED_EXTENSIONS,
-    ParsedDocument,
-    is_supported,
-    parse,
-)
-from app.rag.chunking import chunk as chunk_document, get_config as get_chunk_config
+from app.rag.document_parser import ParsedDocument
+from app.orchestra.ai.chunking import chunk as chunk_document, get_config as get_chunk_config
+from app.orchestra.ai.ingestion import get_ingestion_service
 from app.rag.vector_store import (
     COLLECTION_CLIENT,
     VALID_DOC_TYPES,
@@ -181,10 +177,12 @@ async def rag_upload(
     expiry_date = x_kb_expiry or ""
 
     filename = file.filename or "upload"
-    if not is_supported(filename):
+    svc      = get_ingestion_service()
+
+    if not svc.is_supported(filename):
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type. Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
+            detail=f"Unsupported file type. Supported: {', '.join(sorted(svc.supported_extensions()))}",
         )
 
     raw = await file.read()
@@ -193,9 +191,8 @@ async def rag_upload(
     if not raw:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    # Parse
     try:
-        parsed: ParsedDocument = parse(raw, filename)
+        parsed: ParsedDocument = svc.parse(raw, filename)
     except (ValueError, RuntimeError) as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
@@ -305,7 +302,8 @@ async def rag_chat(req: RagChatRequest):
     system = (
         f"You are a helpful assistant answering questions about: \"{meta['filename']}\".\n"
         "Use ONLY the provided context to answer. If the answer is not in the context, say so clearly.\n"
-        "Be concise, cite page numbers where relevant, and format with markdown where helpful."
+        "Be concise, cite page numbers where relevant, and format with markdown where helpful.\n"
+        "When comparing multiple options, plans, or features, ALWAYS present the comparison using a structured Markdown table."
     )
     messages = [{"role": "user", "content": f"Context:\n{context}\n\nQuestion: {req.question}"}]
 
@@ -313,7 +311,7 @@ async def rag_chat(req: RagChatRequest):
         messages=messages,
         system_prompt=system,
         temperature=0.3,
-        max_tokens=700,
+        max_tokens=1500,
     )
 
     if llm_result:
@@ -559,33 +557,16 @@ async def rag_ingest_url(req: IngestUrlRequest, org=Depends(current_space)):
     else:
         filename = "page.html"
 
-    # Parse using existing document parser
+    # Parse via the ingestion pipeline — HtmlParser gives heading-aware sections
+    # and table extraction; PdfParser/TextParser handle .pdf/.md/.txt. Same
+    # pipeline as file uploads, so URL-sourced docs chunk identically.
+    svc = get_ingestion_service()
     try:
-        from app.rag.document_parser import ParsedDocument, ParsedPage
-        if filename.endswith(".html"):
-            # Strip HTML tags with BeautifulSoup for clean text
-            try:
-                from bs4 import BeautifulSoup
-                soup = BeautifulSoup(raw_bytes, "html.parser")
-                # Remove scripts/styles
-                for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
-                    tag.decompose()
-                title_tag = soup.find("title")
-                page_title = title_tag.get_text(strip=True) if title_tag else parsed_url.netloc
-                text = soup.get_text(separator="\n", strip=True)
-            except ImportError:
-                text = raw_bytes.decode("utf-8", errors="replace")
-                page_title = parsed_url.netloc
-            parsed = ParsedDocument(
-                filename=filename,
-                extension=".html",
-                pages=[ParsedPage(page=1, text=text, section=page_title)],
-            )
-        else:
-            from app.rag.document_parser import parse
-            parsed = parse(raw_bytes, filename)
+        parsed = svc.parse(raw_bytes, filename)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Failed to parse page content: {e}")
+
+    page_title = (parsed.metadata or {}).get("title") or parsed_url.netloc
 
     if not parsed.full_text.strip():
         raise HTTPException(status_code=422, detail="Page has no extractable text content.")

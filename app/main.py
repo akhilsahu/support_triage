@@ -53,7 +53,27 @@ async def lifespan(app: FastAPI):
         # Connect to Redis
         await redis_client.connect()
         logger.info("Redis connected")
-        
+
+        # Agno session store preflight — surface a missing/unreachable
+        # `agno_sessions` DB at boot. Without it, chat still works but silently
+        # loses history/memory/summaries (fail-safe degrade), so make it visible.
+        try:
+            from app.orchestra.ai.core.config import build_config
+            from app.orchestra.ai.session.store import build_session_db
+            _sess_cfg = build_config()
+            if settings.ORCHESTRATOR == "agno" and _sess_cfg.session_store != "none":
+                if build_session_db(_sess_cfg) is not None:
+                    logger.info("Session store ready", store=_sess_cfg.session_store)
+                else:
+                    logger.error(
+                        "Session store unavailable — chat will run STATELESS "
+                        "(no history/memory). Create the agno_sessions database "
+                        "or set SESSION_STORE=sqlite|none.",
+                        store=_sess_cfg.session_store,
+                    )
+        except Exception as e:
+            logger.error("Session store preflight error", error=str(e))
+
         logger.info("Application startup complete")
 
         # Session pool TTL sweeper — evicts idle sessions every 10 min
@@ -132,76 +152,149 @@ _PUBLIC_CORS_HEADERS = {
     "Access-Control-Allow-Headers": "Content-Type",
 }
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.responses import Response as StarletteResponse
 
-class PublicCORSMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        is_public = any(request.url.path.startswith(p) for p in _PUBLIC_CORS_PREFIXES)
-        if is_public and request.method == "OPTIONS":
-            # Return 200 directly — don't let CORSMiddleware see this preflight.
-            return StarletteResponse(
-                status_code=200,
-                headers=_PUBLIC_CORS_HEADERS,
-            )
-        response = await call_next(request)
-        if is_public:
-            for k, v in _PUBLIC_CORS_HEADERS.items():
-                response.headers[k] = v
-        return response
+_SSE_PATHS = ("/api/v1/inbox/customer-stream", "/api/v1/inbox/stream")
 
+
+def _is_sse_path(path: str) -> bool:
+    return path.endswith("/stream") or any(path.startswith(p) for p in _SSE_PATHS)
+
+
+# ── Pure ASGI middleware ───────────────────────────────────────────────────────
+# BaseHTTPMiddleware wraps `receive` in a nested anyio task group per layer.
+# Four nested layers breaks SSE on Python 3.14 (anyio task-group nesting bug).
+# Pure ASGI passes `receive` straight through; only `send` is wrapped.
+
+class PublicCORSMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path      = scope.get("path", "")
+        method    = scope.get("method", "")
+        is_public = any(path.startswith(p) for p in _PUBLIC_CORS_PREFIXES)
+
+        if is_public and method == "OPTIONS":
+            await StarletteResponse(status_code=200, headers=_PUBLIC_CORS_HEADERS)(scope, receive, send)
+            return
+
+        if not is_public:
+            await self.app(scope, receive, send)
+            return
+
+        _cors_keys = {k.lower().encode("latin-1") for k in _PUBLIC_CORS_HEADERS}
+
+        async def _inject_cors(message):
+            if message["type"] == "http.response.start":
+                # Remove any CORS headers already set by the inner CORSMiddleware,
+                # then replace with public * values so there's no duplicate header.
+                headers = [(k, v) for k, v in message.get("headers", [])
+                           if k.lower() not in _cors_keys]
+                for k, v in _PUBLIC_CORS_HEADERS.items():
+                    headers.append((k.encode("latin-1"), v.encode("latin-1")))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, _inject_cors)
+
+
+class SecurityHeadersMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or _is_sse_path(scope.get("path", "")):
+            await self.app(scope, receive, send)
+            return
+
+        path      = scope.get("path", "")
+        _public   = ("/api/v1/widget/", "/api/v1/space/public/", "/api/chat/")
+        is_public = any(path.startswith(p) for p in _public)
+
+        async def _inject_security(message):
+            if message["type"] == "http.response.start":
+                headers  = list(message.get("headers", []))
+                existing = {h[0].lower() for h in headers}
+
+                def _add(name: str, value: str) -> None:
+                    if name.lower().encode("latin-1") not in existing:
+                        headers.append((name.encode("latin-1"), value.encode("latin-1")))
+
+                _add("X-Content-Type-Options", "nosniff")
+                _add("Referrer-Policy", "strict-origin-when-cross-origin")
+                if settings.ENVIRONMENT.lower() != "development":
+                    _add("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+                if not is_public:
+                    _add("X-Frame-Options", "DENY")
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, _inject_security)
+
+
+class TimingMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or _is_sse_path(scope.get("path", "")):
+            await self.app(scope, receive, send)
+            return
+
+        start = time.time()
+
+        async def _inject_timing(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                headers.append((b"x-process-time", str(time.time() - start).encode("latin-1")))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, _inject_timing)
+
+
+class RequestLoggingMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path   = scope.get("path", "")
+        method = scope.get("method", "")
+        client = scope.get("client")
+        logger.info("request.received", method=method, path=path,
+                    client=client[0] if client else None)
+
+        if _is_sse_path(path):
+            await self.app(scope, receive, send)
+            return
+
+        status: list[int] = [200]
+
+        async def _capture_status(message):
+            if message["type"] == "http.response.start":
+                status[0] = message.get("status", 200)
+            await send(message)
+
+        await self.app(scope, receive, _capture_status)
+        logger.info("request.completed", method=method, path=path, status_code=status[0])
+
+
+# Register — add_middleware is LIFO: last call = outermost = first to run.
+# Order preserved: RequestLogging → Timing → SecurityHeaders → PublicCORS → CORS → GZip
 app.add_middleware(PublicCORSMiddleware)
-
-
-# Security headers middleware
-@app.middleware("http")
-async def security_headers_middleware(request: Request, call_next):
-    """Baseline security response headers."""
-    response = await call_next(request)
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    # HSTS only outside local dev — pinning HTTPS on http://localhost would break dev.
-    if settings.ENVIRONMENT.lower() != "development":
-        response.headers.setdefault(
-            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
-        )
-    # Anti-clickjacking for non-public paths. Widget/chat endpoints are consumed
-    # cross-origin (fetch) or embedded, so they're intentionally excluded.
-    public_prefixes = ("/api/v1/widget/", "/api/v1/space/public/", "/api/chat/")
-    if not any(request.url.path.startswith(p) for p in public_prefixes):
-        response.headers.setdefault("X-Frame-Options", "DENY")
-    return response
-
-
-# Request timing middleware
-@app.middleware("http")
-async def add_process_time_header(request: Request, call_next):
-    """Add processing time to response headers"""
-    start_time = time.time()
-    response = await call_next(request)
-    process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = str(process_time)
-    return response
-
-
-# Request logging middleware
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Log all incoming requests"""
-    logger.info(
-        "Request received",
-        method=request.method,
-        path=request.url.path,
-        client=request.client.host if request.client else None,
-    )
-    response = await call_next(request)
-    logger.info(
-        "Request completed",
-        method=request.method,
-        path=request.url.path,
-        status_code=response.status_code,
-    )
-    return response
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(TimingMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 
 
 # Exception handler

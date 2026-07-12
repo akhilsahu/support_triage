@@ -21,8 +21,25 @@ import structlog
 from app.agents.resolved_agent import ResolvedAgent
 from app.orchestra.ai.core.config import AgnoConfig
 from app.orchestra.ai.factories.llm import LLMFactory
+from app.orchestra.ai.knowledge.base import BaseKnowledgeBackend
+from app.orchestra.ai.knowledge.null import NullKnowledgeBackend
+from app.orchestra.ai.prompts import DEFAULT_AGENT_PROMPT, RAG_QUALITY_DIRECTIVES
 
 logger = structlog.get_logger()
+
+
+def _effective_max_tokens(agent_max_tokens: Optional[int]) -> int:
+    """
+    Resolve the token cap for an agent.
+
+    - AGENT_MAX_TOKENS_OVERRIDE=True → force AGENT_MAX_TOKENS_LIMIT on every agent.
+    - Otherwise use the per-agent value, falling back to AGENT_MAX_TOKENS_LIMIT when
+      the agent has none set (None or 0).
+    """
+    from app.config import settings
+    if settings.AGENT_MAX_TOKENS_OVERRIDE:
+        return settings.AGENT_MAX_TOKENS_LIMIT
+    return agent_max_tokens or settings.AGENT_MAX_TOKENS_LIMIT
 
 
 class AgentFactory:
@@ -34,10 +51,16 @@ class AgentFactory:
             def _build_system_prompt(self, resolved, skills): ...
     """
 
-    def __init__(self, cfg: AgnoConfig, space_id: str):
-        self.cfg         = cfg
-        self.space_id      = space_id
-        self.llm_factory = LLMFactory(cfg)
+    def __init__(
+        self,
+        cfg:               AgnoConfig,
+        space_id:          str,
+        knowledge_backend: BaseKnowledgeBackend | None = None,
+    ):
+        self.cfg               = cfg
+        self.space_id          = space_id
+        self.llm_factory       = LLMFactory(cfg)
+        self.knowledge_backend = knowledge_backend or NullKnowledgeBackend()
 
     def build(
         self,
@@ -45,6 +68,8 @@ class AgentFactory:
         tools:    Optional[List[Any]] = None,
         memory:   Optional[Any]       = None,
         skills:   Optional[List[Any]] = None,   # PromptSkill ORM objects
+        db:       Optional[Any]       = None,   # Agno session db (standalone only)
+        attach_session: bool          = False,  # True → this agent IS the conversation
     ) -> Optional[Any]:
         """
         Build a single Agno Agent from a ResolvedAgent.
@@ -52,8 +77,13 @@ class AgentFactory:
         Args:
             resolved: Agent descriptor from DB (builtin or custom)
             tools:    Shared MCP tools for all agents in this session
-            memory:   Shared memory object for all agents in this session
+            memory:   Agno MemoryManager (only used when attach_session=True)
             skills:   PromptSkill ORM objects to inject into system prompt
+            db:       Agno session db (only used when attach_session=True)
+            attach_session: when this agent is the standalone conversational
+                runner (single-specialist case), attach native history/memory/
+                summary knobs. Team members leave this False — the Team leader
+                owns the conversation; members only retrieve.
         """
         try:
             from agno.agent import Agent
@@ -61,34 +91,54 @@ class AgentFactory:
             logger.warning("agno not installed — pip install agno")
             return None
 
-        model = self.llm_factory.build(resolved.temperature, resolved.max_tokens)
+        model = self.llm_factory.build(resolved.temperature,
+                                       _effective_max_tokens(resolved.max_tokens))
         if not model:
             return None
 
-        # RAG is handled at the orchestrator level using the existing VectorStore
-        # (same ChromaDB collection + OpenAI embeddings as DynamicAgentExecutor).
-        # Agno's built-in Knowledge is intentionally disabled to avoid embedding mismatch.
+        # Build knowledge bundle scoped to this agent's accessible documents.
+        # doc_ids come from linked KnowledgeBases; doc_types from builtin agent config.
+        # The bundle is opaque — AgentFactory unpacks it; orchestrator never inspects it.
+        kb_bundle = self.knowledge_backend.for_agent(
+            space_id=self.space_id,
+            doc_ids=list(resolved.kb_ids) if not resolved.is_builtin and resolved.kb_ids else None,
+            doc_types=list(resolved.rag_doc_types_list) if resolved.rag_enabled else None,
+        )
+
+        # CONTEXT: reliable RAG — always inject retrieved references when this
+        # agent has knowledge, in addition to the agentic search tool.
+        add_knowledge = self.cfg.add_knowledge_to_context and kb_bundle.has_knowledge
+
+        kwargs: dict = dict(
+            name=resolved.name,
+            id=resolved.slug,
+            description=resolved.description or resolved.name,
+            model=model,
+            instructions=self._build_system_prompt(resolved, skills or []),
+            tools=tools or [],
+            knowledge=kb_bundle.knowledge,
+            knowledge_filters=kb_bundle.filters,
+            search_knowledge=kb_bundle.has_knowledge,
+            add_knowledge_to_context=add_knowledge,
+            markdown=self.cfg.markdown,
+            debug_mode=self.cfg.debug,
+        )
+
+        # HISTORY / MEMORY / SUMMARY — only when this agent is the conversation.
+        if attach_session:
+            from app.orchestra.ai.session.store import session_runner_kwargs
+            kwargs.update(session_runner_kwargs(self.cfg, db, memory))
 
         try:
-            agent = Agent(
-                name=resolved.name,
-                id=resolved.slug,
-                description=resolved.description or resolved.name,
-                model=model,
-                instructions=self._build_system_prompt(resolved, skills or []),
-                tools=tools or [],
-                memory_manager=memory,
-                search_knowledge=False,
-                add_history_to_context=False,
-                markdown=self.cfg.markdown,
-                debug_mode=self.cfg.debug,
-            )
+            agent = Agent(**kwargs)
             logger.info(
                 "agent_factory.built",
                 slug=resolved.slug,
-                rag=resolved.rag_enabled,
+                knowledge_backend=self.knowledge_backend.name(),
+                search_knowledge=kb_bundle.has_knowledge,
+                add_knowledge_to_context=add_knowledge,
+                session=attach_session and db is not None,
                 tools=len(tools or []),
-                memory=memory is not None,
                 skills=len(skills or []),
             )
             return agent
@@ -140,7 +190,7 @@ class AgentFactory:
         parts = [p.strip() for p in [resolved.base_prompt, resolved.system_prompt] if p and p.strip()]
 
         if not parts:
-            parts = [f"You are a helpful support assistant for {resolved.name}."]
+            parts = [DEFAULT_AGENT_PROMPT.format(name=resolved.name)]
 
         # Inject instruction and format skills into system prompt
         for skill in skills:
@@ -150,6 +200,10 @@ class AgentFactory:
                 skill_name = getattr(skill, "name", "Skill")
                 if skill_text:
                     parts.append(f"\n[{skill_name.upper()} DIRECTIVE]: {skill_text}")
+
+        # Platform answer-quality directives — appended last so they apply on top
+        # of any org customisation or skill, for every agent.
+        parts.append(RAG_QUALITY_DIRECTIVES)
 
         return "\n\n".join(parts)
 

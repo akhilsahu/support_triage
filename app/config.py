@@ -109,6 +109,14 @@ class Settings(BaseSettings):
     ANTHROPIC_TEMPERATURE: float = 0.7
     ANTHROPIC_MAX_TOKENS: int = 2000
 
+    # Agent max_tokens policy
+    # Per-agent max_tokens (custom_agents.max_tokens) is used by default. When
+    # AGENT_MAX_TOKENS_OVERRIDE is True, AGENT_MAX_TOKENS_LIMIT is forced onto every
+    # agent regardless of its own value. AGENT_MAX_TOKENS_LIMIT is also the fallback
+    # when an agent has no max_tokens set.
+    AGENT_MAX_TOKENS_OVERRIDE: bool = False
+    AGENT_MAX_TOKENS_LIMIT: int = 2000
+
     # ChromaDB / RAG storage
     CHROMA_PERSIST_DIR: str = ".chroma_db"
     RAG_DOC_TTL_DAYS: int = 30
@@ -119,12 +127,37 @@ class Settings(BaseSettings):
     EMBEDDING_BATCH_SIZE: int = 32
     EMBEDDING_DEVICE: str = "cpu"  # unused, kept for compat
 
+    # Reranking (optional, pluggable) — applied on the Agno knowledge retrieval path.
+    # Disabled by default; enable + supply a key to activate. Provider is swappable.
+    RERANK_ENABLED: bool = False
+    RERANK_PROVIDER: str = "cohere"                 # cohere | sentence_transformer | none
+    RERANK_MODEL: str = ""                           # blank = use the provider's own default model
+    RERANK_TOP_N: int = 8                            # final chunks kept after rerank (widened for recall)
+    RERANK_FETCH_K: int = 24                         # candidates fetched before rerank trims to TOP_N
+    COHERE_API_KEY: Optional[str] = None
+
+    # Agno-native session store (history / user-memory / summaries)
+    SESSION_STORE: str = "postgres"                  # postgres | sqlite | none
+    AGNO_SESSION_DB_URL: str = ""                    # explicit url; blank = derive from DATABASE_URL
+    AGNO_SESSION_DB_NAME: str = "agno_sessions"      # separate database on the same PG server
+    AGNO_SESSION_DB_SCHEMA: str = "public"
+    HISTORY_ENABLED: bool = True
+    NUM_HISTORY_RUNS: int = 5
+    USER_MEMORIES_ENABLED: bool = True
+    SESSION_SUMMARIES_ENABLED: bool = True
+    ADD_KNOWLEDGE_TO_CONTEXT: bool = True
+
     # RAG
-    RAG_TOP_K: int = 5
+    RAG_TOP_K: int = 8                               # chunks in context (no-rerank path); widened for recall
     RAG_SIMILARITY_THRESHOLD: float = 0.7
     RAG_CHUNK_SIZE: int = 1000
     RAG_CHUNK_OVERLAP: int = 200
     RAG_MAX_CONTEXT_LENGTH: int = 4000
+    # Table captions prepended to table chunks so conceptual queries match them.
+    #   heuristic — section + column/row labels (free, no LLM)   [default]
+    #   llm       — one-sentence LLM description (costs 1 call/table at ingest)
+    #   none      — disabled
+    TABLE_CAPTION_MODE: str = "heuristic"
 
     # Celery
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"

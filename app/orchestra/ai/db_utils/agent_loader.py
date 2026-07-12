@@ -78,7 +78,7 @@ async def load_all_active_agents(
 ) -> List[ResolvedAgent]:
     """
     Load all active agents (builtin + custom) for a chatbot.
-    Single call used by OrchestraExecutor and workflows.
+    Single call used by the executor (core/factory) and workflows.
     """
     builtin = await load_builtin_agents_for_chatbot(db, chatbot_id)
     custom  = await load_custom_agents_for_chatbot(db, chatbot_id)

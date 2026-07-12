@@ -1,28 +1,77 @@
 """
 LLMFactory — builds Agno model objects from AgnoConfig.
 
-Provider priority (from .env):
-    LLM_PROVIDER=watsonx   → ibm/granite-*
-    LLM_PROVIDER=anthropic → claude-*
-    LLM_PROVIDER=openai    → gpt-*   (default)
-
-Fallback chain: if the preferred provider fails to build, we try the next one.
-
-Adding a new provider:
-    1. Add a branch in _build_for_provider()
-    2. Add env vars to core/config.py
-    3. No other files need to change
+Adding a new LLM provider (e.g. Gemini):
+    1. Add a _build_<provider>() function below
+    2. Register it in _PROVIDERS
+    3. Add GEMINI_API_KEY detection in core/config.py build_config()
+    That's it — fallback chain picks it up automatically.
 """
 
 from __future__ import annotations
-from typing import Any, Optional
+
+from typing import Any, Callable, Optional
 import structlog
 
 from app.orchestra.ai.core.config import AgnoConfig
-from app.orchestra.ai.core.models import LLMModels
 
 logger = structlog.get_logger()
 
+
+# ── Per-provider builders ─────────────────────────────────────────────────────
+
+def _build_openai(cfg: AgnoConfig, temperature: float, max_tokens: int) -> Optional[Any]:
+    try:
+        from app.config import settings
+        if not settings.OPENAI_API_KEY:
+            return None
+        from agno.models.openai import OpenAIChat
+        return OpenAIChat(
+            id=cfg.llm_model or "gpt-4o-mini",
+            api_key=settings.OPENAI_API_KEY,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except Exception as e:
+        logger.warning("llm.openai_failed", error=str(e))
+        return None
+
+
+def _build_anthropic(cfg: AgnoConfig, _temperature: float, max_tokens: int) -> Optional[Any]:
+    try:
+        from agno.models.anthropic import Claude
+        return Claude(id=cfg.llm_model or "claude-3-haiku-20240307", max_tokens=max_tokens)
+    except Exception as e:
+        logger.warning("llm.anthropic_failed", error=str(e))
+        return None
+
+
+def _build_watsonx(cfg: AgnoConfig, _temperature: float, _max_tokens: int) -> Optional[Any]:
+    try:
+        from app.config import settings
+        if not (settings.WATSONX_API_KEY and settings.WATSONX_URL and settings.WATSONX_PROJECT_ID):
+            return None
+        from agno.models.ibm import WatsonX
+        return WatsonX(
+            id=cfg.llm_model or "ibm/granite-13b-chat-v2",
+            api_key=settings.WATSONX_API_KEY,
+            url=settings.WATSONX_URL,
+            project_id=settings.WATSONX_PROJECT_ID,
+        )
+    except Exception as e:
+        logger.warning("llm.watsonx_failed", error=str(e))
+        return None
+
+
+# Registry — add new providers here, nothing else changes
+_PROVIDERS: dict[str, Callable] = {
+    "openai":    _build_openai,
+    "anthropic": _build_anthropic,
+    "watsonx":   _build_watsonx,
+}
+
+
+# ── Factory ───────────────────────────────────────────────────────────────────
 
 class LLMFactory:
     """Builds Agno-compatible LLM model instances from config."""
@@ -36,59 +85,21 @@ class LLMFactory:
         max_tokens:  Optional[int]   = None,
         provider:    Optional[str]   = None,
     ) -> Optional[Any]:
-        """
-        Build a model instance for the configured (or overridden) provider.
-
-        Falls back through watsonx → anthropic → openai if the preferred
-        provider fails (import error or missing credentials).
-
-        Args:
-            temperature: Per-call override; falls back to cfg.temperature
-            max_tokens:  Per-call override; falls back to cfg.max_tokens
-            provider:    Force a specific provider, bypassing cfg.llm_provider
-        """
         t = temperature if temperature is not None else self.cfg.temperature
         m = max_tokens  if max_tokens  is not None else self.cfg.max_tokens
         p = provider    if provider    is not None else self.cfg.llm_provider
 
-        # Try preferred provider first, then fall back
-        fallback_order = self._fallback_chain(p)
-        for attempt_provider in fallback_order:
-            model = self._build_for_provider(attempt_provider, t, m)
+        # Try preferred provider first, then all others in registration order
+        fallback = [p] + [k for k in _PROVIDERS if k != p]
+        for attempt in fallback:
+            builder = _PROVIDERS.get(attempt)
+            if not builder:
+                continue
+            model = builder(self.cfg, t, m)
             if model is not None:
-                if attempt_provider != p:
-                    logger.warning(
-                        "llm_factory.fallback_used",
-                        requested=p,
-                        used=attempt_provider,
-                    )
+                if attempt != p:
+                    logger.warning("llm.fallback_used", requested=p, used=attempt)
                 return model
 
-        logger.error("llm_factory.all_providers_failed", tried=fallback_order)
+        logger.error("llm.all_providers_failed", tried=fallback)
         return None
-
-    # ── Private ───────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _fallback_chain(preferred: str) -> list[str]:
-        """Return providers in fallback order, starting with the preferred one."""
-        all_providers = ["watsonx", "anthropic", "openai"]
-        ordered = [preferred] + [p for p in all_providers if p != preferred]
-        return ordered
-
-    def _build_for_provider(
-        self,
-        provider:    str,
-        temperature: float,
-        max_tokens:  int,
-    ) -> Optional[Any]:
-        """Build a model for a specific provider. Returns None on any failure."""
-        try:
-            if provider == "anthropic":
-                return LLMModels.build_anthropic(self.cfg.llm_model, max_tokens)
-            if provider == "watsonx":
-                return LLMModels.build_watsonx(self.cfg.llm_model)
-            return LLMModels.build_openai(self.cfg.llm_model, temperature, max_tokens)
-        except Exception as e:
-            logger.error("llm_factory.build_error", provider=provider, error=str(e))
-            return None

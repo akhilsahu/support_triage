@@ -12,7 +12,7 @@ If the same org requests a suggestion for the same doc_type combination again
 immediately — no LLM call.
 
 When the user finally creates the agent the caller should update the row's
-`agent_id` to link the suggestion to the resulting AgentDefinition.
+`agent_id` to link the suggestion to the resulting CustomAgent (custom_agents).
 
 Public API
 ──────────
@@ -20,7 +20,7 @@ Public API
     # result → {name, description, system_prompt, from_cache: bool, suggestion_id}
 
     await link_agent(db, suggestion_id, agent_id)
-    # Call this after agent_definitions row is created.
+    # Call this after the custom_agents row is created.
 """
 
 from __future__ import annotations

@@ -25,25 +25,11 @@ from app.agents.resolved_agent import ResolvedAgent
 from app.orchestra.ai.core.config import AgnoConfig
 from app.orchestra.ai.factories.agent import AgentFactory
 from app.orchestra.ai.factories.llm import LLMFactory
+from app.orchestra.ai.knowledge.base import BaseKnowledgeBackend
+from app.orchestra.ai.knowledge.null import NullKnowledgeBackend
+from app.orchestra.ai.prompts import TRIAGE_COORDINATOR_PROMPT
 
 logger = structlog.get_logger()
-
-# System prompt injected into the triage team leader.
-# Describes when to route to each specialist — Agno's built-in route mode
-# handles the actual delegation mechanism via tool calls; do not instruct
-# the leader to output JSON routing commands.
-_TRIAGE_COORDINATOR_PROMPT = """\
-You are a strict support triage router. Your ONLY job is to delegate every message to the most appropriate specialist. You MUST always delegate — you are NEVER allowed to answer the customer yourself.
-
-Rules:
-1. ALWAYS transfer to a specialist. No exceptions.
-2. If the message fits multiple specialists, pick the one most relevant to the core ask.
-3. If the message is ambiguous or off-topic, still pick the closest specialist.
-4. Never respond with your own text. Never explain your routing decision to the customer.
-
-Available specialists:
-{specialist_list}
-"""
 
 
 class TeamFactory:
@@ -54,11 +40,67 @@ class TeamFactory:
     leader with smart routing instructions. Specialists become Team members.
     """
 
-    def __init__(self, cfg: AgnoConfig, space_id: str):
+    def __init__(
+        self,
+        cfg:               AgnoConfig,
+        space_id:          str,
+        knowledge_backend: BaseKnowledgeBackend | None = None,
+    ):
         self.cfg           = cfg
-        self.space_id        = space_id
-        self.agent_factory = AgentFactory(cfg, space_id)
+        self.space_id      = space_id
         self.llm_factory   = LLMFactory(cfg)
+        self.agent_factory = AgentFactory(cfg, space_id, knowledge_backend or NullKnowledgeBackend())
+
+    @classmethod
+    def build_for_pool(
+        cls,
+        cfg:               AgnoConfig,
+        space_id:          str,
+        knowledge_backend: BaseKnowledgeBackend | None,
+        session_id:        str,
+        active_agents:     List[ResolvedAgent],
+        org_name:          str,
+        mcp_server:        Optional[Any] = None,
+        skills_map:        Optional[dict] = None,
+    ) -> Optional[Any]:
+        """
+        Full build entry point called by SessionPool._build().
+
+        Owns tools + memory setup so pool stays a pure cache.
+        Tools and memory are lazy-imported to keep startup fast.
+        """
+        tools: List[Any] = []
+        if cfg.tools_enabled and mcp_server:
+            try:
+                from app.orchestra.ai.factories.tools import ToolFactory
+                tools = ToolFactory(cfg).build_from_mcp_server(mcp_server)
+            except Exception:
+                logger.exception("team_factory.tools_failed", space_id=space_id)
+
+        memory = None
+        if cfg.user_memories_enabled:
+            try:
+                from app.orchestra.ai.factories.memory import MemoryFactory
+                memory = MemoryFactory(cfg).build(session_id)
+            except Exception:
+                logger.exception("team_factory.memory_failed", space_id=space_id)
+
+        # One Agno session db per space runner — backs history/memory/summaries.
+        db = None
+        try:
+            from app.orchestra.ai.session.store import build_session_db
+            db = build_session_db(cfg)
+        except Exception:
+            logger.exception("team_factory.session_db_failed", space_id=space_id)
+
+        return cls(cfg, space_id, knowledge_backend).build(
+            active_agents=active_agents,
+            org_name=org_name,
+            tools=tools,
+            memory=memory,
+            skills_map=skills_map or {},
+            db=db,
+        )
 
     def build(
         self,
@@ -67,16 +109,16 @@ class TeamFactory:
         tools:         Optional[List[Any]] = None,
         memory:        Optional[Any]       = None,
         skills_map:    Optional[dict]      = None,  # {slug: [PromptSkill, ...]}
+        db:            Optional[Any]       = None,  # Agno session db (leader/standalone)
     ) -> Optional[Any]:
         """
         Build Team or Agent from active agents.
 
-        Args:
-            active_agents: All resolved agents (including triage if enabled)
-            org_name:      Display name of the org (for logging/prompts)
-            tools:         Shared MCP tools
-            memory:        mem0ai memory object, scoped to session
-            skills_map:    Pre-resolved skills per agent slug
+        Placement of native session features:
+          * single specialist → that Agent IS the conversation → gets db +
+            history + memory + summaries (attach_session=True).
+          * multiple specialists → the Team leader owns the conversation and
+            gets db + history + memory + summaries; members only retrieve.
 
         Returns:
             Single Agent when only one specialist, Team otherwise.
@@ -95,21 +137,31 @@ class TeamFactory:
             logger.warning("team_factory.no_specialists", space_id=self.space_id)
             return None
 
+        # Single specialist — bare agent that owns the conversation (session attached).
+        if len(specialists) == 1:
+            agent = self.agent_factory.build(
+                specialists[0],
+                tools=tools,
+                memory=memory,
+                skills=(skills_map or {}).get(specialists[0].slug, []),
+                db=db,
+                attach_session=True,
+            )
+            if agent:
+                logger.info("team_factory.single_agent", slug=specialists[0].slug)
+            return agent
+
+        # Multiple specialists — members retrieve only (no session state).
         agno_agents = self.agent_factory.build_all(
             specialists,
             tools=tools,
-            memory=memory,
+            memory=None,
             skills_map=skills_map or {},
         )
         if not agno_agents:
             return None
 
-        # Single specialist — return bare agent, no team overhead
-        if len(agno_agents) == 1:
-            logger.info("team_factory.single_agent", slug=specialists[0].slug)
-            return agno_agents[0]
-
-        return self._build_team(agno_agents, specialists, triage_resolved, org_name, memory)
+        return self._build_team(agno_agents, specialists, triage_resolved, org_name, memory, db)
 
     # ── Private ───────────────────────────────────────────────────────────────
 
@@ -120,6 +172,7 @@ class TeamFactory:
         triage_resolved:  Optional[ResolvedAgent],
         org_name:         str,
         memory:           Optional[Any],
+        db:               Optional[Any] = None,
     ) -> Optional[Any]:
         try:
             from agno.team import Team, TeamMode
@@ -131,7 +184,7 @@ class TeamFactory:
             )
 
             # Triage leader instructions — smart route vs coordinate
-            triage_instructions = _TRIAGE_COORDINATOR_PROMPT.format(
+            triage_instructions = TRIAGE_COORDINATOR_PROMPT.format(
                 specialist_list=specialist_desc
             )
             if triage_resolved and triage_resolved.system_prompt:
@@ -142,22 +195,27 @@ class TeamFactory:
                     + triage_instructions
                 )
 
-            team = Team(
+            team_kwargs: dict = dict(
                 name=f"{org_name} Support Team",
                 mode=TeamMode(self.cfg.team_mode.lower()),
                 model=self.llm_factory.build(),
                 members=agno_agents,
                 instructions=triage_instructions,
-                memory_manager=memory,
                 show_members_responses=self.cfg.show_members_responses,
                 debug_mode=self.cfg.debug,
             )
+            # HISTORY / MEMORY / SUMMARY live on the leader (the conversation).
+            from app.orchestra.ai.session.store import session_runner_kwargs
+            team_kwargs.update(session_runner_kwargs(self.cfg, db, memory))
+
+            team = Team(**team_kwargs)
             logger.info(
                 "team_factory.team_built",
                 space_id=self.space_id,
                 mode=self.cfg.team_mode,
                 members=len(agno_agents),
                 triage_leader=triage_resolved.slug if triage_resolved else "none",
+                session=db is not None,
             )
             return team
         except Exception as e:

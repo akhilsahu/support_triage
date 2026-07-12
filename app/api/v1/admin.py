@@ -28,9 +28,10 @@ import structlog
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 
-from app.rag.chunking import get_config as get_chunk_config
-from app.rag.chunking import chunk as chunk_document
-from app.rag.document_parser import SUPPORTED_EXTENSIONS, ParsedDocument, is_supported, parse
+from app.orchestra.ai.chunking import get_config as get_chunk_config
+from app.orchestra.ai.chunking import chunk as chunk_document
+from app.orchestra.ai.ingestion import get_ingestion_service
+from app.rag.document_parser import ParsedDocument
 from app.rag.vector_store import VALID_DOC_TYPES, get_vector_store
 
 logger = structlog.get_logger()
@@ -100,16 +101,17 @@ async def upload_knowledge_base(
         )
 
     store = get_vector_store()
+    svc   = get_ingestion_service()
     results: List[KBUploadResult] = []
 
     for file in files:
         filename = file.filename or "upload"
 
-        if not is_supported(filename):
+        if not svc.is_supported(filename):
             results.append(KBUploadResult(
                 doc_id="", filename=filename, extension="", pages=0, chunks=0,
                 doc_type=doc_type, status="failed",
-                error=f"Unsupported file type. Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
+                error=f"Unsupported file type. Supported: {', '.join(sorted(svc.supported_extensions()))}",
             ))
             continue
 
@@ -120,7 +122,7 @@ async def upload_knowledge_base(
             if len(raw) > 50 * 1024 * 1024:
                 raise ValueError("File too large (max 50 MB for admin uploads).")
 
-            parsed: ParsedDocument = parse(raw, filename)
+            parsed: ParsedDocument = svc.parse(raw, filename)
             if not parsed.pages or not parsed.full_text.strip():
                 raise ValueError("Document has no extractable text.")
 

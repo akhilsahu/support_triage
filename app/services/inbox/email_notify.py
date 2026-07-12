@@ -30,11 +30,16 @@ def _get_smtp_settings():
     }
 
 
-def _send_email(to: str, subject: str, body_html: str) -> None:
-    """Send email via SMTP. Logs warning if SMTP not configured."""
+def _send_email(to: str, subject: str, body_html: str, dev_url: str | None = None) -> None:
+    """Send email via SMTP. In dev mode, prints the action URL to console if SMTP is unavailable."""
+    from app.config import settings
+    is_dev = settings.ENVIRONMENT.lower() == "development"
+
     cfg = _get_smtp_settings()
     if not cfg["host"] or not cfg["user"]:
         logger.warning("email.smtp_not_configured", to=to, subject=subject)
+        if is_dev and dev_url:
+            _dev_print(dev_url, reason="SMTP not configured")
         return
 
     msg = MIMEMultipart("alternative")
@@ -55,13 +60,26 @@ def _send_email(to: str, subject: str, body_html: str) -> None:
                 server.sendmail(cfg["from_addr"], to, msg.as_string())
         logger.info("email.sent", to=to, subject=subject)
     except Exception as e:
-        logger.error("email.send_failed", to=to, error=str(e))
+        logger.error(
+            "email.send_failed",
+            to=to,
+            subject=subject,
+            smtp_host=cfg["host"],
+            smtp_port=cfg["port"],
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        if is_dev and dev_url:
+            _dev_print(dev_url, reason=str(e))
+
+
+def _dev_print(url: str, reason: str) -> None:
+    """Print a clickable URL to stdout during local development when email can't be sent."""
+    logger.warning("email.dev_fallback", url=url, reason=reason)
+    print(f"\n{'='*70}\n[DEV] Email not sent ({reason})\nOpen this URL in your browser:\n\n  {url}\n{'='*70}\n", flush=True)
 
 
 def send_verification_email(to: str, verify_url: str) -> None:
-    """Send an email verification link after registration.
-    SMTP settings come from env vars: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM.
-    """
     body = f"""
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto">
       <h2 style="color:#6366f1">Verify your email</h2>
@@ -77,11 +95,10 @@ def send_verification_email(to: str, verify_url: str) -> None:
       <p style="color:#bbb;font-size:11px">SUPPORT247.chat · Automated notification</p>
     </div>
     """
-    _send_email(to=to, subject="Verify your SUPPORT247.chat email", body_html=body)
+    _send_email(to=to, subject="Verify your SUPPORT247.chat email", body_html=body, dev_url=verify_url)
 
 
 def send_password_reset_email(to: str, reset_url: str) -> None:
-    """Send a password reset link to the user's email address."""
     body = f"""
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto">
       <h2 style="color:#6366f1">Reset your password</h2>
@@ -98,7 +115,7 @@ def send_password_reset_email(to: str, reset_url: str) -> None:
       <p style="color:#bbb;font-size:11px">SUPPORT247.chat · Automated notification</p>
     </div>
     """
-    _send_email(to=to, subject="Reset your SUPPORT247.chat password", body_html=body)
+    _send_email(to=to, subject="Reset your SUPPORT247.chat password", body_html=body, dev_url=reset_url)
 
 
 async def send_escalation_email(session, rule) -> None:

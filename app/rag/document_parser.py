@@ -34,9 +34,10 @@ logger = structlog.get_logger()
 @dataclass
 class ParsedPage:
     """A logical page or section extracted from a document."""
-    page: int          # 1-based
-    text: str
-    section: str = ""  # heading / sheet name / JSON key path etc.
+    page:     int
+    text:     str
+    section:  str  = ""
+    is_table: bool = False  # prevents chunker from splitting this page at char boundaries
 
 
 @dataclass
@@ -540,6 +541,7 @@ class Chunk:
     page: int
     chunk_index: int
     section: str = ""
+    is_table: bool = False
 
 
 def chunk_document(doc: ParsedDocument, _chunk_size: int = 1000, _overlap: int = 150) -> List[Chunk]:
@@ -547,7 +549,7 @@ def chunk_document(doc: ParsedDocument, _chunk_size: int = 1000, _overlap: int =
     Convenience wrapper — delegates to chunking.chunk() with the
     extension-derived config.  Kept for backwards compatibility.
     """
-    from app.rag.chunking import chunk as _chunk
+    from app.orchestra.ai.chunking import chunk as _chunk
     return _chunk(doc)
 
 

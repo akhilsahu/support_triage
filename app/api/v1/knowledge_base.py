@@ -102,6 +102,24 @@ def _item_out(item: KnowledgeBaseItem) -> KBItemOut:
         created_at=item.created_at.isoformat() if item.created_at else None,
     )
 
+async def _tag_doc_with_kb(doc_id: str, kb_id: str, space_id: str) -> None:
+    """Backfill kb_id onto all ChromaDB chunks for an already-uploaded document."""
+    try:
+        from app.rag.vector_store import get_vector_store
+        store = get_vector_store()
+        col   = store._collection("client_documents")
+        results = col.get(where={"$and": [{"client_id": {"$eq": space_id}}, {"doc_id": {"$eq": doc_id}}]}, include=["metadatas"])
+        ids = results.get("ids", [])
+        if not ids:
+            logger.warning("kb_item.doc_not_found_in_chroma", doc_id=doc_id, space_id=space_id)
+            return
+        new_meta = [{**m, "kb_id": kb_id} for m in (results.get("metadatas") or [])]
+        col.update(ids=ids, metadatas=new_meta)
+        logger.info("kb_item.doc_tagged", doc_id=doc_id, kb_id=kb_id, chunks=len(ids))
+    except Exception as e:
+        logger.error("kb_item.tag_error", doc_id=doc_id, kb_id=kb_id, error=str(e))
+
+
 async def _index_kb_item(item: KnowledgeBaseItem, space: Space, kb: KnowledgeBase) -> None:
     """Index a text/qna KB item into ChromaDB and write indexed_doc_id back."""
     try:
@@ -115,22 +133,46 @@ async def _index_kb_item(item: KnowledgeBaseItem, space: Space, kb: KnowledgeBas
         if not text.strip():
             return
 
+        title = str(item.title or f"kb-{str(item.id)[:8]}")
+
+        # Short items and Q&A stay as ONE atomic chunk — a Q&A pair must never be
+        # split (question would separate from its answer), and short text has no
+        # need to chunk. Long free-text items go through the chunker so retrieval
+        # is granular instead of returning a wall of text.
+        INLINE_MAX = 1200
+        if item.item_type == "qna" or len(text) <= INLINE_MAX:
+            strategy = "inline"
+            chunks_payload = [{"text": text, "page": 1, "chunk_index": 0, "section": title}]
+        else:
+            from app.orchestra.ai.chunking import chunk as chunk_document, get_config as get_chunk_config
+            from app.rag.document_parser import ParsedDocument, ParsedPage
+            parsed = ParsedDocument(
+                filename="kb.txt",   # RECURSIVE text strategy
+                extension=".txt",
+                pages=[ParsedPage(page=1, text=text, section=title)],
+            )
+            strategy = get_chunk_config(parsed.filename).strategy.value
+            chunks_payload = [
+                {"text": c.text, "page": c.page, "chunk_index": c.chunk_index, "section": c.section or title}
+                for c in chunk_document(parsed)
+            ] or [{"text": text, "page": 1, "chunk_index": 0, "section": title}]
+
         idx_doc_id = str(_uuid.uuid4())[:8]
         store = get_vector_store()
         store.upsert_client_chunks(
             client_id=str(space.id),
             session_id="kb",
             doc_id=idx_doc_id,
-            filename=str(item.title or f"kb-{str(item.id)[:8]}"),
+            filename=title,
             extension=".txt",
-            strategy="inline",
+            strategy=strategy,
             doc_type="general",
             ttl_days=None,
             kb_id=str(kb.id),
             kb_name=str(kb.name),
             space_id=str(space.id),
             org_name=getattr(space, "display_name", ""),
-            chunks=[{"text": text, "page": 1, "chunk_index": 0, "section": ""}],
+            chunks=chunks_payload,
         )
 
         async with AsyncSessionLocal() as db:
@@ -269,9 +311,13 @@ async def add_item(
     await db.commit()
     await db.refresh(item)
 
+    kb = await _get_kb(kb_id, space, db)
     if req.item_type in ("text", "qna"):
-        kb = await _get_kb(kb_id, space, db)
         await _index_kb_item(item, space, kb)
+    elif req.item_type == "doc" and req.doc_id:
+        # Backfill kb_id onto already-uploaded ChromaDB chunks so KB-scoped
+        # retrieval can filter by kb_id at query time.
+        await _tag_doc_with_kb(doc_id=req.doc_id, kb_id=str(kb_id), space_id=str(space.id))
 
     logger.info("kb_item.added", kb_id=str(kb_id), item_type=req.item_type)
     return _item_out(item)

@@ -17,7 +17,9 @@ from sqlalchemy import (
     Boolean, Column, DateTime, Float, Integer,
     String, Text, ForeignKey, Index,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+
+from app.config import settings
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -162,6 +164,7 @@ class ConversationLog(Base):
     intent          = Column(String(80), nullable=True)
     agent_slug      = Column(String(80), nullable=True)
     rag_hit         = Column(Boolean, nullable=True)
+    citations       = Column(JSONB, nullable=True)     # retrieved chunks used for this reply
     sentiment_score = Column(Float, nullable=True)
     response_ms     = Column(Integer, nullable=True)   # latency in ms
 
@@ -317,7 +320,10 @@ class CustomAgent(Base):
 
     system_prompt = Column(Text, default="")
     temperature   = Column(Float, default=0.4)
-    max_tokens    = Column(Integer, default=500)
+    # New agents with no explicit value get the configured default (AGENT_MAX_TOKENS_LIMIT).
+    # 500 previously truncated detailed multi-section RAG answers mid-sentence; a cap
+    # only limits length when the model would run long, so a higher default is free.
+    max_tokens    = Column(Integer, default=lambda: settings.AGENT_MAX_TOKENS_LIMIT)
     rag_enabled   = Column(Boolean, default=False)
     rag_doc_types = Column(String(500), default="")
     rag_top_k     = Column(Integer, default=5)
@@ -418,8 +424,11 @@ class AgentMetaSuggestion(Base):
     id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     space_id        = Column(UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="CASCADE"),
                            nullable=False, index=True)
-    agent_id      = Column(UUID(as_uuid=True), ForeignKey("agent_definitions.id", ondelete="SET NULL"),
-                           nullable=True, index=True)
+    # Plain UUID (no DB-level FK — matches the actual schema). Set to the created
+    # CustomAgent's id via link_agent() once the user creates the agent. The old
+    # ForeignKey("agent_definitions.id") pointed at a non-existent, unregistered
+    # table and broke every flush of this row.
+    agent_id      = Column(UUID(as_uuid=True), nullable=True, index=True)
 
     # Cache keys
     # doc_id:       specific doc this suggestion was generated for ("" = type-only)

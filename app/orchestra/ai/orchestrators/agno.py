@@ -1,50 +1,132 @@
 """
-AgnoOrchestrator — Agno implementation of BaseOrchestrator.
+AgnoOrchestrator — Agno implementation backed by SessionPool.
 
-Routing strategy:
-  1 specialist  → TeamFactory returns a bare Agent (no team overhead).
-  2+ specialists → TeamFactory returns Team(mode="route"); the triage leader
-                   semantically routes every message to the right specialist.
-                   The triage prompt is strict: it MUST always delegate and
-                   NEVER answer directly — every message gets routed.
+Lifecycle:
+  warmup()  — called once by /session/init; builds Team, caches by {space_id}:team
+  run()     — gets cached Team, calls arun(), returns structured dict
+  stream()  — gets cached Team, calls arun(stream=True), yields text chunks
 
-The Team/Agent is cached per space_id at the bot level — built once, reused
-across all sessions for that bot. Routing is handled by Agno on every arun().
+Singletons (module-level, built once at first import):
+  _cfg               — AgnoConfig from .env
+  _knowledge_backend — ChromaDB Knowledge instance
 
-Usage in customer.py:
-    from app.orchestra.ai.orchestrators.agno import AgnoOrchestrator
-
-    executor = AgnoOrchestrator(
-        space_id=str(org.id),
-        org_name=org.display_name,
-        active_agents=active_agents,
-        session_id=session_id,
-    )
-    result = await executor.run(message=req.message)
+Team/Agent (per-space, SessionPool):
+  Built once on first warmup/run for a space, reused for all sessions.
+  Session history is isolated by session_id inside Agno, not by Team instance.
 """
 
 from __future__ import annotations
+
 from typing import Any, AsyncGenerator, Dict, List, Optional
 import structlog
 
 from app.agents.resolved_agent import ResolvedAgent
-from app.orchestra.ai.core.base import BaseOrchestrator
 from app.orchestra.ai.core.config import AgnoConfig, build_config
-from app.orchestra.ai.rag.base import BaseRAG, RAGResult
-from app.orchestra.ai.rag.factory import build_rag
+from app.orchestra.ai.knowledge import build_knowledge_backend
+from app.orchestra.ai.knowledge.base import BaseKnowledgeBackend
 from app.orchestra.ai.session.pool import pool as _pool
 
 logger = structlog.get_logger()
 
+# ── Module-level singletons ───────────────────────────────────────────────────
 
-class AgnoOrchestrator(BaseOrchestrator):
+_cfg: Optional[AgnoConfig] = None
+_knowledge_backend: Optional[BaseKnowledgeBackend] = None
+
+
+def _get_cfg() -> AgnoConfig:
+    global _cfg
+    if _cfg is None:
+        _cfg = build_config()
+    return _cfg
+
+
+def _get_knowledge_backend() -> BaseKnowledgeBackend:
+    global _knowledge_backend
+    if _knowledge_backend is None:
+        _knowledge_backend = build_knowledge_backend(_get_cfg())
+    return _knowledge_backend
+
+
+def _citation_from_chunk(chunk: Any, seen: set, out: List[Dict[str, Any]]) -> None:
+    """Append a citation dict for one retrieved chunk, de-duped by doc_id:page."""
+    if not isinstance(chunk, dict):
+        return
+    meta   = chunk.get("meta_data") or {}
+    doc_id = meta.get("doc_id") or ""
+    page   = meta.get("page") or 1
+    key    = f"{doc_id}:{page}"
+    if key in seen:
+        return
+    seen.add(key)
+    out.append({
+        "filename": meta.get("filename") or meta.get("doc_name") or doc_id,
+        "page":     page,
+        "section":  meta.get("section", ""),
+        "score":    meta.get("rrf_score") or chunk.get("score", 0.0),
+        "excerpt":  (chunk.get("content") or "")[:300],
+        "doc_id":   doc_id,
+        "kb_name":  meta.get("kb_name", ""),
+    })
+
+
+def _extract_citations(response: Any) -> List[Dict[str, Any]]:
     """
-    Agno-based orchestrator backed by SessionPool.
+    Collect retrieved chunks as citations from two Agno sources:
 
-    Agent lifecycle:
-      First call  → SessionPool builds Team/Agent once, cached by {space_id}:team
-      Subsequent  → SessionPool returns cached runner (zero rebuild cost)
-      close()     → no-op; eviction is TTL-based or via pool.invalidate_bot_agents()
+      1. response.references — native references from add_knowledge_to_context
+         (traditional RAG injection). Each MessageReferences.references is a
+         list of {content, meta_data} dicts.
+      2. tool messages — role=tool, tool_name=search_knowledge_base, from the
+         agentic search_knowledge tool (JSON list in message content).
+
+    Both shapes share {content, meta_data}. De-duped across sources.
+    """
+    import json as _json
+
+    seen: set = set()
+    citations: List[Dict[str, Any]] = []
+
+    # 1) Native references (add_knowledge_to_context)
+    for mr in getattr(response, "references", None) or []:
+        for chunk in (getattr(mr, "references", None) or []):
+            _citation_from_chunk(chunk, seen, citations)
+
+    # 2) Agentic search_knowledge tool results
+    for msg in (getattr(response, "messages", None) or []):
+        if getattr(msg, "role", "") != "tool":
+            continue
+        if getattr(msg, "tool_name", "") != "search_knowledge_base":
+            continue
+        raw = getattr(msg, "content", "") or ""
+        try:
+            chunks = _json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            continue
+        if isinstance(chunks, list):
+            for chunk in chunks:
+                _citation_from_chunk(chunk, seen, citations)
+
+    return citations
+
+
+def _empty(reason: str) -> Dict[str, Any]:
+    return {
+        "reply":     "I'm unable to process your request right now. Please try again.",
+        "agent":     "fallback",
+        "intent":    reason,
+        "rag_hit":   False,
+        "citations": [],
+    }
+
+
+# ── Orchestrator ──────────────────────────────────────────────────────────────
+
+class AgnoOrchestrator:
+    """
+    Lightweight per-request wrapper. All heavy state lives in singletons + pool.
+
+    mcp_server / skills_map are reserved for future MCP tool integration.
     """
 
     def __init__(
@@ -52,143 +134,111 @@ class AgnoOrchestrator(BaseOrchestrator):
         space_id:      str,
         org_name:      str,
         active_agents: List[ResolvedAgent],
-        session_id:    str                           = "new",
-        cfg:           Optional[AgnoConfig]          = None,
-        mcp_server:    Optional[Any]                 = None,
-        skills_map:    Optional[Dict[str, List[Any]]] = None,
+        session_id:    str                            = "new",
+        cfg:           Optional[AgnoConfig]           = None,   # override for tests
+        mcp_server:    Optional[Any]                  = None,   # future MCP integration
+        skills_map:    Optional[Dict[str, List[Any]]] = None,   # future skills integration
     ):
-        super().__init__(
-            space_id=space_id,
-            org_name=org_name,
-            active_agents=active_agents,
-            session_id=session_id,
-            cfg=cfg or build_config(),
-        )
-        self.mcp_server = mcp_server
-        self.skills_map = skills_map or {}
-        self._rag: BaseRAG = build_rag(self.cfg)
+        self.space_id      = space_id
+        self.org_name      = org_name
+        self.active_agents = active_agents
+        self.session_id    = session_id
+        self._cfg_override = cfg
+        self.mcp_server    = mcp_server
+        self.skills_map    = skills_map or {}
+        # Structured result of the last stream() — agent/rag_hit/citations that
+        # the text-only SSE stream can't return inline. Read after the generator
+        # is exhausted (per-request instance, so no cross-request bleed).
+        self.last_result: Optional[Dict[str, Any]] = None
 
-    async def run(
-        self,
-        message:          str,
-        session_id:       str = "",   # noqa: unused — kept for API compat with DynamicAgentExecutor
-        conversation_id:  str = "",   # noqa: unused — kept for API compat
-    ) -> Dict[str, Any]:
-        """
-        Process one message. Returns dict compatible with DynamicAgentExecutor:
-            {reply, agent, intent, rag_hit, citations}
-        """
-        runner = await self._get_runner()
+    async def run(self, message: str) -> Dict[str, Any]:
+        runner = await self._runner()
         if not runner:
-            return self._empty_reply("no_runner")
-
-        rag = await self._fetch_rag(message)
-        augmented = self._augment_message(message, rag.context)
+            return _empty("no_runner")
 
         try:
-            response = await runner.arun(augmented, session_id=self.session_id)
-
-            # Agno swallows all exceptions internally and sets response.status = "ERROR"
-            # with response.content = str(exception). Check status before trusting content.
-            status = getattr(response, "status", None)
-            if status is not None and str(status).upper() in ("ERROR", "CANCELLED"):
-                logger.error(
-                    "agno_orchestrator.runner_error",
-                    space_id=self.space_id,
-                    status=str(status),
-                    detail=getattr(response, "content", ""),
-                )
-                return self._empty_reply("runner_error")
-
-            reply = (response.content or "") if hasattr(response, "content") else str(response)
-            agent = getattr(response, "agent_id", None) or "team"
-
-            logger.info(
-                "agno_orchestrator.run_complete",
-                space_id=self.space_id,
-                agent=agent,
-                rag_hit=rag.rag_hit,
-                session_id=self.session_id,
+            # session_id threads the conversation; user_id scopes memory.
+            # Per project decision, both are the ChatSession id.
+            response = await runner.arun(
+                message, session_id=self.session_id, user_id=self.session_id
             )
-            return {
-                "reply":     reply,
-                "agent":     agent,
-                "intent":    agent,
-                "rag_hit":   rag.rag_hit,
-                "citations": rag.citations,
-            }
+
+            # Agno swallows exceptions internally — status="ERROR" instead of raising
+            status = getattr(response, "status", None)
+            if status and str(status).upper() in ("ERROR", "CANCELLED"):
+                logger.error("agno.runner_error", space_id=self.space_id,
+                             status=str(status), detail=getattr(response, "content", ""))
+                return _empty("runner_error")
+
+            reply     = (response.content or "") if hasattr(response, "content") else str(response)
+            agent     = getattr(response, "agent_id", None) or "team"
+
+            citations = _extract_citations(response)
+            rag_hit   = len(citations) > 0
+            logger.info("agno.run", space_id=self.space_id, agent=agent,
+                        rag_hit=rag_hit, citations=len(citations), session_id=self.session_id)
+            return {"reply": reply, "agent": agent, "intent": agent,
+                    "rag_hit": rag_hit, "citations": citations}
+
         except Exception:
-            logger.exception("agno_orchestrator.run_error", space_id=self.space_id)
-            return self._empty_reply("run_error")
+            logger.exception("agno.run_error", space_id=self.space_id)
+            return _empty("run_error")
 
     async def stream(self, message: str) -> AsyncGenerator[str, None]:
-        """Yield reply chunks as they arrive (SSE / StreamingResponse)."""
-        runner = await self._get_runner()
+        runner = await self._runner()
         if not runner:
-            yield self._empty_reply("no_runner")["reply"]
+            yield _empty("no_runner")["reply"]
             return
 
-        rag = await self._fetch_rag(message)
-        augmented = self._augment_message(message, rag.context)
-
+        self.last_result = None
+        final = None
         try:
-            # Agno streams via arun(stream=True) — there is no .astream() method.
-            async for chunk in runner.arun(augmented, stream=True, session_id=self.session_id):
-                if hasattr(chunk, "content") and chunk.content:
-                    yield chunk.content
+            async for ev in runner.arun(
+                message, stream=True, session_id=self.session_id, user_id=self.session_id
+            ):
+                etype = getattr(ev, "event", "")
+                # RunContent = incremental delta → stream to the client.
+                if etype == "RunContent":
+                    content = getattr(ev, "content", None)
+                    if content:
+                        yield content
+                # RunCompleted = final event → carries full content + references
+                # + agent_id. Capture (do NOT yield, else the whole reply repeats).
+                elif etype == "RunCompleted":
+                    final = ev
+
+            if final is not None:
+                citations = _extract_citations(final)
+                agent = getattr(final, "agent_id", None) or "team"
+                self.last_result = {
+                    "reply":     getattr(final, "content", "") or "",
+                    "agent":     agent,
+                    "intent":    agent,
+                    "rag_hit":   len(citations) > 0,
+                    "citations": citations,
+                }
+                logger.info("agno.stream", space_id=self.space_id, agent=agent,
+                            rag_hit=self.last_result["rag_hit"],
+                            citations=len(citations), session_id=self.session_id)
         except Exception:
-            logger.exception("agno_orchestrator.stream_error", space_id=self.space_id)
-            yield self._empty_reply("stream_error")["reply"]
+            logger.exception("agno.stream_error", space_id=self.space_id)
+            yield _empty("stream_error")["reply"]
 
     async def warmup(self) -> None:
         """Pre-build and cache the Team so the first message has no cold-start delay."""
-        await self._get_runner()
-
-    async def close(self) -> None:
-        """
-        End a user session.
-
-        The Team/Agent runner is cached at the bot level ({space_id}:team) and
-        shared across all sessions — do NOT evict here. Eviction is TTL-based
-        or explicit via pool.invalidate_bot_agents() when config changes.
-        """
+        await self._runner()
 
     # ── Private ───────────────────────────────────────────────────────────────
 
-    async def _get_runner(self) -> Optional[Any]:
-        """
-        Return the cached Team (or bare Agent) for this bot.
-
-        Cache key = {space_id}:team — bot-level, shared across all sessions.
-        Passes all active_agents so TeamFactory builds a Team when 2+ specialists.
-        """
+    async def _runner(self) -> Optional[Any]:
+        """Pool lookup — returns cached Team or builds it once on first call."""
         return await _pool.get_or_init(
             session_id=f"{self.space_id}:team",
             active_agents=self.active_agents,
             space_id=self.space_id,
             org_name=self.org_name,
-            cfg=self.cfg,  # type: ignore[arg-type]  — AgnoConfig extends OrchestraConfig
+            cfg=self._cfg_override or _get_cfg(),
             mcp_server=self.mcp_server,
             skills_map=self.skills_map,
-        )
-
-    async def _fetch_rag(self, message: str) -> RAGResult:
-        """Fetch RAG context scoped to this org across all active agents."""
-        return await self._rag.fetch(
-            message=message,
-            space_id=self.space_id,
-            agents=self.active_agents,
-        )
-
-    def _augment_message(self, message: str, rag_context: str) -> str:
-        """Inject RAG context into the message before routing."""
-        if not rag_context:
-            return message
-        return (
-            f"{message}\n\n"
-            "KNOWLEDGE BASE CONTEXT (use ONLY this to answer):\n"
-            f"{rag_context}\n\n"
-            "CRITICAL: Base your answer solely on the KNOWLEDGE BASE CONTEXT above. "
-            "Do not use outside knowledge. If the context does not contain enough "
-            "information, say so and suggest contacting support."
+            knowledge_backend=_get_knowledge_backend(),
         )

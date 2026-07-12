@@ -578,6 +578,13 @@ async def get_agent_suggestion(
     except Exception as e:
         import logging
         logging.getLogger(__name__).error("agent_suggestions_failed: %s", e)
+        # Reset the session — a failed flush leaves it in PendingRollback, so any
+        # later attribute reload (e.g. org.display_name) would raise again and the
+        # fallback below would crash instead of returning.
+        try:
+            await db.rollback()
+        except Exception:
+            pass
         # Return a usable fallback so the wizard doesn't break
         name = req.agent_name or (org.display_name + " Support Agent")
         return {

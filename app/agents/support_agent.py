@@ -58,9 +58,9 @@ class SupportAgent:
     tech guides, catalogs — scoped strictly to that org's client_id (slug).
     """
 
-    DEFAULT_TOP_K      = 5
+    DEFAULT_TOP_K      = 8
     DEFAULT_MIN_SCORE  = 0.15
-    MAX_CONTEXT_CHUNKS = 4
+    MAX_CONTEXT_CHUNKS = 8
 
     def __init__(self):
         self._store = None
@@ -128,7 +128,8 @@ class SupportAgent:
             "You are a helpful support assistant for this organisation. "
             "Use ONLY the provided knowledge base excerpts to answer the customer's question. "
             "If the answer is not in the context, say so and suggest contacting support. "
-            "Be concise, friendly, and cite the source document and page when relevant."
+            "Be concise, friendly, and cite the source document and page when relevant. "
+            "When asked to compare features, plans, or options, ALWAYS present the comparison using a structured Markdown table."
         )
         messages = [{"role": "user", "content": f"Knowledge Base:\n{context}\n\nCustomer question: {question}"}]
 
@@ -136,7 +137,7 @@ class SupportAgent:
             messages=messages,
             system_prompt=system,
             temperature=0.2,
-            max_tokens=600,
+            max_tokens=1500,
         )
 
         if llm_result:
