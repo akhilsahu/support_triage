@@ -28,6 +28,46 @@ A production-ready FastAPI backend for AI Support multi-agent systems with RAG (
 - **API Documentation**: Auto-generated OpenAPI/Swagger documentation
 - **Production Ready**: Comprehensive logging, monitoring, and error handling
 
+## 🤖 Multi-Chatbot per Space
+
+A space can run one or many chatbots, gated by a limit the super-admin controls.
+
+**Schema** (migration `0022_chatbot_limits`):
+- `platform_settings.default_max_chatbots INT DEFAULT 1` — global cap for all spaces.
+- `spaces.max_chatbots INT NULL` — per-space override; `NULL` = inherit global, `-1` = unlimited.
+- Effective limit = `spaces.max_chatbots ?? platform_settings.default_max_chatbots`
+  (`app/utils/chatbot_limits.py`).
+
+**Admin control** (Super Admin → Organizations tab):
+- Master "Chatbots per space — default for all" presets (None/Up to 3/Up to 10/Unlimited).
+- Per-row **Chatbots** dropdown (`Inherit / 1 / 2 / 3 / 5 / 10 / ∞`) writing `spaces.max_chatbots`
+  via `PATCH /super-admin/orgs/{id}`.
+
+**Owner UX** (dashboard → Chatbot Profile): single-bot spaces see just their bot; multi-bot
+spaces get create / set-default / delete (gated by `GET /api/v1/chatbots/quota`). New bots clone
+the default bot's agent setup so they answer immediately.
+
+**Customer routing**:
+- `/<space_slug>` → default chatbot (unchanged).
+- `/<space_slug>/<chatbot_slug>` → a specific chatbot. The frontend forwards `?chatbot=<slug>` to
+  `/api/chat/...` and `/api/v1/space/public/...`; unknown slugs fall back to the default bot.
+- Agents are resolved per `chatbot_id`; the session pool caches agents per `space_id:chatbot_id`.
+
+## 🧭 Terminology & Naming Convention
+
+**Use `space`, never `org`.** A tenant is a **Space** (`spaces` table, `space_id`
+everywhere). The codebase is migrating off the older "org" terminology — all **new**
+code, files, routes, components, and identifiers must use `space`:
+
+- New router files → `space_*.py` with `/space/...` prefixes (not `org_*.py` / `/org/...`).
+- New UI components → `SpaceSearch`, `SpaceX` (not `OrgSearch`, `OrgX`).
+- New identifiers/vars → `space_id`, `spaceSlug` (not `org_id`, `orgSlug`).
+
+> ⚠️ **Legacy `org`-named surfaces still live** (do not break; rename only via a
+> coordinated frontend + backend migration): `/api/v1/org/agents`, `/api/v1/org/kb`
+> (served by `space_agents.py`), and `/api/v1/orgs` (super-admin). These paths are
+> still called by the frontend and are pending a future rename.
+
 ## 📋 Prerequisites
 
 - Python 3.11+

@@ -15,6 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'analytics',     label: 'Analytics',       icon: 'BarChart3',       path: '/app/analytics',     group: 'main' },
   { id: 'inbox',         label: 'Inbox',           icon: 'Inbox',           path: '/app/inbox',         group: 'main' },
   { id: 'embed-widget',  label: 'Embed Widget',    icon: 'Code2',           path: '/app/embed-widget',  group: 'advanced' },
+  { id: 'chatbot-profile', label: 'Chatbot Profile', icon: 'Image',         path: '/app/chatbot-profile', group: 'advanced' },
   { id: 'data-sources',  label: 'Data Sources',    icon: 'Plug',            path: '/app/data-sources',  group: 'advanced' },
   { id: 'settings',      label: 'Settings',        icon: 'Settings',        path: '/app/settings',      group: 'advanced' },
 ]

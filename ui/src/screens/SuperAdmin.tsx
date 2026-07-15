@@ -108,6 +108,7 @@ interface Space {
   active_agents: number
   message_count: number
   skill_count: number
+  max_chatbots?: number | null
 }
 
 interface Agent {
@@ -183,6 +184,60 @@ interface KbDoc {
   expires_at: string
 }
 
+// Master control: the global default chatbot cap for every space without an override.
+function ChatbotLimitsControl({ adminKey }: { adminKey: string }) {
+  const [input, setInput] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    api(adminKey).get('/chatbot-limits')
+      .then((d: any) => setInput(String(d.default_max_chatbots)))
+      .catch(() => {})
+  }, [adminKey])
+
+  const save = async () => {
+    const n = parseInt(input, 10)
+    if (Number.isNaN(n)) return
+    setSaving(true)
+    try {
+      const d = await api(adminKey).patch('/chatbot-limits', { default_max_chatbots: n })
+      setInput(String(d.default_max_chatbots))
+      setSaved(true); setTimeout(() => setSaved(false), 1500)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <p className="text-sm font-semibold text-gray-900 dark:text-white">Chatbots per space — default for all</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+          Applies to every space that has no per-row override. 1 = single bot (multi off), -1 = unlimited.
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') save() }}
+          title="Number of chatbots per space (-1 = unlimited)"
+          className="w-24 text-sm px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300"
+        />
+        <button
+          onClick={save}
+          disabled={saving}
+          className="text-xs px-3 py-1.5 rounded-lg border border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function SpaceRow({ space, adminKey, onRefresh, onViewChunks }: {
   space: Space, adminKey: string, onRefresh: () => void,
   onViewChunks: (clientId: string, docId: string, docName: string) => void
@@ -190,6 +245,7 @@ function SpaceRow({ space, adminKey, onRefresh, onViewChunks }: {
   const [expanded, setExpanded] = useState(false)
   const [detail, setDetail] = useState<{ agents: Agent[], skills: any[], kb_docs: KbDoc[] } | null>(null)
   const [toggling, setToggling] = useState(false)
+  const [limitInput, setLimitInput] = useState(space.max_chatbots == null ? '' : String(space.max_chatbots))
 
   const loadDetail = async () => {
     if (detail) { setExpanded(e => !e); return }
@@ -213,6 +269,16 @@ function SpaceRow({ space, adminKey, onRefresh, onViewChunks }: {
     onRefresh()
   }
 
+  const commitMaxChatbots = async () => {
+    // Blank → null (inherit global); -1 → unlimited; else the entered number.
+    const raw = limitInput.trim()
+    const max_chatbots = raw === '' ? null : parseInt(raw, 10)
+    if (raw !== '' && Number.isNaN(max_chatbots)) return
+    if ((space.max_chatbots ?? null) === max_chatbots) return   // no-op
+    await api(adminKey).patch(`/orgs/${space.id}`, { max_chatbots })
+    onRefresh()
+  }
+
   return (
     <>
       <tr className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
@@ -231,6 +297,18 @@ function SpaceRow({ space, adminKey, onRefresh, onViewChunks }: {
           >
             {['free', 'starter', 'pro', 'enterprise'].map(p => <option key={p} value={p}>{p}</option>)}
           </select>
+        </td>
+        <td className="px-4 py-3">
+          <input
+            type="number"
+            value={limitInput}
+            onChange={e => setLimitInput(e.target.value)}
+            onBlur={commitMaxChatbots}
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            placeholder="—"
+            title="Chatbots allowed — blank = inherit global, -1 = unlimited"
+            className="w-16 text-xs px-2 py-1 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300"
+          />
         </td>
         <td className="px-4 py-3">
           {space.active
@@ -870,18 +948,19 @@ export function SuperAdmin() {
     setLoading(true)
     setError('')
     try {
-      const [s, o, a, l, v] = await Promise.all([
+      const [s, o, a, l] = await Promise.all([
         api(k).get('/stats'),
         api(k).get('/orgs?limit=100'),
         api(k).get('/agents'),
         api(k).get('/activity?limit=100'),
-        api(k).get('/vectordb'),
       ])
       setStats(s)
       setSpaces(o.orgs)
       setAgents(a.agents)
       setLogs(l.logs)
-      setVectorDB(v)
+      // Non-fatal — /vectordb can 500 on a ChromaDB embedding-function conflict;
+      // a broken VectorDB panel shouldn't blank the whole dashboard.
+      api(k).get('/vectordb').then(setVectorDB).catch(() => {})
       // Non-fatal — requires migration 0015
       api(k).get('/builtin-agents').then(b => setBuiltinAgents(b.builtin_agents || [])).catch(() => {})
     } catch {
@@ -1099,25 +1178,28 @@ export function SuperAdmin() {
 
       {/* ── Organizations ── */}
       {tab === 'spaces' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
-                {['Organization', 'Email', 'Plan', 'Status', 'Agents', 'Messages', 'Created', ''].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400">{h}</th>
+        <div>
+          <ChatbotLimitsControl adminKey={key} />
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
+                  {['Organization', 'Email', 'Plan', 'Chatbots', 'Status', 'Agents', 'Messages', 'Created', ''].map(h => (
+                    <th key={h} className="px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSpaces.map(space => (
+                  <SpaceRow key={space.id} space={space} adminKey={key} onRefresh={() => fetchAll(key)}
+                    onViewChunks={(cid, did, name) => setViewingChunks({ clientId: cid, docId: did, docName: name })} />
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSpaces.map(space => (
-                <SpaceRow key={space.id} space={space} adminKey={key} onRefresh={() => fetchAll(key)}
-                  onViewChunks={(cid, did, name) => setViewingChunks({ clientId: cid, docId: did, docName: name })} />
-              ))}
-              {filteredSpaces.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-400">No spaces found.</td></tr>
-              )}
-            </tbody>
-          </table>
+                {filteredSpaces.length === 0 && (
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-400">No spaces found.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1246,10 +1328,10 @@ export function SuperAdmin() {
                 <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">Client Documents — per space</p>
                 </div>
-                {vectorDB.spaces.length === 0 && (
+                {(vectorDB.spaces ?? []).length === 0 && (
                   <p className="px-4 py-8 text-center text-sm text-gray-400">No client documents in vector DB.</p>
                 )}
-                {vectorDB.spaces.map(o => (
+                {(vectorDB.spaces ?? []).map(o => (
                   <div key={o.client_id} className="border-b border-gray-100 dark:border-gray-700 last:border-0">
                     <button
                       onClick={() => setExpandedVecOrg(expandedVecOrg === o.client_id ? null : o.client_id)}

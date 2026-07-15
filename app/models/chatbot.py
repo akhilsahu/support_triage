@@ -40,6 +40,7 @@ class Chatbot(Base):
     # Per-chatbot branding (falls back to org branding if null)
     logo_url     = Column(String(500), nullable=True)
     theme_color  = Column(String(20), nullable=True)
+    show_logo    = Column(Boolean, default=True, nullable=False)
 
     # The default chatbot is the one used for /{org_slug} routing
     is_default   = Column(Boolean, default=False, nullable=False)
@@ -76,6 +77,7 @@ class Chatbot(Base):
             "description":  self.description,
             "logo_url":     self.logo_url,
             "theme_color":  self.theme_color,
+            "show_logo":    self.show_logo,
             "is_default":              self.is_default,
             "active":                  self.active,
             "human_transfer_enabled":  self.human_transfer_enabled,

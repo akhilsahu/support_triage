@@ -279,9 +279,12 @@ interface SpaceInfo {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function CustomerChat() {
-  const { slug: slugParam }             = useParams<{ slug?: string }>()
+  const { slug: slugParam, chatbotSlug } = useParams<{ slug?: string; chatbotSlug?: string }>()
   const storeSlug                       = useAppStore(s => s.spaceSlug)
   const slug                            = slugParam || storeSlug || ''
+  // When a specific chatbot is addressed via /{slug}/{chatbotSlug}, forward it to
+  // every customer endpoint so the whole conversation stays on that bot.
+  const botQuery                        = chatbotSlug ? `?chatbot=${encodeURIComponent(chatbotSlug)}` : ''
   const [searchParams, setSearchParams] = useSearchParams()
   const chatParam                       = searchParams.get('chat')
 
@@ -328,7 +331,7 @@ export function CustomerChat() {
   // ── Data fetching ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!slug) return
-    fetch(`${API_CONFIG.baseURL}/api/v1/space/public/${slug}`)
+    fetch(`${API_CONFIG.baseURL}/api/v1/space/public/${slug}${botQuery}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data) {
@@ -399,7 +402,7 @@ export function CustomerChat() {
 
   useEffect(() => {
     if (!slug) return
-    fetch(`${API_CONFIG.baseURL}/api/chat/${slug}/suggestions`)
+    fetch(`${API_CONFIG.baseURL}/api/chat/${slug}/suggestions${botQuery}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.suggestions) setSuggestions(data.suggestions) })
       .catch(() => {})
@@ -408,7 +411,7 @@ export function CustomerChat() {
   useEffect(() => {
     if (!chatParam || !slug) return
     setRestoring(true)
-    fetch(`${API_CONFIG.baseURL}/api/chat/${slug}/session/${chatParam}`)
+    fetch(`${API_CONFIG.baseURL}/api/chat/${slug}/session/${chatParam}${botQuery}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data?.history?.length) return
@@ -479,7 +482,7 @@ export function CustomerChat() {
     setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', text: msg, ts: new Date() }])
     setLoading(true)
     try {
-      const res  = await fetch(`${API_CONFIG.baseURL}/api/chat/${slug}`, {
+      const res  = await fetch(`${API_CONFIG.baseURL}/api/chat/${slug}${botQuery}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: msg, session_id: sessionId }),
       })
@@ -608,9 +611,13 @@ export function CustomerChat() {
                   {/* Avatar — 32×32, only on first in a group */}
                   <div className="flex-shrink-0 w-8">
                     {showAvatar && !isUser && (
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${t.botAvatarCls}`}>
-                        <Bot className="w-4 h-4" />
-                      </div>
+                      space?.logo_url ? (
+                        <img src={space.logo_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+                      ) : (
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${t.botAvatarCls}`}>
+                          <Bot className="w-4 h-4" />
+                        </div>
+                      )
                     )}
                     {isUser && showAvatar && (
                       <div className="w-8 h-8 rounded-full bg-slate-500 flex items-center justify-center text-white">
@@ -662,9 +669,13 @@ export function CustomerChat() {
             {/* ── Typing indicator ── */}
             {loading && (
               <div className="flex gap-2.5 animate-fadeIn">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white flex-shrink-0 ${t.botAvatarCls}`}>
-                  <Bot className="w-4 h-4" />
-                </div>
+                {space?.logo_url ? (
+                  <img src={space.logo_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                ) : (
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white flex-shrink-0 ${t.botAvatarCls}`}>
+                    <Bot className="w-4 h-4" />
+                  </div>
+                )}
                 <div className={`overflow-hidden ${t.aiBubbleCls}`}>
                   <div className="px-4 py-4 flex items-center gap-2">
                     <div className="flex gap-1.5">

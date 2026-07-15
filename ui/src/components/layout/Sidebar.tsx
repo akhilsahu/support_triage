@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, MessageSquare, Bot, Database, BarChart3, Settings, ChevronLeft, LogOut, Plug, Code2, Inbox } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Bot, Database, BarChart3, Settings, ChevronLeft, LogOut, Plug, Code2, Inbox, Image } from 'lucide-react'
 import { IMAGES } from '../../config/images.config'
 import { cn } from '../ui/cn'
 import { StatusDot } from '../ui/StatusDot'
@@ -12,7 +12,7 @@ import { useInboxStream } from '../../lib/useInboxStream'
 import { useDashboardTheme } from '../../config/dashboardTheme'
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  LayoutDashboard, MessageSquare, Bot, Database, BarChart3, Settings, Plug, Code2, Inbox,
+  LayoutDashboard, MessageSquare, Bot, Database, BarChart3, Settings, Plug, Code2, Inbox, Image,
 }
 
 export function Sidebar() {

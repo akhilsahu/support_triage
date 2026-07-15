@@ -91,6 +91,10 @@ async def get_org_endpoint(space_id: str, db: AsyncSession = Depends(get_db)):
 class OrgPatchRequest(BaseModel):
     active: Optional[bool] = None
     plan: Optional[str] = None
+    # Per-space chatbot cap. Send an int to override, or explicit null to inherit
+    # the global default. "Field present" is detected via model_fields_set so that
+    # omitting it leaves the current value untouched.
+    max_chatbots: Optional[int] = None
 
 
 @router.patch("/orgs/{space_id}", dependencies=[Depends(require_super_admin)])
@@ -103,6 +107,10 @@ async def patch_org_endpoint(space_id: str, req: OrgPatchRequest, db: AsyncSessi
         org = await set_org_active(db, org, req.active)
     if req.plan is not None:
         org = await set_org_plan(db, org, req.plan)
+    if "max_chatbots" in req.model_fields_set:
+        org.max_chatbots = req.max_chatbots   # may be None → inherit global
+        await db.commit()
+        await db.refresh(org)
 
     return org.to_dict()
 
@@ -171,11 +179,11 @@ async def vectordb_endpoint():
         if did:
             orgs[cid]["docs"][did]["chunk_count"] += 1
 
-    org_list = []
+    space_list = []
     for cid, data in orgs.items():
-        org_list.append({
+        space_list.append({
             "client_id": cid,
-            "org_name":  data["org_name"],
+            "space_name": data["org_name"],
             "doc_count": len(data["docs"]),
             "chunk_count": sum(d["chunk_count"] for d in data["docs"].values()),
             "docs": list(data["docs"].values()),
@@ -183,7 +191,7 @@ async def vectordb_endpoint():
 
     return {
         "summary": summary,
-        "orgs": org_list,
+        "spaces": space_list,
     }
 
 
@@ -385,6 +393,26 @@ async def patch_system_nav(req: NavConfigRequest, db: AsyncSession = Depends(get
     ps.nav_config = json.dumps(current)
     await db.commit()
     return {"nav_config": ps.get_nav_config()}
+
+
+class ChatbotLimitRequest(BaseModel):
+    default_max_chatbots: int   # 1 = single (multi off), N = up to N, -1 = unlimited
+
+
+@router.get("/chatbot-limits", dependencies=[Depends(require_super_admin)])
+async def get_chatbot_limits(db: AsyncSession = Depends(get_db)):
+    """Global default chatbot cap applied to every space that has no override."""
+    ps = await _get_or_create_platform_settings(db)
+    return {"default_max_chatbots": ps.default_max_chatbots}
+
+
+@router.patch("/chatbot-limits", dependencies=[Depends(require_super_admin)])
+async def patch_chatbot_limits(req: ChatbotLimitRequest, db: AsyncSession = Depends(get_db)):
+    """Set the global default chatbot cap (the 'for all' control)."""
+    ps = await _get_or_create_platform_settings(db)
+    ps.default_max_chatbots = req.default_max_chatbots
+    await db.commit()
+    return {"default_max_chatbots": ps.default_max_chatbots}
 
 
 @router.get("/spaces/{space_id}/nav", dependencies=[Depends(require_super_admin)])

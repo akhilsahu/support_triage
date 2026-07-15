@@ -25,12 +25,13 @@ export default defineConfig({
           })
         },
       },
-      '/org': {
+      // /space/public/* lives on the backend — proxy for local widget dev
+      '/space': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
-      // /space/public/* lives on the backend — proxy for local widget dev
-      '/space': {
+      // Uploaded assets (chatbot logos, etc.) — served as static files by the backend
+      '/uploads': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },

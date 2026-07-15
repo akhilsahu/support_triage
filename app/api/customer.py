@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import List, Optional
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
@@ -66,8 +66,14 @@ class SessionInitResponse(BaseModel):
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
-async def _get_brand(slug: str):
-    """Return (Space, Chatbot, db) for slug. Raises 404/503 if missing."""
+async def _get_brand(slug: str, chatbot_slug: Optional[str] = None):
+    """
+    Return (Space, Chatbot, db) for slug.
+
+    chatbot_slug selects a specific chatbot within the space; when omitted (or
+    unknown) it falls back to the default chatbot so old /{slug} links and
+    unrecognised bot slugs keep working. Raises 404/503 if nothing resolves.
+    """
     from app.core.database import AsyncSessionLocal
     db = AsyncSessionLocal()
     result = await db.execute(
@@ -78,14 +84,27 @@ async def _get_brand(slug: str):
         await db.close()
         raise HTTPException(404, f"Brand '{slug}' not found.")
 
-    cb_result = await db.execute(
-        select(Chatbot).where(
-            Chatbot.space_id == org.id,
-            Chatbot.is_default == True,
-            Chatbot.active == True,
+    chatbot = None
+    if chatbot_slug:
+        cb_result = await db.execute(
+            select(Chatbot).where(
+                Chatbot.space_id == org.id,
+                Chatbot.slug == chatbot_slug,
+                Chatbot.active == True,
+            )
         )
-    )
-    chatbot = cb_result.scalar_one_or_none()
+        chatbot = cb_result.scalar_one_or_none()
+
+    if chatbot is None:
+        cb_result = await db.execute(
+            select(Chatbot).where(
+                Chatbot.space_id == org.id,
+                Chatbot.is_default == True,
+                Chatbot.active == True,
+            )
+        )
+        chatbot = cb_result.scalar_one_or_none()
+
     if not chatbot:
         await db.close()
         raise HTTPException(503, f"No active chatbot configured for '{slug}'.")
@@ -97,18 +116,19 @@ async def _get_active_agents_cached(db: AsyncSession, chatbot_id: uuid.UUID, spa
     """
     Return active agents for a chatbot, using the SessionPool agent cache.
 
-    First call per space: hits the DB (2 queries) and caches the result.
-    Subsequent calls within the TTL: returns from cache — no DB queries.
-    Cache is busted automatically when agent config changes via
-    pool.invalidate_bot_agents(space_id).
+    Cache key is "{space_id}:{chatbot_id}" so each chatbot in a space keeps its
+    own agent set. First call per chatbot hits the DB (2 queries) and caches;
+    subsequent calls within the TTL return from cache. Busted when agent config
+    changes via pool.invalidate_bot_agents(space_id) (clears all bots in the space).
     """
     from app.orchestra.ai.session.pool import pool as _pool
-    cached = _pool.get_agents(space_id)
+    cache_key = f"{space_id}:{chatbot_id}"
+    cached = _pool.get_agents(cache_key)
     if cached is not None:
         return cached
     agents = await _get_active_agents(db, chatbot_id)
     if agents:
-        _pool.set_agents(space_id, agents)
+        _pool.set_agents(cache_key, agents)
     return agents
 
 
@@ -402,11 +422,12 @@ def _canonical_session_id(incoming: Optional[str]) -> str:
 # ── Customer chat API ─────────────────────────────────────────────────────────
 
 @router.post("/api/chat/{slug}", response_model=CustomerChatResponse)
-async def customer_chat(slug: str, req: CustomerChatRequest):
+async def customer_chat(slug: str, req: CustomerChatRequest,
+                        chatbot_slug: Optional[str] = Query(None, alias="chatbot")):
     from app.orchestra.ai.core.factory import build_executor
 
     try:
-        org, chatbot, db = await _get_brand(slug)
+        org, chatbot, db = await _get_brand(slug, chatbot_slug)
     except HTTPException as e:
         return JSONResponse({"detail": e.detail}, status_code=e.status_code, headers=_CORS)
 
@@ -472,7 +493,8 @@ async def customer_chat(slug: str, req: CustomerChatRequest):
 # ── Streaming chat ───────────────────────────────────────────────────────────
 
 @router.post("/api/chat/{slug}/stream")
-async def customer_chat_stream(slug: str, req: CustomerChatRequest):
+async def customer_chat_stream(slug: str, req: CustomerChatRequest,
+                               chatbot_slug: Optional[str] = Query(None, alias="chatbot")):
     """
     Stream reply chunks as SSE.
 
@@ -490,7 +512,7 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest):
     from app.orchestra.ai.core.factory import build_executor
 
     try:
-        org, chatbot, db = await _get_brand(slug)
+        org, chatbot, db = await _get_brand(slug, chatbot_slug)
     except HTTPException as e:
         return JSONResponse({"detail": e.detail}, status_code=e.status_code, headers=_CORS)
 
@@ -562,7 +584,8 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest):
 # ── Chat suggestions ──────────────────────────────────────────────────────────
 
 @router.get("/api/chat/{slug}/suggestions")
-async def get_chat_suggestions(slug: str):
+async def get_chat_suggestions(slug: str,
+                               chatbot_slug: Optional[str] = Query(None, alias="chatbot")):
     """Return 4 AI-generated suggestion chips for the customer chat page."""
     from app.utils.ai.chat_suggestions import get_suggestions
     from app.rag.vector_store import get_vector_store
@@ -594,7 +617,8 @@ async def get_chat_suggestions(slug: str):
 # ── Session init (chat widget open) ──────────────────────────────────────────
 
 @router.post("/api/chat/{slug}/session/init", response_model=SessionInitResponse)
-async def init_chat_session(slug: str):
+async def init_chat_session(slug: str,
+                            chatbot_slug: Optional[str] = Query(None, alias="chatbot")):
     """
     Called by the frontend when the chat widget opens.
 
@@ -605,7 +629,7 @@ async def init_chat_session(slug: str):
     from app.orchestra.ai.core.factory import build_executor
 
     try:
-        org, chatbot, db = await _get_brand(slug)
+        org, chatbot, db = await _get_brand(slug, chatbot_slug)
     except HTTPException as e:
         return JSONResponse({"detail": e.detail}, status_code=e.status_code, headers=_CORS)
 
@@ -648,7 +672,8 @@ async def close_session(slug: str, session_id: str):
 # ── Public session restore ────────────────────────────────────────────────────
 
 @router.get("/api/chat/{slug}/session/{session_id}")
-async def get_session_history(slug: str, session_id: str):
+async def get_session_history(slug: str, session_id: str,
+                              chatbot_slug: Optional[str] = Query(None, alias="chatbot")):
     """Restore a chat session. Returns message history for frontend rendering."""
     org, chatbot, db = await _get_brand(slug)
     try:

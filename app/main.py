@@ -1,9 +1,12 @@
 """FastAPI Multi-Agent Backend - Main Application"""
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import time
 import structlog
@@ -376,6 +379,11 @@ app.include_router(staff_auth.router, prefix="/api/v1", tags=["Inbox — Staff"]
 app.include_router(sessions.router,   prefix="/api/v1", tags=["Inbox — Sessions"])
 app.include_router(escalation.router, prefix="/api/v1", tags=["Inbox — Escalation"])
 app.include_router(stream.router,     prefix="/api/v1", tags=["Inbox — SSE"])
+
+# Uploaded assets (chatbot logos, etc.) — served as static files
+_UPLOADS_DIR = Path(settings.CHATBOT_LOGO_DIR).parent
+_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(_UPLOADS_DIR)), name="uploads")
 
 
 if __name__ == "__main__":

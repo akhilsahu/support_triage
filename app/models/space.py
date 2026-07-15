@@ -59,6 +59,10 @@ class Space(Base):
     active             = Column(Boolean, default=True, nullable=False)
     show_rag_citations = Column(Boolean, default=False, nullable=False)
 
+    # Per-space chatbot cap. NULL = inherit PlatformSettings.default_max_chatbots.
+    # -1 = unlimited, 1 = single bot only. See app/utils/chatbot_limits.py.
+    max_chatbots       = Column(Integer, nullable=True)
+
     # Nav — null means "use system-wide defaults"; a JSON list restricts to those items
     enabled_nav_items  = Column(Text, nullable=True)   # JSON list of nav item IDs
 
@@ -96,6 +100,7 @@ class Space(Base):
             "plan":         self.plan,
             "active":               self.active,
             "show_rag_citations":   self.show_rag_citations,
+            "max_chatbots":         self.max_chatbots,
             "onboarding_complete":  self.onboarding_complete,
             "created_at":           self.created_at.isoformat() if self.created_at else None,
         }
@@ -484,6 +489,9 @@ class PlatformSettings(Base):
     id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     nav_config = Column(Text, nullable=True)   # JSON dict {id: bool}
     active_homepage = Column(String(50), default="homepage1", server_default="homepage1")
+    # Global default chatbot cap per space. 1 = single (multi off), N = up to N,
+    # -1 = unlimited. Overridden per-space by Space.max_chatbots when non-null.
+    default_max_chatbots = Column(Integer, default=1, server_default="1", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

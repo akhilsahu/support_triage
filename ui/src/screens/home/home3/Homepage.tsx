@@ -1,11 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
+import { useSpaceSearch } from '../../../hooks/useSpaceSearch'
 import { Search, ArrowRight, Sparkles, CheckCircle2, Bot, Link2, TrendingUp, Globe, MessageSquare, ShoppingBag, Layers, ShieldCheck, Home } from 'lucide-react'
 import { IMAGES } from '../../../config/images.config'
-
-interface OrgResult {
-  name: string; slug: string; logo_url?: string; theme_color?: string
-}
 
 const FOOTER_LINKS = {
   Product: [
@@ -27,51 +23,11 @@ const FOOTER_LINKS = {
 }
 
 // ── Search Component ──────────────────────────────────────────────────────────
-function OrgSearch() {
-  const [query, setQuery]     = useState('')
-  const [results, setResults] = useState<OrgResult[]>([])
-  const [open, setOpen]       = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [active, setActive]   = useState(-1)
-  const navigate              = useNavigate()
-  const wrapRef               = useRef<HTMLDivElement>(null)
-  const debounce              = useRef<ReturnType<typeof setTimeout>>()
-
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [])
-
-  const search = (q: string) => {
-    setQuery(q); setActive(-1)
-    clearTimeout(debounce.current)
-    if (!q.trim()) { setResults([]); setOpen(false); return }
-    debounce.current = setTimeout(async () => {
-      setLoading(true)
-      try {
-        const res = await fetch(`/org/search?q=${encodeURIComponent(q)}`)
-        const data = await res.json()
-        setResults(data.results || [])
-        setOpen(true)
-      } catch { setResults([]) }
-      finally { setLoading(false) }
-    }, 220)
-  }
-
-  const go = (slug: string) => navigate(`/${slug}`)
-
-  const onKey = (e: React.KeyboardEvent) => {
-    if (!open || !results.length) return
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => Math.min(i + 1, results.length - 1)) }
-    if (e.key === 'ArrowUp')   { e.preventDefault(); setActive(i => Math.max(i - 1, 0)) }
-    if (e.key === 'Enter')     { if (active >= 0) go(results[active].slug); else if (results[0]) go(results[0].slug) }
-    if (e.key === 'Escape')    { setOpen(false); setActive(-1) }
-  }
-
-  const hasDropdown = open && (results.length > 0 || (query.trim() && !loading))
+function SpaceSearch() {
+  const {
+    query, results, open, setOpen, loading, active, setActive,
+    wrapRef, search, go, onKey, hasDropdown,
+  } = useSpaceSearch()
 
   return (
     <div ref={wrapRef} className="relative w-full max-w-[460px]">
@@ -185,7 +141,7 @@ export function Homepage3() {
               </span>
             </p>
 
-            <OrgSearch />
+            <SpaceSearch />
           </div>
 
           {/* Right Column: Visual illustration without card frames, aligned to the top */}

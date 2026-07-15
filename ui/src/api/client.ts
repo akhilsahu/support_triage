@@ -192,8 +192,25 @@ export const apiClient = {
   // Chatbot settings
   getChatbots: () =>
     http.get('/api/v1/chatbots').then(r => r.data),
-  updateChatbot: (slug: string, payload: { human_transfer_enabled?: boolean; human_transfer_message?: string }) =>
+  getChatbotQuota: (): Promise<{ count: number; limit: number; unlimited: boolean; can_create: boolean }> =>
+    http.get('/api/v1/chatbots/quota').then(r => r.data),
+  createChatbot: (payload: { slug: string; display_name: string; description?: string }) =>
+    http.post('/api/v1/chatbots', payload).then(r => r.data),
+  deleteChatbot: (slug: string) =>
+    http.delete(`/api/v1/chatbots/${slug}`).then(r => r.data),
+  setDefaultChatbot: (slug: string) =>
+    http.post(`/api/v1/chatbots/${slug}/set-default`).then(r => r.data),
+  updateChatbot: (slug: string, payload: { human_transfer_enabled?: boolean; human_transfer_message?: string; show_logo?: boolean }) =>
     http.patch(`/api/v1/chatbots/${slug}`, payload).then(r => r.data),
+  uploadChatbotLogo: (slug: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return http.post(`/api/v1/chatbots/${slug}/logo`, form, {
+      headers: { 'Content-Type': undefined },   // let axios set multipart boundary automatically
+    }).then(r => r.data)
+  },
+  deleteChatbotLogo: (slug: string) =>
+    http.delete(`/api/v1/chatbots/${slug}/logo`).then(r => r.data),
   listStaffMembers: (token: string) =>
     http.get('/api/v1/inbox/staff', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
   createStaffMember: (token: string, payload: { name: string; email: string; password: string }) =>

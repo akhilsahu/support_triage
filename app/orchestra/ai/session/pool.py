@@ -101,8 +101,11 @@ class SessionPool:
         stale  = [k for k in list(self._runners) if k.startswith(prefix)]
         for key in stale:
             self.destroy(key)
-        self._agents.pop(f"{space_id}:agents", None)
-        self._last_used.pop(f"{space_id}:agents", None)
+        # Agent-list entries are keyed "{space_id}:{chatbot_id}:agents" — evict every
+        # chatbot under this space so each rebuilds from DB on next request.
+        for key in [k for k in list(self._agents) if k.startswith(prefix)]:
+            self._agents.pop(key, None)
+            self._last_used.pop(key, None)
         logger.info("pool.invalidated", space_id=space_id, evicted=len(stale))
         return len(stale)
 
@@ -123,10 +126,12 @@ class SessionPool:
             logger.info("pool.swept", evicted=len(expired))
         return len(expired)
 
-    # ── Agent list cache (per space, busted by invalidate_bot_agents) ─────────
+    # ── Agent list cache (per chatbot, busted by invalidate_bot_agents) ───────
+    # cache_key = "{space_id}:{chatbot_id}" so two chatbots in one space keep
+    # separate agent sets, while space-level invalidation still clears both.
 
-    def get_agents(self, space_id: str) -> Optional[List[ResolvedAgent]]:
-        key = f"{space_id}:agents"
+    def get_agents(self, cache_key: str) -> Optional[List[ResolvedAgent]]:
+        key = f"{cache_key}:agents"
         ts  = self._last_used.get(key, 0)
         if time.monotonic() - ts > self.ttl_seconds:
             self._agents.pop(key, None)
@@ -134,8 +139,8 @@ class SessionPool:
             return None
         return self._agents.get(key)
 
-    def set_agents(self, space_id: str, agents: List[ResolvedAgent]) -> None:
-        key = f"{space_id}:agents"
+    def set_agents(self, cache_key: str, agents: List[ResolvedAgent]) -> None:
+        key = f"{cache_key}:agents"
         self._agents[key]    = agents
         self._last_used[key] = time.monotonic()
 

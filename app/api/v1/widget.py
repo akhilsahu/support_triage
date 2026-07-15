@@ -88,57 +88,7 @@ async def widget_config_preflight():
     )
 
 
-# ── GET /api/v1/space/public/{slug} ──────────────────────────────────────────
-
-@router.get("/api/v1/space/public/{slug}")
-async def space_public(slug: str):
-    """
-    Public space branding endpoint used by CustomerChat.tsx inside the iframe.
-    Returns just enough info to render the chat header.
-    """
-    from app.models.space import Space
-    from app.models.chatbot import Chatbot
-
-    db = await _get_db()
-    try:
-        result = await db.execute(
-            select(Space).where(Space.slug == slug, Space.active == True)
-        )
-        space = result.scalar_one_or_none()
-        if not space:
-            raise HTTPException(404, f"Space '{slug}' not found.")
-
-        # Resolve default chatbot for human-transfer setting
-        cb_result = await db.execute(
-            select(Chatbot).where(
-                Chatbot.space_id == space.id,
-                Chatbot.is_default == True,
-                Chatbot.active == True,
-            )
-        )
-        chatbot = cb_result.scalar_one_or_none()
-
-        payload = {
-            "name":                   space.display_name,
-            "slug":                   space.slug,
-            "logo_url":               space.logo_url,
-            "theme_color":            space.theme_color or "#6366f1",
-            "human_transfer_enabled": chatbot.human_transfer_enabled if chatbot else True,
-        }
-        return JSONResponse(payload, headers=_CORS)
-    finally:
-        await db.close()
-
-
-# ── OPTIONS preflight for /api/v1/space/public/{slug} ────────────────────────
-
-@router.options("/api/v1/space/public/{slug}")
-async def space_public_preflight(slug: str):
-    return JSONResponse(
-        {},
-        headers={
-            **_CORS,
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-        },
-    )
+# NOTE: /api/v1/space/public/{slug} (GET + OPTIONS preflight) used to be defined
+# here too, but app/api/space.py is registered first and wins the route, and the
+# public-CORS middleware (main.py) handles the preflight + response headers. The
+# shadowed duplicate was removed; the live handler lives in app/api/space.py.

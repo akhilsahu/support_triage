@@ -187,6 +187,10 @@ class Settings(BaseSettings):
         default=["txt", "pdf", "docx", "md", "json"]
     )
 
+    # Chatbot logo upload
+    CHATBOT_LOGO_DIR: str = "uploads/chatbot_logos"
+    MAX_LOGO_UPLOAD_BYTES: int = 2 * 1024 * 1024  # 2MB
+
     # Logging
     LOG_FORMAT: str = "json"
     LOG_FILE: str = "logs/app.log"

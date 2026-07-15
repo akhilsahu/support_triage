@@ -1,7 +1,7 @@
 """Serve brand dashboard HTML pages and public org info."""
 
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
 
@@ -26,7 +26,7 @@ async def brand_dashboard():
 
 @router.get("/", response_class=RedirectResponse)
 async def brand_root():
-    return RedirectResponse("/org/login")
+    return RedirectResponse("/api/v1/space/login")
 
 
 @router.get("/search")
@@ -61,10 +61,16 @@ async def org_search(q: str = ""):
 
 
 @router.get("/public/{slug}")
-async def org_public_info(slug: str):
-    """Public org branding info for the customer chat UI."""
+async def org_public_info(slug: str, chatbot_slug: str | None = Query(None, alias="chatbot")):
+    """
+    Public org branding info for the customer chat UI.
+
+    chatbot_slug selects a specific chatbot's branding (name/logo/theme, each
+    falling back to the org's); omitted or unknown → the default chatbot.
+    """
     from app.core.database import AsyncSessionLocal
     from app.models.space import Space
+    from app.models.chatbot import Chatbot
     db = AsyncSessionLocal()
     try:
         result = await db.execute(
@@ -73,11 +79,34 @@ async def org_public_info(slug: str):
         org = result.scalar_one_or_none()
         if not org:
             raise HTTPException(status_code=404, detail="Not found")
+
+        base = select(Chatbot).where(Chatbot.space_id == org.id, Chatbot.active == True)
+        chatbot = None
+        if chatbot_slug:
+            chatbot = (await db.execute(base.where(Chatbot.slug == chatbot_slug))).scalar_one_or_none()
+        if chatbot is None:
+            chatbot = (await db.execute(base.where(Chatbot.is_default == True))).scalar_one_or_none()
+
+        # Effective logo: chatbot logo → org logo → none (frontend falls back to icon).
+        # show_logo=False on the chatbot always forces the icon.
+        if chatbot is not None:
+            effective_logo = (chatbot.logo_url or org.logo_url) if chatbot.show_logo else None
+        else:
+            effective_logo = org.logo_url
+
+        # A specific chatbot shows its own name/theme (falling back to the org's).
+        name  = org.display_name
+        theme = org.theme_color or "#4f46e5"
+        if chatbot is not None and chatbot_slug:
+            name  = chatbot.display_name or org.display_name
+            theme = chatbot.theme_color or org.theme_color or "#4f46e5"
+
         return {
-            "name":        org.display_name,
-            "slug":        org.slug,
-            "logo_url":    org.logo_url,
-            "theme_color": org.theme_color or "#4f46e5",
+            "name":                   name,
+            "slug":                   org.slug,
+            "logo_url":               effective_logo,
+            "theme_color":            theme,
+            "human_transfer_enabled": chatbot.human_transfer_enabled if chatbot else True,
         }
     finally:
         await db.close()

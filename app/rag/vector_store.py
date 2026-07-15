@@ -276,7 +276,21 @@ class VectorStore:
             kwargs: Dict[str, Any] = {"name": name, "metadata": {"hnsw:space": "cosine"}}
             if ef:
                 kwargs["embedding_function"] = ef
-            self._collections[name] = client.get_or_create_collection(**kwargs)
+            try:
+                col = client.get_or_create_collection(**kwargs)
+            except ValueError as e:
+                # Existing collection was persisted with a different embedding
+                # function than ours (Chroma stores the EF in the collection config
+                # and rejects a mismatched one at get-time). Collections differ:
+                # policy_documents is genuinely "default" (384-dim), client_documents
+                # holds precomputed OpenAI vectors (1536-dim) under a "default" config.
+                # Reuse each with its persisted EF rather than forcing ours — embed-free
+                # ops (count, metadata get) always work; text queries use the stored EF.
+                if "embedding function" not in str(e).lower():
+                    raise
+                logger.warning("vector_store.ef_conflict_fallback", collection=name, error=str(e))
+                col = client.get_collection(name=name)
+            self._collections[name] = col
         return self._collections[name]
 
     # ── Upsert ────────────────────────────────────────────────────────────────

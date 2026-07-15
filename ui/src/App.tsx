@@ -17,6 +17,7 @@ import { CustomerChat } from './screens/CustomerChat'
 import { Inbox } from './screens/Inbox'
 import { TestChat } from './screens/TestChat'
 import { EmbedWidget } from './screens/EmbedWidget'
+import { ChatbotProfile } from './screens/ChatbotProfile'
 import { OnboardingWizard } from './screens/OnboardingWizard'
 import { ForgotPassword } from './screens/ForgotPassword'
 import { ResetPassword } from './screens/ResetPassword'
@@ -124,6 +125,7 @@ export default function App() {
           <Route path="/app/analytics" element={<PrivateRoute><Layout title="Analytics" subtitle="Usage insights and performance"><Analytics /></Layout></PrivateRoute>} />
           <Route path="/app/settings" element={<PrivateRoute><Layout title="Settings" subtitle="Configure SUPPORT247.chat"><Settings /></Layout></PrivateRoute>} />
           <Route path="/app/embed-widget" element={<PrivateRoute><Layout title="Embed Widget" subtitle="Copy the embed snippet for any of your chatbots"><EmbedWidget /></Layout></PrivateRoute>} />
+          <Route path="/app/chatbot-profile" element={<PrivateRoute><Layout title="Chatbot Profile" subtitle="Logo and branding per chatbot"><ChatbotProfile /></Layout></PrivateRoute>} />
           <Route path="/app/super-admin" element={<SuperAdmin />} />
           {/* Bare /app → dashboard */}
           <Route path="/app" element={<Navigate to="/app/dashboard" replace />} />
@@ -131,8 +133,11 @@ export default function App() {
           {/* ── Back-compat: old /s/:slug → /:slug ── */}
           <Route path="/s/:slug" element={<LegacyChatRedirect />} />
 
-          {/* ── Customer chat lives at the root namespace: /<slug> ── */}
+          {/* ── Customer chat lives at the root namespace: /<slug> (default bot)
+                 and /<slug>/<chatbotSlug> for a specific bot. Registered after all
+                 static marketing routes so those win the match. ── */}
           <Route path="/:slug" element={<CustomerChat />} />
+          <Route path="/:slug/:chatbotSlug" element={<CustomerChat />} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>
