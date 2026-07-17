@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { API_CONFIG } from '../config/api'
 
 export interface SpaceResult {
   name: string
@@ -38,7 +39,7 @@ export function useSpaceSearch() {
     debounce.current = setTimeout(async () => {
       setLoading(true)
       try {
-        const res = await fetch(`/api/v1/space/search?q=${encodeURIComponent(q)}`)
+        const res = await fetch(`${API_CONFIG.baseURL}/api/v1/space/search?q=${encodeURIComponent(q)}`)
         const data = await res.json()
         setResults(data.results || [])
         setOpen(true)
