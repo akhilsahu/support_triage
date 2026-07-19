@@ -157,6 +157,7 @@ async def upsert_session(
 @router.get("", response_model=List[SessionOut])
 async def list_sessions(
     status: Optional[str] = Query(None, description="Filter by status"),
+    chatbot_id: Optional[UUID] = Query(None, description="Scope to a specific chatbot; omitted = space-wide"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     org: Space = Depends(current_space),
@@ -172,6 +173,8 @@ async def list_sessions(
     )
     if status:
         q = q.where(ChatSession.status == status)
+    if chatbot_id:
+        q = q.where(ChatSession.chatbot_id == chatbot_id)
 
     result = await db.execute(q)
     sessions = result.scalars().all()

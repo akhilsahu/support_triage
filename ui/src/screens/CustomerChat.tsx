@@ -7,7 +7,7 @@ import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { useAppStore } from '../store/useAppStore'
 import { API_CONFIG } from '../config/api'
-import { Send, Sun, Moon, Sparkles, X, User, Bot, Palette } from 'lucide-react'
+import { ArrowUp, Sun, Moon, Sparkles, X, User, Bot, Palette, ThumbsUp, ThumbsDown, Copy, Check } from 'lucide-react'
 import { SourceCitation } from '../components/ui/SourceCitation'
 import { NotFound } from './NotFound'
 import type { SourceItem } from '../types'
@@ -268,10 +268,13 @@ interface Message {
   agent?: string
   citations?: SourceItem[]
   ts?: Date
+  messageId?: string             // server-side ConversationLog id — anchors feedback
+  feedback?: 'up' | 'down'       // customer rating on this AI reply
 }
 
 interface SpaceInfo {
   name: string
+  description?: string
   logo_url?: string
   theme_color?: string
 }
@@ -304,6 +307,7 @@ export function CustomerChat() {
   const [escalated, setEscalated]       = useState(false)
   const [escalating, setEscalating]     = useState(false)
   const [humanTransferEnabled, setHumanTransferEnabled] = useState(true)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
   const sseRef        = useRef<EventSource | null>(null)
   const titleBaseRef  = useRef<string>('Live Chat')
   const awayUnreadRef = useRef<number>(0)
@@ -417,7 +421,10 @@ export function CustomerChat() {
         if (!data?.history?.length) return
         setMessages(data.history.map((h: any) => ({
           id: crypto.randomUUID(), role: h.role === 'user' ? 'user' : 'ai',
-          text: h.message, agent: h.agent_slug ?? undefined, ts: new Date(h.created_at || Date.now()),
+          text: h.message, agent: h.agent_slug ?? undefined,
+          citations: h.citations ?? [],
+          messageId: h.role === 'user' ? undefined : h.id,
+          ts: new Date(h.created_at || Date.now()),
         })))
         setSessionId(chatParam)
         if (data.ai_disabled || ['active','queued','escalated'].includes(data.status)) setEscalated(true)
@@ -488,10 +495,29 @@ export function CustomerChat() {
       })
       const data = await res.json()
       if (isFirst && data.session_id) { setSearchParams({ chat: data.session_id }, { replace: true }); setSessionId(data.session_id) }
-      if (data.reply) setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: data.reply, agent: data.agent, citations: data.citations ?? [], ts: new Date() }])
+      if (data.reply) setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: data.reply, agent: data.agent, citations: data.citations ?? [], ts: new Date(), messageId: data.message_id }])
     } catch {
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: 'Connection error. Please try again.', ts: new Date() }])
     } finally { setLoading(false); setTimeout(() => inputRef.current?.focus(), 50) }
+  }
+
+  // ── Per-message actions ────────────────────────────────────────────────────
+  const copyMessage = async (m: Message) => {
+    try {
+      await navigator.clipboard.writeText(m.text)
+      setCopiedId(m.id)
+      setTimeout(() => setCopiedId(prev => (prev === m.id ? null : prev)), 1500)
+    } catch { /* clipboard blocked — silent */ }
+  }
+
+  const sendFeedback = (m: Message, rating: 'up' | 'down') => {
+    if (!m.messageId || m.feedback) return   // no anchor, or already rated
+    // Optimistic — feedback is a background signal, not worth blocking the UI on.
+    setMessages(prev => prev.map(x => (x.id === m.id ? { ...x, feedback: rating } : x)))
+    fetch(`${API_CONFIG.baseURL}/api/chat/${slug}/feedback${botQuery}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message_id: m.messageId, rating }),
+    }).catch(() => {})
   }
 
   const isEmpty = messages.length === 0 && !restoring
@@ -563,20 +589,32 @@ export function CustomerChat() {
         {/* ── Empty / welcome state ── */}
         {isEmpty && (
           <div className="flex flex-col items-center justify-center h-full px-6 pb-32 select-none text-center">
-            {/* Hero */}
+            {/* Hero — brand logo when available, else the gradient mark */}
             <div className="relative mb-6">
-              <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-2xl shadow-indigo-500/30 mx-auto">
-                <Sparkles className="w-9 h-9 text-white" />
-              </div>
+              {space?.logo_url ? (
+                <img src={space.logo_url} alt={space.name}
+                  className="w-20 h-20 rounded-3xl object-cover shadow-2xl shadow-indigo-500/20 mx-auto ring-1 ring-white/10" />
+              ) : (
+                <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-2xl shadow-indigo-500/30 mx-auto">
+                  <Sparkles className="w-9 h-9 text-white" />
+                </div>
+              )}
               <span className="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full bg-emerald-400 flex items-center justify-center ring-2 ring-white/10 shadow-md">
                 <span className="w-2 h-2 rounded-full bg-white animate-ping" />
               </span>
             </div>
-            <h1 className={`text-[28px] font-semibold mb-1 ${t.textPrimary}`} style={{ letterSpacing: '-0.02em' }}>
+            <h1 className={`text-[28px] font-semibold mb-1.5 ${t.textPrimary}`} style={{ letterSpacing: '-0.02em' }}>
               Hi there 👋
             </h1>
-            <p className={`text-[15px] mb-8 ${t.textSecondary}`}>
-              How can we help you today?
+            {/* Capability line — the chatbot's own description tells the user
+                exactly what this bot is for; falls back to a generic prompt. */}
+            <p className={`text-[15px] mb-1 max-w-md ${t.textSecondary}`}>
+              {space?.description
+                ? `I'm ${space.name}'s assistant. ${space.description}`
+                : `How can we help you today?`}
+            </p>
+            <p className={`text-[13px] mb-7 ${t.textMuted}`}>
+              Pick a question below or type your own.
             </p>
 
             {/* Suggestion chips */}
@@ -657,6 +695,36 @@ export function CustomerChat() {
                       </div>
                     )}
 
+                    {/* ── AI message actions — copy + thumbs (real replies only) ── */}
+                    {!isUser && msg.messageId && (
+                      <div className="flex items-center gap-0.5 mt-0.5 -ml-1">
+                        <button onClick={() => copyMessage(msg)} title="Copy"
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${t.iconBtnCls}`}>
+                          {copiedId === msg.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                        <button onClick={() => sendFeedback(msg, 'up')} disabled={!!msg.feedback} title="Helpful"
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors disabled:cursor-default
+                                      ${msg.feedback === 'up' ? 'text-emerald-400' : t.iconBtnCls}`}>
+                          <ThumbsUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => sendFeedback(msg, 'down')} disabled={!!msg.feedback} title="Not helpful"
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors disabled:cursor-default
+                                      ${msg.feedback === 'down' ? 'text-rose-400' : t.iconBtnCls}`}>
+                          <ThumbsDown className="w-3.5 h-3.5" />
+                        </button>
+                        {/* Thumbs-down only offers a human when THIS chatbot allows it. */}
+                        {msg.feedback === 'down' && humanTransferEnabled && !escalated && (
+                          <button onClick={escalateToHuman} disabled={escalating}
+                            className={`ml-1 text-[11.5px] font-medium underline underline-offset-2 ${t.textSecondary} hover:opacity-100 opacity-80`}>
+                            {escalating ? 'Connecting…' : 'Talk to a human'}
+                          </button>
+                        )}
+                        {msg.feedback === 'up' && (
+                          <span className={`ml-1 text-[11px] ${t.textMuted}`}>Thanks for the feedback</span>
+                        )}
+                      </div>
+                    )}
+
                     {/* Timestamp — shown at bottom of each group */}
                     {showTime && (
                       <span className={`text-[10.5px] px-0.5 ${t.textMuted}`}>{fmt(msg.ts)}</span>
@@ -700,6 +768,20 @@ export function CustomerChat() {
       ══════════════════════════════════════════════════════════════════ */}
       <div className={`flex-shrink-0 px-4 sm:px-5 pb-5 pt-3 transition-colors duration-300 ${!isEmpty ? `border-t ${t.headerBorder}` : ''}`}>
         <div className="max-w-3xl mx-auto">
+          {/* Persistent quick-prompts — keep starter questions one tap away
+              mid-conversation. Hidden once a human takes over. */}
+          {!isEmpty && !escalated && suggestions.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto pb-2.5 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {suggestions.map((s, i) => (
+                <button key={i} onClick={() => send(s)} disabled={loading}
+                  className={`flex-shrink-0 px-3.5 py-1.5 rounded-full border text-[12.5px] font-medium
+                              transition-all duration-200 active:scale-95 disabled:opacity-40
+                              ${t.chipCls} ${t.chipHoverCls}`}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
           {/* Input pill — WCAG: min height 44px */}
           <div className={`flex items-center gap-3 px-4 py-2.5 rounded-2xl border transition-all duration-200 min-h-[52px] ${t.inputWrapCls}`}>
             <input
@@ -712,18 +794,18 @@ export function CustomerChat() {
               autoFocus
               className={`flex-1 bg-transparent text-[14.5px] outline-none disabled:opacity-40 min-w-0 ${t.inputFieldCls}`}
             />
-            {/* Send — 44×44 touch target (WCAG AA) */}
+            {/* Send — flat circular button (Claude/Gemini style): neutral when
+                empty, solid accent once there's text. No gradient/heavy shadow. */}
             <button onClick={() => send()} disabled={loading || !input.trim()}
-              className={`flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center
-                          transition-all duration-200 hover:scale-105 active:scale-95
-                          disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100
-                          text-white shadow-lg ${t.sendBtnShadow}`}
-              style={{ background: loading || !input.trim()
-                ? '#6366f1'
-                : `linear-gradient(135deg, ${accentColor} 0%, #7c3aed 100%)` }}>
+              aria-label="Send message"
+              className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center
+                         transition-all duration-200 active:scale-90 disabled:cursor-not-allowed"
+              style={{ background: loading || input.trim()
+                ? accentColor
+                : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)') }}>
               {loading
-                ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                : <Send className="w-4 h-4" />
+                ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : <ArrowUp className={`w-4 h-4 ${input.trim() ? 'text-white' : t.textMuted}`} strokeWidth={2.5} />
               }
             </button>
           </div>

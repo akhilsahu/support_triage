@@ -172,6 +172,7 @@ class ConversationLog(Base):
     citations       = Column(JSONB, nullable=True)     # retrieved chunks used for this reply
     sentiment_score = Column(Float, nullable=True)
     response_ms     = Column(Integer, nullable=True)   # latency in ms
+    feedback        = Column(String(10), nullable=True)  # customer rating: "up" | "down"
 
     timestamp       = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
@@ -472,7 +473,7 @@ class AgentMetaSuggestion(Base):
 # All available nav item IDs — used as the master list for system-wide defaults.
 ALL_NAV_ITEMS = [
     "dashboard", "chat", "agents", "knowledge-base",
-    "analytics", "inbox", "data-sources", "settings",
+    "analytics", "inbox", "chatbot-profile", "data-sources", "settings",
 ]
 
 class PlatformSettings(Base):

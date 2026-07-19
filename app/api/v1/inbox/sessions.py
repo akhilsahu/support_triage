@@ -16,7 +16,7 @@ from datetime import datetime
 from uuid import UUID
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -106,10 +106,13 @@ async def get_inbox_identity(
 
 @router.get("")
 async def list_sessions(
+    chatbot_id: Optional[UUID] = Query(None, description="Scope to a specific chatbot; omitted = space-wide"),
     identity: InboxIdentity = Depends(get_inbox_identity),
     db: AsyncSession = Depends(get_db),
 ):
     q = select(ChatSession).where(ChatSession.space_id == identity.space_id)
+    if chatbot_id:
+        q = q.where(ChatSession.chatbot_id == chatbot_id)
 
     if identity.is_owner:
         # Space owner sees all sessions

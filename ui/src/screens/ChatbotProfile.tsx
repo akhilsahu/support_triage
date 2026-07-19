@@ -1,23 +1,33 @@
 import { useState, useEffect, useRef } from 'react'
-import { Bot, Upload, Trash2, CheckCircle, Plus, Star } from 'lucide-react'
+import { Bot, Upload, Trash2, CheckCircle, Plus, Star, Copy, Check, Pencil } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Toggle } from '../components/ui/Toggle'
 import { apiClient } from '../api/client'
+import { useAppStore } from '../store/useAppStore'
 
 interface Chatbot {
   id: string
   slug: string
   display_name: string
+  description: string
   logo_url: string | null
+  theme_color: string | null
   show_logo: boolean
   is_default: boolean
+  active: boolean
 }
+
+const DEFAULT_THEME_COLOR = '#6366f1'
 
 const ACCEPTED_TYPES = 'image/png,image/jpeg,image/webp,image/svg+xml'
 const MAX_SIZE_MB = 2
 
 export function ChatbotProfile() {
+  const currentChatbotId = useAppStore(s => s.currentChatbotId)
+  const setCurrentChatbotId = useAppStore(s => s.setCurrentChatbotId)
+  const spaceSlug = useAppStore(s => s.spaceSlug)
+
   const [chatbots, setChatbots] = useState<Chatbot[]>([])
   const [selected, setSelected] = useState<Chatbot | null>(null)
   const [loading, setLoading] = useState(true)
@@ -29,16 +39,41 @@ export function ChatbotProfile() {
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+  const [savingName, setSavingName] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [descDraft, setDescDraft] = useState('')
+  const [savingDesc, setSavingDesc] = useState(false)
+  const [colorDraft, setColorDraft] = useState(DEFAULT_THEME_COLOR)
+  const [savingColor, setSavingColor] = useState(false)
+  const [savingActive, setSavingActive] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Multi-bot UI shows only when the space is allowed more than one chatbot.
   const isMulti = !!quota && (quota.unlimited || quota.limit > 1)
 
+  // Selecting here also drives the sidebar switcher (and therefore Agents /
+  // Analytics / Inbox) — this page is not a separate, disconnected selection.
+  const selectBot = (bot: Chatbot | null) => {
+    setSelected(bot)
+    setCurrentChatbotId(bot?.id ?? null)
+  }
+
   const loadChatbots = () => {
     apiClient.getChatbots()
       .then((data: Chatbot[]) => {
         setChatbots(data)
-        setSelected(prev => data.find(c => c.id === prev?.id) ?? data.find(c => c.is_default) ?? data[0] ?? null)
+        // Follow the globally selected chatbot when it's still valid, so this
+        // page always reflects whatever the sidebar switcher has selected.
+        setSelected(prev =>
+          data.find(c => c.id === currentChatbotId)
+          ?? data.find(c => c.id === prev?.id)
+          ?? data.find(c => c.is_default)
+          ?? data[0]
+          ?? null
+        )
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -47,6 +82,20 @@ export function ChatbotProfile() {
   const refreshQuota = () => apiClient.getChatbotQuota().then(setQuota).catch(() => {})
 
   useEffect(() => { loadChatbots(); refreshQuota() }, [])
+
+  // React to the sidebar switcher changing while this page is open.
+  useEffect(() => {
+    if (currentChatbotId && currentChatbotId !== selected?.id) {
+      const bot = chatbots.find(c => c.id === currentChatbotId)
+      if (bot) setSelected(bot)
+    }
+  }, [currentChatbotId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the color picker's draft in sync with whichever bot is selected.
+  useEffect(() => {
+    setColorDraft(selected?.theme_color || DEFAULT_THEME_COLOR)
+    setEditingDesc(false)
+  }, [selected?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const slugify = (s: string) =>
     s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
@@ -58,7 +107,7 @@ export function ChatbotProfile() {
     try {
       const created = await apiClient.createChatbot({ slug: slugify(name), display_name: name })
       setNewName(''); setShowCreate(false)
-      setSelected(created)
+      selectBot(created)
       loadChatbots(); refreshQuota()
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Could not create chatbot.')
@@ -77,12 +126,112 @@ export function ChatbotProfile() {
     if (!confirm(`Delete chatbot "${bot.display_name}"? This cannot be undone.`)) return
     try {
       await apiClient.deleteChatbot(bot.slug)
-      if (selected?.id === bot.id) setSelected(null)
+      if (selected?.id === bot.id) {
+        const fallback = chatbots.find(c => c.id !== bot.id && c.is_default) ?? null
+        selectBot(fallback)
+      }
       loadChatbots(); refreshQuota()
     } catch { setError('Could not delete chatbot.') }
   }
 
   const flashSaved = () => { setSaved(true); setTimeout(() => setSaved(false), 2000) }
+
+  const startRename = () => {
+    if (!selected) return
+    setNameDraft(selected.display_name)
+    setRenaming(true)
+  }
+
+  const saveRename = async () => {
+    if (!selected) return
+    const name = nameDraft.trim()
+    if (!name || name === selected.display_name) { setRenaming(false); return }
+    setSavingName(true)
+    try {
+      const updated = await apiClient.updateChatbot(selected.slug, { display_name: name })
+      selectBot(updated)
+      setChatbots(prev => prev.map(c => c.id === updated.id ? updated : c))
+      setRenaming(false)
+      flashSaved()
+    } catch {
+      setError('Could not rename chatbot.')
+    } finally {
+      setSavingName(false)
+    }
+  }
+
+  const startDesc = () => {
+    if (!selected) return
+    setDescDraft(selected.description || '')
+    setEditingDesc(true)
+  }
+
+  const saveDesc = async () => {
+    if (!selected) return
+    setSavingDesc(true)
+    try {
+      const updated = await apiClient.updateChatbot(selected.slug, { description: descDraft.trim() })
+      selectBot(updated)
+      setChatbots(prev => prev.map(c => c.id === updated.id ? updated : c))
+      setEditingDesc(false)
+      flashSaved()
+    } catch {
+      setError('Could not update description.')
+    } finally {
+      setSavingDesc(false)
+    }
+  }
+
+  // The native color picker fires onChange continuously while dragging inside
+  // it — only update the local preview here, no network call per pixel moved.
+  const previewColor = (color: string) => setColorDraft(color)
+
+  // Explicit "Save" click (or Enter) sends the one request for the picked color.
+  const saveColor = async () => {
+    if (!selected || colorDraft === (selected.theme_color || DEFAULT_THEME_COLOR)) return
+    setSavingColor(true)
+    try {
+      const updated = await apiClient.updateChatbot(selected.slug, { theme_color: colorDraft })
+      selectBot(updated)
+      setChatbots(prev => prev.map(c => c.id === updated.id ? updated : c))
+      flashSaved()
+    } catch {
+      setError('Could not update theme color.')
+    } finally {
+      setSavingColor(false)
+    }
+  }
+
+  const toggleActive = async (val: boolean) => {
+    if (!selected) return
+    if (!val && !confirm(
+      `Deactivate "${selected.display_name}"? Its direct link will stop answering until reactivated. ` +
+      `Existing conversations already open won't be affected.`
+    )) return
+    setSavingActive(true)
+    try {
+      const updated = await apiClient.updateChatbot(selected.slug, { active: val })
+      selectBot(updated)
+      setChatbots(prev => prev.map(c => c.id === updated.id ? updated : c))
+      flashSaved()
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Could not update status.')
+    } finally {
+      setSavingActive(false)
+    }
+  }
+
+  const chatLink = selected
+    ? `${window.location.origin}/${spaceSlug}${selected.is_default ? '' : `/${selected.slug}`}`
+    : ''
+
+  const copyLink = () => {
+    if (!chatLink) return
+    navigator.clipboard.writeText(chatLink).then(() => {
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 2000)
+    })
+  }
 
   const handleUpload = async (file: File) => {
     if (!selected) return
@@ -205,7 +354,7 @@ export function ChatbotProfile() {
                 }`}
               >
                 <button
-                  onClick={() => setSelected(bot)}
+                  onClick={() => selectBot(bot)}
                   className={`flex-1 min-w-0 text-left font-medium truncate ${
                     selected?.id === bot.id ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-700 dark:text-gray-300'
                   }`}
@@ -231,10 +380,82 @@ export function ChatbotProfile() {
         )}
       </Card>
 
+      {/* Name + shareable link */}
+      {selected && (
+        <Card className="p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            {renaming ? (
+              <div className="flex items-center gap-2 flex-1">
+                <input
+                  value={nameDraft}
+                  onChange={e => setNameDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') saveRename(); if (e.key === 'Escape') setRenaming(false) }}
+                  autoFocus
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-sm font-semibold text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                />
+                <Button size="sm" disabled={savingName || !nameDraft.trim()} onClick={saveRename}>
+                  {savingName ? 'Saving…' : 'Save'}
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => setRenaming(false)}>Cancel</Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{selected.display_name}</h3>
+                <button title="Rename" onClick={startRename} className="p-1 text-gray-400 hover:text-indigo-500">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div>
+            {editingDesc ? (
+              <div className="space-y-2">
+                <textarea
+                  value={descDraft}
+                  onChange={e => setDescDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Escape') setEditingDesc(false) }}
+                  rows={2}
+                  autoFocus
+                  placeholder="What this chatbot is for (shown only to you, not customers)"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-sm text-gray-900 dark:text-white outline-none focus:border-indigo-500 resize-none"
+                />
+                <div className="flex items-center gap-2">
+                  <Button size="sm" disabled={savingDesc} onClick={saveDesc}>
+                    {savingDesc ? 'Saving…' : 'Save'}
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => setEditingDesc(false)}>Cancel</Button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={startDesc} className="w-full text-left group">
+                <p className={`text-sm ${selected.description ? 'text-gray-600 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500 italic'}`}>
+                  {selected.description || 'Add a description…'}
+                  <Pencil className="w-3 h-3 inline-block ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </p>
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 pt-3 border-t border-gray-100 dark:border-gray-700">
+            <code className="flex-1 min-w-0 truncate text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 px-3 py-2 rounded-lg">
+              {chatLink}
+            </code>
+            <Button size="sm" variant="secondary" onClick={copyLink}>
+              {linkCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+              {linkCopied ? 'Copied' : 'Copy link'}
+            </Button>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
+            Share this link directly with customers to chat with this specific chatbot.
+          </p>
+        </Card>
+      )}
+
       {/* Logo editor */}
       {selected && (
         <Card className="p-5 space-y-5">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Logo — {selected.display_name}</h3>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Logo</h3>
 
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-xl flex items-center justify-center flex-shrink-0 bg-gray-100 dark:bg-gray-700 overflow-hidden ring-1 ring-gray-200 dark:ring-gray-600">
@@ -278,6 +499,51 @@ export function ChatbotProfile() {
               </p>
             </div>
             <Toggle checked={selected.show_logo} onChange={handleToggleShowLogo} disabled={savingToggle} />
+          </div>
+
+          <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-700">
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Theme color</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Accent color used in this chatbot's widget header and send button.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={colorDraft}
+                onChange={e => previewColor(e.target.value)}
+                disabled={savingColor}
+                className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer bg-transparent"
+              />
+              <code className="text-xs text-gray-500 dark:text-gray-400">{colorDraft}</code>
+              {colorDraft !== (selected.theme_color || DEFAULT_THEME_COLOR) && (
+                <Button size="sm" disabled={savingColor} onClick={saveColor}>
+                  {savingColor ? 'Saving…' : 'OK'}
+                </Button>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Status */}
+      {selected && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Chatbot active</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {selected.is_default
+                  ? "The default chatbot can't be deactivated — it's what your main link answers as."
+                  : 'When off, this chatbot\'s direct link stops answering until reactivated.'}
+              </p>
+            </div>
+            <Toggle
+              checked={selected.active}
+              onChange={toggleActive}
+              disabled={savingActive || selected.is_default}
+            />
           </div>
         </Card>
       )}

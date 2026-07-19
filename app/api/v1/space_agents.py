@@ -23,7 +23,7 @@ from typing import List, Optional
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
@@ -57,6 +57,29 @@ async def _get_default_chatbot(db: AsyncSession, org: Space) -> Chatbot:
     chatbot = result.scalar_one_or_none()
     if not chatbot:
         raise HTTPException(503, "No default chatbot configured for this org.")
+    return chatbot
+
+
+async def _resolve_chatbot(db: AsyncSession, org: Space, chatbot_id: Optional[UUID]) -> Chatbot:
+    """
+    Resolve the target chatbot for an agent-management request.
+
+    chatbot_id lets the dashboard's chatbot switcher scope agent list/create/update
+    to a specific bot; omitted (None) falls back to the space's default bot, so
+    every existing caller that doesn't pass it keeps today's behavior unchanged.
+    """
+    if chatbot_id is None:
+        return await _get_default_chatbot(db, org)
+    result = await db.execute(
+        select(Chatbot).where(
+            Chatbot.id == chatbot_id,
+            Chatbot.space_id == org.id,
+            Chatbot.active == True,
+        )
+    )
+    chatbot = result.scalar_one_or_none()
+    if not chatbot:
+        raise HTTPException(404, "Chatbot not found for this space.")
     return chatbot
 
 
@@ -181,16 +204,17 @@ def _builtin_out_from_catalog(cat: BuiltinAgentCatalog) -> AgentOut:
 
 @router.get("", response_model=List[AgentOut])
 async def list_space_agents(
+    chatbot_id: Optional[UUID] = Query(None, description="Scope to a specific chatbot; omitted = default"),
     org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Return all agents visible to the org's default chatbot:
+    Return all agents visible to the target chatbot (default when chatbot_id omitted):
     - Built-ins: all platform_enabled catalog entries (Factor 1).
       Config row may or may not exist (chatbot may not have enabled it yet).
     - Custom: all custom agents for this chatbot.
     """
-    chatbot = await _get_default_chatbot(db, org)
+    chatbot = await _resolve_chatbot(db, org, chatbot_id)
 
     # All platform-enabled catalog entries
     catalog_result = await db.execute(
@@ -268,6 +292,7 @@ async def get_org_agent(
 async def update_org_agent(
     agent_id: UUID,
     req: AgentUpdateRequest,
+    chatbot_id: Optional[UUID] = Query(None, description="Target chatbot when first-enabling a builtin; omitted = default"),
     org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
@@ -284,7 +309,7 @@ async def update_org_agent(
         if catalog_entry.locked and req.enabled is False:
             raise HTTPException(400, f"{catalog_entry.name} cannot be disabled.")
 
-        chatbot = await _get_default_chatbot(db, org)
+        chatbot = await _resolve_chatbot(db, org, chatbot_id)
 
         # Check if config already exists for this chatbot
         existing = await db.execute(
@@ -402,6 +427,7 @@ async def update_org_agent(
 @router.post("", response_model=AgentOut, status_code=201)
 async def create_org_agent(
     req: CreateAgentRequest,
+    chatbot_id: Optional[UUID] = Query(None, description="Chatbot to link the new agent to; omitted = default"),
     org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
@@ -427,7 +453,7 @@ async def create_org_agent(
         slug = f"{base_slug}_{i}"
         i += 1
 
-    chatbot = await _get_default_chatbot(db, org)
+    chatbot = await _resolve_chatbot(db, org, chatbot_id)
 
     agent = CustomAgent(
         space_id=org.id,
@@ -447,7 +473,7 @@ async def create_org_agent(
     db.add(agent)
     await db.flush()
 
-    # Link to the default chatbot (many-to-many junction)
+    # Link to the target chatbot (many-to-many junction)
     db.add(ChatbotCustomAgent(chatbot_id=chatbot.id, agent_id=agent.id))
 
     if req.kb_ids:

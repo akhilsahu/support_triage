@@ -44,8 +44,10 @@ A space can run one or many chatbots, gated by a limit the super-admin controls.
   via `PATCH /super-admin/orgs/{id}`.
 
 **Owner UX** (dashboard → Chatbot Profile): single-bot spaces see just their bot; multi-bot
-spaces get create / set-default / delete (gated by `GET /api/v1/chatbots/quota`). New bots clone
-the default bot's agent setup so they answer immediately.
+spaces get create / set-default / delete (gated by `GET /api/v1/chatbots/quota`). New bots start
+with only the required Triage builtin enabled — same as a space's very first chatbot at
+registration — so they don't silently inherit another bot's branded custom agents. The owner
+creates/enables the right agents for each bot's actual purpose.
 
 **Customer routing**:
 - `/<space_slug>` → default chatbot (unchanged).

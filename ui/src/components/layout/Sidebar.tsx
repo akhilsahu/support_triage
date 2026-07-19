@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, MessageSquare, Bot, Database, BarChart3, Settings, ChevronLeft, LogOut, Plug, Code2, Inbox, Image } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Bot, Database, BarChart3, Settings, ChevronLeft, ChevronDown, LogOut, Plug, Code2, Inbox, Image } from 'lucide-react'
 import { IMAGES } from '../../config/images.config'
 import { cn } from '../ui/cn'
 import { StatusDot } from '../ui/StatusDot'
@@ -13,6 +13,101 @@ import { useDashboardTheme } from '../../config/dashboardTheme'
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   LayoutDashboard, MessageSquare, Bot, Database, BarChart3, Settings, Plug, Code2, Inbox, Image,
+}
+
+interface ChatbotOption {
+  id: string
+  slug: string
+  display_name: string
+  logo_url: string | null
+  is_default: boolean
+}
+
+/**
+ * Selects the active chatbot — Agents/Analytics/Inbox scope to it.
+ * Single-bot spaces render a static label (no dropdown, nothing to switch).
+ */
+function ChatbotSwitcher({ collapsed, token }: { collapsed: boolean; token: string }) {
+  const { currentChatbotId, setCurrentChatbotId } = useAppStore()
+  const [bots, setBots] = useState<ChatbotOption[]>([])
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!token) return
+    apiClient.getChatbots()
+      .then((data: ChatbotOption[]) => {
+        setBots(data)
+        // Resolve current selection: keep it if still valid, else fall back to default.
+        const stillValid = data.some(b => b.id === currentChatbotId)
+        if (!stillValid) {
+          const def = data.find(b => b.is_default) ?? data[0]
+          if (def) setCurrentChatbotId(def.id)
+        }
+      })
+      .catch(() => {})
+  }, [token])
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  if (bots.length === 0) return null
+
+  const current = bots.find(b => b.id === currentChatbotId) ?? bots[0]
+  const isMulti = bots.length > 1
+
+  return (
+    <div ref={wrapRef} className={cn('relative px-2 pb-2', collapsed && 'px-1')}>
+      <button
+        onClick={() => isMulti && setOpen(v => !v)}
+        title={current.display_name}
+        className={cn(
+          'w-full flex items-center gap-2 px-2 py-2 rounded-lg bg-gray-50 dark:bg-white/5 text-left transition-colors',
+          isMulti && 'hover:bg-gray-100 dark:hover:bg-white/10',
+          collapsed && 'justify-center px-1'
+        )}
+      >
+        <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 text-[11px] font-bold overflow-hidden">
+          {current.logo_url
+            ? <img src={current.logo_url} alt="" className="w-full h-full object-cover" />
+            : current.display_name.charAt(0).toUpperCase()}
+        </div>
+        {!collapsed && (
+          <>
+            <span className="flex-1 min-w-0 text-xs font-semibold text-gray-800 dark:text-white truncate">
+              {current.display_name}
+            </span>
+            {isMulti && <ChevronDown className={cn('w-3.5 h-3.5 text-gray-400 flex-shrink-0 transition-transform', open && 'rotate-180')} />}
+          </>
+        )}
+      </button>
+
+      {isMulti && open && !collapsed && (
+        <div className="absolute left-2 right-2 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 overflow-hidden divide-y divide-gray-100 dark:divide-gray-700">
+          {bots.map(b => (
+            <button
+              key={b.id}
+              onClick={() => { setCurrentChatbotId(b.id); setOpen(false) }}
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 text-left text-xs transition-colors',
+                b.id === current.id
+                  ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 font-semibold'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'
+              )}
+            >
+              <span className="truncate flex-1">{b.display_name}</span>
+              {b.is_default && <span className="text-[10px] text-gray-400 flex-shrink-0">default</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function Sidebar() {
@@ -98,6 +193,9 @@ export function Sidebar() {
           </div>
         )}
       </div>
+
+      {/* Chatbot switcher */}
+      <ChatbotSwitcher collapsed={sidebarCollapsed} token={token} />
 
       {/* Nav */}
       <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">

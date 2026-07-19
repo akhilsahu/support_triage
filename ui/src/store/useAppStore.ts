@@ -72,6 +72,11 @@ interface AppState {
   // Dashboard colour theme
   dashboardTheme: 'violet' | 'ocean' | 'sunset' | 'forest'
   setDashboardTheme: (t: 'violet' | 'ocean' | 'sunset' | 'forest') => void
+
+  // Currently selected chatbot — scopes Agents/Analytics/Inbox. Null = not
+  // resolved yet (falls back to the space's default bot).
+  currentChatbotId: string | null
+  setCurrentChatbotId: (id: string | null) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -84,7 +89,7 @@ export const useAppStore = create<AppState>()(
       onboardingComplete: false,
       setOnboardingComplete: (v) => set({ onboardingComplete: v }),
       setAuth: (token, spaceId, spaceSlug, spaceName, onboardingComplete = false) => set({ token, spaceId, spaceSlug, spaceName, onboardingComplete }),
-      logout: () => set({ token: '', spaceId: '', spaceSlug: '', spaceName: '', onboardingComplete: false, messages: [], conversationId: undefined, enabledNavItems: null, unreadSessionIds: [], activeInboxSessionId: null, inboxEvent: null }),
+      logout: () => set({ token: '', spaceId: '', spaceSlug: '', spaceName: '', onboardingComplete: false, messages: [], conversationId: undefined, enabledNavItems: null, unreadSessionIds: [], activeInboxSessionId: null, inboxEvent: null, currentChatbotId: null }),
 
       isDark: typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : false,
       toggleTheme: () => set((s) => {
@@ -144,10 +149,13 @@ export const useAppStore = create<AppState>()(
 
       dashboardTheme: 'violet',
       setDashboardTheme: (t) => set({ dashboardTheme: t }),
+
+      currentChatbotId: null,
+      setCurrentChatbotId: (id) => set({ currentChatbotId: id }),
     }),
     {
       name: import.meta.env.PROD ? 'support247-store' : 'support247-store-dev',
-      partialize: (s) => ({ isDark: s.isDark, fontSize: s.fontSize, sidebarCollapsed: s.sidebarCollapsed, apiKey: s.apiKey, clientId: s.clientId, token: s.token, spaceId: s.spaceId, spaceSlug: s.spaceSlug, spaceName: s.spaceName, onboardingComplete: s.onboardingComplete, activeHomepage: s.activeHomepage, dashboardTheme: s.dashboardTheme }),
+      partialize: (s) => ({ isDark: s.isDark, fontSize: s.fontSize, sidebarCollapsed: s.sidebarCollapsed, apiKey: s.apiKey, clientId: s.clientId, token: s.token, spaceId: s.spaceId, spaceSlug: s.spaceSlug, spaceName: s.spaceName, onboardingComplete: s.onboardingComplete, activeHomepage: s.activeHomepage, dashboardTheme: s.dashboardTheme, currentChatbotId: s.currentChatbotId }),
     }
   )
 )

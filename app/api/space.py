@@ -104,6 +104,7 @@ async def org_public_info(slug: str, chatbot_slug: str | None = Query(None, alia
         return {
             "name":                   name,
             "slug":                   org.slug,
+            "description":            (chatbot.description if chatbot else "") or "",
             "logo_url":               effective_logo,
             "theme_color":            theme,
             "human_transfer_enabled": chatbot.human_transfer_enabled if chatbot else True,

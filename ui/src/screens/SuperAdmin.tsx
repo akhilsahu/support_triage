@@ -549,13 +549,15 @@ function BuiltinAgentRow({ agent, adminKey, onToggled }: {
 // ── Nav Config ────────────────────────────────────────────────────────────────
 
 const ALL_NAV_LABELS: Record<string, string> = {
-  'dashboard':     'Dashboard',
-  'chat':          'Chat',
-  'agents':        'Agents',
-  'knowledge-base':'Knowledge Base',
-  'analytics':     'Analytics',
-  'data-sources':  'Data Sources',
-  'settings':      'Settings',
+  'dashboard':       'Dashboard',
+  'chat':            'Chat',
+  'agents':          'Agents',
+  'knowledge-base':  'Knowledge Base',
+  'analytics':       'Analytics',
+  'inbox':           'Inbox',
+  'chatbot-profile': 'Chatbot Profile',
+  'data-sources':    'Data Sources',
+  'settings':        'Settings',
 }
 const ALL_NAV_IDS = Object.keys(ALL_NAV_LABELS)
 

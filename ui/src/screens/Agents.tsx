@@ -333,6 +333,7 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
   const [suggesting, setSuggesting]   = useState(false)
   const [suggestionId, setSuggestionId] = useState<string | null>(null)
   const [error, setError]             = useState('')
+  const currentChatbotId = useAppStore(s => s.currentChatbotId)
 
   const inputCls = 'w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white placeholder-gray-400'
 
@@ -394,7 +395,7 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
         rag_doc_types: ragDocTypes,
         rag_top_k: ragTopK,
         kb_ids: selectedKbIds,
-      })
+      }, currentChatbotId)
       // Link suggestion → agent so cache knows this suggestion was used
       if (suggestionId && agent?.id) {
         apiClient.linkSuggestionToAgent(suggestionId, agent.id).catch(() => {})
@@ -547,6 +548,7 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
 export function Agents() {
   const navigate  = useNavigate()
   const spaceSlug   = useAppStore(s => s.spaceSlug)
+  const currentChatbotId = useAppStore(s => s.currentChatbotId)
   const [agents, setAgents]             = useState<OrgAgent[]>([])
   const [loading, setLoading]           = useState(true)
   const [dataSources, setDataSources]   = useState<DataSource[]>([])
@@ -565,8 +567,9 @@ export function Agents() {
   const [showTransferModal, setShowTransferModal] = useState(false)
 
   const loadAgents = async () => {
+    setLoading(true)
     try {
-      const data = await apiClient.listOrgAgents()
+      const data = await apiClient.listOrgAgents(currentChatbotId)
       setAgents(data)
     } catch { /* backend down */ }
     finally { setLoading(false) }
@@ -575,7 +578,7 @@ export function Agents() {
   const loadChatbotSettings = async () => {
     try {
       const bots = await apiClient.getChatbots()
-      const bot = bots?.[0]
+      const bot = bots?.find((b: any) => b.id === currentChatbotId) ?? bots?.find((b: any) => b.is_default) ?? bots?.[0]
       if (bot) {
         setChatbotSlug(bot.slug)
         setHumanTransfer(bot.human_transfer_enabled ?? true)
@@ -601,6 +604,9 @@ export function Agents() {
   useEffect(() => {
     loadAgents()
     loadChatbotSettings()
+  }, [currentChatbotId])
+
+  useEffect(() => {
     apiClient.listDataSources().then(setDataSources).catch(() => {})
     apiClient.listOrgDocTypes().then(d => setDocTypes(d.doc_types || [])).catch(() => {})
   }, [])
@@ -608,7 +614,7 @@ export function Agents() {
   const handleToggle = async (agent: OrgAgent, val: boolean) => {
     if (agent.slug === 'triage') return
     try {
-      const updated = await apiClient.updateOrgAgent(agent.id, { active: val })
+      const updated = await apiClient.updateOrgAgent(agent.id, { active: val }, currentChatbotId)
       setAgents(prev => prev.map(a => a.id === agent.id ? updated : a))
     } catch { /* show error if needed */ }
   }

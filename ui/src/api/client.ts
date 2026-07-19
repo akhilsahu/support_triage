@@ -145,16 +145,17 @@ export const apiClient = {
   linkSuggestionToAgent: (suggestion_id: string, agent_id: string) =>
     http.patch('/api/v1/dashboard/agent-suggestions/link', { suggestion_id, agent_id }).then(r => r.data),
 
-  // Org Agents
-  listOrgAgents: () =>
-    http.get('/api/v1/org/agents').then(r => r.data),
+  // Org Agents — chatbotId scopes to a specific chatbot; omitted = space's default
+  listOrgAgents: (chatbotId?: string | null) =>
+    http.get('/api/v1/org/agents', { params: chatbotId ? { chatbot_id: chatbotId } : {} }).then(r => r.data),
 
   createOrgAgent: (payload: {
     name: string; description?: string; icon?: string; system_prompt?: string;
     temperature?: number; max_tokens?: number; rag_enabled?: boolean;
     rag_doc_types?: string[]; rag_top_k?: number; keywords?: string[];
     kb_ids?: string[]
-  }) => http.post('/api/v1/org/agents', payload).then(r => r.data),
+  }, chatbotId?: string | null) =>
+    http.post('/api/v1/org/agents', payload, { params: chatbotId ? { chatbot_id: chatbotId } : {} }).then(r => r.data),
 
   updateOrgAgent: (id: string, payload: {
     name?: string
@@ -168,7 +169,8 @@ export const apiClient = {
     rag_doc_types?: string[]
     rag_top_k?: number
     kb_ids?: string[]
-  }) => http.patch(`/api/v1/org/agents/${id}`, payload).then(r => r.data),
+  }, chatbotId?: string | null) =>
+    http.patch(`/api/v1/org/agents/${id}`, payload, { params: chatbotId ? { chatbot_id: chatbotId } : {} }).then(r => r.data),
 
   deleteOrgAgent: (id: string) =>
     http.delete(`/api/v1/org/agents/${id}`).then(r => r.data),
@@ -176,8 +178,11 @@ export const apiClient = {
   // Inbox (staff)
   staffLogin: (email: string, password: string) =>
     http.post('/api/v1/inbox/staff/login', { email, password }).then(r => r.data),
-  listInboxSessions: (token: string) =>
-    http.get('/api/v1/inbox/sessions', { headers: { Authorization: `Bearer ${token}` } }).then(r => Array.isArray(r.data) ? r.data : r.data?.sessions ?? []),
+  listInboxSessions: (token: string, chatbotId?: string | null) =>
+    http.get('/api/v1/inbox/sessions', {
+      headers: { Authorization: `Bearer ${token}` },
+      params: chatbotId ? { chatbot_id: chatbotId } : {},
+    }).then(r => Array.isArray(r.data) ? r.data : r.data?.sessions ?? []),
   getInboxSession: (id: string, token: string) =>
     http.get(`/api/v1/inbox/sessions/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
   claimSession: (id: string, token: string) =>
@@ -188,6 +193,12 @@ export const apiClient = {
     http.post(`/api/v1/inbox/sessions/${id}/resolve`, {}, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
   staffHeartbeat: (token: string) =>
     http.post('/api/v1/inbox/staff/heartbeat', {}, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
+
+  // Analytics — chatbotId scopes to a specific chatbot; omitted = space-wide
+  getAnalytics: (days = 7, chatbotId?: string | null) =>
+    http.get('/api/v1/dashboard/analytics', {
+      params: { days, ...(chatbotId ? { chatbot_id: chatbotId } : {}) },
+    }).then(r => r.data),
 
   // Chatbot settings
   getChatbots: () =>
@@ -200,7 +211,7 @@ export const apiClient = {
     http.delete(`/api/v1/chatbots/${slug}`).then(r => r.data),
   setDefaultChatbot: (slug: string) =>
     http.post(`/api/v1/chatbots/${slug}/set-default`).then(r => r.data),
-  updateChatbot: (slug: string, payload: { human_transfer_enabled?: boolean; human_transfer_message?: string; show_logo?: boolean }) =>
+  updateChatbot: (slug: string, payload: { display_name?: string; description?: string; theme_color?: string; active?: boolean; human_transfer_enabled?: boolean; human_transfer_message?: string; show_logo?: boolean }) =>
     http.patch(`/api/v1/chatbots/${slug}`, payload).then(r => r.data),
   uploadChatbotLogo: (slug: string, file: File) => {
     const form = new FormData()

@@ -234,10 +234,11 @@ async def delete_skill(
 @router.get("/analytics")
 async def analytics(
     days: int = Query(7, ge=1, le=90),
+    chatbot_id: Optional[uuid.UUID] = Query(None, description="Scope to a specific chatbot; omitted = space-wide"),
     org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
-    return await analytics_for_org(db, org.id, days)
+    return await analytics_for_org(db, org.id, days, chatbot_id=chatbot_id)
 
 
 # ── Profile ───────────────────────────────────────────────────────────────────

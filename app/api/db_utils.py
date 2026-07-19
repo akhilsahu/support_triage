@@ -19,6 +19,7 @@ from app.models.space import (
     Space, PromptSkill, ConversationLog,
     SpaceBuiltinAgentConfig, CustomAgent, BuiltinAgentCatalog,
 )
+from app.models.chat import ChatSession
 
 
 # ── Space ──────────────────────────────────────────────────────────────
@@ -158,54 +159,118 @@ async def list_logs(
     return (await db.execute(q.offset(offset).limit(limit))).all()
 
 
-async def analytics_for_org(db: AsyncSession, space_id: uuid.UUID, days: int) -> dict:
+async def analytics_for_org(
+    db: AsyncSession, space_id: uuid.UUID, days: int,
+    chatbot_id: Optional[uuid.UUID] = None,
+) -> dict:
+    """
+    chatbot_id narrows every metric to one chatbot (dashboard chatbot switcher);
+    omitted = space-wide, matching the pre-existing behavior.
+    """
     since = datetime.utcnow() - timedelta(days=days)
+    base = [ConversationLog.space_id == space_id, ConversationLog.timestamp >= since]
+    if chatbot_id is not None:
+        base.append(ConversationLog.chatbot_id == chatbot_id)
 
     total = (await db.execute(
         select(func.count()).select_from(ConversationLog).where(
-            ConversationLog.space_id == space_id,
-            ConversationLog.role == "user",
-            ConversationLog.timestamp >= since,
+            *base, ConversationLog.role == "user",
         )
     )).scalar() or 0
 
+    # _persist_turn writes rag_hit onto BOTH the user and assistant rows of a
+    # turn (same value copied to each) — count only the assistant row per turn,
+    # otherwise every hit is double-counted and rates can exceed 100%.
     rag_hits = (await db.execute(
         select(func.count()).select_from(ConversationLog).where(
-            ConversationLog.space_id == space_id,
-            ConversationLog.rag_hit == True,
-            ConversationLog.timestamp >= since,
+            *base, ConversationLog.rag_hit == True, ConversationLog.role == "assistant",
         )
     )).scalar() or 0
 
     avg_ms = (await db.execute(
-        select(func.avg(ConversationLog.response_ms)).where(
-            ConversationLog.space_id == space_id,
-            ConversationLog.timestamp >= since,
-        )
+        select(func.avg(ConversationLog.response_ms)).where(*base)
     )).scalar()
 
     intent_rows = (await db.execute(
         select(ConversationLog.intent, func.count().label("cnt")).where(
-            ConversationLog.space_id == space_id,
-            ConversationLog.role == "user",
-            ConversationLog.timestamp >= since,
+            *base, ConversationLog.role == "user",
         ).group_by(ConversationLog.intent)
     )).all()
 
+    # agent_slug is likewise copied onto both the user and assistant rows of a
+    # turn — count only the assistant row so workload figures reflect real turns.
     agent_rows = (await db.execute(
         select(ConversationLog.agent_slug, func.count().label("cnt")).where(
-            ConversationLog.space_id == space_id,
-            ConversationLog.timestamp >= since,
+            *base, ConversationLog.role == "assistant",
         ).group_by(ConversationLog.agent_slug)
+    )).all()
+
+    # Daily message counts within the window — powers the trend chart.
+    day_col = func.date(ConversationLog.timestamp)
+    daily_rows = (await db.execute(
+        select(day_col.label("day"), func.count().label("cnt")).where(
+            *base, ConversationLog.role == "user",
+        ).group_by(day_col).order_by(day_col)
+    )).all()
+
+    # "Today" / "yesterday" are calendar-day counts, independent of the `days`
+    # window, so the stat card and its delta are meaningful even when days=7+.
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_start = today_start - timedelta(days=1)
+    today_filter = [ConversationLog.space_id == space_id, ConversationLog.role == "user",
+                    ConversationLog.timestamp >= today_start]
+    yesterday_filter = [ConversationLog.space_id == space_id, ConversationLog.role == "user",
+                        ConversationLog.timestamp >= yesterday_start, ConversationLog.timestamp < today_start]
+    if chatbot_id is not None:
+        today_filter.append(ConversationLog.chatbot_id == chatbot_id)
+        yesterday_filter.append(ConversationLog.chatbot_id == chatbot_id)
+    messages_today = (await db.execute(
+        select(func.count()).select_from(ConversationLog).where(*today_filter)
+    )).scalar() or 0
+    messages_yesterday = (await db.execute(
+        select(func.count()).select_from(ConversationLog).where(*yesterday_filter)
+    )).scalar() or 0
+
+    # Escalation rate — real proxy for "how many conversations needed a human",
+    # sourced from ChatSession.status (no fabricated satisfaction score exists).
+    session_base = [ChatSession.space_id == space_id, ChatSession.started_at >= since]
+    if chatbot_id is not None:
+        session_base.append(ChatSession.chatbot_id == chatbot_id)
+    total_sessions = (await db.execute(
+        select(func.count()).select_from(ChatSession).where(*session_base)
+    )).scalar() or 0
+    escalated_sessions = (await db.execute(
+        select(func.count()).select_from(ChatSession).where(
+            *session_base, ChatSession.escalated_at.isnot(None),
+        )
+    )).scalar() or 0
+
+    # Recent customer messages — honest substitute for "top questions"; grouping
+    # free text by exact match rarely finds real repeats, so we show the latest
+    # few instead of fabricating a ranking.
+    recent_rows = (await db.execute(
+        select(ConversationLog.message, ConversationLog.intent, ConversationLog.timestamp)
+        .where(*base, ConversationLog.role == "user")
+        .order_by(desc(ConversationLog.timestamp))
+        .limit(5)
     )).all()
 
     return {
         "period_days": days,
         "total_messages": total,
         "rag_hits": rag_hits,
+        "rag_hit_rate": round(rag_hits / total * 100, 1) if total else None,
         "avg_response_ms": round(avg_ms) if avg_ms else None,
+        "messages_today": messages_today,
+        "messages_yesterday": messages_yesterday,
+        "daily_messages": [{"date": str(r.day), "count": r.cnt} for r in daily_rows],
         "intent_distribution": {r.intent or "unknown": r.cnt for r in intent_rows},
         "agent_distribution": {r.agent_slug or "unknown": r.cnt for r in agent_rows},
+        "escalation_rate": round(escalated_sessions / total_sessions * 100, 1) if total_sessions else None,
+        "recent_conversations": [
+            {"message": r.message[:200], "intent": r.intent, "timestamp": r.timestamp.isoformat()}
+            for r in recent_rows
+        ],
     }
 
 

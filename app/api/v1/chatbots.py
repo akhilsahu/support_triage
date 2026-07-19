@@ -150,42 +150,36 @@ async def create_chatbot(
     )
     db.add(chatbot)
     await db.flush()   # assign chatbot.id before seeding agents
-    await _seed_agents_from_default(db, space.id, chatbot.id)
+    await _seed_new_chatbot_agents(db, space.id, chatbot.id)
     await db.commit()
     await db.refresh(chatbot)
     return ChatbotOut(**chatbot.to_dict())
 
 
-async def _seed_agents_from_default(db: AsyncSession, space_id: UUID, new_chatbot_id: UUID) -> None:
+async def _seed_new_chatbot_agents(db: AsyncSession, space_id: UUID, new_chatbot_id: UUID) -> None:
     """
-    Clone the default chatbot's agent setup onto a freshly created chatbot so it
-    can answer immediately: builtin agent configs + custom-agent links. The owner
-    can then customise the new bot's agents independently.
+    Seed a freshly created chatbot the same way a space's very first (default)
+    chatbot is seeded at registration (see _seed_org_builtin_configs in auth.py):
+    only LOCKED builtins (triage — required for routing) get an enabled config
+    row. Every other agent — builtin or custom — is opt-in and must be
+    explicitly created/enabled by the owner for this specific chatbot.
+
+    Deliberately does NOT copy the default chatbot's custom agents: a cloned
+    agent still carries the original's name/branding/content verbatim, which is
+    actively wrong for a chatbot built for a different purpose (e.g. a credit
+    card bot inheriting a life-insurance agent). Each chatbot gets its own
+    agents, created on purpose, not inherited.
     """
-    from app.models.space import ChatbotCustomAgent, SpaceBuiltinAgentConfig
+    from app.models.space import BuiltinAgentCatalog, SpaceBuiltinAgentConfig
 
-    default = (await db.execute(
-        select(Chatbot).where(Chatbot.space_id == space_id, Chatbot.is_default == True)
-    )).scalar_one_or_none()
-    if not default:
-        return
-
-    builtins = (await db.execute(
-        select(SpaceBuiltinAgentConfig).where(SpaceBuiltinAgentConfig.chatbot_id == default.id)
+    locked_catalog = (await db.execute(
+        select(BuiltinAgentCatalog).where(BuiltinAgentCatalog.locked == True)
     )).scalars().all()
-    for b in builtins:
+    for cat_row in locked_catalog:
         db.add(SpaceBuiltinAgentConfig(
-            space_id=space_id, chatbot_id=new_chatbot_id, catalog_id=b.catalog_id,
-            enabled=b.enabled, system_prompt=b.system_prompt, temperature=b.temperature,
-            max_tokens=b.max_tokens, rag_enabled=b.rag_enabled, rag_doc_types=b.rag_doc_types,
-            rag_top_k=b.rag_top_k, keywords_json=b.keywords_json, skills_json=b.skills_json,
+            space_id=space_id, chatbot_id=new_chatbot_id, catalog_id=cat_row.id,
+            enabled=True,
         ))
-
-    links = (await db.execute(
-        select(ChatbotCustomAgent).where(ChatbotCustomAgent.chatbot_id == default.id)
-    )).scalars().all()
-    for lnk in links:
-        db.add(ChatbotCustomAgent(chatbot_id=new_chatbot_id, agent_id=lnk.agent_id))
 
 
 @router.get("/{chatbot_slug}", response_model=ChatbotOut)
@@ -218,6 +212,11 @@ async def update_chatbot(
     if req.show_logo is not None:
         chatbot.show_logo = req.show_logo
     if req.active is not None:
+        if chatbot.is_default and req.active is False:
+            # The default chatbot is what /{space_slug} resolves to (see
+            # _get_brand in customer.py); deactivating it would 503 the org's
+            # main customer-facing URL entirely.
+            raise HTTPException(400, "Cannot deactivate the default chatbot.")
         chatbot.active = req.active
     if req.human_transfer_enabled is not None:
         chatbot.human_transfer_enabled = req.human_transfer_enabled

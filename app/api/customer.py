@@ -58,10 +58,16 @@ class CustomerChatResponse(BaseModel):
     rag_hit: bool
     response_ms: int
     citations: List[dict] = []
+    message_id: Optional[str] = None
 
 
 class SessionInitResponse(BaseModel):
     session_id: str
+
+
+class FeedbackRequest(BaseModel):
+    message_id: str
+    rating: str   # "up" | "down"
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
@@ -304,10 +310,11 @@ async def _persist_turn(
     result: dict,
     elapsed_ms: int,
     message: str,
-) -> str:
+) -> tuple[str, str]:
     """
     Upsert ChatSession, write both ConversationLog rows, commit, refresh Redis TTL.
-    Returns the canonical session_id string.
+    Returns (canonical session_id, assistant ConversationLog id) — the latter lets
+    the frontend attach thumbs up/down feedback to this specific reply.
     """
     from app.models.chat import ChatSession
     from app.core.redis import redis_client
@@ -360,17 +367,18 @@ async def _persist_turn(
         intent=result.get("intent"), agent_slug=agent_slug,
         rag_hit=result.get("rag_hit", False), response_ms=elapsed_ms,
     ))
-    db.add(ConversationLog(
+    assistant_log = ConversationLog(
         space_id=org.id, chatbot_id=chatbot.id, session_id=session_id,
         role="assistant", message=result.get("reply", ""),
         intent=result.get("intent"), agent_slug=agent_slug,
         rag_hit=result.get("rag_hit", False),
         citations=result.get("citations") or None,
-    ))
+    )
+    db.add(assistant_log)
     await db.commit()
 
     await redis_client.expire(_history_key(session_id), HISTORY_TTL)
-    return session_id
+    return session_id, str(assistant_log.id)
 
 
 # ── OPTIONS preflights (widget embeds / cross-origin callers) ─────────────────
@@ -385,6 +393,10 @@ async def preflight_suggestions(slug: str):
 
 @router.options("/api/chat/{slug}/stream")
 async def preflight_chat_stream(slug: str):
+    return JSONResponse({}, headers=_CORS)
+
+@router.options("/api/chat/{slug}/feedback")
+async def preflight_feedback(slug: str):
     return JSONResponse({}, headers=_CORS)
 
 @router.options("/api/chat/{slug}/session/init")
@@ -464,7 +476,7 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
 
         # 4. Persist both turns and return
         elapsed_ms = int((time.time() - t0) * 1000)
-        session_id = await _persist_turn(db, org, chatbot, session_id, result, elapsed_ms, req.message)
+        session_id, message_id = await _persist_turn(db, org, chatbot, session_id, result, elapsed_ms, req.message)
 
         return JSONResponse(
             CustomerChatResponse(
@@ -475,6 +487,7 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
                 rag_hit=result.get("rag_hit", False),
                 response_ms=elapsed_ms,
                 citations=result.get("citations", []),
+                message_id=message_id,
             ).model_dump(),
             headers=_CORS,
         )
@@ -560,7 +573,7 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
             }
             elapsed_ms = int((time.time() - t0) * 1000)
             await _maybe_escalate(db, chatbot, org, result, session_id, req.message)
-            await _persist_turn(
+            session_id, message_id = await _persist_turn(
                 db, org, chatbot, session_id, result, elapsed_ms, req.message
             )
             yield {
@@ -570,6 +583,7 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
                     "agent":      result.get("agent", "team"),
                     "rag_hit":    result.get("rag_hit", False),
                     "citations":  result.get("citations", []),
+                    "message_id": message_id,
                 }),
             }
         except Exception:
@@ -610,6 +624,42 @@ async def get_chat_suggestions(slug: str,
         logger.exception("get_chat_suggestions.failed", slug=slug)
         from app.utils.ai.chat_suggestions import _FALLBACKS
         return {"suggestions": _FALLBACKS}
+    finally:
+        await db.close()
+
+
+# ── Message feedback (thumbs up/down on an AI reply) ─────────────────────────
+
+@router.post("/api/chat/{slug}/feedback", status_code=204)
+async def submit_feedback(slug: str, req: FeedbackRequest,
+                          chatbot_slug: Optional[str] = Query(None, alias="chatbot")):
+    """Record a customer's thumbs up/down on a specific AI reply."""
+    rating = req.rating.strip().lower()
+    if rating not in ("up", "down"):
+        return JSONResponse({"detail": "rating must be 'up' or 'down'."},
+                            status_code=400, headers=_CORS)
+
+    org, chatbot, db = await _get_brand(slug, chatbot_slug)
+    try:
+        try:
+            log_uuid = uuid.UUID(req.message_id)
+        except (ValueError, TypeError):
+            return JSONResponse({"detail": "Invalid message_id."}, status_code=400, headers=_CORS)
+
+        # Scope the update to this org so one brand can't rate another's messages.
+        row = (await db.execute(
+            select(ConversationLog).where(
+                ConversationLog.id == log_uuid,
+                ConversationLog.space_id == org.id,
+                ConversationLog.role == "assistant",
+            )
+        )).scalar_one_or_none()
+        if not row:
+            return JSONResponse({"detail": "Message not found."}, status_code=404, headers=_CORS)
+
+        row.feedback = rating
+        await db.commit()
+        return JSONResponse({}, status_code=204, headers=_CORS)
     finally:
         await db.close()
 
@@ -708,9 +758,11 @@ async def get_session_history(slug: str, session_id: str,
         )
         history = [
             {
+                "id":         str(log.id),
                 "role":       log.role,
                 "message":    log.message,
                 "agent_slug": log.agent_slug,
+                "citations":  log.citations or [],
                 "timestamp":  log.timestamp.isoformat() if log.timestamp else None,
             }
             for log in logs_result.scalars().all()

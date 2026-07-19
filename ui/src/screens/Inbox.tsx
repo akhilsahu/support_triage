@@ -606,6 +606,7 @@ function SessionGroup({ label, count, color, sessions, selectedId, unreadIds, on
 
 export function Inbox() {
   const token                 = useAppStore(s => s.token)
+  const currentChatbotId      = useAppStore(s => s.currentChatbotId)
   const unreadSessionIds      = useAppStore(s => s.unreadSessionIds)
   const clearUnreadSession    = useAppStore(s => s.clearUnreadSession)
   const inboxEvent            = useAppStore(s => s.inboxEvent)
@@ -632,12 +633,12 @@ export function Inbox() {
     if (!token) return
     setLoading(true)
     try {
-      const d = await apiClient.listInboxSessions(token)
+      const d = await apiClient.listInboxSessions(token, currentChatbotId)
       setSessions(Array.isArray(d) ? d : [])
     } catch (err) {
       console.error('Inbox loadSessions:', err)
     } finally { setLoading(false) }
-  }, [token])
+  }, [token, currentChatbotId])
 
   useEffect(() => { loadSessions() }, [loadSessions])
 
