@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Bot, Upload, Trash2, CheckCircle, Plus, Star, Copy, Check, Pencil } from 'lucide-react'
+import { Bot, Upload, Trash2, CheckCircle, Plus, Star, Copy, Check, Pencil, ChevronUp, ChevronDown } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Toggle } from '../components/ui/Toggle'
@@ -16,9 +16,27 @@ interface Chatbot {
   show_logo: boolean
   is_default: boolean
   active: boolean
+  homepage_sections_enabled: boolean
+  homepage_sections_override: string | null
+  quick_topics: string | null
+  trust_badges: string | null
 }
 
 const DEFAULT_THEME_COLOR = '#6366f1'
+
+// Sections an admin can manually pick/order, mirrors app/renderengine/homepage_sections.py's
+// ALLOWED_SECTIONS minus quick_topics/trust_badges -- those two have their own dedicated
+// authoring card + force-include path below, so listing them here too would be a redundant,
+// confusing second way to turn on the same content.
+const SECTION_OPTIONS: { id: string; label: string }[] = [
+  { id: 'hero', label: 'Hero (logo + greeting)' },
+  { id: 'key_benefits', label: 'Key benefits' },
+  { id: 'capabilities', label: 'Capabilities' },
+  { id: 'suggested_questions', label: 'Suggested questions' },
+  { id: 'faq', label: 'FAQ' },
+  { id: 'data_block', label: 'Data block (table / chart / card)' },
+  { id: 'promo', label: 'Promo banner' },
+]
 
 const ACCEPTED_TYPES = 'image/png,image/jpeg,image/webp,image/svg+xml'
 const MAX_SIZE_MB = 2
@@ -27,6 +45,7 @@ export function ChatbotProfile() {
   const currentChatbotId = useAppStore(s => s.currentChatbotId)
   const setCurrentChatbotId = useAppStore(s => s.setCurrentChatbotId)
   const spaceSlug = useAppStore(s => s.spaceSlug)
+  const homepageSectionsPlatformEnabled = useAppStore(s => s.homepageSectionsPlatformEnabled)
 
   const [chatbots, setChatbots] = useState<Chatbot[]>([])
   const [selected, setSelected] = useState<Chatbot | null>(null)
@@ -49,6 +68,16 @@ export function ChatbotProfile() {
   const [colorDraft, setColorDraft] = useState(DEFAULT_THEME_COLOR)
   const [savingColor, setSavingColor] = useState(false)
   const [savingActive, setSavingActive] = useState(false)
+  const [savingHomepageSections, setSavingHomepageSections] = useState(false)
+  const [useAiSections, setUseAiSections] = useState(true)
+  const [savingUseAiSections, setSavingUseAiSections] = useState(false)
+  const [pickedSections, setPickedSections] = useState<string[]>([])
+  const [promoText, setPromoText] = useState('')
+  const [savingSectionOverride, setSavingSectionOverride] = useState(false)
+  const [topicsDraft, setTopicsDraft] = useState<{ label: string; prompt: string }[]>([])
+  const [savingTopics, setSavingTopics] = useState(false)
+  const [badgesDraft, setBadgesDraft] = useState<string[]>([])
+  const [savingBadges, setSavingBadges] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Multi-bot UI shows only when the space is allowed more than one chatbot.
@@ -95,6 +124,30 @@ export function ChatbotProfile() {
   useEffect(() => {
     setColorDraft(selected?.theme_color || DEFAULT_THEME_COLOR)
     setEditingDesc(false)
+    try {
+      setTopicsDraft(selected?.quick_topics ? JSON.parse(selected.quick_topics) : [])
+    } catch {
+      setTopicsDraft([])
+    }
+    try {
+      setBadgesDraft(selected?.trust_badges ? JSON.parse(selected.trust_badges) : [])
+    } catch {
+      setBadgesDraft([])
+    }
+    try {
+      const raw = selected?.homepage_sections_override
+      const parsed = raw ? JSON.parse(raw) : null
+      const sections: string[] = Array.isArray(parsed?.sections)
+        ? parsed.sections.filter((s: unknown) => typeof s === 'string' && SECTION_OPTIONS.some(o => o.id === s))
+        : []
+      setUseAiSections(sections.length === 0)
+      setPickedSections(sections)
+      setPromoText(parsed?.overrides?.promo?.text || '')
+    } catch {
+      setUseAiSections(true)
+      setPickedSections([])
+      setPromoText('')
+    }
   }, [selected?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const slugify = (s: string) =>
@@ -282,6 +335,124 @@ export function ChatbotProfile() {
       setError('Could not update visibility.')
     } finally {
       setSavingToggle(false)
+    }
+  }
+
+  const handleToggleHomepageSections = async (val: boolean) => {
+    if (!selected) return
+    setSelected({ ...selected, homepage_sections_enabled: val })
+    setSavingHomepageSections(true)
+    try {
+      const updated = await apiClient.updateChatbot(selected.slug, { homepage_sections_enabled: val })
+      setSelected(updated)
+      setChatbots(prev => prev.map(c => c.id === updated.id ? updated : c))
+      flashSaved()
+    } catch {
+      setError('Could not update homepage sections setting.')
+    } finally {
+      setSavingHomepageSections(false)
+    }
+  }
+
+  // "Use AI recommendation" is immediate (like the toggles above) -- switching
+  // it on clears the manual override right away. Switching it off just reveals
+  // the picker below; nothing is saved until the admin clicks "Save sections".
+  const handleToggleUseAiSections = async (val: boolean) => {
+    if (!selected) return
+    setUseAiSections(val)
+    if (!val) return
+    setSavingUseAiSections(true)
+    try {
+      const updated = await apiClient.updateChatbot(selected.slug, { homepage_sections_override: '' })
+      setSelected(updated)
+      setChatbots(prev => prev.map(c => c.id === updated.id ? updated : c))
+      flashSaved()
+    } catch {
+      setError('Could not switch to AI-recommended sections.')
+    } finally {
+      setSavingUseAiSections(false)
+    }
+  }
+
+  const toggleSection = (id: string) =>
+    setPickedSections(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])
+
+  const moveSection = (id: string, dir: -1 | 1) =>
+    setPickedSections(prev => {
+      const idx = prev.indexOf(id)
+      const swapWith = idx + dir
+      if (idx === -1 || swapWith < 0 || swapWith >= prev.length) return prev
+      const next = [...prev]
+      ;[next[idx], next[swapWith]] = [next[swapWith], next[idx]]
+      return next
+    })
+
+  const saveSectionOverride = async () => {
+    if (!selected) return
+    setSavingSectionOverride(true)
+    try {
+      const payload: { sections: string[]; overrides?: { promo: { text: string } } } = { sections: pickedSections }
+      if (pickedSections.includes('promo') && promoText.trim()) {
+        payload.overrides = { promo: { text: promoText.trim() } }
+      }
+      const updated = await apiClient.updateChatbot(selected.slug, {
+        homepage_sections_override: pickedSections.length ? JSON.stringify(payload) : '',
+      })
+      setSelected(updated)
+      setChatbots(prev => prev.map(c => c.id === updated.id ? updated : c))
+      flashSaved()
+    } catch {
+      setError('Could not save section preferences.')
+    } finally {
+      setSavingSectionOverride(false)
+    }
+  }
+
+  const addTopicRow = () => setTopicsDraft(prev => [...prev, { label: '', prompt: '' }])
+  const removeTopicRow = (i: number) => setTopicsDraft(prev => prev.filter((_, idx) => idx !== i))
+  const updateTopicRow = (i: number, field: 'label' | 'prompt', value: string) =>
+    setTopicsDraft(prev => prev.map((t, idx) => idx === i ? { ...t, [field]: value } : t))
+
+  const saveTopics = async () => {
+    if (!selected) return
+    const cleaned = topicsDraft.filter(t => t.label.trim() && t.prompt.trim())
+    setSavingTopics(true)
+    try {
+      const updated = await apiClient.updateChatbot(selected.slug, {
+        quick_topics: cleaned.length ? JSON.stringify(cleaned) : '',
+      })
+      setSelected(updated)
+      setChatbots(prev => prev.map(c => c.id === updated.id ? updated : c))
+      setTopicsDraft(cleaned)
+      flashSaved()
+    } catch {
+      setError('Could not save quick topics. Each topic needs a label and a prompt (max 6 topics).')
+    } finally {
+      setSavingTopics(false)
+    }
+  }
+
+  const addBadgeRow = () => setBadgesDraft(prev => [...prev, ''])
+  const removeBadgeRow = (i: number) => setBadgesDraft(prev => prev.filter((_, idx) => idx !== i))
+  const updateBadgeRow = (i: number, value: string) =>
+    setBadgesDraft(prev => prev.map((b, idx) => idx === i ? value : b))
+
+  const saveBadges = async () => {
+    if (!selected) return
+    const cleaned = badgesDraft.map(b => b.trim()).filter(Boolean)
+    setSavingBadges(true)
+    try {
+      const updated = await apiClient.updateChatbot(selected.slug, {
+        trust_badges: cleaned.length ? JSON.stringify(cleaned) : '',
+      })
+      setSelected(updated)
+      setChatbots(prev => prev.map(c => c.id === updated.id ? updated : c))
+      setBadgesDraft(cleaned)
+      flashSaved()
+    } catch {
+      setError('Could not save trust badges (max 6).')
+    } finally {
+      setSavingBadges(false)
     }
   }
 
@@ -500,6 +671,185 @@ export function ChatbotProfile() {
             </div>
             <Toggle checked={selected.show_logo} onChange={handleToggleShowLogo} disabled={savingToggle} />
           </div>
+
+          {homepageSectionsPlatformEnabled && (
+            <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-700">
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">AI homepage sections</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  When on, the pre-chat welcome screen is composed from AI-recommended sections
+                  (or your own picks below) instead of the default greeting and suggestion chips.
+                </p>
+              </div>
+              <Toggle
+                checked={selected.homepage_sections_enabled}
+                onChange={handleToggleHomepageSections}
+                disabled={savingHomepageSections}
+              />
+            </div>
+          )}
+
+          {homepageSectionsPlatformEnabled && selected.homepage_sections_enabled && (
+            <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-1">
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Which sections show, and in what order</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    Leave on AI recommendation, or pick your own sections and order.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Use AI recommendation</span>
+                  <Toggle checked={useAiSections} onChange={handleToggleUseAiSections} disabled={savingUseAiSections} />
+                </div>
+              </div>
+
+              {!useAiSections && (
+                <div className="mt-3 space-y-1.5">
+                  {[...pickedSections, ...SECTION_OPTIONS.filter(o => !pickedSections.includes(o.id)).map(o => o.id)]
+                    .map(id => SECTION_OPTIONS.find(o => o.id === id)!)
+                    .map((opt, idx) => {
+                      const checked = pickedSections.includes(opt.id)
+                      const pos = pickedSections.indexOf(opt.id)
+                      return (
+                        <div key={opt.id}>
+                          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleSection(opt.id)}
+                              className="w-3.5 h-3.5 accent-indigo-600 flex-shrink-0"
+                            />
+                            <span className={`flex-1 text-sm ${checked ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}`}>
+                              {opt.label}
+                            </span>
+                            {checked && (
+                              <div className="flex items-center gap-0.5 flex-shrink-0">
+                                <button
+                                  onClick={() => moveSection(opt.id, -1)}
+                                  disabled={pos === 0}
+                                  className="p-1 text-gray-400 hover:text-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                                  title="Move up"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => moveSection(opt.id, 1)}
+                                  disabled={pos === pickedSections.length - 1}
+                                  className="p-1 text-gray-400 hover:text-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                                  title="Move down"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          {checked && opt.id === 'promo' && (
+                            <input
+                              value={promoText}
+                              onChange={e => setPromoText(e.target.value)}
+                              placeholder="Promo banner text (e.g. Limited-time offer on term plans)"
+                              className="w-full mt-1.5 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                            />
+                          )}
+                          {idx === pickedSections.length - 1 && idx < SECTION_OPTIONS.length - 1 && (
+                            <div className="h-px my-1.5" />
+                          )}
+                        </div>
+                      )
+                    })}
+                  <div className="pt-1">
+                    <Button size="sm" disabled={savingSectionOverride || pickedSections.length === 0} onClick={saveSectionOverride}>
+                      {savingSectionOverride ? 'Saving…' : 'Save sections'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {homepageSectionsPlatformEnabled && (
+            <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Quick topics</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
+                Buttons shown on the welcome screen — clicking one starts the chat with that prompt.
+                Up to 6. Leave empty to let AI-recommended sections handle it instead.
+              </p>
+              <div className="space-y-2">
+                {topicsDraft.map((topic, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      value={topic.label}
+                      onChange={e => updateTopicRow(i, 'label', e.target.value)}
+                      placeholder="Label (e.g. Term Insurance)"
+                      className="w-40 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                    />
+                    <input
+                      value={topic.prompt}
+                      onChange={e => updateTopicRow(i, 'prompt', e.target.value)}
+                      placeholder="Prompt sent when clicked"
+                      className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                    />
+                    <button
+                      onClick={() => removeTopicRow(i)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                      title="Remove"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                {topicsDraft.length < 6 && (
+                  <Button size="sm" variant="secondary" onClick={addTopicRow}>
+                    <Plus className="w-3.5 h-3.5" /> Add topic
+                  </Button>
+                )}
+                <Button size="sm" disabled={savingTopics} onClick={saveTopics}>
+                  {savingTopics ? 'Saving…' : 'Save topics'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {homepageSectionsPlatformEnabled && (
+            <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Trust badges</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
+                Short trust signals shown on the welcome screen (e.g. "IRDAI Registered", "4.8★ Rating"). Up to 6.
+              </p>
+              <div className="space-y-2">
+                {badgesDraft.map((badge, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      value={badge}
+                      onChange={e => updateBadgeRow(i, e.target.value)}
+                      placeholder="e.g. IRDAI Registered"
+                      className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                    />
+                    <button
+                      onClick={() => removeBadgeRow(i)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                      title="Remove"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                {badgesDraft.length < 6 && (
+                  <Button size="sm" variant="secondary" onClick={addBadgeRow}>
+                    <Plus className="w-3.5 h-3.5" /> Add badge
+                  </Button>
+                )}
+                <Button size="sm" disabled={savingBadges} onClick={saveBadges}>
+                  {savingBadges ? 'Saving…' : 'Save badges'}
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-700">
             <div>

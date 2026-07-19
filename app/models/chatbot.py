@@ -50,6 +50,30 @@ class Chatbot(Base):
     human_transfer_enabled = Column(Boolean, default=True, nullable=False)
     human_transfer_message = Column(Text, default="You're being connected to a human agent. Please hold on.")
 
+    # Admin override for the AI-recommended homepage empty-state sections.
+    # NULL = defer to the renderengine's AI recommendation. JSON shape:
+    # {"sections": ["hero", "faq", ...], "overrides": {"promo": {"text": "..."}}}
+    homepage_sections_override = Column(Text, nullable=True)
+
+    # Master switch for the pluggable homepage-sections renderer (admin-config
+    # driven only -- no env var/build flag anywhere). False (default) = the
+    # original hardcoded hero+chips empty state, unchanged. True = the
+    # renderengine composes the empty state (AI recommendation, or the
+    # override above when set).
+    homepage_sections_enabled = Column(Boolean, default=False, nullable=False)
+
+    # Admin-authored quick-topic buttons for the homepage 'quick_topics'
+    # section. JSON list: [{"label": "Term Insurance", "prompt": "..."}].
+    # NULL/empty = section doesn't render (see app/renderengine/quick_topics.py).
+    # Not AI-generated -- same treatment as homepage_sections_override's "promo".
+    quick_topics = Column(Text, nullable=True)
+
+    # Admin-authored trust badges for the homepage 'trust_badges' section.
+    # JSON list of short strings (e.g. ["IRDAI Registered", "4.8★ Rating"]).
+    # NULL/empty = section doesn't render. Not AI-generated -- same treatment
+    # as quick_topics/promo. See app/renderengine/trust_badges.py.
+    trust_badges = Column(Text, nullable=True)
+
     created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -82,5 +106,9 @@ class Chatbot(Base):
             "active":                  self.active,
             "human_transfer_enabled":  self.human_transfer_enabled,
             "human_transfer_message":  self.human_transfer_message,
+            "homepage_sections_override": self.homepage_sections_override,
+            "homepage_sections_enabled":  self.homepage_sections_enabled,
+            "quick_topics":               self.quick_topics,
+            "trust_badges":               self.trust_badges,
             "created_at":              self.created_at.isoformat() if self.created_at else None,
         }

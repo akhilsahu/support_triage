@@ -11,6 +11,8 @@ import { ArrowUp, Sun, Moon, Sparkles, X, User, Bot, Palette, ThumbsUp, ThumbsDo
 import { SourceCitation } from '../components/ui/SourceCitation'
 import { NotFound } from './NotFound'
 import type { SourceItem } from '../types'
+import { SectionRenderer } from '../renderengine/homepage'
+import type { DataBlock } from '../renderengine/homepage'
 
 const IS_EMBEDDED = window.self !== window.top
 
@@ -277,6 +279,14 @@ interface SpaceInfo {
   description?: string
   logo_url?: string
   theme_color?: string
+  homepage_sections?: string[]
+  section_overrides?: { promo?: { text: string } }
+  key_benefits?: string[]
+  capabilities?: string[]
+  faq?: { question: string; answer: string }[]
+  quick_topics?: { label: string; prompt: string }[]
+  trust_badges?: string[]
+  data_block?: DataBlock
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -335,7 +345,18 @@ export function CustomerChat() {
   // ── Data fetching ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!slug) return
-    fetch(`${API_CONFIG.baseURL}/api/v1/space/public/${slug}${botQuery}`)
+    // Cheap visitor signals for the homepage-section recommendation (see
+    // app/renderengine/homepage_sections.py). Harmless to send even while
+    // HOMEPAGE_SECTIONS_ENABLED is off -- the backend already derives safe
+    // defaults if these are absent.
+    const device = window.innerWidth < 768 ? 'mobile' : 'desktop'
+    const visitedKey = `support247-visited-${slug}`
+    const visitorType = localStorage.getItem(visitedKey) ? 'returning' : 'new'
+    localStorage.setItem(visitedKey, '1')
+    const publicInfoParams = new URLSearchParams({ device, visitor: visitorType })
+    if (chatbotSlug) publicInfoParams.set('chatbot', chatbotSlug)
+
+    fetch(`${API_CONFIG.baseURL}/api/v1/space/public/${slug}?${publicInfoParams.toString()}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data) {
@@ -586,8 +607,30 @@ export function CustomerChat() {
           </div>
         )}
 
-        {/* ── Empty / welcome state ── */}
-        {isEmpty && (
+        {/* ── Empty / welcome state ──
+            Purely admin-config driven: homepage_sections is only present in
+            the API response when this chatbot's admin has turned it on
+            (Chatbot.homepage_sections_enabled, see ChatbotProfile). No env
+            var or build flag involved. Absent/empty falls through to the
+            exact original hardcoded markup below -- unchanged, byte-for-byte. */}
+        {isEmpty && space?.homepage_sections?.length ? (
+          <div className="flex flex-col items-center justify-start min-h-full px-6 pt-10 sm:pt-12 pb-32 select-none text-center">
+            <SectionRenderer
+              sections={space?.homepage_sections ?? []}
+              theme={t}
+              space={space}
+              suggestions={suggestions}
+              onSend={send}
+              overrides={space?.section_overrides}
+              keyBenefits={space?.key_benefits}
+              capabilities={space?.capabilities}
+              faq={space?.faq}
+              quickTopics={space?.quick_topics}
+              trustBadges={space?.trust_badges}
+              dataBlock={space?.data_block}
+            />
+          </div>
+        ) : isEmpty && (
           <div className="flex flex-col items-center justify-center h-full px-6 pb-32 select-none text-center">
             {/* Hero — brand logo when available, else the gradient mark */}
             <div className="relative mb-6">

@@ -69,6 +69,12 @@ interface AppState {
   activeHomepage: 'homepage1' | 'homepage2' | 'homepage3' | 'homepage4'
   setActiveHomepage: (homepage: 'homepage1' | 'homepage2' | 'homepage3' | 'homepage4') => void
 
+  // Factor 1 (platform-wide, super-admin) master switch for the AI homepage
+  // sections renderengine -- read by ChatbotProfile to decide whether its own
+  // per-bot toggle (Factor 2) is actually usable.
+  homepageSectionsPlatformEnabled: boolean
+  setHomepageSectionsPlatformEnabled: (enabled: boolean) => void
+
   // Dashboard colour theme
   dashboardTheme: 'violet' | 'ocean' | 'sunset' | 'forest'
   setDashboardTheme: (t: 'violet' | 'ocean' | 'sunset' | 'forest') => void
@@ -147,6 +153,9 @@ export const useAppStore = create<AppState>()(
       activeHomepage: 'homepage1',
       setActiveHomepage: (homepage) => set({ activeHomepage: homepage }),
 
+      homepageSectionsPlatformEnabled: false,
+      setHomepageSectionsPlatformEnabled: (enabled) => set({ homepageSectionsPlatformEnabled: enabled }),
+
       dashboardTheme: 'violet',
       setDashboardTheme: (t) => set({ dashboardTheme: t }),
 
@@ -155,7 +164,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: import.meta.env.PROD ? 'support247-store' : 'support247-store-dev',
-      partialize: (s) => ({ isDark: s.isDark, fontSize: s.fontSize, sidebarCollapsed: s.sidebarCollapsed, apiKey: s.apiKey, clientId: s.clientId, token: s.token, spaceId: s.spaceId, spaceSlug: s.spaceSlug, spaceName: s.spaceName, onboardingComplete: s.onboardingComplete, activeHomepage: s.activeHomepage, dashboardTheme: s.dashboardTheme, currentChatbotId: s.currentChatbotId }),
+      partialize: (s) => ({ isDark: s.isDark, fontSize: s.fontSize, sidebarCollapsed: s.sidebarCollapsed, apiKey: s.apiKey, clientId: s.clientId, token: s.token, spaceId: s.spaceId, spaceSlug: s.spaceSlug, spaceName: s.spaceName, onboardingComplete: s.onboardingComplete, activeHomepage: s.activeHomepage, homepageSectionsPlatformEnabled: s.homepageSectionsPlatformEnabled, dashboardTheme: s.dashboardTheme, currentChatbotId: s.currentChatbotId }),
     }
   )
 )

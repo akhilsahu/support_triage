@@ -53,6 +53,10 @@ class ChatbotUpdate(BaseModel):
     active: Optional[bool] = None
     human_transfer_enabled: Optional[bool] = None
     human_transfer_message: Optional[str] = None
+    homepage_sections_enabled: Optional[bool] = None
+    homepage_sections_override: Optional[str] = None
+    quick_topics: Optional[str] = None
+    trust_badges: Optional[str] = None
 
 
 class ChatbotOut(BaseModel):
@@ -67,6 +71,10 @@ class ChatbotOut(BaseModel):
     show_logo: bool
     is_default: bool
     active: bool
+    homepage_sections_enabled: bool = False
+    homepage_sections_override: Optional[str] = None
+    quick_topics: Optional[str] = None
+    trust_badges: Optional[str] = None
     created_at: Optional[str]
 
 
@@ -222,6 +230,26 @@ async def update_chatbot(
         chatbot.human_transfer_enabled = req.human_transfer_enabled
     if req.human_transfer_message is not None:
         chatbot.human_transfer_message = req.human_transfer_message
+    if req.homepage_sections_enabled is not None:
+        chatbot.homepage_sections_enabled = req.homepage_sections_enabled
+    if req.homepage_sections_override is not None:
+        from app.renderengine.homepage_sections import validate_override_payload
+        try:
+            chatbot.homepage_sections_override = validate_override_payload(req.homepage_sections_override)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+    if req.quick_topics is not None:
+        from app.renderengine.quick_topics import validate_quick_topics_payload
+        try:
+            chatbot.quick_topics = validate_quick_topics_payload(req.quick_topics)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+    if req.trust_badges is not None:
+        from app.renderengine.trust_badges import validate_trust_badges_payload
+        try:
+            chatbot.trust_badges = validate_trust_badges_payload(req.trust_badges)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
     await db.commit()
     await db.refresh(chatbot)

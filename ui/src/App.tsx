@@ -52,7 +52,7 @@ function LegacyChatRedirect() {
 }
 
 export default function App() {
-  const { isDark, fontSize, setBackendStatus, setActiveHomepage } = useAppStore()
+  const { isDark, fontSize, setBackendStatus, setActiveHomepage, setHomepageSectionsPlatformEnabled } = useAppStore()
 
   // Fetch active homepage on mount
   useEffect(() => {
@@ -62,9 +62,10 @@ export default function App() {
         if (d.active_homepage) {
           setActiveHomepage(d.active_homepage)
         }
+        setHomepageSectionsPlatformEnabled(!!d.homepage_sections_platform_enabled)
       })
       .catch(() => {})
-  }, [setActiveHomepage])
+  }, [setActiveHomepage, setHomepageSectionsPlatformEnabled])
 
   // Restore dark mode class on mount
   useEffect(() => {

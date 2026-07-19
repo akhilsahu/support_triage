@@ -238,21 +238,66 @@ function ChatbotLimitsControl({ adminKey }: { adminKey: string }) {
   )
 }
 
-function SpaceRow({ space, adminKey, onRefresh, onViewChunks }: {
+// Master control (Factor 1): platform-wide switch for the AI homepage-sections
+// renderengine. Individual spaces can still turn their own bot's toggle
+// (Factor 2, in ChatbotProfile) on or off, but it only takes effect when this
+// is also on -- same pattern as BuiltinAgentCatalog.platform_enabled.
+function HomepageSectionsPlatformControl({ adminKey }: { adminKey: string }) {
+  const [enabled, setEnabled] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    api(adminKey).get('/homepage-sections')
+      .then((d: any) => setEnabled(!!d.homepage_sections_platform_enabled))
+      .catch(() => {})
+  }, [adminKey])
+
+  const toggle = async () => {
+    setLoading(true)
+    try {
+      const d = await api(adminKey).patch('/homepage-sections', { homepage_sections_platform_enabled: !enabled })
+      setEnabled(!!d.homepage_sections_platform_enabled)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <p className="text-sm font-semibold text-gray-900 dark:text-white">AI homepage sections — platform switch</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+          Master switch for the AI-composed pre-chat welcome screen. Spaces can enable it per chatbot in
+          Chatbot Profile, but it stays inactive for everyone until this is on.
+        </p>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className={`text-xs font-medium ${enabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
+          {enabled ? 'Enabled platform-wide' : 'Disabled platform-wide'}
+        </span>
+        <button
+          onClick={toggle}
+          disabled={loading}
+          className={`text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-50 ${
+            enabled
+              ? 'text-red-500 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20'
+              : 'text-emerald-600 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+          }`}
+        >
+          {loading ? '…' : enabled ? 'Disable' : 'Enable'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function SpaceRow({ space, adminKey, onRefresh, onViewChunks, onConfigNav }: {
   space: Space, adminKey: string, onRefresh: () => void,
   onViewChunks: (clientId: string, docId: string, docName: string) => void
+  onConfigNav: (space: Space) => void
 }) {
-  const [expanded, setExpanded] = useState(false)
-  const [detail, setDetail] = useState<{ agents: Agent[], skills: any[], kb_docs: KbDoc[] } | null>(null)
   const [toggling, setToggling] = useState(false)
   const [limitInput, setLimitInput] = useState(space.max_chatbots == null ? '' : String(space.max_chatbots))
-
-  const loadDetail = async () => {
-    if (detail) { setExpanded(e => !e); return }
-    const data = await api(adminKey).get(`/orgs/${space.id}`)
-    setDetail({ agents: data.agents, skills: data.skills, kb_docs: data.kb_docs || [] })
-    setExpanded(true)
-  }
 
   const toggleActive = async () => {
     setToggling(true)
@@ -321,85 +366,15 @@ function SpaceRow({ space, adminKey, onRefresh, onViewChunks }: {
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
             <button
-              onClick={toggleActive}
-              disabled={toggling}
-              title={space.active ? 'Deactivate' : 'Activate'}
-              className={`p-1.5 rounded-lg transition-colors ${space.active ? 'hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-500'}`}
-            >
-              {space.active ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
-            </button>
-            <button
-              onClick={loadDetail}
+              onClick={() => onConfigNav(space)}
               className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-indigo-500 transition-colors"
-              title="Expand"
+              title="Settings"
             >
-              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              <Layers className="w-4 h-4" />
             </button>
           </div>
         </td>
       </tr>
-
-      {expanded && detail && (
-        <tr className="bg-indigo-50/50 dark:bg-indigo-900/10">
-          <td colSpan={8} className="px-6 py-4">
-            <div className="grid grid-cols-3 gap-6">
-              <div>
-                <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Agents ({detail.agents.length})</p>
-                <div className="space-y-1.5">
-                  {detail.agents.map(a => (
-                    <div key={a.id} className="flex items-center gap-2 text-xs">
-                      <span>{a.icon}</span>
-                      <span className="text-gray-700 dark:text-gray-300 font-medium">{a.name}</span>
-                      <span className="text-gray-400">·</span>
-                      <span className="text-gray-500">{a.agent_type}</span>
-                      {a.active
-                        ? <Badge color="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">on</Badge>
-                        : <Badge color="bg-gray-100 dark:bg-gray-700 text-gray-500">off</Badge>}
-                      {a.rag_enabled && <Badge color="bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400">RAG</Badge>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Prompt Skills ({detail.skills.length})</p>
-                <div className="space-y-1.5">
-                  {detail.skills.length === 0 && <p className="text-xs text-gray-400">No skills configured.</p>}
-                  {detail.skills.map(s => (
-                    <div key={s.id} className="flex items-center gap-2 text-xs">
-                      <span className="text-gray-700 dark:text-gray-300 font-medium">{s.name}</span>
-                      <Badge color="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400">{s.skill_type}</Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Knowledge Docs ({detail.kb_docs.length})</p>
-                <div className="space-y-2">
-                  {detail.kb_docs.length === 0 && <p className="text-xs text-gray-400">No documents uploaded.</p>}
-                  {detail.kb_docs.map(d => (
-                    <div key={d.doc_id} className="text-xs">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-medium text-gray-700 dark:text-gray-300">{d.doc_name || d.filename}</span>
-                        <Badge color="bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400">{d.doc_type}</Badge>
-                        <button
-                          onClick={() => onViewChunks(space.slug, d.doc_id, d.doc_name || d.filename)}
-                          className="flex items-center gap-0.5 text-indigo-500 hover:text-indigo-700 hover:underline"
-                        >
-                          <Eye className="w-3 h-3" /> View chunks
-                        </button>
-                      </div>
-                      <p className="text-gray-400 mt-0.5">
-                        {d.kb_name && <span className="mr-2">KB: {d.kb_name}</span>}
-                        {d.uploaded_at && <span>{new Date(d.uploaded_at).toLocaleDateString()}</span>}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </td>
-        </tr>
-      )}
     </>
   )
 }
@@ -561,6 +536,170 @@ const ALL_NAV_LABELS: Record<string, string> = {
 }
 const ALL_NAV_IDS = Object.keys(ALL_NAV_LABELS)
 
+function SpaceSettingsModal({ spaceId, spaceName, spaceSlug, adminKey, systemNav, onViewChunks, onClose }: {
+  spaceId: string; spaceName: string; spaceSlug: string; adminKey: string; systemNav: Record<string, boolean>;
+  onViewChunks: (clientId: string, docId: string, docName: string) => void;
+  onClose: () => void
+}) {
+  const [spaceNavs, setSpaceNavs] = useState<string[] | null>(null)
+  const [detail, setDetail] = useState<{ agents: Agent[], skills: any[], kb_docs: KbDoc[] } | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([
+      api(adminKey).get(`/spaces/${spaceId}/nav`),
+      api(adminKey).get(`/orgs/${spaceId}`)
+    ]).then(([navData, orgData]) => {
+      setSpaceNavs(navData.enabled_nav_items)
+      setDetail({ agents: orgData.agents, skills: orgData.skills, kb_docs: orgData.kb_docs || [] })
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [adminKey, spaceId])
+
+  const toggleSpaceItem = async (id: string) => {
+    const current = spaceNavs ?? ALL_NAV_IDS
+    const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id]
+    setSpaceNavs(next)
+    await fetch(`${API}/spaces/${spaceId}/nav`, {
+      method: 'PATCH',
+      headers: { 'X-Super-Admin-Key': adminKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled_nav_items: next }),
+    })
+  }
+
+  const resetSpaceNav = async () => {
+    setSpaceNavs(null)
+    await fetch(`${API}/spaces/${spaceId}/nav`, {
+      method: 'PATCH',
+      headers: { 'X-Super-Admin-Key': adminKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled_nav_items: null }),
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-4xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Space Settings — {spaceName}</h3>
+            <p className="text-sm text-gray-500 mt-0.5">@{spaceSlug}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-6 py-6">
+          {loading || !detail ? (
+            <div className="flex items-center justify-center py-10 text-gray-400">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…
+            </div>
+          ) : (
+            <div className="space-y-10">
+              
+              {/* DETAILS SECTION */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 border-b border-gray-100 dark:border-gray-800 pb-2">Space Details</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Agents ({detail.agents.length})</p>
+                    <div className="space-y-2">
+                      {detail.agents.map(a => (
+                        <div key={a.id} className="flex items-center gap-2 text-sm">
+                          <span>{a.icon}</span>
+                          <span className="text-gray-900 dark:text-gray-100 font-medium">{a.name}</span>
+                          <span className="text-gray-400">·</span>
+                          <span className="text-gray-500">{a.agent_type}</span>
+                          {a.active
+                            ? <Badge color="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">on</Badge>
+                            : <Badge color="bg-gray-100 dark:bg-gray-700 text-gray-500">off</Badge>}
+                          {a.rag_enabled && <Badge color="bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400">RAG</Badge>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Prompt Skills ({detail.skills.length})</p>
+                    <div className="space-y-2">
+                      {detail.skills.length === 0 && <p className="text-sm text-gray-400">No skills configured.</p>}
+                      {detail.skills.map(s => (
+                        <div key={s.id} className="flex items-center gap-2 text-sm">
+                          <span className="text-gray-900 dark:text-gray-100 font-medium">{s.name}</span>
+                          <Badge color="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400">{s.skill_type}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Knowledge Docs ({detail.kb_docs.length})</p>
+                    <div className="space-y-3">
+                      {detail.kb_docs.length === 0 && <p className="text-sm text-gray-400">No documents uploaded.</p>}
+                      {detail.kb_docs.map(d => (
+                        <div key={d.doc_id} className="text-sm bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                          <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                            <span className="font-medium text-gray-900 dark:text-white">{d.doc_name || d.filename}</span>
+                            <Badge color="bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400">{d.doc_type}</Badge>
+                            <button
+                              onClick={() => {
+                                onViewChunks(spaceSlug, d.doc_id, d.doc_name || d.filename);
+                                onClose();
+                              }}
+                              className="flex items-center gap-1 text-indigo-500 hover:text-indigo-700 hover:underline text-xs ml-auto"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> View chunks
+                            </button>
+                          </div>
+                          <p className="text-gray-500 text-xs flex gap-3">
+                            {d.kb_name && <span>KB: {d.kb_name}</span>}
+                            {d.uploaded_at && <span>{new Date(d.uploaded_at).toLocaleDateString()}</span>}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* NAV CONFIG SECTION */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 border-b border-gray-100 dark:border-gray-800 pb-2">Navigation Overrides</h4>
+                <p className="text-xs text-gray-500 mb-3">Override which navigation items are visible for this space.</p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {ALL_NAV_IDS.map(id => {
+                    const spaceItems = spaceNavs ?? ALL_NAV_IDS
+                    const on = spaceItems.includes(id) && systemNav[id] !== false
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => toggleSpaceItem(id)}
+                        disabled={systemNav[id] === false}
+                        className={`text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                          on
+                            ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-700'
+                            : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-600'
+                        }`}
+                      >
+                        {ALL_NAV_LABELS[id]}
+                      </button>
+                    )
+                  })}
+                </div>
+                <button
+                  onClick={resetSpaceNav}
+                  className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 underline"
+                >
+                  Reset to system defaults
+                </button>
+              </div>
+
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function NavToggle({ label, enabled, locked, onChange }: {
   label: string; enabled: boolean; locked?: boolean; onChange: (v: boolean) => void
 }) {
@@ -585,15 +724,8 @@ function NavToggle({ label, enabled, locked, onChange }: {
   )
 }
 
-function NavConfigTab({ adminKey, spaces }: { adminKey: string; spaces: Space[] }) {
-  const [systemNav, setSystemNav] = useState<Record<string, boolean>>({})
-  const [spaceNavs, setSpaceNavs] = useState<Record<string, string[] | null>>({})
-  const [expandedSpace, setExpandedSpace] = useState<string | null>(null)
+function NavConfigTab({ adminKey, systemNav, setSystemNav }: { adminKey: string; systemNav: Record<string, boolean>; setSystemNav: React.Dispatch<React.SetStateAction<Record<string, boolean>>> }) {
   const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    api(adminKey).get('/nav').then(d => setSystemNav(d.nav_config || {})).catch(() => {})
-  }, [adminKey])
 
   const toggleSystem = async (id: string, val: boolean) => {
     const next = { ...systemNav, [id]: val }
@@ -606,33 +738,6 @@ function NavConfigTab({ adminKey, spaces }: { adminKey: string; spaces: Space[] 
         body: JSON.stringify({ nav_config: { [id]: val } }),
       })
     } finally { setSaving(false) }
-  }
-
-  const loadSpaceNav = async (spaceId: string) => {
-    if (expandedSpace === spaceId) { setExpandedSpace(null); return }
-    const d = await api(adminKey).get(`/spaces/${spaceId}/nav`)
-    setSpaceNavs(prev => ({ ...prev, [spaceId]: d.enabled_nav_items }))
-    setExpandedSpace(spaceId)
-  }
-
-  const toggleSpaceItem = async (spaceId: string, id: string) => {
-    const current = spaceNavs[spaceId] ?? ALL_NAV_IDS
-    const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id]
-    setSpaceNavs(prev => ({ ...prev, [spaceId]: next }))
-    await fetch(`${API}/spaces/${spaceId}/nav`, {
-      method: 'PATCH',
-      headers: { 'X-Super-Admin-Key': adminKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled_nav_items: next }),
-    })
-  }
-
-  const resetSpaceNav = async (spaceId: string) => {
-    setSpaceNavs(prev => ({ ...prev, [spaceId]: null }))
-    await fetch(`${API}/spaces/${spaceId}/nav`, {
-      method: 'PATCH',
-      headers: { 'X-Super-Admin-Key': adminKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled_nav_items: null }),
-    })
   }
 
   return (
@@ -654,65 +759,6 @@ function NavConfigTab({ adminKey, spaces }: { adminKey: string; spaces: Space[] 
             onChange={val => toggleSystem(id, val)}
           />
         ))}
-      </div>
-
-      {/* Per-space overrides */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
-          <p className="text-sm font-semibold text-gray-900 dark:text-white">Per-Space Nav Overrides</p>
-          <p className="text-xs text-gray-500 mt-0.5">Restrict specific spaces to fewer nav items.</p>
-        </div>
-        {spaces.map(space => (
-          <div key={space.id}>
-            <div
-              className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60"
-              onClick={() => loadSpaceNav(space.id)}
-            >
-              <div>
-                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{space.display_name}</p>
-                <p className="text-xs text-gray-400">@{space.slug}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {spaceNavs[space.id] === null && <span className="text-xs text-gray-400">using system defaults</span>}
-                {spaceNavs[space.id] !== undefined && spaceNavs[space.id] !== null && (
-                  <span className="text-xs text-indigo-500">{spaceNavs[space.id]!.length} items</span>
-                )}
-                {expandedSpace === space.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-              </div>
-            </div>
-            {expandedSpace === space.id && (
-              <div className="px-4 py-3 bg-indigo-50/40 dark:bg-indigo-900/10 border-b border-gray-100 dark:border-gray-700">
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {ALL_NAV_IDS.map(id => {
-                    const spaceItems = spaceNavs[space.id] ?? ALL_NAV_IDS
-                    const on = spaceItems.includes(id) && systemNav[id] !== false
-                    return (
-                      <button
-                        key={id}
-                        onClick={() => toggleSpaceItem(space.id, id)}
-                        disabled={systemNav[id] === false}
-                        className={`text-xs px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                          on
-                            ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-700'
-                            : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-600'
-                        }`}
-                      >
-                        {ALL_NAV_LABELS[id]}
-                      </button>
-                    )
-                  })}
-                </div>
-                <button
-                  onClick={() => resetSpaceNav(space.id)}
-                  className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline"
-                >
-                  Reset to system defaults
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
-        {spaces.length === 0 && <p className="px-4 py-6 text-center text-sm text-gray-400">No spaces yet.</p>}
       </div>
     </div>
   )
@@ -946,20 +992,59 @@ export function SuperAdmin() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const SPACES_LIMIT = 15
+  const ACTIVITY_LIMIT = 15
+  const [spacesPage, setSpacesPage] = useState(0)
+  const [spacesTotal, setSpacesTotal] = useState(0)
+  const [activityPage, setActivityPage] = useState(0)
+  const [activityTotal, setActivityTotal] = useState(0)
+  const [navModalSpace, setNavModalSpace] = useState<Space | null>(null)
+  const [systemNav, setSystemNav] = useState<Record<string, boolean>>({})
+
+  const fetchSpaces = useCallback(async (k: string, page: number) => {
+    setLoading(true)
+    try {
+      const o = await api(k).get(`/orgs?limit=${SPACES_LIMIT}&offset=${page * SPACES_LIMIT}`)
+      setSpaces(o.orgs)
+      setSpacesTotal(o.total)
+      setSpacesPage(page)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const fetchActivity = useCallback(async (k: string, page: number) => {
+    setLoading(true)
+    try {
+      const l = await api(k).get(`/activity?limit=${ACTIVITY_LIMIT}&offset=${page * ACTIVITY_LIMIT}`)
+      setLogs(l.logs)
+      setActivityTotal(l.total)
+      setActivityPage(page)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   const fetchAll = useCallback(async (k: string) => {
     setLoading(true)
     setError('')
     try {
-      const [s, o, a, l] = await Promise.all([
+      const [s, o, a, l, navData] = await Promise.all([
         api(k).get('/stats'),
-        api(k).get('/orgs?limit=100'),
+        api(k).get(`/orgs?limit=${SPACES_LIMIT}&offset=0`),
         api(k).get('/agents'),
-        api(k).get('/activity?limit=100'),
+        api(k).get(`/activity?limit=${ACTIVITY_LIMIT}&offset=0`),
+        api(k).get('/nav').catch(() => ({ nav_config: {} })),
       ])
       setStats(s)
       setSpaces(o.orgs)
+      setSpacesTotal(o.total)
+      setSpacesPage(0)
       setAgents(a.agents)
       setLogs(l.logs)
+      setActivityTotal(l.total)
+      setActivityPage(0)
+      setSystemNav(navData.nav_config || {})
       // Non-fatal — /vectordb can 500 on a ChromaDB embedding-function conflict;
       // a broken VectorDB panel shouldn't blank the whole dashboard.
       api(k).get('/vectordb').then(setVectorDB).catch(() => {})
@@ -1182,6 +1267,7 @@ export function SuperAdmin() {
       {tab === 'spaces' && (
         <div>
           <ChatbotLimitsControl adminKey={key} />
+          <HomepageSectionsPlatformControl adminKey={key} />
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             <table className="w-full text-left">
               <thead>
@@ -1194,13 +1280,35 @@ export function SuperAdmin() {
               <tbody>
                 {filteredSpaces.map(space => (
                   <SpaceRow key={space.id} space={space} adminKey={key} onRefresh={() => fetchAll(key)}
-                    onViewChunks={(cid, did, name) => setViewingChunks({ clientId: cid, docId: did, docName: name })} />
+                    onViewChunks={(cid, did, name) => setViewingChunks({ clientId: cid, docId: did, docName: name })}
+                    onConfigNav={(s) => setNavModalSpace(s)} />
                 ))}
                 {filteredSpaces.length === 0 && (
                   <tr><td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-400">No spaces found.</td></tr>
                 )}
               </tbody>
             </table>
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
+              <span className="text-xs text-gray-500">
+                Showing {spacesTotal === 0 ? 0 : spacesPage * SPACES_LIMIT + 1} to {Math.min((spacesPage + 1) * SPACES_LIMIT, spacesTotal)} of {spacesTotal}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={spacesPage === 0}
+                  onClick={() => fetchSpaces(key, spacesPage - 1)}
+                  className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  disabled={(spacesPage + 1) * SPACES_LIMIT >= spacesTotal}
+                  onClick={() => fetchSpaces(key, spacesPage + 1)}
+                  className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1265,7 +1373,7 @@ export function SuperAdmin() {
       )}
 
       {/* ── Nav Config ── */}
-      {tab === 'nav' && <NavConfigTab adminKey={key} spaces={spaces} />}
+      {tab === 'nav' && <NavConfigTab adminKey={key} systemNav={systemNav} setSystemNav={setSystemNav} />}
 
       {/* ── Homepage Config ── */}
       {tab === 'homepage' && <HomepageConfigTab adminKey={key} />}
@@ -1441,6 +1549,27 @@ export function SuperAdmin() {
               )}
             </tbody>
           </table>
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
+              <span className="text-xs text-gray-500">
+                Showing {activityTotal === 0 ? 0 : activityPage * ACTIVITY_LIMIT + 1} to {Math.min((activityPage + 1) * ACTIVITY_LIMIT, activityTotal)} of {activityTotal}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={activityPage === 0}
+                  onClick={() => fetchActivity(key, activityPage - 1)}
+                  className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  disabled={(activityPage + 1) * ACTIVITY_LIMIT >= activityTotal}
+                  onClick={() => fetchActivity(key, activityPage + 1)}
+                  className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
         </div>
       )}
 
@@ -1452,6 +1581,19 @@ export function SuperAdmin() {
           docName={viewingChunks.docName}
           adminKey={key}
           onClose={() => setViewingChunks(null)}
+        />
+      )}
+
+      {/* Space Settings Modal */}
+      {navModalSpace && (
+        <SpaceSettingsModal
+          spaceId={navModalSpace.id}
+          spaceName={navModalSpace.display_name}
+          spaceSlug={navModalSpace.slug}
+          adminKey={key}
+          systemNav={systemNav}
+          onViewChunks={(cid, did, name) => setViewingChunks({ clientId: cid, docId: did, docName: name })}
+          onClose={() => setNavModalSpace(null)}
         />
       )}
     </div>

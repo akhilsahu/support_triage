@@ -452,7 +452,42 @@ async def patch_space_nav(
 async def get_public_settings(db: AsyncSession = Depends(get_db)):
     """Publicly accessible platform settings (e.g. active homepage)."""
     ps = await _get_or_create_platform_settings(db)
-    return {"active_homepage": ps.active_homepage or "homepage1"}
+    return {
+        "active_homepage": ps.active_homepage or "homepage1",
+        # Read by ChatbotProfile (space-owner, not super-admin auth) to decide
+        # whether its own per-bot toggle should be enabled -- Factor 1 of the
+        # two-factor gate, see PlatformSettings.homepage_sections_platform_enabled.
+        "homepage_sections_platform_enabled": ps.homepage_sections_platform_enabled,
+    }
+
+
+class HomepageSectionsPlatformRequest(BaseModel):
+    homepage_sections_platform_enabled: bool
+
+
+@router.get("/homepage-sections", dependencies=[Depends(require_super_admin)])
+async def get_homepage_sections_platform_setting(db: AsyncSession = Depends(get_db)):
+    """Factor 1 (platform-level) master switch for the AI homepage-sections renderengine."""
+    ps = await _get_or_create_platform_settings(db)
+    return {"homepage_sections_platform_enabled": ps.homepage_sections_platform_enabled}
+
+
+@router.patch("/homepage-sections", dependencies=[Depends(require_super_admin)])
+async def patch_homepage_sections_platform_setting(
+    req: HomepageSectionsPlatformRequest, db: AsyncSession = Depends(get_db)
+):
+    """
+    Enable/disable the AI homepage-sections feature platform-wide.
+
+    This does not touch any individual chatbot's own homepage_sections_enabled
+    (Factor 2) -- spaces can still save their own preference regardless, it
+    just has no effect until this is also True. Mirrors the existing
+    BuiltinAgentCatalog.platform_enabled + SpaceBuiltinAgentConfig.enabled pattern.
+    """
+    ps = await _get_or_create_platform_settings(db)
+    ps.homepage_sections_platform_enabled = req.homepage_sections_platform_enabled
+    await db.commit()
+    return {"homepage_sections_platform_enabled": ps.homepage_sections_platform_enabled}
 
 
 class PlatformSettingsPatchRequest(BaseModel):

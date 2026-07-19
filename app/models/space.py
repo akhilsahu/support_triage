@@ -493,6 +493,14 @@ class PlatformSettings(Base):
     # Global default chatbot cap per space. 1 = single (multi off), N = up to N,
     # -1 = unlimited. Overridden per-space by Space.max_chatbots when non-null.
     default_max_chatbots = Column(Integer, default=1, server_default="1", nullable=False)
+
+    # Factor 1 (platform-level) master switch for the AI homepage-sections
+    # renderengine, same two-factor pattern as BuiltinAgentCatalog.platform_enabled
+    # + SpaceBuiltinAgentConfig.enabled. A chatbot's homepage sections render
+    # only when this is True AND Chatbot.homepage_sections_enabled (Factor 2,
+    # per-bot) is also True. False by default -- off platform-wide until a
+    # super admin turns it on.
+    homepage_sections_platform_enabled = Column(Boolean, default=False, server_default="false", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
