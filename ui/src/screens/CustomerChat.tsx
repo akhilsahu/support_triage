@@ -12,7 +12,7 @@ import { SourceCitation } from '../components/ui/SourceCitation'
 import { NotFound } from './NotFound'
 import type { SourceItem } from '../types'
 import { SectionRenderer } from '../renderengine/homepage'
-import type { DataBlock } from '../renderengine/homepage'
+import type { DataBlock, StatBand, ProcessSteps } from '../renderengine/homepage'
 
 const IS_EMBEDDED = window.self !== window.top
 
@@ -287,6 +287,8 @@ interface SpaceInfo {
   quick_topics?: { label: string; prompt: string }[]
   trust_badges?: string[]
   data_block?: DataBlock
+  stat_band?: StatBand
+  process_steps?: ProcessSteps
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -628,6 +630,8 @@ export function CustomerChat() {
               quickTopics={space?.quick_topics}
               trustBadges={space?.trust_badges}
               dataBlock={space?.data_block}
+              statBand={space?.stat_band}
+              processSteps={space?.process_steps}
             />
           </div>
         ) : isEmpty && (

@@ -189,6 +189,27 @@ async def org_public_info(
                         import structlog
                         structlog.get_logger().warning("org_public_info.trust_badges_failed", slug=slug)
 
+                    # stat_band -- admin's OWN verified metrics take precedence
+                    # over the AI/web generator (accurate, instant, compliance-safe
+                    # for a regulated brand). When set, force-include and skip the
+                    # AI fallback below. Same force-include pattern as trust_badges.
+                    try:
+                        from app.renderengine.stat_band import admin_stat_band
+                        from app.models.chatbot import ChatbotStatMetric
+                        metric_rows = (await db.execute(
+                            select(ChatbotStatMetric)
+                            .where(ChatbotStatMetric.chatbot_id == chatbot.id)
+                            .order_by(ChatbotStatMetric.position)
+                        )).scalars().all()
+                        admin_stats = admin_stat_band(metric_rows)
+                        if admin_stats:
+                            response["stat_band"] = admin_stats
+                            if "stat_band" not in response["homepage_sections"]:
+                                response["homepage_sections"] = response["homepage_sections"] + ["stat_band"]
+                    except Exception:
+                        import structlog
+                        structlog.get_logger().warning("org_public_info.stat_band_admin_failed", slug=slug)
+
                     # promo -- admin-authored banner via homepage_sections_override's
                     # "overrides" sub-object (optional; None when never configured).
                     # Same force-include treatment as quick_topics/trust_badges above,
@@ -281,6 +302,9 @@ async def org_public_info(
                             other_sections=[s for s in section_ids if s != "faq"],
                         )))
 
+                    # data_block + stat_band are web-grounded and slow -- run them
+                    # non-blocking (blocking=False): serve cached, else warm in the
+                    # background and populate next load, so the welcome stays fast.
                     if "data_block" in section_ids:
                         from app.renderengine.data_block import get_data_block
                         gen_specs.append(("data_block", get_data_block(
@@ -290,6 +314,31 @@ async def org_public_info(
                             description=response["description"],
                             active_agents=active_agents,
                             other_sections=[s for s in section_ids if s != "data_block"],
+                            blocking=False,
+                        )))
+
+                    # AI/web stat_band only when the admin hasn't supplied verified
+                    # figures above (response already has "stat_band" in that case).
+                    if "stat_band" in section_ids and "stat_band" not in response:
+                        from app.renderengine.stat_band import get_stat_band
+                        gen_specs.append(("stat_band", get_stat_band(
+                            chatbot_id=chatbot.id,
+                            space_id=org.id,
+                            space_name=name,
+                            description=response["description"],
+                            active_agents=active_agents,
+                            other_sections=[s for s in section_ids if s != "stat_band"],
+                            blocking=False,
+                        )))
+
+                    if "process_steps" in section_ids:
+                        from app.renderengine.process_steps import get_process_steps
+                        gen_specs.append(("process_steps", get_process_steps(
+                            chatbot_id=chatbot.id,
+                            space_id=org.id,
+                            space_name=name,
+                            active_agents=active_agents,
+                            other_sections=[s for s in section_ids if s != "process_steps"],
                         )))
 
                     if gen_specs:
@@ -297,25 +346,27 @@ async def org_public_info(
                         results = await asyncio.gather(
                             *(coro for _, coro in gen_specs), return_exceptions=True
                         )
+                        # Sections whose generator returns a dict-or-None: an
+                        # empty/failed result must drop the section id so the
+                        # frontend never gets a dead id to guard against.
+                        _droppable = {"data_block", "stat_band", "process_steps"}
                         for (section_id, _), result in zip(gen_specs, results):
                             if isinstance(result, Exception):
                                 import structlog
                                 structlog.get_logger().warning(
                                     f"org_public_info.{section_id}_failed", slug=slug, error=str(result)
                                 )
-                                if section_id == "data_block":
+                                if section_id in _droppable:
                                     response["homepage_sections"] = [
-                                        s for s in response["homepage_sections"] if s != "data_block"
+                                        s for s in response["homepage_sections"] if s != section_id
                                     ]
                                 continue
-                            if section_id == "data_block":
+                            if section_id in _droppable:
                                 if result:
-                                    response["data_block"] = result
+                                    response[section_id] = result
                                 else:
-                                    # No validated block produced -- don't leave a
-                                    # dead section id in the list the frontend has to guard against.
                                     response["homepage_sections"] = [
-                                        s for s in response["homepage_sections"] if s != "data_block"
+                                        s for s in response["homepage_sections"] if s != section_id
                                     ]
                             else:
                                 response[section_id] = result

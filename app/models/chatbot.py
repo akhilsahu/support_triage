@@ -12,7 +12,7 @@ Future:      domain/<org_slug>/<chatbot_slug> → specific chatbot
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, String, Text, ForeignKey, Index
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -74,6 +74,11 @@ class Chatbot(Base):
     # as quick_topics/promo. See app/renderengine/trust_badges.py.
     trust_badges = Column(Text, nullable=True)
 
+    # Admin-authored trust metrics for the homepage 'stat_band' section live in
+    # their own table (chatbot_stat_metrics) -- one row per {value,label}. No
+    # rows = the section falls back to the AI/web generator. See stat_metrics
+    # relationship below and app/renderengine/stat_band.py.
+
     created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -85,6 +90,9 @@ class Chatbot(Base):
                                         cascade="all, delete-orphan")
     chat_sessions        = relationship("ChatSession", back_populates="chatbot",
                                         cascade="all, delete-orphan")
+    stat_metrics         = relationship("ChatbotStatMetric", back_populates="chatbot",
+                                        cascade="all, delete-orphan",
+                                        order_by="ChatbotStatMetric.position")
 
     __table_args__ = (
         # slug unique within an org
@@ -112,3 +120,26 @@ class Chatbot(Base):
             "trust_badges":               self.trust_badges,
             "created_at":              self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class ChatbotStatMetric(Base):
+    """
+    One admin-authored trust metric for a chatbot's homepage 'stat_band'
+    section (e.g. value="99.5%", label="Claims settled"). Optional: a chatbot
+    with no rows falls back to the AI/web-generated stat band.
+    """
+
+    __tablename__ = "chatbot_stat_metrics"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    chatbot_id = Column(UUID(as_uuid=True), ForeignKey("chatbots.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    value      = Column(String(20), nullable=False)
+    label      = Column(String(40), nullable=False)
+    position   = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    chatbot = relationship("Chatbot", back_populates="stat_metrics")
+
+    def to_dict(self) -> dict:
+        return {"id": str(self.id), "value": self.value, "label": self.label, "position": self.position}

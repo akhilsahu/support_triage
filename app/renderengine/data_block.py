@@ -33,7 +33,7 @@ from uuid import UUID
 import structlog
 
 from app.renderengine.base import (
-    cached_or_compute, sibling_note, chatbot_doc_types, sample_rag_content,
+    cached_or_compute, cached_or_warm, sibling_note, chatbot_doc_types, sample_rag_content,
 )
 
 logger = structlog.get_logger()
@@ -176,9 +176,14 @@ async def get_data_block(
     description: str,
     active_agents: list,
     other_sections: list[str] | None = None,
+    blocking: bool = True,
 ) -> dict | None:
     """Return a single KB-grounded (+ web-enriched), illustrative data block for
     this chatbot, or None (safe no-op -- DataBlockSection.tsx renders nothing).
+
+    blocking=False (recommended on the customer path): return the cached block
+    immediately, or warm it in the background and return None this request so
+    the welcome screen never waits on the slow web-grounded generation.
 
     other_sections: ids of the other sections also selected for this page --
     included in the cache key so a different page composition doesn't reuse
@@ -190,7 +195,8 @@ async def get_data_block(
     async def _compute() -> str:
         return await _generate(space_id, space_name, description, active_agents, doc_types, other_sections)
 
-    return await cached_or_compute(
+    runner = cached_or_compute if blocking else cached_or_warm
+    return await runner(
         cache_key,
         _CACHE_TTL_SECONDS,
         _compute,

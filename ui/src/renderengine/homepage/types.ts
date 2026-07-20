@@ -65,6 +65,28 @@ export interface DataBlock {
   content: DataBlockTable | DataBlockChart | DataBlockCard | DataBlockTabs
 }
 
+// Trust-metrics band (see app/renderengine/stat_band.py). Illustrative --
+// representative figures for display, always with a disclaimer.
+export interface StatBandItem {
+  value: string
+  label: string
+}
+export interface StatBand {
+  stats: StatBandItem[]
+  illustrative: true
+  disclaimer: string
+}
+
+// "How it works" numbered journey (see app/renderengine/process_steps.py).
+export interface ProcessStep {
+  label: string
+  body?: string
+}
+export interface ProcessSteps {
+  title: string
+  steps: ProcessStep[]
+}
+
 export interface SectionProps {
   theme: SectionTheme
   space: SectionSpace | null
@@ -77,4 +99,6 @@ export interface SectionProps {
   quickTopics?: QuickTopic[]
   trustBadges?: string[]
   dataBlock?: DataBlock
+  statBand?: StatBand
+  processSteps?: ProcessSteps
 }

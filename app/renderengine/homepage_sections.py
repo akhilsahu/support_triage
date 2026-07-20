@@ -28,7 +28,7 @@ logger = structlog.get_logger()
 # to extend this list AND add a matching component to the frontend registry
 # at ui/src/renderengine/homepage/registry.ts — the LLM never generates a
 # section it isn't told about here.
-ALLOWED_SECTIONS = ["hero", "key_benefits", "capabilities", "suggested_questions", "faq", "quick_topics", "trust_badges", "promo", "data_block"]
+ALLOWED_SECTIONS = ["hero", "key_benefits", "capabilities", "suggested_questions", "faq", "quick_topics", "trust_badges", "promo", "data_block", "stat_band", "process_steps"]
 
 # "promo", "quick_topics", and "trust_badges" are admin-authored only -- the
 # AI is never allowed to select them, even though they're valid rendered
@@ -252,7 +252,15 @@ async def _generate(space_name: str, description: str, active_agents: list) -> s
         "- Only include 'faq' if the company/agents suggest there's clear FAQ-style content.\n"
         "- Only include 'data_block' when the product has genuinely comparable/numeric content worth "
         "a table, chart, card, or tabs (e.g. pricing tiers, reward rates, coverage amounts, plan comparisons) "
-        "-- its actual content is researched and designed separately, you're only deciding whether it's worth trying.\n"
+        "-- its actual content is researched and designed separately, you're only deciding whether it's worth trying. "
+        "A side-by-side COMPARISON table fits comparison-shopped genres (insurance policies/plans, credit card "
+        "reward tiers, subscription plans) but NOT one-off products/services with nothing to compare -- only "
+        "pick data_block when there is genuinely something comparable or numeric.\n"
+        "- Include 'stat_band' for trust/credibility-driven genres (insurance, finance, healthcare) where headline "
+        "metrics matter to a prospect (claim settlement ratio, customers served, rating) -- skip it when the "
+        "business has no such standout numbers.\n"
+        "- Include 'process_steps' when there's a clear multi-step customer journey worth showing (e.g. how to "
+        "file a claim, how to apply/onboard) -- skip it for bots with no such process.\n"
         'Output format: ["hero", "key_benefits", "suggested_questions"]'
     )
     user = (

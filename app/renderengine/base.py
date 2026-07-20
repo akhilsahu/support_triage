@@ -161,3 +161,43 @@ async def cached_or_compute(
         logger.warning("renderengine.cache_write_failed", cache_key=cache_key, error=str(e))
 
     return result
+
+
+async def cached_or_warm(
+    cache_key: str,
+    ttl_seconds: int,
+    compute: Callable[[], Awaitable[Any]],
+    *,
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+    validate: Optional[Callable[[Any], Optional[Any]]] = None,
+) -> Optional[Any]:
+    """
+    Non-blocking variant of cached_or_compute for slow (web-grounded) sections.
+
+    Returns the cached value immediately if present. On a cache MISS it does NOT
+    block the caller on the (slow) compute -- it fires the compute as a detached
+    background task (which caches on success) and returns None right away, so the
+    customer welcome renders fast and the section populates on the next load.
+
+    The background task uses cached_or_compute (never raises), so a failed warm
+    just leaves the cache empty for the next attempt.
+    """
+    try:
+        from app.core.redis import redis_client
+        cached = await redis_client.get(cache_key)
+        if cached is not None:
+            return cached
+    except Exception as e:
+        logger.warning("renderengine.cache_read_failed", cache_key=cache_key, error=str(e))
+
+    async def _warm() -> None:
+        try:
+            await cached_or_compute(
+                cache_key, ttl_seconds, compute,
+                timeout_seconds=timeout_seconds, validate=validate,
+            )
+        except Exception as e:   # cached_or_compute shouldn't raise, but never let a bg task escape
+            logger.warning("renderengine.warm_failed", cache_key=cache_key, error=str(e))
+
+    asyncio.create_task(_warm())
+    return None

@@ -213,6 +213,10 @@ export const apiClient = {
     http.post(`/api/v1/chatbots/${slug}/set-default`).then(r => r.data),
   updateChatbot: (slug: string, payload: { display_name?: string; description?: string; theme_color?: string; active?: boolean; human_transfer_enabled?: boolean; human_transfer_message?: string; show_logo?: boolean; homepage_sections_enabled?: boolean; homepage_sections_override?: string; quick_topics?: string; trust_badges?: string }) =>
     http.patch(`/api/v1/chatbots/${slug}`, payload).then(r => r.data),
+  getStatMetrics: (slug: string): Promise<{ metrics: { id: string; value: string; label: string; position: number }[] }> =>
+    http.get(`/api/v1/chatbots/${slug}/stat-metrics`).then(r => r.data),
+  setStatMetrics: (slug: string, metrics: { value: string; label: string }[]): Promise<{ metrics: { id: string; value: string; label: string; position: number }[] }> =>
+    http.put(`/api/v1/chatbots/${slug}/stat-metrics`, { metrics }).then(r => r.data),
   uploadChatbotLogo: (slug: string, file: File) => {
     const form = new FormData()
     form.append('file', file)

@@ -8,6 +8,8 @@ import { QuickTopicsSection } from './QuickTopicsSection'
 import { TrustBadgesSection } from './TrustBadgesSection'
 import { PromoSection } from './PromoSection'
 import { DataBlockSection } from './DataBlockSection'
+import { StatBandSection } from './StatBandSection'
+import { ProcessStepsSection } from './ProcessStepsSection'
 import type { SectionProps } from './types'
 
 // Mirrors app/renderengine/homepage_sections.py's ALLOWED_SECTIONS -- keep
@@ -24,4 +26,6 @@ export const SECTION_REGISTRY: Record<string, ComponentType<SectionProps>> = {
   trust_badges: TrustBadgesSection,
   promo: PromoSection,
   data_block: DataBlockSection,
+  stat_band: StatBandSection,
+  process_steps: ProcessStepsSection,
 }

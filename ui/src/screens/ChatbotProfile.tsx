@@ -78,6 +78,8 @@ export function ChatbotProfile() {
   const [savingTopics, setSavingTopics] = useState(false)
   const [badgesDraft, setBadgesDraft] = useState<string[]>([])
   const [savingBadges, setSavingBadges] = useState(false)
+  const [statsDraft, setStatsDraft] = useState<{ value: string; label: string }[]>([])
+  const [savingStats, setSavingStats] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Multi-bot UI shows only when the space is allowed more than one chatbot.
@@ -133,6 +135,14 @@ export function ChatbotProfile() {
       setBadgesDraft(selected?.trust_badges ? JSON.parse(selected.trust_badges) : [])
     } catch {
       setBadgesDraft([])
+    }
+    // Stat metrics live in their own table -- fetch them for the selected bot.
+    if (selected?.slug) {
+      apiClient.getStatMetrics(selected.slug)
+        .then(r => setStatsDraft(r.metrics.map((m: { value: string; label: string }) => ({ value: m.value, label: m.label }))))
+        .catch(() => setStatsDraft([]))
+    } else {
+      setStatsDraft([])
     }
     try {
       const raw = selected?.homepage_sections_override
@@ -453,6 +463,28 @@ export function ChatbotProfile() {
       setError('Could not save trust badges (max 6).')
     } finally {
       setSavingBadges(false)
+    }
+  }
+
+  const addStatRow = () => setStatsDraft(prev => [...prev, { value: '', label: '' }])
+  const removeStatRow = (i: number) => setStatsDraft(prev => prev.filter((_, idx) => idx !== i))
+  const updateStatRow = (i: number, field: 'value' | 'label', v: string) =>
+    setStatsDraft(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: v } : s))
+
+  const saveStats = async () => {
+    if (!selected) return
+    const cleaned = statsDraft
+      .map(s => ({ value: s.value.trim(), label: s.label.trim() }))
+      .filter(s => s.value && s.label)
+    setSavingStats(true)
+    try {
+      const r = await apiClient.setStatMetrics(selected.slug, cleaned)
+      setStatsDraft(r.metrics.map(m => ({ value: m.value, label: m.label })))
+      flashSaved()
+    } catch {
+      setError('Could not save trust metrics. Each needs a value and a label (max 4).')
+    } finally {
+      setSavingStats(false)
     }
   }
 
@@ -846,6 +878,50 @@ export function ChatbotProfile() {
                 )}
                 <Button size="sm" disabled={savingBadges} onClick={saveBadges}>
                   {savingBadges ? 'Saving…' : 'Save badges'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {homepageSectionsPlatformEnabled && (
+            <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Trust metrics</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
+                Optional. Your own verified headline numbers for the welcome screen (e.g. "99.5%" / "Claims settled"). Up to 4. Leave empty to let AI generate them.
+              </p>
+              <div className="space-y-2">
+                {statsDraft.map((stat, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      value={stat.value}
+                      onChange={e => updateStatRow(i, 'value', e.target.value)}
+                      placeholder="99.5%"
+                      className="w-24 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                    />
+                    <input
+                      value={stat.label}
+                      onChange={e => updateStatRow(i, 'label', e.target.value)}
+                      placeholder="Claims settled"
+                      className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                    />
+                    <button
+                      onClick={() => removeStatRow(i)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                      title="Remove"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                {statsDraft.length < 4 && (
+                  <Button size="sm" variant="secondary" onClick={addStatRow}>
+                    <Plus className="w-3.5 h-3.5" /> Add metric
+                  </Button>
+                )}
+                <Button size="sm" disabled={savingStats} onClick={saveStats}>
+                  {savingStats ? 'Saving…' : 'Save metrics'}
                 </Button>
               </div>
             </div>

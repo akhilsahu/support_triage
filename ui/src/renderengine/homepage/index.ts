@@ -1,2 +1,2 @@
 export { SectionRenderer } from './SectionRenderer'
-export type { SectionProps, SectionSpace, SectionTheme, SectionOverrides, DataBlock } from './types'
+export type { SectionProps, SectionSpace, SectionTheme, SectionOverrides, DataBlock, StatBand, ProcessSteps } from './types'

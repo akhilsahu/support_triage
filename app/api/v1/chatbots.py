@@ -256,6 +256,64 @@ async def update_chatbot(
     return chatbot.to_dict()
 
 
+class StatMetricIn(BaseModel):
+    value: str
+    label: str
+
+
+class StatMetricsPut(BaseModel):
+    metrics: List[StatMetricIn]
+
+
+@router.get("/{chatbot_slug}/stat-metrics")
+async def list_stat_metrics(
+    chatbot_slug: str,
+    space: Space = Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin's verified homepage trust metrics for this chatbot (may be empty)."""
+    from app.models.chatbot import ChatbotStatMetric
+    chatbot = await _get_chatbot(chatbot_slug, space.id, db)
+    rows = (await db.execute(
+        select(ChatbotStatMetric)
+        .where(ChatbotStatMetric.chatbot_id == chatbot.id)
+        .order_by(ChatbotStatMetric.position)
+    )).scalars().all()
+    return {"metrics": [r.to_dict() for r in rows]}
+
+
+@router.put("/{chatbot_slug}/stat-metrics")
+async def replace_stat_metrics(
+    chatbot_slug: str,
+    req: StatMetricsPut,
+    space: Space = Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace all of this chatbot's trust metrics. Empty list clears them
+    (homepage stat_band then falls back to the AI/web generator)."""
+    from sqlalchemy import delete as sa_delete
+    from app.models.chatbot import ChatbotStatMetric
+    from app.renderengine.stat_band import validate_stat_metrics
+
+    chatbot = await _get_chatbot(chatbot_slug, space.id, db)
+    try:
+        cleaned = validate_stat_metrics([m.model_dump() for m in req.metrics])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    await db.execute(sa_delete(ChatbotStatMetric).where(ChatbotStatMetric.chatbot_id == chatbot.id))
+    for i, m in enumerate(cleaned):
+        db.add(ChatbotStatMetric(chatbot_id=chatbot.id, value=m["value"], label=m["label"], position=i))
+    await db.commit()
+
+    rows = (await db.execute(
+        select(ChatbotStatMetric)
+        .where(ChatbotStatMetric.chatbot_id == chatbot.id)
+        .order_by(ChatbotStatMetric.position)
+    )).scalars().all()
+    return {"metrics": [r.to_dict() for r in rows]}
+
+
 @router.delete("/{chatbot_slug}", status_code=204)
 async def delete_chatbot(
     chatbot_slug: str,
