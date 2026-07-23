@@ -29,7 +29,7 @@ logger = structlog.get_logger()
 
 _CACHE_TTL_SECONDS = 60 * 60 * 24  # 24h -- web-grounded, doesn't need per-visitor freshness
 _CACHE_KEY = "renderengine:stat_band:{chatbot_id}:{siblings}"
-_COMPUTE_TIMEOUT_SECONDS = 12.0
+_COMPUTE_TIMEOUT_SECONDS = 30.0  # multi-engine web search + agent generation; non-blocking (background-warmed), so latency isn't user-facing
 
 _MAX_STATS = 4
 _MIN_STATS = 2
@@ -214,7 +214,10 @@ async def _generate(
 
     agent = Agent(
         model=model,
-        tools=[DuckDuckGoTools()],
+        # backend="auto" fans out across search engines and falls through any
+        # that fail (some networks intercept the plain "duckduckgo" endpoint's
+        # TLS) -- more robust than the hardcoded backend, SSL verification stays on.
+        tools=[DuckDuckGoTools(backend="auto")],
         instructions=instructions,
         markdown=False,
         debug_mode=cfg.debug,

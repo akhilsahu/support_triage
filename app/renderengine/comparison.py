@@ -22,7 +22,7 @@ logger = structlog.get_logger()
 
 _CACHE_TTL_SECONDS = 60 * 60 * 24
 _CACHE_KEY = "renderengine:comparison:{chatbot_id}:{siblings}"
-_COMPUTE_TIMEOUT_SECONDS = 12.0
+_COMPUTE_TIMEOUT_SECONDS = 30.0  # multi-engine web search + agent generation; non-blocking (background-warmed), so latency isn't user-facing
 
 _MAX_COLS = 5
 _MAX_ROWS = 6
@@ -205,7 +205,10 @@ async def _generate(
         "\nResearch and build the competitor comparison table."
     )
 
-    agent = Agent(model=model, tools=[DuckDuckGoTools()], instructions=instructions,
+    # backend="auto" fans out across search engines and falls through any that
+    # fail (some networks intercept/block the plain "duckduckgo" endpoint's TLS)
+    # -- more robust than the hardcoded duckduckgo backend, SSL verification stays on.
+    agent = Agent(model=model, tools=[DuckDuckGoTools(backend="auto")], instructions=instructions,
                   markdown=False, debug_mode=cfg.debug)
     response = await agent.arun(user)
     content = (response.content if hasattr(response, "content") else str(response)) or ""

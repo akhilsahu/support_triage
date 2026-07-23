@@ -40,7 +40,7 @@ logger = structlog.get_logger()
 
 _CACHE_TTL_SECONDS = 60 * 60 * 24  # 24h -- expensive (search + generation), doesn't need to be fresh per visitor
 _CACHE_KEY = "renderengine:data_block:{chatbot_id}:{siblings}"
-_COMPUTE_TIMEOUT_SECONDS = 12.0  # KB grounding + optional web search + generation; 8s was too tight and timed out
+_COMPUTE_TIMEOUT_SECONDS = 30.0  # KB grounding + multi-engine web search + generation; runs non-blocking (background-warmed), so a generous budget doesn't affect welcome latency
 
 _ALLOWED_BLOCK_TYPES = ("table", "chart", "card", "tabs")
 _ALLOWED_CHART_TYPES = ("bar", "line")
@@ -282,7 +282,10 @@ async def _generate(
 
     agent = Agent(
         model=model,
-        tools=[DuckDuckGoTools()],
+        # backend="auto" fans out across search engines and falls through any
+        # that fail (some networks intercept the plain "duckduckgo" endpoint's
+        # TLS) -- more robust than the hardcoded backend, SSL verification stays on.
+        tools=[DuckDuckGoTools(backend="auto")],
         instructions=instructions,
         markdown=False,
         debug_mode=cfg.debug,
