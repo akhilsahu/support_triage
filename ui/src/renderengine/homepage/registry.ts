@@ -10,6 +10,7 @@ import { PromoSection } from './PromoSection'
 import { DataBlockSection } from './DataBlockSection'
 import { StatBandSection } from './StatBandSection'
 import { ProcessStepsSection } from './ProcessStepsSection'
+import { ComparisonSection } from './ComparisonSection'
 import type { SectionProps } from './types'
 
 // Mirrors app/renderengine/homepage_sections.py's ALLOWED_SECTIONS -- keep
@@ -28,4 +29,5 @@ export const SECTION_REGISTRY: Record<string, ComponentType<SectionProps>> = {
   data_block: DataBlockSection,
   stat_band: StatBandSection,
   process_steps: ProcessStepsSection,
+  comparison: ComparisonSection,
 }

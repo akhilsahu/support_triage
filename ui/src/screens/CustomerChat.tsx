@@ -12,7 +12,7 @@ import { SourceCitation } from '../components/ui/SourceCitation'
 import { NotFound } from './NotFound'
 import type { SourceItem } from '../types'
 import { SectionRenderer } from '../renderengine/homepage'
-import type { DataBlock, StatBand, ProcessSteps } from '../renderengine/homepage'
+import type { DataBlock, StatBand, ProcessSteps, Comparison } from '../renderengine/homepage'
 
 const IS_EMBEDDED = window.self !== window.top
 
@@ -289,6 +289,7 @@ interface SpaceInfo {
   data_block?: DataBlock
   stat_band?: StatBand
   process_steps?: ProcessSteps
+  comparison?: Comparison
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -632,6 +633,7 @@ export function CustomerChat() {
               dataBlock={space?.data_block}
               statBand={space?.stat_band}
               processSteps={space?.process_steps}
+              comparison={space?.comparison}
             />
           </div>
         ) : isEmpty && (

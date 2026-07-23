@@ -28,7 +28,7 @@ logger = structlog.get_logger()
 # to extend this list AND add a matching component to the frontend registry
 # at ui/src/renderengine/homepage/registry.ts — the LLM never generates a
 # section it isn't told about here.
-ALLOWED_SECTIONS = ["hero", "key_benefits", "capabilities", "suggested_questions", "faq", "quick_topics", "trust_badges", "promo", "data_block", "stat_band", "process_steps"]
+ALLOWED_SECTIONS = ["hero", "key_benefits", "capabilities", "suggested_questions", "faq", "quick_topics", "trust_badges", "promo", "data_block", "stat_band", "process_steps", "comparison"]
 
 # "promo", "quick_topics", and "trust_badges" are admin-authored only -- the
 # AI is never allowed to select them, even though they're valid rendered
@@ -261,6 +261,9 @@ async def _generate(space_name: str, description: str, active_agents: list) -> s
         "business has no such standout numbers.\n"
         "- Include 'process_steps' when there's a clear multi-step customer journey worth showing (e.g. how to "
         "file a claim, how to apply/onboard) -- skip it for bots with no such process.\n"
+        "- Include 'comparison' ONLY for comparison-shopped genres where prospects genuinely weigh named "
+        "competitors (insurance plans, credit cards, broadband/telecom, banking products) -- never for one-off "
+        "products/services with no meaningful competitor set. Its content is researched separately.\n"
         'Output format: ["hero", "key_benefits", "suggested_questions"]'
     )
     user = (

@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, ForeignKey, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -93,6 +93,8 @@ class Chatbot(Base):
     stat_metrics         = relationship("ChatbotStatMetric", back_populates="chatbot",
                                         cascade="all, delete-orphan",
                                         order_by="ChatbotStatMetric.position")
+    comparison           = relationship("ChatbotComparison", back_populates="chatbot",
+                                        cascade="all, delete-orphan", uselist=False)
 
     __table_args__ = (
         # slug unique within an org
@@ -143,3 +145,26 @@ class ChatbotStatMetric(Base):
 
     def to_dict(self) -> dict:
         return {"id": str(self.id), "value": self.value, "label": self.label, "position": self.position}
+
+
+class ChatbotComparison(Base):
+    """
+    One admin-authored competitor comparison grid per chatbot (columns + rows +
+    an optional source/date caption). Optional: a chatbot with no row falls back
+    to the AI/web-generated comparison. Admin figures are the brand's OWN
+    verified/cited data -- the compliance-safe source for comparative claims.
+    """
+
+    __tablename__ = "chatbot_comparison"
+
+    chatbot_id = Column(UUID(as_uuid=True), ForeignKey("chatbots.id", ondelete="CASCADE"),
+                        primary_key=True)
+    columns    = Column(JSONB, nullable=False)   # ["Plan", "Claim ratio", "Premium/mo"]
+    rows       = Column(JSONB, nullable=False)   # [["HDFC Life", "99.5%", "₹16/day"], ...]
+    source     = Column(String(120), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    chatbot = relationship("Chatbot", back_populates="comparison")
+
+    def to_dict(self) -> dict:
+        return {"columns": self.columns, "rows": self.rows, "source": self.source or ""}

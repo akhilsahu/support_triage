@@ -217,6 +217,10 @@ export const apiClient = {
     http.get(`/api/v1/chatbots/${slug}/stat-metrics`).then(r => r.data),
   setStatMetrics: (slug: string, metrics: { value: string; label: string }[]): Promise<{ metrics: { id: string; value: string; label: string; position: number }[] }> =>
     http.put(`/api/v1/chatbots/${slug}/stat-metrics`, { metrics }).then(r => r.data),
+  getComparison: (slug: string): Promise<{ columns: string[]; rows: string[][]; source: string }> =>
+    http.get(`/api/v1/chatbots/${slug}/comparison`).then(r => r.data),
+  setComparison: (slug: string, grid: { columns: string[]; rows: string[][]; source: string }): Promise<{ columns: string[]; rows: string[][]; source: string }> =>
+    http.put(`/api/v1/chatbots/${slug}/comparison`, grid).then(r => r.data),
   uploadChatbotLogo: (slug: string, file: File) => {
     const form = new FormData()
     form.append('file', file)

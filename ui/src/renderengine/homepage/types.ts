@@ -87,6 +87,17 @@ export interface ProcessSteps {
   steps: ProcessStep[]
 }
 
+// Competitor comparison grid (see app/renderengine/comparison.py). Admin-curated
+// grids are verified (illustrative:false, no disclaimer); AI/web ones are
+// illustrative with a disclaimer.
+export interface Comparison {
+  columns: string[]
+  rows: string[][]
+  source: string
+  illustrative: boolean
+  disclaimer: string
+}
+
 export interface SectionProps {
   theme: SectionTheme
   space: SectionSpace | null
@@ -101,4 +112,5 @@ export interface SectionProps {
   dataBlock?: DataBlock
   statBand?: StatBand
   processSteps?: ProcessSteps
+  comparison?: Comparison
 }

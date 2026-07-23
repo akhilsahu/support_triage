@@ -210,6 +210,25 @@ async def org_public_info(
                         import structlog
                         structlog.get_logger().warning("org_public_info.stat_band_admin_failed", slug=slug)
 
+                    # comparison -- admin's OWN curated/cited competitor grid takes
+                    # precedence over the AI/web generator (verified, compliance-safe
+                    # for comparative claims about named competitors). When set,
+                    # force-include and skip the AI fallback below.
+                    try:
+                        from app.renderengine.comparison import admin_comparison
+                        from app.models.chatbot import ChatbotComparison
+                        cmp_row = (await db.execute(
+                            select(ChatbotComparison).where(ChatbotComparison.chatbot_id == chatbot.id)
+                        )).scalar_one_or_none()
+                        admin_cmp = admin_comparison(cmp_row)
+                        if admin_cmp:
+                            response["comparison"] = admin_cmp
+                            if "comparison" not in response["homepage_sections"]:
+                                response["homepage_sections"] = response["homepage_sections"] + ["comparison"]
+                    except Exception:
+                        import structlog
+                        structlog.get_logger().warning("org_public_info.comparison_admin_failed", slug=slug)
+
                     # promo -- admin-authored banner via homepage_sections_override's
                     # "overrides" sub-object (optional; None when never configured).
                     # Same force-include treatment as quick_topics/trust_badges above,
@@ -331,6 +350,19 @@ async def org_public_info(
                             blocking=False,
                         )))
 
+                    # AI/web comparison only when the admin hasn't curated a grid.
+                    if "comparison" in section_ids and "comparison" not in response:
+                        from app.renderengine.comparison import get_comparison
+                        gen_specs.append(("comparison", get_comparison(
+                            chatbot_id=chatbot.id,
+                            space_id=org.id,
+                            space_name=name,
+                            description=response["description"],
+                            active_agents=active_agents,
+                            other_sections=[s for s in section_ids if s != "comparison"],
+                            blocking=False,
+                        )))
+
                     if "process_steps" in section_ids:
                         from app.renderengine.process_steps import get_process_steps
                         gen_specs.append(("process_steps", get_process_steps(
@@ -349,7 +381,7 @@ async def org_public_info(
                         # Sections whose generator returns a dict-or-None: an
                         # empty/failed result must drop the section id so the
                         # frontend never gets a dead id to guard against.
-                        _droppable = {"data_block", "stat_band", "process_steps"}
+                        _droppable = {"data_block", "stat_band", "process_steps", "comparison"}
                         for (section_id, _), result in zip(gen_specs, results):
                             if isinstance(result, Exception):
                                 import structlog

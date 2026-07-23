@@ -80,6 +80,8 @@ export function ChatbotProfile() {
   const [savingBadges, setSavingBadges] = useState(false)
   const [statsDraft, setStatsDraft] = useState<{ value: string; label: string }[]>([])
   const [savingStats, setSavingStats] = useState(false)
+  const [cmpDraft, setCmpDraft] = useState<{ columns: string[]; rows: string[][]; source: string }>({ columns: [], rows: [], source: '' })
+  const [savingCmp, setSavingCmp] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Multi-bot UI shows only when the space is allowed more than one chatbot.
@@ -136,13 +138,17 @@ export function ChatbotProfile() {
     } catch {
       setBadgesDraft([])
     }
-    // Stat metrics live in their own table -- fetch them for the selected bot.
+    // Stat metrics + comparison grid live in their own tables -- fetch for the selected bot.
     if (selected?.slug) {
       apiClient.getStatMetrics(selected.slug)
         .then(r => setStatsDraft(r.metrics.map((m: { value: string; label: string }) => ({ value: m.value, label: m.label }))))
         .catch(() => setStatsDraft([]))
+      apiClient.getComparison(selected.slug)
+        .then(r => setCmpDraft({ columns: r.columns ?? [], rows: r.rows ?? [], source: r.source ?? '' }))
+        .catch(() => setCmpDraft({ columns: [], rows: [], source: '' }))
     } else {
       setStatsDraft([])
+      setCmpDraft({ columns: [], rows: [], source: '' })
     }
     try {
       const raw = selected?.homepage_sections_override
@@ -485,6 +491,36 @@ export function ChatbotProfile() {
       setError('Could not save trust metrics. Each needs a value and a label (max 4).')
     } finally {
       setSavingStats(false)
+    }
+  }
+
+  // ── Competitor comparison grid (keeps rows rectangular to the columns) ──
+  const addCmpColumn = () => setCmpDraft(p => p.columns.length >= 5 ? p
+    : { ...p, columns: [...p.columns, ''], rows: p.rows.map(r => [...r, '']) })
+  const removeCmpColumn = (ci: number) => setCmpDraft(p => ({
+    ...p, columns: p.columns.filter((_, i) => i !== ci), rows: p.rows.map(r => r.filter((_, i) => i !== ci)),
+  }))
+  const updateCmpColumn = (ci: number, v: string) => setCmpDraft(p => ({
+    ...p, columns: p.columns.map((c, i) => i === ci ? v : c),
+  }))
+  const addCmpRow = () => setCmpDraft(p => p.rows.length >= 6 ? p
+    : { ...p, rows: [...p.rows, Array(Math.max(p.columns.length, 1)).fill('')] })
+  const removeCmpRow = (ri: number) => setCmpDraft(p => ({ ...p, rows: p.rows.filter((_, i) => i !== ri) }))
+  const updateCmpCell = (ri: number, ci: number, v: string) => setCmpDraft(p => ({
+    ...p, rows: p.rows.map((r, i) => i === ri ? r.map((c, j) => j === ci ? v : c) : r),
+  }))
+
+  const saveComparison = async () => {
+    if (!selected) return
+    setSavingCmp(true)
+    try {
+      const r = await apiClient.setComparison(selected.slug, cmpDraft)
+      setCmpDraft({ columns: r.columns ?? [], rows: r.rows ?? [], source: r.source ?? '' })
+      flashSaved()
+    } catch {
+      setError('Could not save comparison. Needs 2-5 columns and 2-6 rows.')
+    } finally {
+      setSavingCmp(false)
     }
   }
 
@@ -922,6 +958,82 @@ export function ChatbotProfile() {
                 )}
                 <Button size="sm" disabled={savingStats} onClick={saveStats}>
                   {savingStats ? 'Saving…' : 'Save metrics'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {homepageSectionsPlatformEnabled && (
+            <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Competitor comparison</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
+                Optional. Your own verified/cited comparison grid (first row = your brand). 2–5 columns, 2–6 rows.
+                Leave empty to let AI generate an illustrative one. Only use figures you can source.
+              </p>
+
+              {/* Column headers */}
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-6" />
+                {cmpDraft.columns.map((col, ci) => (
+                  <div key={ci} className="flex-1 flex items-center gap-1">
+                    <input
+                      value={col}
+                      onChange={e => updateCmpColumn(ci, e.target.value)}
+                      placeholder={ci === 0 ? 'Provider' : 'Metric'}
+                      className="w-full px-2 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                    />
+                    <button onClick={() => removeCmpColumn(ci)} className="p-1 text-gray-400 hover:text-red-500" title="Remove column">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                {cmpDraft.columns.length < 5 && (
+                  <button onClick={addCmpColumn} className="p-1.5 text-indigo-500 hover:text-indigo-600" title="Add column">
+                    <Plus className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Data rows */}
+              <div className="space-y-2">
+                {cmpDraft.rows.map((row, ri) => (
+                  <div key={ri} className="flex items-center gap-2">
+                    <button onClick={() => removeCmpRow(ri)} className="w-6 p-1 text-gray-400 hover:text-red-500" title="Remove row">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                    {cmpDraft.columns.map((_, ci) => (
+                      <input
+                        key={ci}
+                        value={row[ci] ?? ''}
+                        onChange={e => updateCmpCell(ri, ci, e.target.value)}
+                        placeholder={ci === 0 ? (ri === 0 ? selected.display_name : 'Competitor') : '—'}
+                        className="flex-1 px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+
+              <input
+                value={cmpDraft.source}
+                onChange={e => setCmpDraft(p => ({ ...p, source: e.target.value }))}
+                placeholder="Source (e.g. IRDAI FY2023–24)"
+                className="w-full mt-3 px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+              />
+
+              <div className="flex items-center gap-2 mt-3">
+                {cmpDraft.columns.length === 0 && (
+                  <Button size="sm" variant="secondary" onClick={addCmpColumn}>
+                    <Plus className="w-3.5 h-3.5" /> Add column
+                  </Button>
+                )}
+                {cmpDraft.columns.length > 0 && cmpDraft.rows.length < 6 && (
+                  <Button size="sm" variant="secondary" onClick={addCmpRow}>
+                    <Plus className="w-3.5 h-3.5" /> Add row
+                  </Button>
+                )}
+                <Button size="sm" disabled={savingCmp} onClick={saveComparison}>
+                  {savingCmp ? 'Saving…' : 'Save comparison'}
                 </Button>
               </div>
             </div>

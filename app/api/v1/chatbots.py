@@ -314,6 +314,66 @@ async def replace_stat_metrics(
     return {"metrics": [r.to_dict() for r in rows]}
 
 
+class ComparisonPut(BaseModel):
+    columns: List[str]
+    rows: List[List[str]]
+    source: Optional[str] = ""
+
+
+@router.get("/{chatbot_slug}/comparison")
+async def get_comparison_grid(
+    chatbot_slug: str,
+    space: Space = Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin's curated competitor comparison grid (empty when unset)."""
+    from app.models.chatbot import ChatbotComparison
+    chatbot = await _get_chatbot(chatbot_slug, space.id, db)
+    row = (await db.execute(
+        select(ChatbotComparison).where(ChatbotComparison.chatbot_id == chatbot.id)
+    )).scalar_one_or_none()
+    return row.to_dict() if row else {"columns": [], "rows": [], "source": ""}
+
+
+@router.put("/{chatbot_slug}/comparison")
+async def replace_comparison_grid(
+    chatbot_slug: str,
+    req: ComparisonPut,
+    space: Space = Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set/replace this chatbot's competitor comparison grid. An empty columns
+    or rows list clears it (homepage 'comparison' then falls back to AI/web)."""
+    from app.models.chatbot import ChatbotComparison
+    from app.renderengine.comparison import validate_comparison
+
+    chatbot = await _get_chatbot(chatbot_slug, space.id, db)
+    existing = (await db.execute(
+        select(ChatbotComparison).where(ChatbotComparison.chatbot_id == chatbot.id)
+    )).scalar_one_or_none()
+
+    # Empty grid -> clear.
+    if not req.columns or not req.rows:
+        if existing:
+            await db.delete(existing)
+            await db.commit()
+        return {"columns": [], "rows": [], "source": ""}
+
+    try:
+        cleaned = validate_comparison(req.columns, req.rows, req.source)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    if existing:
+        existing.columns, existing.rows, existing.source = cleaned["columns"], cleaned["rows"], cleaned["source"]
+    else:
+        db.add(ChatbotComparison(
+            chatbot_id=chatbot.id, columns=cleaned["columns"], rows=cleaned["rows"], source=cleaned["source"],
+        ))
+    await db.commit()
+    return cleaned
+
+
 @router.delete("/{chatbot_slug}", status_code=204)
 async def delete_chatbot(
     chatbot_slug: str,
