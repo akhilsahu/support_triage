@@ -43,7 +43,12 @@ DEFAULT_SECTIONS = ["hero", "suggested_questions"]
 
 _CACHE_TTL_SECONDS = 60 * 60 * 4  # 4h segment cache, not per-request
 _CACHE_KEY = "renderengine:homepage_sections:{chatbot_id}:{device}:{visitor_type}"
-_MAX_SECTIONS = 4       # caps the AI's own picks (see _validate below)
+_MAX_SECTIONS = 6       # caps the AI's own picks (see _validate below) -- matches the "3-6" pick range in the prompt
+# The picker is on the blocking welcome path, but its result is cached 4h per
+# segment, so only a rare cache-miss pays the LLM latency. A cold classification
+# call measures ~2-2.5s here, so the shared 2.5s default timed out intermittently
+# and dropped the whole recommendation to DEFAULT_SECTIONS -- give it real headroom.
+_PICK_TIMEOUT_SECONDS = 6.0
 _MAX_TOTAL_SECTIONS = 7  # caps the page after admin-authored sections are force-included
 
 # Never dropped by cap_total_sections. Beyond hero: the primary "where do I
@@ -221,6 +226,7 @@ async def get_homepage_sections(
         cache_key,
         _CACHE_TTL_SECONDS,
         _compute,
+        timeout_seconds=_PICK_TIMEOUT_SECONDS,
         validate=_validate,
     )
     return result or DEFAULT_SECTIONS
@@ -239,9 +245,18 @@ async def _generate(space_name: str, description: str, active_agents: list) -> s
     system = (
         "You choose which homepage sections to show a visitor before they start "
         "chatting with a customer support bot.\n"
-        f"Allowed sections (choose 2-4, order matters): {', '.join(_AI_SELECTABLE_SECTIONS)}\n"
+        f"Allowed sections (choose 3-6, order matters): {', '.join(_AI_SELECTABLE_SECTIONS)}\n"
         "Rules:\n"
         "- Return ONLY a valid JSON array of section id strings, using only the allowed values.\n"
+        "- Build a genuinely informative page, not a minimal one: a bare hero + questions is a "
+        "poor welcome. For a product/policy/service-backed brand you should usually land on 4-6 "
+        "sections that actually tell a prospect something (benefits, trust metrics, comparisons, "
+        "process) -- not just the three safe defaults.\n"
+        "- For trust/comparison-shopped genres (insurance, credit cards, banking, broadband/telecom, "
+        "healthcare, investing) the highest-value sections for a prospect are 'stat_band' (headline "
+        "credibility numbers) and 'comparison' (how the brand stacks up against named competitors). "
+        "PREFER including BOTH for these genres unless the brand truly has no standout numbers and no "
+        "meaningful competitor set. Do not default to the three safe sections for these genres.\n"
         "- 'hero' is almost always a good first section.\n"
         "- 'key_benefits' should almost always be included too -- for policy, plan, product, or "
         "service-backed bots (insurance, credit cards, subscriptions, financial products, etc.) the "
@@ -277,7 +292,7 @@ async def _generate(space_name: str, description: str, active_agents: list) -> s
         messages=[{"role": "user", "content": user}],
         system_prompt=system,
         temperature=0.3,
-        max_tokens=100,
+        max_tokens=150,
     )
     content = (result or {}).get("content", "").strip()
     if not content:
