@@ -85,8 +85,8 @@ function useCountUp(target: number, active: boolean, duration = 1100): number {
 }
 
 function StatCard({
-  stat, hue, theme: t, animate, wide,
-}: { stat: StatBandItem; hue: string; theme: SectionProps['theme']; animate: boolean; wide: boolean }) {
+  stat, hue, theme: t, animate,
+}: { stat: StatBandItem; hue: string; theme: SectionProps['theme']; animate: boolean }) {
   const parsed = parseStat(stat.value)
   const Icon = pickIcon(stat.label)
   const running = animate && parsed !== null
@@ -97,22 +97,22 @@ function StatCard({
 
   return (
     <div
-      className={`group relative rounded-2xl border px-3.5 py-2.5 text-left overflow-hidden
-                  transition-all duration-200 hover:-translate-y-0.5 ${t.chipCls} ${wide ? 'col-span-2' : ''}`}
+      className={`group relative rounded-xl border px-2.5 py-2.5 text-center overflow-hidden
+                  transition-all duration-200 hover:-translate-y-0.5 ${t.chipCls}`}
       style={{ borderColor: hexRgba(hue, 0.22) }}
     >
       <div
         className="absolute inset-0 pointer-events-none opacity-70 transition-opacity duration-200 group-hover:opacity-100"
-        style={{ background: `radial-gradient(120% 120% at 0% 0%, ${hexRgba(hue, 0.15)}, transparent 62%)` }}
+        style={{ background: `radial-gradient(120% 120% at 50% 0%, ${hexRgba(hue, 0.15)}, transparent 62%)` }}
       />
       <span
         className="relative inline-flex items-center justify-center rounded-lg w-6 h-6 mb-1.5"
         style={{ background: hexRgba(hue, 0.16), color: hue }}
       >
-        <Icon size={14} strokeWidth={2.2} />
+        <Icon size={13} strokeWidth={2.2} />
       </span>
-      <p className={`relative text-[21px] font-semibold leading-none tabular-nums ${t.textPrimary}`}>{display}</p>
-      <p className={`relative text-[12px] mt-1 ${t.textSecondary}`}>{stat.label}</p>
+      <p className={`relative text-[17px] font-semibold leading-none tabular-nums ${t.textPrimary}`}>{display}</p>
+      <p className={`relative text-[10.5px] leading-tight mt-1 ${t.textSecondary}`}>{stat.label}</p>
     </div>
   )
 }
@@ -140,16 +140,12 @@ export function StatBandSection({ theme: t, statBand }: SectionProps) {
   return (
     <div ref={ref} className="flex flex-col items-center w-full">
       <SectionHeading theme={t}>Trusted by millions</SectionHeading>
-      <div className="grid grid-cols-2 gap-2.5 max-w-md w-full">
+      <div
+        className="grid gap-2 max-w-md w-full"
+        style={{ gridTemplateColumns: `repeat(${stats.length}, minmax(0, 1fr))` }}
+      >
         {stats.map((s, i) => (
-          <StatCard
-            key={i}
-            stat={s}
-            hue={ACCENTS[i % ACCENTS.length]}
-            theme={t}
-            animate={animate}
-            wide={stats.length % 2 === 1 && i === stats.length - 1}
-          />
+          <StatCard key={i} stat={s} hue={ACCENTS[i % ACCENTS.length]} theme={t} animate={animate} />
         ))}
       </div>
       {statBand.disclaimer && (
