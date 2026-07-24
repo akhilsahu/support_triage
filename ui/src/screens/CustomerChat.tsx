@@ -617,7 +617,7 @@ export function CustomerChat() {
             var or build flag involved. Absent/empty falls through to the
             exact original hardcoded markup below -- unchanged, byte-for-byte. */}
         {isEmpty && space?.homepage_sections?.length ? (
-          <div className="flex flex-col items-center justify-start min-h-full px-6 pt-10 sm:pt-12 pb-32 select-none text-center">
+          <div className="flex flex-col items-center justify-start min-h-full px-6 pt-5 sm:pt-6 pb-28 select-none text-center">
             <SectionRenderer
               sections={space?.homepage_sections ?? []}
               theme={t}

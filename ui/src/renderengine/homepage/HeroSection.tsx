@@ -7,26 +7,26 @@ import type { SectionProps } from './types'
 export function HeroSection({ theme: t, space }: SectionProps) {
   return (
     <div className="flex flex-col items-center text-center">
-      <div className="relative mb-6">
+      <div className="relative mb-3">
         {space?.logo_url ? (
           <img
             src={space.logo_url}
             alt={space.name}
-            className="w-20 h-20 rounded-3xl object-cover shadow-2xl shadow-indigo-500/20 mx-auto ring-1 ring-white/10"
+            className="w-14 h-14 rounded-2xl object-cover shadow-xl shadow-indigo-500/20 mx-auto ring-1 ring-white/10"
           />
         ) : (
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-2xl shadow-indigo-500/30 mx-auto">
-            <Sparkles className="w-9 h-9 text-white" />
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-xl shadow-indigo-500/30 mx-auto">
+            <Sparkles className="w-7 h-7 text-white" />
           </div>
         )}
-        <span className="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full bg-emerald-400 flex items-center justify-center ring-2 ring-white/10 shadow-md">
-          <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+        <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-400 flex items-center justify-center ring-2 ring-white/10 shadow-md">
+          <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
         </span>
       </div>
-      <h1 className={`text-[28px] font-semibold mb-1.5 ${t.textPrimary}`} style={{ letterSpacing: '-0.02em' }}>
+      <h1 className={`text-[22px] font-semibold mb-1 ${t.textPrimary}`} style={{ letterSpacing: '-0.02em' }}>
         Hi there 👋
       </h1>
-      <p className={`text-[15px] ${t.textSecondary}`}>
+      <p className={`text-[13px] leading-snug line-clamp-2 max-w-md ${t.textSecondary}`}>
         {space?.description
           ? `I'm ${space.name}'s assistant. ${space.description}`
           : `How can we help you today?`}

@@ -10,7 +10,7 @@ interface SectionRendererProps extends SectionProps {
 // skipped defensively instead of crashing the page.
 export function SectionRenderer({ sections, ...rest }: SectionRendererProps) {
   return (
-    <div className="flex flex-col items-center gap-6 w-full">
+    <div className="flex flex-col items-center gap-4 w-full">
       {sections.map((id) => {
         const Component = SECTION_REGISTRY[id]
         if (!Component) return null

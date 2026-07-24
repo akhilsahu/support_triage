@@ -15,7 +15,7 @@ export function ComparisonSection({ theme: t, comparison }: SectionProps) {
             <thead>
               <tr>
                 {comparison.columns.map((col, i) => (
-                  <th key={i} className={`text-left font-medium px-3 py-2 whitespace-nowrap
+                  <th key={i} className={`text-left font-medium px-3 py-1.5 whitespace-nowrap
                                           ${i === 0 ? '' : 'text-right'} ${t.textSecondary}`}>
                     {col}
                   </th>
@@ -26,7 +26,7 @@ export function ComparisonSection({ theme: t, comparison }: SectionProps) {
               {comparison.rows.map((row, ri) => (
                 <tr key={ri} className={`border-t border-current/10 ${ri === 0 ? 'bg-indigo-500/[0.06]' : ''}`}>
                   {row.map((cell, ci) => (
-                    <td key={ci} className={`px-3 py-2 whitespace-nowrap
+                    <td key={ci} className={`px-3 py-1.5 whitespace-nowrap
                                              ${ci === 0 ? 'font-medium' : 'text-right'}
                                              ${ri === 0 ? t.textPrimary : t.textSecondary}`}>
                       {cell}

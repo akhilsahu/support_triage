@@ -6,7 +6,7 @@ import type { SectionTheme } from './types'
 // "Frequently asked") instead of one undifferentiated wall of chips.
 export function SectionHeading({ theme: t, children }: { theme: SectionTheme; children: ReactNode }) {
   return (
-    <p className={`text-[11px] font-semibold uppercase tracking-[0.14em] mb-2.5 ${t.textMuted}`}>
+    <p className={`text-[11px] font-semibold uppercase tracking-[0.14em] mb-1.5 ${t.textMuted}`}>
       {children}
     </p>
   )
