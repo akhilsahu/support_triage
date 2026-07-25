@@ -6,6 +6,7 @@ import { Toggle } from '../components/ui/Toggle'
 import { apiClient } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import { ChatbotUiStudio } from './ChatbotUiStudio'
+import { ChatbotLoginSettings } from './ChatbotLoginSettings'
 
 interface Chatbot {
   id: string
@@ -21,6 +22,7 @@ interface Chatbot {
   homepage_sections_override: string | null
   quick_topics: string | null
   trust_badges: string | null
+  login_after_messages: number | null
 }
 
 const DEFAULT_THEME_COLOR = '#6366f1'
@@ -772,6 +774,14 @@ export function ChatbotProfile({ view = 'branding' }: { view?: 'branding' | 'ui'
                 chatbotName={selected.display_name}
                 logoUrl={selected.logo_url}
                 themeColor={selected.theme_color}
+              />
+              <ChatbotLoginSettings
+                slug={selected.slug}
+                value={selected.login_after_messages}
+                onSaved={v => {
+                  setSelected({ ...selected, login_after_messages: v })
+                  setChatbots(prev => prev.map(c => (c.id === selected.id ? { ...c, login_after_messages: v } : c)))
+                }}
               />
             </div>
           )}

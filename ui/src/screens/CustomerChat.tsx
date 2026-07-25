@@ -12,6 +12,11 @@ import { SourceCitation } from '../components/ui/SourceCitation'
 import { NotFound } from './NotFound'
 import type { SourceItem } from '../types'
 import { SectionRenderer } from '../renderengine/homepage'
+import { CustomerLoginGate } from '../components/chat/CustomerLoginGate'
+import {
+  readCustomerAuth, clearCustomerAuth, customerAuthHeader, verifyCustomerAuth,
+  type CustomerAuth,
+} from '../lib/customerAuth'
 import type { DataBlock, StatBand, ProcessSteps, Comparison } from '../renderengine/homepage'
 
 const IS_EMBEDDED = window.self !== window.top
@@ -290,6 +295,9 @@ interface SpaceInfo {
   stat_band?: StatBand
   process_steps?: ProcessSteps
   comparison?: Comparison
+  // Customer-login gate: null/absent = never, 0 = before the first message,
+  // N = N free messages then sign-in (server enforces; see chatbot_auth.py).
+  login_after_messages?: number | null
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -330,6 +338,12 @@ export function CustomerChat() {
   // effect from re-fetching and flashing "Restoring conversation…" over the
   // messages we already have locally.
   const ownSessionRef = useRef(false)
+
+  // Signed-in end customer + the platform's Google client id (empty when Google
+  // sign-in isn't configured server-side, in which case the gate never blocks).
+  const [customer, setCustomer] = useState<CustomerAuth | null>(() => readCustomerAuth())
+  const [googleClientId, setGoogleClientId] = useState('')
+  const [loginRequired, setLoginRequired] = useState(false)
 
   const [theme, setTheme] = useState<ThemeKey>(() => {
     const stored = localStorage.getItem('chat-theme') as ThemeKey
@@ -449,7 +463,8 @@ export function CustomerChat() {
     // state over the live conversation.
     if (ownSessionRef.current) return
     setRestoring(true)
-    fetch(`${API_CONFIG.baseURL}/api/chat/${slug}/session/${chatParam}${botQuery}`)
+    fetch(`${API_CONFIG.baseURL}/api/chat/${slug}/session/${chatParam}${botQuery}`,
+          { headers: { ...customerAuthHeader() } })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data?.history?.length) return
@@ -468,6 +483,32 @@ export function CustomerChat() {
   }, [chatParam, slug])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
+
+  // Validate any stored customer token once on load — it may have expired, and
+  // a stale token would otherwise look signed-in while the server 401s.
+  useEffect(() => {
+    if (!readCustomerAuth()) return
+    verifyCustomerAuth().then(auth => setCustomer(auth))
+  }, [])
+
+  // Google client id comes from the platform settings the page already exposes.
+  // Empty = sign-in isn't configured, so the gate stays open rather than showing
+  // a dead button.
+  useEffect(() => {
+    fetch(`${API_CONFIG.baseURL}/api/v1/super-admin/settings/public`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.google_client_id) setGoogleClientId(d.google_client_id) })
+      .catch(() => {})
+  }, [])
+
+  // Soft gate: how many messages this visitor has already sent vs the bot's
+  // threshold. The server enforces the same rule (401 login_required) — this is
+  // only so the button appears at the right moment.
+  const loginThreshold = space?.login_after_messages ?? null
+  const sentCount      = messages.filter(m => m.role === 'user').length
+  const gateActive     = !customer && !!googleClientId && loginThreshold !== null
+  const showLoginGate  = (gateActive && sentCount >= (loginThreshold ?? 0)) || loginRequired
+  const freeLeft       = gateActive ? Math.max(0, (loginThreshold ?? 0) - sentCount) : 0
 
   // ── postMessage bridge ───────────────────────────────────────────────────
   useEffect(() => { if (IS_EMBEDDED) window.parent.postMessage({ type: 'support247:ready' }, '*') }, [])
@@ -524,10 +565,19 @@ export function CustomerChat() {
     setLoading(true)
     try {
       const res  = await fetch(`${API_CONFIG.baseURL}/api/chat/${slug}${botQuery}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...customerAuthHeader() },
         body: JSON.stringify({ message: msg, session_id: sessionId }),
       })
       const data = await res.json()
+      // Server-side login gate (authoritative). Put the message back in the box
+      // so it isn't lost behind the sign-in step.
+      if (res.status === 401 && data?.code === 'login_required') {
+        setMessages(prev => prev.filter(m => m.text !== msg || m.role !== 'user'))
+        setInput(msg)
+        setLoginRequired(true)
+        return
+      }
       if (isFirst && data.session_id) { ownSessionRef.current = true; setSearchParams({ chat: data.session_id }, { replace: true }); setSessionId(data.session_id) }
       if (data.reply) setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: data.reply, agent: data.agent, citations: data.citations ?? [], ts: new Date(), messageId: data.message_id }])
     } catch {
@@ -592,6 +642,17 @@ export function CustomerChat() {
 
         {/* Header actions */}
         <div className="flex items-center gap-0.5 flex-shrink-0">
+          {/* Signed-in customer — avatar doubles as the sign-out control. */}
+          {customer && (
+            <button
+              onClick={() => { clearCustomerAuth(); setCustomer(null) }}
+              title={`Signed in as ${customer.user.email ?? customer.user.name ?? 'you'} — click to sign out`}
+              className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${t.iconBtnCls}`}>
+              {customer.user.avatar_url
+                ? <img src={customer.user.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover" />
+                : <User className="w-4 h-4" />}
+            </button>
+          )}
           {/* Theme toggle — 44×44 touch target */}
           <button onClick={cycleTheme} title={`Theme: ${THEME_LABELS[theme]}`}
             className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${t.iconBtnCls}`}>
@@ -846,6 +907,29 @@ export function CustomerChat() {
               ))}
             </div>
           )}
+          {/* Customer login gate — replaces the input when this chatbot requires
+              sign-in (immediately, or once the free messages are used up). The
+              server enforces the same rule, so this is presentation only. */}
+          {showLoginGate ? (
+            <CustomerLoginGate
+              slug={slug}
+              clientId={googleClientId}
+              sessionId={sessionId}
+              botQuery={botQuery}
+              isDark={isDark}
+              message={sentCount > 0
+                ? 'Sign in to keep this conversation and continue.'
+                : `Sign in to start chatting with ${space?.name || 'us'}.`}
+              onSignedIn={auth => { setCustomer(auth); setLoginRequired(false) }}
+            />
+          ) : (
+          <>
+          {/* A nudge while free messages remain, so the gate isn't a surprise. */}
+          {freeLeft > 0 && freeLeft <= 2 && (
+            <p className={`text-[11.5px] mb-1.5 text-center ${t.textMuted}`}>
+              {freeLeft} free message{freeLeft === 1 ? '' : 's'} left — sign in to save your history.
+            </p>
+          )}
           {/* Input pill — WCAG: min height 44px */}
           <div className={`flex items-center gap-3 px-4 py-2.5 rounded-2xl border transition-all duration-200 min-h-[52px] ${t.inputWrapCls}`}>
             <input
@@ -873,6 +957,8 @@ export function CustomerChat() {
               }
             </button>
           </div>
+          </>
+          )}
 
           {/* Footer row */}
           <div className="flex items-center justify-between mt-2 px-1">
