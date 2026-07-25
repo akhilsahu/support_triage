@@ -126,7 +126,8 @@ export default function App() {
           <Route path="/app/analytics" element={<PrivateRoute><Layout title="Analytics" subtitle="Usage insights and performance"><Analytics /></Layout></PrivateRoute>} />
           <Route path="/app/settings" element={<PrivateRoute><Layout title="Settings" subtitle="Configure SUPPORT247.chat"><Settings /></Layout></PrivateRoute>} />
           <Route path="/app/embed-widget" element={<PrivateRoute><Layout title="Embed Widget" subtitle="Copy the embed snippet for any of your chatbots"><EmbedWidget /></Layout></PrivateRoute>} />
-          <Route path="/app/chatbot-profile" element={<PrivateRoute><Layout title="Chatbot Profile" subtitle="Logo and branding per chatbot"><ChatbotProfile /></Layout></PrivateRoute>} />
+          <Route path="/app/chatbot-ui" element={<PrivateRoute><Layout title="Chatbot UI" subtitle="Design, generate and publish the pre-chat welcome"><ChatbotProfile view="ui" /></Layout></PrivateRoute>} />
+          <Route path="/app/chatbot-profile" element={<PrivateRoute><Layout title="Chatbot Profile" subtitle="Logo and branding per chatbot"><ChatbotProfile view="branding" /></Layout></PrivateRoute>} />
           <Route path="/app/super-admin" element={<SuperAdmin />} />
           {/* Bare /app → dashboard */}
           <Route path="/app" element={<Navigate to="/app/dashboard" replace />} />

@@ -42,7 +42,10 @@ const SECTION_OPTIONS: { id: string; label: string }[] = [
 const ACCEPTED_TYPES = 'image/png,image/jpeg,image/webp,image/svg+xml'
 const MAX_SIZE_MB = 2
 
-export function ChatbotProfile() {
+export function ChatbotProfile({ view = 'branding' }: { view?: 'branding' | 'ui' } = {}) {
+  // 'branding' (Chatbot Profile page): logo, name, theme, status.
+  // 'ui' (Chatbot UI page): the welcome-screen studio + section/topics/badges/
+  // stats/comparison editors. The bot picker shows in both.
   const currentChatbotId = useAppStore(s => s.currentChatbotId)
   const setCurrentChatbotId = useAppStore(s => s.setCurrentChatbotId)
   const spaceSlug = useAppStore(s => s.spaceSlug)
@@ -535,8 +538,9 @@ export function ChatbotProfile() {
       )}
 
       <p className="text-sm text-gray-500 dark:text-gray-400">
-        Upload a logo for each chatbot. Customers see it in the chat header and in bot messages.
-        If a chatbot has no logo, it falls back to your organization's logo, then to a default icon.
+        {view === 'ui'
+          ? 'Design the pre-chat welcome screen for each chatbot: generate it, edit the sections, and publish it so customers get a fast, consistent UI with no per-visit AI generation.'
+          : "Upload a logo for each chatbot. Customers see it in the chat header and in bot messages. If a chatbot has no logo, it falls back to your organization's logo, then to a default icon."}
       </p>
 
       {/* Chatbot selector — single-bot spaces see just the list; multi-bot spaces
@@ -621,7 +625,7 @@ export function ChatbotProfile() {
       </Card>
 
       {/* Name + shareable link */}
-      {selected && (
+      {view !== 'ui' && selected && (
         <Card className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             {renaming ? (
@@ -695,6 +699,7 @@ export function ChatbotProfile() {
       {/* Logo editor */}
       {selected && (
         <Card className="p-5 space-y-5">
+          {view !== 'ui' && (<>
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Logo</h3>
 
           <div className="flex items-center gap-4">
@@ -740,7 +745,9 @@ export function ChatbotProfile() {
             </div>
             <Toggle checked={selected.show_logo} onChange={handleToggleShowLogo} disabled={savingToggle} />
           </div>
+          </>)}
 
+          {view !== 'branding' && (<>
           {homepageSectionsPlatformEnabled && (
             <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-700">
               <div>
@@ -1050,7 +1057,9 @@ export function ChatbotProfile() {
               </div>
             </div>
           )}
+          </>)}
 
+          {view !== 'ui' && (<>
           <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-700">
             <div>
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Theme color</p>
@@ -1074,11 +1083,12 @@ export function ChatbotProfile() {
               )}
             </div>
           </div>
+          </>)}
         </Card>
       )}
 
       {/* Status */}
-      {selected && (
+      {view !== 'ui' && selected && (
         <Card className="p-5">
           <div className="flex items-center justify-between">
             <div>
