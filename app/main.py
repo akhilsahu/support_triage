@@ -18,7 +18,7 @@ from app.api.v1 import agents, workflows, tasks, documents, admin, datasources, 
 from app.api.v1 import space_agents, chat_sessions, chatbots
 from app.api.v1.space_agents import kb_router
 from app.api.v1 import knowledge_base
-from app.api import chat, auth, customer, space
+from app.api import chat, auth, customer, space, chatbot_user
 from app.api.v1 import dashboard, superadmin
 from app.api.v1.inbox import staff_auth, sessions, escalation, stream
 from app.api.v1 import widget as widget_api
@@ -372,6 +372,7 @@ app.include_router(chat_sessions.router, prefix="/api/v1", tags=["Chat Sessions"
 app.include_router(chatbots.router,      prefix="/api/v1", tags=["Chatbots"])
 app.include_router(space.router, prefix="/api/v1")
 app.include_router(customer.router)
+app.include_router(chatbot_user.router)
 app.include_router(widget_api.router)   # public — no prefix, CORS * on responses
 
 # Inbox — human transfer

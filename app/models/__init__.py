@@ -3,6 +3,7 @@
 from app.models.space import Space, SpaceBuiltinAgentConfig, CustomAgent, ChatbotCustomAgent, BuiltinAgentCatalog
 from app.models.chat import ChatSession
 from app.models.chatbot import Chatbot
+from app.models.chatbot_user import ChatbotUser, ChatbotUserIdentity
 from app.models.datasource import SpaceDataSource
 from app.models.document import Document
 from app.models.knowledge_base import KnowledgeBase, KnowledgeBaseItem, AgentKnowledgeBase
@@ -18,6 +19,7 @@ __all__ = [
     "Space", "SpaceBuiltinAgentConfig", "CustomAgent", "ChatbotCustomAgent", "BuiltinAgentCatalog",
     "ChatSession",
     "Chatbot",
+    "ChatbotUser", "ChatbotUserIdentity",
     "SpaceDataSource",
     "Document",
     "KnowledgeBase", "KnowledgeBaseItem", "AgentKnowledgeBase",

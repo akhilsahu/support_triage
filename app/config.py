@@ -215,6 +215,13 @@ class Settings(BaseSettings):
     # JWT Auth
     JWT_TTL_HOURS: int = 72
 
+    # Chatbot customer login (end customers signing in on the hosted chat page).
+    # GOOGLE_CLIENT_ID is the OAuth "Web application" client id; the widget needs
+    # it too, so it's exposed via the public settings endpoint. Empty = the
+    # Google login option is unavailable (gate falls back to open chat).
+    GOOGLE_CLIENT_ID: str = ""
+    CHATBOT_USER_JWT_TTL_HOURS: int = 24 * 30   # 30 days — history should persist
+
     # Super Admin
     SUPER_ADMIN_KEY: str = "super-secret-change-me"
     AVAILABLE_HOMEPAGES: List[str] = Field(

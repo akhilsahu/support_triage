@@ -31,6 +31,12 @@ class ChatSession(Base):
                              ForeignKey("chatbots.id", ondelete="CASCADE"),
                              nullable=True, index=True)
 
+    # Logged-in customer who owns this conversation (see app/models/chatbot_user.py).
+    # NULL = anonymous session (URL-id access, today's default behavior).
+    chatbot_user_id = Column(UUID(as_uuid=True),
+                             ForeignKey("chatbot_users.id", ondelete="SET NULL"),
+                             nullable=True, index=True)
+
     # Derived from first user message
     title           = Column(String(200), nullable=True)
 
@@ -64,6 +70,7 @@ class ChatSession(Base):
             "session_id":      str(self.id),   # alias for API consumers
             "space_id":          str(self.space_id),
             "chatbot_id":      str(self.chatbot_id) if self.chatbot_id else None,
+            "chatbot_user_id": str(self.chatbot_user_id) if self.chatbot_user_id else None,
             "title":           self.title,
             "agent_slug":      self.agent_slug,
             "status":          self.status,

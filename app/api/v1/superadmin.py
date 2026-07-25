@@ -458,6 +458,10 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
         # whether its own per-bot toggle should be enabled -- Factor 1 of the
         # two-factor gate, see PlatformSettings.homepage_sections_platform_enabled.
         "homepage_sections_platform_enabled": ps.homepage_sections_platform_enabled,
+        # Read by the customer chat page to render the "Continue with Google"
+        # button. Empty string = Google sign-in isn't configured on this server,
+        # so the frontend leaves the chat open instead of showing a dead button.
+        "google_client_id": settings.GOOGLE_CLIENT_ID,
     }
 
 

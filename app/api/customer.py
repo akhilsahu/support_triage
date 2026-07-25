@@ -38,7 +38,8 @@ router = APIRouter(tags=["Customer"])
 _CORS = {
     "Access-Control-Allow-Origin":  "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    # Authorization carries the signed-in customer's token (see chatbot_auth.py).
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
 }
 
 
@@ -68,6 +69,7 @@ class SessionInitResponse(BaseModel):
 class FeedbackRequest(BaseModel):
     message_id: str
     rating: str   # "up" | "down"
+
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────

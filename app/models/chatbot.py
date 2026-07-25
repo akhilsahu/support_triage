@@ -62,6 +62,12 @@ class Chatbot(Base):
     # override above when set).
     homepage_sections_enabled = Column(Boolean, default=False, nullable=False)
 
+    # Customer-login gate for this chatbot (see app/models/chatbot_user.py):
+    #   NULL -> login never required (default, today's anonymous behavior)
+    #   0    -> login required before the first message
+    #   N>0  -> N free messages, then login required to continue
+    login_after_messages = Column(Integer, nullable=True)
+
     # Admin-authored quick-topic buttons for the homepage 'quick_topics'
     # section. JSON list: [{"label": "Term Insurance", "prompt": "..."}].
     # NULL/empty = section doesn't render (see app/renderengine/quick_topics.py).
@@ -120,6 +126,7 @@ class Chatbot(Base):
             "human_transfer_message":  self.human_transfer_message,
             "homepage_sections_override": self.homepage_sections_override,
             "homepage_sections_enabled":  self.homepage_sections_enabled,
+            "login_after_messages":       self.login_after_messages,
             "quick_topics":               self.quick_topics,
             "trust_badges":               self.trust_badges,
             "created_at":              self.created_at.isoformat() if self.created_at else None,
