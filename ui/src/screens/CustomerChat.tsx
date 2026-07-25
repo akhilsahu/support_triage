@@ -324,6 +324,12 @@ export function CustomerChat() {
   const sseRef        = useRef<EventSource | null>(null)
   const titleBaseRef  = useRef<string>('Live Chat')
   const awayUnreadRef = useRef<number>(0)
+  // True once the conversation was started in THIS tab. The session-restore
+  // effect below is only for deep-links (a URL that already carries ?chat=…);
+  // when we write ?chat= ourselves after the first send, this flag stops that
+  // effect from re-fetching and flashing "Restoring conversation…" over the
+  // messages we already have locally.
+  const ownSessionRef = useRef(false)
 
   const [theme, setTheme] = useState<ThemeKey>(() => {
     const stored = localStorage.getItem('chat-theme') as ThemeKey
@@ -438,6 +444,10 @@ export function CustomerChat() {
 
   useEffect(() => {
     if (!chatParam || !slug) return
+    // Only restore a session we didn't start in this tab -- otherwise writing
+    // ?chat= after the first send would re-enter here and flash the restoring
+    // state over the live conversation.
+    if (ownSessionRef.current) return
     setRestoring(true)
     fetch(`${API_CONFIG.baseURL}/api/chat/${slug}/session/${chatParam}${botQuery}`)
       .then(r => r.ok ? r.json() : null)
@@ -518,7 +528,7 @@ export function CustomerChat() {
         body: JSON.stringify({ message: msg, session_id: sessionId }),
       })
       const data = await res.json()
-      if (isFirst && data.session_id) { setSearchParams({ chat: data.session_id }, { replace: true }); setSessionId(data.session_id) }
+      if (isFirst && data.session_id) { ownSessionRef.current = true; setSearchParams({ chat: data.session_id }, { replace: true }); setSessionId(data.session_id) }
       if (data.reply) setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: data.reply, agent: data.agent, citations: data.citations ?? [], ts: new Date(), messageId: data.message_id }])
     } catch {
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: 'Connection error. Please try again.', ts: new Date() }])
@@ -616,8 +626,13 @@ export function CustomerChat() {
             (Chatbot.homepage_sections_enabled, see ChatbotProfile). No env
             var or build flag involved. Absent/empty falls through to the
             exact original hardcoded markup below -- unchanged, byte-for-byte. */}
-        {isEmpty && space?.homepage_sections?.length ? (
-          <div className="flex flex-col items-center justify-start min-h-full px-6 pt-5 sm:pt-6 pb-28 select-none text-center">
+        {space?.homepage_sections?.length ? (
+          // The AI-composed welcome sections stay mounted once the chat starts
+          // -- they become the scroll-up "intro" above the thread instead of
+          // vanishing. Fill the viewport only while empty; once there are
+          // messages, take natural height so the thread sits right below.
+          <div className={`flex flex-col items-center px-6 pt-5 sm:pt-6 select-none text-center
+                           ${isEmpty ? 'justify-start min-h-full pb-28' : 'pb-5'}`}>
             <SectionRenderer
               sections={space?.homepage_sections ?? []}
               theme={t}
