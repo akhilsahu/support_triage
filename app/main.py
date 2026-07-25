@@ -152,7 +152,11 @@ _PUBLIC_CORS_PREFIXES = (
 _PUBLIC_CORS_HEADERS = {
     "Access-Control-Allow-Origin":  "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    # Authorization carries the signed-in chatbot customer's token (see
+    # app/core/chatbot_auth.py). Without it here the preflight rejects every
+    # authenticated customer request, since these public endpoints are reached
+    # cross-origin from the chat page and embedded widgets.
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
 }
 
 from starlette.types import ASGIApp, Receive, Scope, Send

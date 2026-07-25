@@ -7,12 +7,13 @@ import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { useAppStore } from '../store/useAppStore'
 import { API_CONFIG } from '../config/api'
-import { ArrowUp, Sun, Moon, Sparkles, X, User, Bot, Palette, ThumbsUp, ThumbsDown, Copy, Check } from 'lucide-react'
+import { ArrowUp, Sun, Moon, Sparkles, X, User, Bot, Palette, ThumbsUp, ThumbsDown, Copy, Check, History } from 'lucide-react'
 import { SourceCitation } from '../components/ui/SourceCitation'
 import { NotFound } from './NotFound'
 import type { SourceItem } from '../types'
 import { SectionRenderer } from '../renderengine/homepage'
 import { CustomerLoginGate } from '../components/chat/CustomerLoginGate'
+import { ChatHistoryDrawer } from '../components/chat/ChatHistoryDrawer'
 import {
   readCustomerAuth, clearCustomerAuth, customerAuthHeader, verifyCustomerAuth,
   type CustomerAuth,
@@ -344,6 +345,7 @@ export function CustomerChat() {
   const [customer, setCustomer] = useState<CustomerAuth | null>(() => readCustomerAuth())
   const [googleClientId, setGoogleClientId] = useState('')
   const [loginRequired, setLoginRequired] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   const [theme, setTheme] = useState<ThemeKey>(() => {
     const stored = localStorage.getItem('chat-theme') as ThemeKey
@@ -642,6 +644,14 @@ export function CustomerChat() {
 
         {/* Header actions */}
         <div className="flex items-center gap-0.5 flex-shrink-0">
+          {/* Past conversations — only meaningful once signed in, since that's
+              what ties a conversation to a person. */}
+          {customer && (
+            <button onClick={() => setHistoryOpen(true)} title="Your conversations"
+              className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${t.iconBtnCls}`}>
+              <History className="w-4 h-4" />
+            </button>
+          )}
           {/* Signed-in customer — avatar doubles as the sign-out control. */}
           {customer && (
             <button
@@ -982,6 +992,36 @@ export function CustomerChat() {
           </div>
         </div>
       </div>
+
+      {/* Past conversations. Identity is platform-wide, so this can resume a
+          chat from another brand's chatbot too — that navigates there. */}
+      <ChatHistoryDrawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        currentSlug={slug}
+        currentSessionId={sessionId}
+        isDark={isDark}
+        onNewChat={() => {
+          setMessages([])
+          setEscalated(false)
+          ownSessionRef.current = false
+          setSessionId(crypto.randomUUID())
+          setSearchParams({}, { replace: true })
+        }}
+        onResume={s => {
+          if (s.space_slug === slug) {
+            // Same brand — swap the session in place; the ?chat= effect restores it.
+            setMessages([])
+            ownSessionRef.current = false
+            setSessionId(s.id)
+            setSearchParams({ chat: s.id }, { replace: true })
+          } else {
+            // Another brand's chatbot — the customer token travels with them.
+            const path = s.chatbot_slug ? `/${s.space_slug}/${s.chatbot_slug}` : `/${s.space_slug}`
+            window.location.assign(`${path}?chat=${s.id}`)
+          }
+        }}
+      />
     </div>
   )
 }
