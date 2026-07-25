@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button'
 import { Toggle } from '../components/ui/Toggle'
 import { apiClient } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
+import { ChatbotUiStudio } from './ChatbotUiStudio'
 
 interface Chatbot {
   id: string
@@ -753,6 +754,17 @@ export function ChatbotProfile() {
                 checked={selected.homepage_sections_enabled}
                 onChange={handleToggleHomepageSections}
                 disabled={savingHomepageSections}
+              />
+            </div>
+          )}
+
+          {homepageSectionsPlatformEnabled && selected.homepage_sections_enabled && (
+            <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+              <ChatbotUiStudio
+                slug={selected.slug}
+                chatbotName={selected.display_name}
+                logoUrl={selected.logo_url}
+                themeColor={selected.theme_color}
               />
             </div>
           )}

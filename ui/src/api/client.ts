@@ -1,5 +1,34 @@
 import axios from 'axios'
 import { API_CONFIG } from '../config/api'
+import type {
+  StatBand, Comparison, DataBlock, ProcessSteps, FaqItem, QuickTopic, SectionOverrides,
+} from '../renderengine/homepage/types'
+
+// A frozen/editable welcome payload -- mirrors the public endpoint's homepage
+// fields (see app/api/space.py build_homepage_fields).
+export interface HomepagePayload {
+  homepage_sections?: string[]
+  description?: string
+  suggestions?: string[]
+  key_benefits?: string[]
+  capabilities?: string[]
+  faq?: FaqItem[]
+  quick_topics?: QuickTopic[]
+  trust_badges?: string[]
+  stat_band?: StatBand
+  comparison?: Comparison
+  data_block?: DataBlock
+  process_steps?: ProcessSteps
+  section_overrides?: SectionOverrides
+}
+
+export interface HomepageSnapshot {
+  published: boolean
+  draft_payload: HomepagePayload | null
+  published_payload?: HomepagePayload | null
+  generated_at: string | null
+  published_at: string | null
+}
 
 const http = axios.create({
   baseURL: API_CONFIG.baseURL,
@@ -221,6 +250,19 @@ export const apiClient = {
     http.get(`/api/v1/chatbots/${slug}/comparison`).then(r => r.data),
   setComparison: (slug: string, grid: { columns: string[]; rows: string[][]; source: string }): Promise<{ columns: string[]; rows: string[][]; source: string }> =>
     http.put(`/api/v1/chatbots/${slug}/comparison`, grid).then(r => r.data),
+
+  // ── Chatbot UI snapshot (generate-once, edit, publish) ──
+  getHomepageUi: (slug: string): Promise<HomepageSnapshot> =>
+    http.get(`/api/v1/chatbots/${slug}/homepage-ui`).then(r => r.data),
+  generateHomepageUi: (slug: string): Promise<HomepageSnapshot> =>
+    // Blocking build (waits for web-grounded sections) -- allow up to 2 min.
+    http.post(`/api/v1/chatbots/${slug}/homepage-ui/generate`, undefined, { timeout: 120000 }).then(r => r.data),
+  saveHomepageUiDraft: (slug: string, payload: HomepagePayload): Promise<HomepageSnapshot> =>
+    http.put(`/api/v1/chatbots/${slug}/homepage-ui`, { payload }).then(r => r.data),
+  publishHomepageUi: (slug: string): Promise<{ published: boolean; published_at: string }> =>
+    http.post(`/api/v1/chatbots/${slug}/homepage-ui/publish`).then(r => r.data),
+  unpublishHomepageUi: (slug: string): Promise<{ published: boolean }> =>
+    http.post(`/api/v1/chatbots/${slug}/homepage-ui/unpublish`).then(r => r.data),
   uploadChatbotLogo: (slug: string, file: File) => {
     const form = new FormData()
     form.append('file', file)
