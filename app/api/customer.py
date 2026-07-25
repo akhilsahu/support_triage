@@ -606,6 +606,18 @@ async def get_chat_suggestions(slug: str,
 
     org, chatbot, db = await _get_brand(slug)
     try:
+        # Frozen chips from a published homepage snapshot -- serve them and skip
+        # the LLM, matching the frozen welcome sections (see space.py serving).
+        try:
+            from app.models.chatbot import ChatbotHomepageSnapshot
+            snap = await db.get(ChatbotHomepageSnapshot, chatbot.id)
+            if snap and isinstance(snap.published_payload, dict):
+                frozen = snap.published_payload.get("suggestions")
+                if isinstance(frozen, list) and frozen:
+                    return {"suggestions": [s for s in frozen if isinstance(s, str)][:4]}
+        except Exception:
+            logger.warning("get_chat_suggestions.snapshot_read_failed", slug=slug)
+
         try:
             active_agents = await _get_active_agents_cached(db, chatbot.id, str(org.id))
             store = get_vector_store()

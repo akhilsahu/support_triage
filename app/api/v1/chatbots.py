@@ -11,6 +11,7 @@ POST   /chatbots/{chatbot_slug}/set-default — make this the default chatbot
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 from uuid import UUID
@@ -464,3 +465,173 @@ async def delete_chatbot_logo(
     await db.commit()
     await db.refresh(chatbot)
     return ChatbotOut(**chatbot.to_dict())
+
+
+# ── Homepage UI snapshot: generate-once, edit, publish ──────────────────────
+# Lets an admin generate the pre-chat welcome UI once (blocking, real content),
+# edit it, and publish it as a frozen snapshot the public endpoint serves with
+# ZERO live LLM/web calls. Draft (editable/preview) is separate from published
+# (served), so editing never disturbs the live UI until re-published.
+
+_SNAPSHOT_KEYS = {
+    "homepage_sections", "description", "suggestions",
+    "key_benefits", "capabilities", "faq", "quick_topics", "trust_badges",
+    "stat_band", "comparison", "data_block", "process_steps", "section_overrides",
+}
+
+
+def _clean_snapshot_payload(payload: dict) -> dict:
+    """Keep only recognized welcome keys and coerce homepage_sections to a list
+    of known, de-duped section ids. Deep section content is trusted from the
+    editor -- the frontend section components already guard malformed shapes."""
+    from app.renderengine.homepage_sections import ALLOWED_SECTIONS
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "payload must be an object")
+    out = {k: v for k, v in payload.items() if k in _SNAPSHOT_KEYS}
+    secs = out.get("homepage_sections")
+    if not isinstance(secs, list) or not all(isinstance(s, str) for s in secs):
+        raise HTTPException(400, "homepage_sections must be a list of strings")
+    seen: set = set()
+    clean: list = []
+    for s in secs:
+        if s in ALLOWED_SECTIONS and s not in seen:
+            seen.add(s)
+            clean.append(s)
+    out["homepage_sections"] = clean
+    if "suggestions" in out and not isinstance(out["suggestions"], list):
+        raise HTTPException(400, "suggestions must be a list of strings")
+    return out
+
+
+class SnapshotPut(BaseModel):
+    payload: dict
+
+
+@router.post("/{chatbot_slug}/homepage-ui/generate")
+async def generate_homepage_ui(
+    chatbot_slug: str,
+    space: Space = Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """Run the live welcome pipeline once (blocking, so web-grounded sections
+    return real content, not None) and save it as this chatbot's editable draft.
+    Returns the draft for preview/editing. Does NOT publish."""
+    from app.models.chatbot import ChatbotHomepageSnapshot
+    from app.api.space import build_homepage_fields
+    from app.api.customer import _get_active_agents_cached
+
+    chatbot = await _get_chatbot(chatbot_slug, space.id, db)
+    name = chatbot.display_name or space.display_name
+    description = chatbot.description or ""
+
+    payload = await build_homepage_fields(
+        db, space, chatbot, name=name, description=description,
+        resolved_device="mobile", resolved_visitor_type="new", blocking=True,
+    )
+    payload["description"] = description  # hero intro (editable)
+
+    # Freeze the suggestion chips alongside the sections so the whole welcome is
+    # LLM-free once published.
+    try:
+        from app.utils.ai.chat_suggestions import get_suggestions
+        from app.rag.vector_store import get_vector_store
+        active_agents = await _get_active_agents_cached(db, chatbot.id, str(space.id))
+        try:
+            doc_types = get_vector_store().get_org_doc_types(str(space.id))
+        except Exception:
+            doc_types = []
+        payload["suggestions"] = await get_suggestions(
+            space_id=space.id, org_name=space.display_name,
+            active_agents=active_agents, doc_types=doc_types,
+        )
+    except Exception:
+        structlog.get_logger().warning("homepage_ui.suggestions_failed", slug=chatbot_slug)
+
+    now = datetime.utcnow()
+    snap = await db.get(ChatbotHomepageSnapshot, chatbot.id)
+    if snap:
+        snap.draft_payload = payload
+        snap.generated_at = now
+    else:
+        snap = ChatbotHomepageSnapshot(chatbot_id=chatbot.id, draft_payload=payload, generated_at=now)
+        db.add(snap)
+    await db.commit()
+    return {
+        "published":    snap.published_payload is not None,
+        "draft_payload": payload,
+        "generated_at": now.isoformat(),
+        "published_at": snap.published_at.isoformat() if snap.published_at else None,
+    }
+
+
+@router.get("/{chatbot_slug}/homepage-ui")
+async def get_homepage_ui(
+    chatbot_slug: str,
+    space: Space = Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """Current snapshot: the editable draft plus whether/what is published."""
+    from app.models.chatbot import ChatbotHomepageSnapshot
+    chatbot = await _get_chatbot(chatbot_slug, space.id, db)
+    snap = await db.get(ChatbotHomepageSnapshot, chatbot.id)
+    if not snap:
+        return {"published": False, "draft_payload": None, "published_payload": None,
+                "generated_at": None, "published_at": None}
+    return snap.to_dict()
+
+
+@router.put("/{chatbot_slug}/homepage-ui")
+async def save_homepage_ui_draft(
+    chatbot_slug: str,
+    req: SnapshotPut,
+    space: Space = Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save the admin-edited draft payload (validated). Does not publish."""
+    from app.models.chatbot import ChatbotHomepageSnapshot
+    chatbot = await _get_chatbot(chatbot_slug, space.id, db)
+    clean = _clean_snapshot_payload(req.payload)
+    snap = await db.get(ChatbotHomepageSnapshot, chatbot.id)
+    if not snap:
+        raise HTTPException(404, "Generate a UI first")
+    snap.draft_payload = clean
+    await db.commit()
+    return {"published": snap.published_payload is not None, "draft_payload": clean}
+
+
+@router.post("/{chatbot_slug}/homepage-ui/publish")
+async def publish_homepage_ui(
+    chatbot_slug: str,
+    space: Space = Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """Copy the current draft to published and turn the welcome feature on for
+    this bot. Customers now get the frozen UI -- no live LLM/web calls."""
+    from app.models.chatbot import ChatbotHomepageSnapshot
+    chatbot = await _get_chatbot(chatbot_slug, space.id, db)
+    snap = await db.get(ChatbotHomepageSnapshot, chatbot.id)
+    if not snap or not snap.draft_payload:
+        raise HTTPException(400, "Nothing to publish -- generate a UI first")
+    snap.published_payload = snap.draft_payload
+    snap.published_at = datetime.utcnow()
+    snap.published_by = space.id
+    chatbot.homepage_sections_enabled = True  # publishing enables the feature
+    await db.commit()
+    return {"published": True, "published_at": snap.published_at.isoformat()}
+
+
+@router.post("/{chatbot_slug}/homepage-ui/unpublish")
+async def unpublish_homepage_ui(
+    chatbot_slug: str,
+    space: Space = Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stop serving the frozen UI; revert to live generation. Keeps the draft."""
+    from app.models.chatbot import ChatbotHomepageSnapshot
+    chatbot = await _get_chatbot(chatbot_slug, space.id, db)
+    snap = await db.get(ChatbotHomepageSnapshot, chatbot.id)
+    if snap and snap.published_payload is not None:
+        snap.published_payload = None
+        snap.published_at = None
+        await db.commit()
+    return {"published": False}

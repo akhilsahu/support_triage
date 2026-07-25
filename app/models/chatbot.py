@@ -95,6 +95,8 @@ class Chatbot(Base):
                                         order_by="ChatbotStatMetric.position")
     comparison           = relationship("ChatbotComparison", back_populates="chatbot",
                                         cascade="all, delete-orphan", uselist=False)
+    homepage_snapshot    = relationship("ChatbotHomepageSnapshot", back_populates="chatbot",
+                                        cascade="all, delete-orphan", uselist=False)
 
     __table_args__ = (
         # slug unique within an org
@@ -145,6 +147,51 @@ class ChatbotStatMetric(Base):
 
     def to_dict(self) -> dict:
         return {"id": str(self.id), "value": self.value, "label": self.label, "position": self.position}
+
+
+class ChatbotHomepageSnapshot(Base):
+    """
+    A frozen, admin-curated snapshot of a chatbot's pre-chat welcome UI.
+
+    Two payloads, one row per chatbot:
+      - draft_payload: the working copy the admin generates, edits and previews.
+      - published_payload: what the public endpoint serves verbatim (skipping
+        all live LLM/web generation). NULL = not published -> the endpoint falls
+        back to today's live (Redis-cached) generation path.
+
+    Publishing copies draft -> published, so editing/regenerating a draft never
+    disturbs the live UI until the admin publishes again. Each payload is the
+    full assembled welcome response (homepage_sections + every section's content
+    + frozen suggestion chips + hero description) -- the same shape
+    app/api/space.py's org_public_info returns, so serving is a direct merge.
+    """
+
+    __tablename__ = "chatbot_homepage_snapshot"
+
+    chatbot_id        = Column(UUID(as_uuid=True), ForeignKey("chatbots.id", ondelete="CASCADE"),
+                               primary_key=True)
+    draft_payload     = Column(JSONB, nullable=True)   # working copy (generate/edit/preview)
+    published_payload = Column(JSONB, nullable=True)   # served to customers; NULL = not published
+    generated_at      = Column(DateTime, nullable=True)   # last live generation into the draft
+    published_at      = Column(DateTime, nullable=True)
+    published_by      = Column(UUID(as_uuid=True), nullable=True)  # space user who published
+    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at        = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    chatbot = relationship("Chatbot", back_populates="homepage_snapshot")
+
+    @property
+    def is_published(self) -> bool:
+        return self.published_payload is not None
+
+    def to_dict(self) -> dict:
+        return {
+            "published":    self.is_published,
+            "draft_payload":     self.draft_payload,
+            "published_payload": self.published_payload,
+            "generated_at": self.generated_at.isoformat() if self.generated_at else None,
+            "published_at": self.published_at.isoformat() if self.published_at else None,
+        }
 
 
 class ChatbotComparison(Base):
