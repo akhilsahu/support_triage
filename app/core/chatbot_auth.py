@@ -168,6 +168,46 @@ def verify_google_id_token(id_token_str: str) -> dict:
     }
 
 
+# ── Login gate ────────────────────────────────────────────────────────────────
+
+async def count_user_messages(db: AsyncSession, session_id: str) -> int:
+    """How many messages the customer has already sent in this session."""
+    from sqlalchemy import func
+    from app.models.space import ConversationLog
+    try:
+        return int((await db.execute(
+            select(func.count()).select_from(ConversationLog).where(
+                ConversationLog.session_id == str(session_id),
+                ConversationLog.role == "user",
+            )
+        )).scalar() or 0)
+    except Exception:
+        # Never let a counting failure lock a customer out of the chat.
+        return 0
+
+
+async def login_gate_blocks(db: AsyncSession, chatbot, session_id: Optional[str],
+                            customer: Optional[ChatbotUser]) -> bool:
+    """
+    True when this chatbot's login gate should stop the message.
+
+    chatbot.login_after_messages:
+      None -> never required        0 -> required before the first message
+      N>0  -> N free messages, then required.
+
+    Signed-in customers are never blocked. Enforced server-side because the
+    frontend gate alone is trivially bypassable.
+    """
+    threshold = getattr(chatbot, "login_after_messages", None)
+    if threshold is None or customer is not None:
+        return False
+    if threshold <= 0:
+        return True
+    if not session_id:
+        return False                      # first message of a brand-new session
+    return await count_user_messages(db, session_id) >= threshold
+
+
 # ── Identity resolution ───────────────────────────────────────────────────────
 
 async def get_or_create_user(

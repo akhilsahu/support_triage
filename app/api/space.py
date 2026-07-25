@@ -331,6 +331,10 @@ async def org_public_info(
             "logo_url":               effective_logo,
             "theme_color":            theme,
             "human_transfer_enabled": chatbot.human_transfer_enabled if chatbot else True,
+            # Customer-login gate: null = never, 0 = before the first message,
+            # N = N free messages then sign-in. The widget uses it to show the
+            # Google gate at the right moment; the server enforces it regardless.
+            "login_after_messages": chatbot.login_after_messages if chatbot else None,
         }
 
         # ── Homepage section recommendation ──

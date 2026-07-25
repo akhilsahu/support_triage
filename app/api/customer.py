@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import List, Optional
 
 import structlog
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
@@ -312,11 +312,16 @@ async def _persist_turn(
     result: dict,
     elapsed_ms: int,
     message: str,
+    customer=None,
 ) -> tuple[str, str]:
     """
     Upsert ChatSession, write both ConversationLog rows, commit, refresh Redis TTL.
     Returns (canonical session_id, assistant ConversationLog id) — the latter lets
     the frontend attach thumbs up/down feedback to this specific reply.
+
+    customer: the signed-in ChatbotUser, when there is one. New sessions are
+    stamped with them, and an existing anonymous session is claimed — so signing
+    in mid-conversation keeps the thread instead of stranding it.
     """
     from app.models.chat import ChatSession
     from app.core.redis import redis_client
@@ -349,6 +354,7 @@ async def _persist_turn(
             id=new_id,
             space_id=org.id,
             chatbot_id=chatbot.id,
+            chatbot_user_id=customer.id if customer else None,
             title=message[:100].strip(),
             agent_slug=agent_slug,
             status="open",
@@ -360,6 +366,10 @@ async def _persist_turn(
         chat_session.agent_slug      = agent_slug
         chat_session.message_count   = (chat_session.message_count or 0) + 1
         chat_session.last_message_at = datetime.utcnow()
+        # Claim an anonymous session for the customer who just signed in. Never
+        # reassigns a session that already belongs to someone else.
+        if customer is not None and chat_session.chatbot_user_id is None:
+            chat_session.chatbot_user_id = customer.id
 
     session_id = str(chat_session.id)
 
@@ -437,8 +447,10 @@ def _canonical_session_id(incoming: Optional[str]) -> str:
 
 @router.post("/api/chat/{slug}", response_model=CustomerChatResponse)
 async def customer_chat(slug: str, req: CustomerChatRequest,
-                        chatbot_slug: Optional[str] = Query(None, alias="chatbot")):
+                        chatbot_slug: Optional[str] = Query(None, alias="chatbot"),
+                        authorization: Optional[str] = Header(None)):
     from app.orchestra.ai.core.factory import build_executor
+    from app.core.chatbot_auth import resolve_customer, login_gate_blocks
 
     try:
         org, chatbot, db = await _get_brand(slug, chatbot_slug)
@@ -447,6 +459,17 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
 
     t0 = time.time()
     try:
+        # 0. Customer login gate. The signed-in customer (if any) also owns the
+        # session below. `code` lets the widget show the Google button rather
+        # than a generic error.
+        customer = await resolve_customer(authorization, db)
+        if await login_gate_blocks(db, chatbot, req.session_id, customer):
+            return JSONResponse(
+                {"detail": "Please sign in to continue this conversation.",
+                 "code": "login_required"},
+                status_code=401, headers=_CORS,
+            )
+
         # 1. Human handoff — return early if session is owned by staff
         if req.session_id:
             handoff = await _handle_human_session(db, org, chatbot, req.session_id, req.message)
@@ -478,7 +501,7 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
 
         # 4. Persist both turns and return
         elapsed_ms = int((time.time() - t0) * 1000)
-        session_id, message_id = await _persist_turn(db, org, chatbot, session_id, result, elapsed_ms, req.message)
+        session_id, message_id = await _persist_turn(db, org, chatbot, session_id, result, elapsed_ms, req.message, customer)
 
         return JSONResponse(
             CustomerChatResponse(
@@ -737,8 +760,11 @@ async def close_session(slug: str, session_id: str):
 
 @router.get("/api/chat/{slug}/session/{session_id}")
 async def get_session_history(slug: str, session_id: str,
-                              chatbot_slug: Optional[str] = Query(None, alias="chatbot")):
+                              chatbot_slug: Optional[str] = Query(None, alias="chatbot"),
+                              authorization: Optional[str] = Header(None)):
     """Restore a chat session. Returns message history for frontend rendering."""
+    from app.core.chatbot_auth import resolve_customer
+
     org, chatbot, db = await _get_brand(slug)
     try:
         from app.models.chat import ChatSession
@@ -756,6 +782,14 @@ async def get_session_history(slug: str, session_id: str,
         session = sess_result.scalar_one_or_none()
         if not session:
             raise HTTPException(404, "Session not found.")
+
+        # A session owned by a signed-in customer is private to them. Anonymous
+        # sessions stay reachable by their (unguessable) id, so existing ?chat=
+        # links keep working.
+        if session.chatbot_user_id is not None:
+            customer = await resolve_customer(authorization, db)
+            if customer is None or customer.id != session.chatbot_user_id:
+                raise HTTPException(403, "This conversation belongs to another account.")
 
         session_meta = {"ai_disabled": session.ai_disabled, "status": session.status}
 

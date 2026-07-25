@@ -56,6 +56,7 @@ class ChatbotUpdate(BaseModel):
     human_transfer_message: Optional[str] = None
     homepage_sections_enabled: Optional[bool] = None
     homepage_sections_override: Optional[str] = None
+    login_after_messages: Optional[int] = None
     quick_topics: Optional[str] = None
     trust_badges: Optional[str] = None
 
@@ -74,6 +75,7 @@ class ChatbotOut(BaseModel):
     active: bool
     homepage_sections_enabled: bool = False
     homepage_sections_override: Optional[str] = None
+    login_after_messages: Optional[int] = None
     quick_topics: Optional[str] = None
     trust_badges: Optional[str] = None
     created_at: Optional[str]
@@ -239,6 +241,13 @@ async def update_chatbot(
             chatbot.homepage_sections_override = validate_override_payload(req.homepage_sections_override)
         except ValueError as e:
             raise HTTPException(400, str(e))
+    # Explicit null clears the login gate, so this checks "was the field sent?"
+    # rather than "is it not None" like the fields above.
+    if "login_after_messages" in req.model_fields_set:
+        val = req.login_after_messages
+        if val is not None and val < 0:
+            raise HTTPException(400, "login_after_messages must be 0 or greater (null disables the gate).")
+        chatbot.login_after_messages = val
     if req.quick_topics is not None:
         from app.renderengine.quick_topics import validate_quick_topics_payload
         try:
