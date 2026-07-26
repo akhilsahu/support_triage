@@ -54,6 +54,14 @@ export function CustomerLoginGate({
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
+  // onSignedIn is typically a fresh inline function from the parent on every
+  // render; keeping it out of the effect's deps (via a ref) stops Google's SDK
+  // from being re-initialized and the button re-rendered on every keystroke
+  // elsewhere in the chat -- the effect below only re-runs when something that
+  // actually changes the button's behavior changes.
+  const onSignedInRef = useRef(onSignedIn)
+  useEffect(() => { onSignedInRef.current = onSignedIn }, [onSignedIn])
+
   useEffect(() => {
     let cancelled = false
     loadGis()
@@ -64,7 +72,7 @@ export function CustomerLoginGate({
           callback: async (resp: { credential: string }) => {
             setBusy(true); setError('')
             try {
-              onSignedIn(await loginWithGoogle(slug, resp.credential, sessionId, botQuery || ''))
+              onSignedInRef.current(await loginWithGoogle(slug, resp.credential, sessionId, botQuery || ''))
             } catch (e) {
               setError(e instanceof Error ? e.message : 'Sign-in failed.')
             } finally {
@@ -82,7 +90,7 @@ export function CustomerLoginGate({
       })
       .catch(e => !cancelled && setError(e.message))
     return () => { cancelled = true }
-  }, [clientId, slug, sessionId, botQuery, isDark, onSignedIn])
+  }, [clientId, slug, sessionId, botQuery, isDark])
 
   return (
     <div className="flex flex-col items-center gap-2 py-1">
