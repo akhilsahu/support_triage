@@ -22,6 +22,35 @@ export interface HomepagePayload {
   section_overrides?: SectionOverrides
 }
 
+// Background document ingestion (app/models/ingestion_job.py).
+export type IngestionStatus = 'queued' | 'parsing' | 'chunking' | 'indexing' | 'done' | 'failed'
+
+export interface IngestionJob {
+  id: string
+  filename: string
+  doc_type: string | null
+  kb_name: string | null
+  kb_id: string | null
+  status: IngestionStatus
+  progress: number
+  stage_detail: string | null
+  doc_id: string | null
+  pages: number | null
+  chunks: number | null
+  error: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface IngestionJobAccepted {
+  job_id: string
+  filename: string
+  status: IngestionStatus
+  message: string
+}
+
+export const INGESTION_TERMINAL: IngestionStatus[] = ['done', 'failed']
+
 export interface HomepageSnapshot {
   published: boolean
   draft_payload: HomepagePayload | null
@@ -83,7 +112,9 @@ export const apiClient = {
     http.post(API_CONFIG.endpoints.sentiment, { message }).then(r => r.data),
 
   // RAG
-  uploadDoc: (file: File, clientId?: string, docType?: string, kbName?: string, kbDescription?: string, expiryDate?: string) => {
+  // Returns 202 with a job to poll -- ingestion runs in the background, so this
+  // resolves in milliseconds even for documents that take minutes to process.
+  uploadDoc: (file: File, clientId?: string, docType?: string, kbName?: string, kbDescription?: string, expiryDate?: string, kbId?: string, itemTitle?: string): Promise<IngestionJobAccepted> => {
     const form = new FormData()
     form.append('file', file)
     return http.post(API_CONFIG.endpoints.ragUpload, form, {
@@ -94,9 +125,17 @@ export const apiClient = {
         ...(kbName        ? { 'X-KB-Name':         kbName        } : {}),
         ...(kbDescription ? { 'X-KB-Description':  kbDescription } : {}),
         ...(expiryDate    ? { 'X-KB-Expiry':       expiryDate    } : {}),
+        ...(kbId          ? { 'X-KB-Id':           kbId          } : {}),
+        ...(itemTitle     ? { 'X-Item-Title':      itemTitle     } : {}),
       },
     }).then(r => r.data)
   },
+
+  listIngestionJobs: (limit = 20): Promise<{ jobs: IngestionJob[] }> =>
+    http.get('/api/v1/documents/ingestion-jobs', { params: { limit } }).then(r => r.data),
+
+  getIngestionJob: (jobId: string): Promise<IngestionJob> =>
+    http.get(`/api/v1/documents/ingestion-jobs/${jobId}`).then(r => r.data),
 
   listDocs: () =>
     http.get(API_CONFIG.endpoints.ragList).then(r => r.data),

@@ -8,7 +8,8 @@ import {
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Skeleton } from '../components/ui/SkeletonLoader'
-import { apiClient } from '../api/client'
+import { apiClient, INGESTION_TERMINAL, type IngestionJob } from '../api/client'
+import { IngestionJobRow } from '../components/kb/IngestionJobRow'
 import { CreateAgentModal } from './Agents'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -156,9 +157,14 @@ function KBModal({
       }
 
       if (tab === 'doc' && file) {
-        const uploaded = await apiClient.uploadDoc(file, undefined, docType, kbName || title || file.name, undefined, expiryDate || undefined)
-        const resolvedDocId = uploaded?.doc_id || uploaded?.id || ''
-        await apiClient.addKBItem(resolvedKbId, { item_type: 'doc', title: title || file.name, doc_id: resolvedDocId })
+        // Ingestion is asynchronous now, so there's no doc_id yet. The upload
+        // carries the KB id and the background job creates the item once the
+        // document is actually indexed; until then it shows as "processing" in
+        // the listing, driven by the ingestion job.
+        await apiClient.uploadDoc(
+          file, undefined, docType, kbName || title || file.name,
+          undefined, expiryDate || undefined, resolvedKbId, title || file.name,
+        )
       } else if (tab === 'text') {
         await apiClient.addKBItem(resolvedKbId, { item_type: 'text', title: title || undefined, content: content.trim() })
       } else if (tab === 'qna') {
@@ -458,6 +464,32 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
     queryFn: () => apiClient.listKBItems(kb.id),
   })
 
+  // Documents still ingesting (or failed) for this KB. Ingestion runs in the
+  // background, so this is what makes a large upload visible instead of the
+  // page looking empty for minutes. Polls only while something is unfinished,
+  // then goes quiet.
+  const { data: jobsData } = useQuery<{ jobs: IngestionJob[] }>({
+    queryKey: ['ingestion-jobs', kb.id],
+    queryFn: () => apiClient.listIngestionJobs(50),
+    refetchInterval: q => {
+      const list = (q.state.data as { jobs: IngestionJob[] } | undefined)?.jobs ?? []
+      const mine = list.filter(j => j.kb_id === kb.id)
+      return mine.some(j => !INGESTION_TERMINAL.includes(j.status)) ? 2000 : false
+    },
+  })
+
+  // Failures stay visible so the user knows the upload didn't land; successes
+  // vanish because the finished document itself takes their place in the list.
+  const activeJobs = (jobsData?.jobs ?? []).filter(
+    j => j.kb_id === kb.id && j.status !== 'done',
+  )
+
+  // Pull in the real document as soon as its job finishes.
+  const doneCount = (jobsData?.jobs ?? []).filter(j => j.kb_id === kb.id && j.status === 'done').length
+  useEffect(() => {
+    if (doneCount > 0) queryClient.invalidateQueries({ queryKey: ['kb-items', kb.id] })
+  }, [doneCount, kb.id, queryClient])
+
   const deleteMutation = useMutation({
     mutationFn: (itemId: string) => apiClient.deleteKBItem(kb.id, itemId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kb-items', kb.id] }),
@@ -534,7 +566,12 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
       {/* Docs tab */}
       {!isLoading && activeTab === 'docs' && (
         <>
-          {docs.length === 0
+          {activeJobs.length > 0 && (
+            <div className="space-y-2 mb-2">
+              {activeJobs.map(j => <IngestionJobRow key={j.id} job={j} />)}
+            </div>
+          )}
+          {docs.length === 0 && activeJobs.length === 0
             ? <EmptyState label="No documents yet" cta="Upload" onCta={() => setAddOpen(true)} />
             : <div className="space-y-2">
                 {docs.map(item => (
@@ -620,6 +657,10 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
           onClose={() => setAddOpen(false)}
           onDone={() => {
             queryClient.invalidateQueries({ queryKey: ['kb-items', kb.id] })
+            // A document upload only returns a job id -- refetch the job list so
+            // the new "processing" row appears and polling restarts (it's idle
+            // whenever nothing is in flight).
+            queryClient.invalidateQueries({ queryKey: ['ingestion-jobs', kb.id] })
             setAddOpen(false)
           }}
         />

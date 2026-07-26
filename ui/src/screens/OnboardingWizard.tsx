@@ -103,8 +103,10 @@ export function OnboardingWizard() {
       const kb = await apiClient.createKB({ name: `${resolvedName} Knowledge Base` })
       const id = kb.id
       if (kbTab === 'file' && file) {
-        const doc = await apiClient.uploadDoc(file, undefined, 'general', kb.name)
-        await apiClient.addKBItem(id, { item_type: 'doc', title: file.name, doc_id: doc.doc_id || doc.id })
+        // Async ingestion: the background job links the KB item once the
+        // document has a doc_id (see app/orchestra/ai/ingestion/jobs/tasks.py).
+        await apiClient.uploadDoc(file, undefined, 'general', kb.name,
+                                  undefined, undefined, id, file.name)
       } else if (kbTab === 'text') {
         await apiClient.addKBItem(id, { item_type: 'text', title: 'Knowledge', content: textContent.trim() })
       } else if (kbTab === 'qna') {

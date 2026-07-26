@@ -182,6 +182,8 @@ async def rag_upload(
     x_kb_name: Optional[str] = Header(default=None, alias="X-KB-Name"),
     x_kb_description: Optional[str] = Header(default=None, alias="X-KB-Description"),
     x_kb_expiry: Optional[str] = Header(default=None, alias="X-KB-Expiry"),
+    x_kb_id: Optional[str] = Header(default=None, alias="X-KB-Id"),
+    x_item_title: Optional[str] = Header(default=None, alias="X-Item-Title"),
     org=Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
@@ -205,6 +207,16 @@ async def rag_upload(
     kb_name     = x_kb_name or ""
     description = x_kb_description or ""
     expiry_date = x_kb_expiry or ""
+
+    # When the upload belongs to a knowledge base, the KB item can only be
+    # created once ingestion yields a doc_id -- so the job carries the linkage
+    # and the task creates the item on success.
+    kb_uuid = None
+    if x_kb_id:
+        try:
+            kb_uuid = uuid.UUID(x_kb_id)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid X-KB-Id.")
 
     filename = file.filename or "upload"
     svc      = get_ingestion_service()
@@ -231,6 +243,7 @@ async def rag_upload(
 
     job_row = IngestionJob(
         space_id=org.id,
+        kb_id=kb_uuid,
         filename=filename,
         doc_type=doc_type,
         kb_name=kb_name or None,
@@ -254,6 +267,8 @@ async def rag_upload(
         description=description,
         expiry_date=expiry_date,
         org_name=org.display_name or "",
+        kb_id=str(kb_uuid) if kb_uuid else "",
+        item_title=x_item_title or filename,
     )
 
     logger.info("ingestion.job.queued", job_id=str(job_row.id),

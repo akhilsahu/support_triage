@@ -51,6 +51,21 @@ async def _set_job(job_id: str, **fields) -> None:
         logger.warning("ingestion.job.status_write_failed", job_id=job_id, error=str(e))
 
 
+async def _attach_kb_item(kb_id: str, doc_id: str, title: str) -> None:
+    """Create the KnowledgeBaseItem pointing at the freshly indexed document."""
+    from app.core.database import AsyncSessionLocal
+    from app.models.knowledge_base import KnowledgeBaseItem
+    async with AsyncSessionLocal() as db:
+        db.add(KnowledgeBaseItem(
+            kb_id=UUID(kb_id),
+            item_type="doc",
+            title=title,
+            doc_id=doc_id,
+            indexed_doc_id=doc_id,
+        ))
+        await db.commit()
+
+
 @job("ingest_document")
 async def ingest_document(
     *,
@@ -64,6 +79,8 @@ async def ingest_document(
     description: str = "",
     expiry_date: str = "",
     org_name: str = "",
+    kb_id: str = "",
+    item_title: str = "",
 ) -> None:
     """Ingest one uploaded document, recording progress on its job row."""
     import uuid as _uuid
@@ -156,6 +173,17 @@ async def ingest_document(
                 ],
             )
         )
+
+        # Link into the knowledge base now that there's a real doc_id — doing it
+        # at upload time would have stored an empty reference. Deliberately not
+        # fatal: the document is already indexed and searchable, so a failure
+        # here shouldn't present the whole ingestion as failed.
+        if kb_id:
+            try:
+                await _attach_kb_item(kb_id, doc_id, item_title or filename)
+            except Exception as e:
+                logger.warning("ingestion.job.kb_link_failed",
+                               job_id=job_id, kb_id=kb_id, error=str(e))
 
         await _set_job(job_id, status="done", progress=100, doc_id=doc_id,
                        stage_detail=f"{parsed.page_count} pages, {len(chunks)} chunks",
