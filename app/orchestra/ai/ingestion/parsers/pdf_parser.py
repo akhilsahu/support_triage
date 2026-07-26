@@ -34,6 +34,31 @@ from app.orchestra.ai.ingestion.core.base import BaseParser
 logger = structlog.get_logger()
 
 
+# Vision models sometimes decline an image ("I'm unable to view or extract text
+# from images...") instead of describing it. That refusal is not document
+# content, but it was being appended to the page text and indexed -- on the
+# reported 54-page PDF it polluted 47% of the resulting chunks, so RAG could
+# retrieve an apology as if it were policy text. Detect and discard it.
+_VISION_REFUSAL_RE = re.compile(
+    r"\b(?:i(?:'m| am)\s+(?:unable|sorry)|i\s+can(?:'t|not)\s+"
+    r"(?:view|extract|read|process|assist|help)|unable\s+to\s+"
+    r"(?:view|extract|read|process))\b",
+    re.I,
+)
+
+
+def _is_vision_refusal(text: str) -> bool:
+    """True when a vision reply is a refusal rather than a description.
+
+    Deliberately requires the refusal to dominate a short reply: a genuine long
+    caption that merely quotes such a phrase from the page is kept.
+    """
+    t = (text or "").strip()
+    if not t:
+        return False
+    return bool(_VISION_REFUSAL_RE.search(t)) and len(t) < 400
+
+
 class PdfParser(BaseParser):
     """Primary PDF parser — PyMuPDF with table detection and vision.
     Falls back to PyPdfParser via the chain in PARSER_MAP if PyMuPDF is missing."""
@@ -379,6 +404,12 @@ class PdfParser(BaseParser):
                         }],
                     )
             text = resp.choices[0].message.content or ""
+            if _is_vision_refusal(text):
+                # Cache the empty result too: the identical image would be
+                # refused again, so this still saves the repeat API calls.
+                logger.info("ingestion.pdf.embedded_image_refused",
+                            page=page_num, w=w, h=h, preview=text.strip()[:80])
+                text = ""
             if cache is not None:
                 cache[digest] = text
             logger.info("ingestion.pdf.embedded_image_vision",
@@ -425,6 +456,12 @@ class PdfParser(BaseParser):
                         }],
                     )
             text = resp.choices[0].message.content or ""
+            if _is_vision_refusal(text):
+                # Same problem as embedded images: a declined page would
+                # otherwise be indexed as if it were the page's content.
+                logger.info("ingestion.pdf.scanned_page_refused",
+                            page=page_num, preview=text.strip()[:80])
+                return ""
             logger.info("ingestion.pdf.scanned_page_vision", page=page_num, chars=len(text))
             return text
         except Exception as e:
