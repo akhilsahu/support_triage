@@ -51,8 +51,13 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/multiagent
       REDIS_URL: redis://redis:6379/0
+      # Queue lives on a separate Redis DB from the cache (db 0) and every key
+      # is namespaced s247:jobs:* -- see app/orchestra/ai/ingestion/jobs/celery_app.py
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
+      # A worker runs in this stack, so hand ingestion to it rather than
+      # processing in-process. Local dev without compose stays on "inprocess".
+      JOB_BACKEND: celery
     ports:
       - "8000:8000"
     volumes:
@@ -90,6 +95,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
+      JOB_BACKEND: celery
     volumes:
       - ./app:/app/app
       - ./logs:/app/logs
@@ -100,7 +106,9 @@ services:
         condition: service_healthy
     networks:
       - multiagent-network
-    command: celery -A app.celery_app worker --loglevel=info
+    command: >
+      celery -A app.orchestra.ai.ingestion.jobs.celery_app:celery_app worker
+      --loglevel=info --queues=s247-ingestion --concurrency=2
 
   # Celery Beat (Scheduler)
   celery-beat:

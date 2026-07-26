@@ -217,6 +217,17 @@ class Settings(BaseSettings):
     # running a broker + worker. See app/orchestra/ai/ingestion/jobs/.
     JOB_BACKEND: str = "inprocess"
 
+    # Celery reuses the existing Redis server but on a DIFFERENT database index
+    # (default 1 vs the app's 0), so queue state can never collide with or be
+    # accidentally flushed alongside cache/rate-limit keys. Everything Celery
+    # writes is additionally namespaced under CELERY_KEY_PREFIX, so a stray key
+    # is always identifiable at a glance in redis-cli.
+    CELERY_REDIS_DB: int = 1
+    CELERY_KEY_PREFIX: str = "s247:jobs:"
+    CELERY_BROKER_URL: str = ""      # blank = derive from REDIS_URL + CELERY_REDIS_DB
+    CELERY_RESULT_BACKEND: str = ""  # blank = same as broker
+    CELERY_TASK_QUEUE: str = "s247-ingestion"
+
     # JWT Auth
     JWT_TTL_HOURS: int = 72
 

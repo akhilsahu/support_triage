@@ -65,3 +65,4 @@ prometheus-client==0.19.0
 structlog==24.1.0
 email-validator
 google-auth>=2.0.0
+celery[redis]>=5.3.0
