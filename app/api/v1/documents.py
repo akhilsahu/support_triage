@@ -13,10 +13,12 @@ Documents API — ChromaDB-backed RAG endpoints.
 
 from __future__ import annotations
 
+import functools
 import uuid
 from pathlib import Path
 from typing import List, Optional
 
+import anyio
 import structlog
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -192,7 +194,13 @@ async def rag_upload(
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
     try:
-        parsed: ParsedDocument = svc.parse(raw, filename)
+        # svc.parse is fully synchronous and, for image-heavy PDFs, spends
+        # minutes inside blocking OpenAI vision calls. Running it directly in
+        # this async handler blocked the event loop for the whole parse, so
+        # every other request to the server -- health checks, chat, dashboard --
+        # stalled until the upload finished. Offloading to a worker thread keeps
+        # the loop free; this request still waits, but nothing else does.
+        parsed: ParsedDocument = await anyio.to_thread.run_sync(svc.parse, raw, filename)
     except (ValueError, RuntimeError) as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
@@ -226,24 +234,29 @@ async def rag_upload(
 
     semantic_summary = await _generate_summary(parsed.full_text)
 
-    store.upsert_client_chunks(
-        client_id=client_id,
-        session_id=session_id,
-        doc_id=doc_id,
-        filename=filename,
-        extension=parsed.extension,
-        strategy=cfg.strategy.value,
-        doc_type=doc_type,
-        ttl_days=ttl_days,
-        kb_name=kb_name,
-        space_id=str(org.id),
-        org_name=org.display_name,
-        description=description,
-        semantic_summary=semantic_summary,
-        chunks=[
-            {"text": c.text, "page": c.page, "chunk_index": c.chunk_index, "section": c.section}
-            for c in chunks
-        ],
+    # Indexing embeds every chunk (123 for a 21-page PDF) — seconds of blocking
+    # CPU, so it goes to a worker thread for the same reason as the parse above.
+    await anyio.to_thread.run_sync(
+        functools.partial(
+            store.upsert_client_chunks,
+            client_id=client_id,
+            session_id=session_id,
+            doc_id=doc_id,
+            filename=filename,
+            extension=parsed.extension,
+            strategy=cfg.strategy.value,
+            doc_type=doc_type,
+            ttl_days=ttl_days,
+            kb_name=kb_name,
+            space_id=str(org.id),
+            org_name=org.display_name,
+            description=description,
+            semantic_summary=semantic_summary,
+            chunks=[
+                {"text": c.text, "page": c.page, "chunk_index": c.chunk_index, "section": c.section}
+                for c in chunks
+            ],
+        )
     )
 
     logger.info("Document indexed", client_id=client_id, doc_id=doc_id,

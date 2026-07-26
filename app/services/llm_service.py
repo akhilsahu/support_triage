@@ -1,5 +1,8 @@
 """LLM Service with switchable models (watsonx.ai, OpenAI, Anthropic)"""
 
+import asyncio
+import random
+import re
 from typing import Optional, Dict, Any, List
 from enum import Enum
 import structlog
@@ -9,6 +12,62 @@ from anthropic import AsyncAnthropic
 from app.config import settings
 
 logger = structlog.get_logger()
+
+# ── Transient-failure retry ───────────────────────────────────────────────────
+# Rate limits (429) are usually momentary -- providers routinely ask for a wait
+# measured in milliseconds. Without a retry a single burst (e.g. a document
+# ingestion running vision over many images) exhausts the token-per-minute
+# budget and every *other* caller hard-fails, even though waiting ~0.5s would
+# have succeeded. Falling straight through to the next provider doesn't help
+# when it's the only one configured.
+
+_RETRY_ATTEMPTS = 3          # initial try + 2 retries
+_RETRY_BASE_DELAY = 0.5      # seconds
+_RETRY_MAX_DELAY = 8.0
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """True for transient failures only -- rate limits, server errors, timeouts.
+
+    Deliberately excludes 4xx auth/validation errors (401/403/404/422): those
+    are deterministic, so retrying just wastes time and quota.
+    """
+    status = getattr(exc, "status_code", None) or getattr(
+        getattr(exc, "response", None), "status_code", None
+    )
+    if status is not None:
+        return status == 429 or status >= 500
+    # Providers vary in exception shape; fall back to the class/message.
+    name = type(exc).__name__.lower()
+    if "ratelimit" in name or "timeout" in name or "connection" in name:
+        return True
+    text = str(exc).lower()
+    return "rate limit" in text or "429" in text or "timeout" in text
+
+
+def _retry_delay(exc: Exception, attempt: int) -> float:
+    """Prefer the provider's own hint, else exponential backoff with jitter.
+
+    OpenAI returns both a Retry-After header and a "try again in 472ms" phrase;
+    honouring either avoids waiting far longer than the provider requires.
+    """
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    if headers:
+        raw = headers.get("retry-after") or headers.get("Retry-After")
+        if raw:
+            try:
+                return min(float(raw), _RETRY_MAX_DELAY)
+            except (TypeError, ValueError):
+                pass
+
+    m = re.search(r"try again in\s+([\d.]+)\s*(ms|s)\b", str(exc), re.I)
+    if m:
+        value = float(m.group(1))
+        seconds = value / 1000 if m.group(2).lower() == "ms" else value
+        return min(max(seconds, 0.05), _RETRY_MAX_DELAY)
+
+    backoff = min(_RETRY_BASE_DELAY * (2 ** attempt), _RETRY_MAX_DELAY)
+    return backoff * (0.5 + random.random() / 2)   # jitter: avoid thundering herd
 
 
 class LLMProvider(str, Enum):
@@ -431,19 +490,34 @@ class LLMService:
             return None
 
         for provider_name, model in providers:
-            try:
-                logger.info(f"Trying LLM provider: {provider_name} ({model})")
-                result = await self.generate(
-                    messages=messages,
-                    model=model,
-                    system_prompt=system_prompt,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-                logger.info(f"LLM response from {provider_name}", tokens=result.get("usage", {}).get("total_tokens"))
-                return result
-            except Exception as e:
-                logger.warning(f"{provider_name} failed: {e} — trying next provider")
+            last_error: Optional[Exception] = None
+            for attempt in range(_RETRY_ATTEMPTS):
+                try:
+                    logger.info(f"Trying LLM provider: {provider_name} ({model})")
+                    result = await self.generate(
+                        messages=messages,
+                        model=model,
+                        system_prompt=system_prompt,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                    logger.info(f"LLM response from {provider_name}", tokens=result.get("usage", {}).get("total_tokens"))
+                    return result
+                except Exception as e:
+                    last_error = e
+                    # Only transient failures are worth retrying, and only if
+                    # there's an attempt left -- otherwise fall through to the
+                    # next provider immediately.
+                    if attempt < _RETRY_ATTEMPTS - 1 and _is_retryable(e):
+                        delay = _retry_delay(e, attempt)
+                        logger.warning(
+                            f"{provider_name} transient failure — retrying",
+                            attempt=attempt + 1, delay_s=round(delay, 3), error=str(e)[:200],
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    break
+            logger.warning(f"{provider_name} failed: {last_error} — trying next provider")
 
         logger.error("All LLM providers failed — falling back to keyword responses")
         return None

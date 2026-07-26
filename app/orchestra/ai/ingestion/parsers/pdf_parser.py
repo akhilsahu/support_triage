@@ -20,6 +20,7 @@ Three distinct page scenarios handled:
 
 from __future__ import annotations
 
+import hashlib
 import io
 import re
 from collections import Counter
@@ -59,6 +60,12 @@ class PdfParser(BaseParser):
             "author":     doc.metadata.get("author"),
             "page_count": doc.page_count,
         }
+        # Per-document vision cache: identical image bytes (logos, watermarks,
+        # repeated diagrams) otherwise cost one API call per occurrence. Keyed
+        # by content hash, so reuse is exact -- no quality tradeoff. Reset per
+        # document so captions never leak between files.
+        self._vision_cache: dict[str, str] = {}
+        self._vision_stats = {"total": 0, "api_calls": 0, "deduped": 0}
         body_size         = self._detect_body_font(doc)
         heading_threshold = body_size * 1.15
 
@@ -275,6 +282,15 @@ class PdfParser(BaseParser):
 
         pages = self._merge_continuation_tables(pages)
 
+        # Report real dedupe numbers so the payoff can be measured per document
+        # rather than assumed -- scanned pages (one unique image each) benefit
+        # little, logo/watermark-heavy files benefit a lot.
+        stats = getattr(self, "_vision_stats", None)
+        if stats and stats["total"]:
+            logger.info("ingestion.pdf.vision_dedupe",
+                        filename=filename, total=stats["total"],
+                        api_calls=stats["api_calls"], skipped=stats["deduped"])
+
         logger.info("ingestion.pdf.pymupdf",
                     filename=filename, pages=len(pages), body_font=body_size)
         return ParsedDocument(filename=filename, extension=".pdf", pages=pages, metadata=meta)
@@ -311,23 +327,50 @@ class PdfParser(BaseParser):
             h = block.get("height", 0)
             if w * h < self.cfg.pdf_embedded_image_min_area:
                 return ""
-            
+
+            # Reuse the caption for an image we've already described in this
+            # document. A header logo repeated on every page collapses from one
+            # vision call per page to exactly one, with identical output.
+            cache = getattr(self, "_vision_cache", None)
+            stats = getattr(self, "_vision_stats", None)
+            digest = hashlib.sha256(img_bytes).hexdigest()
+            if stats is not None:
+                stats["total"] += 1
+            if cache is not None and digest in cache:
+                if stats is not None:
+                    stats["deduped"] += 1
+                logger.debug("ingestion.pdf.embedded_image_cached",
+                             page=page_num, w=w, h=h)
+                return cache[digest]
+
             b64    = base64.b64encode(img_bytes).decode()
             mime   = f"image/{img_ext}" if img_ext != "jpg" else "image/jpeg"
             client = OpenAI(api_key=settings.OPENAI_API_KEY)
+            if stats is not None:
+                stats["api_calls"] += 1
 
-            resp = client.chat.completions.create(
-                model=self.cfg.vision_model,
-                max_tokens=self.cfg.vision_max_tokens,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": self.cfg.vision_prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                    ],
-                }],
-            )
+            from tenacity import Retrying, stop_after_attempt, wait_exponential
+
+            for attempt in Retrying(
+                stop=stop_after_attempt(5),
+                wait=wait_exponential(multiplier=1, min=2, max=20),
+                reraise=True
+            ):
+                with attempt:
+                    resp = client.chat.completions.create(
+                        model=self.cfg.vision_model,
+                        max_tokens=self.cfg.vision_max_tokens,
+                        messages=[{
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": self.cfg.vision_prompt},
+                                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                            ],
+                        }],
+                    )
             text = resp.choices[0].message.content or ""
+            if cache is not None:
+                cache[digest] = text
             logger.info("ingestion.pdf.embedded_image_vision",
                         page=page_num, w=w, h=h, chars=len(text))
             return text
@@ -352,17 +395,25 @@ class PdfParser(BaseParser):
             b64  = base64.b64encode(png).decode()
             client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-            resp = client.chat.completions.create(
-                model=self.cfg.vision_model,
-                max_tokens=self.cfg.vision_max_tokens,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": self.cfg.vision_prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
-                    ],
-                }],
-            )
+            from tenacity import Retrying, stop_after_attempt, wait_exponential
+
+            for attempt in Retrying(
+                stop=stop_after_attempt(5),
+                wait=wait_exponential(multiplier=1, min=2, max=20),
+                reraise=True
+            ):
+                with attempt:
+                    resp = client.chat.completions.create(
+                        model=self.cfg.vision_model,
+                        max_tokens=self.cfg.vision_max_tokens,
+                        messages=[{
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": self.cfg.vision_prompt},
+                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                            ],
+                        }],
+                    )
             text = resp.choices[0].message.content or ""
             logger.info("ingestion.pdf.scanned_page_vision", page=page_num, chars=len(text))
             return text
