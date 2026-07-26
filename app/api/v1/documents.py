@@ -13,13 +13,11 @@ Documents API — ChromaDB-backed RAG endpoints.
 
 from __future__ import annotations
 
-import functools
 import tempfile
 import uuid
 from pathlib import Path
 from typing import List, Optional
 
-import anyio
 import structlog
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse

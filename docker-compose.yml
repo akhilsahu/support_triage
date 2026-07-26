@@ -110,29 +110,6 @@ services:
       celery -A app.orchestra.ai.ingestion.jobs.celery_app:celery_app worker
       --loglevel=info --queues=s247-ingestion --concurrency=2
 
-  # Celery Beat (Scheduler)
-  celery-beat:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    container_name: multiagent-celery-beat
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/multiagent
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
-    volumes:
-      - ./app:/app/app
-      - ./logs:/app/logs
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - multiagent-network
-    command: celery -A app.celery_app beat --loglevel=info
-
 volumes:
   postgres_data:
   redis_data:
