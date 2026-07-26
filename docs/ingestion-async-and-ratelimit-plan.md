@@ -102,11 +102,14 @@ Note the asymmetry: per-image vision *does* have `tenacity` retry
 
 **1.3 Pluggable job runner — new self-contained module**
 
-Durable queue is wanted, but Celery must not leak into existing code. So the
-queue lives behind a small interface in its **own module**, swappable by config:
+Durable queue is wanted, but Celery must not leak into existing code. The queue
+lives behind a small interface, swappable by config — and it belongs with the
+pipeline it serves, not at top level: ingestion owns parse → chunk → index
+(chunking is one stage of it), so the module sits inside the existing
+`app/orchestra/ai/ingestion/` package alongside `core/` and `parsers/`:
 
 ```
-app/jobs/
+app/orchestra/ai/ingestion/jobs/
   __init__.py      # get_job_runner() factory — reads settings.JOB_BACKEND
   base.py          # JobRunner protocol: enqueue(task_name, **payload) -> job_id
   registry.py      # @job("ingest_document") decorator; name -> callable map
@@ -115,6 +118,9 @@ app/jobs/
   celery_runner.py # JobRunner impl delegating to Celery
   tasks.py         # the actual ingestion task, backend-agnostic
 ```
+
+(If a second, non-ingestion job type ever appears, `base.py`/`registry.py` can
+be promoted to a shared location then — no need to pre-build that generality.)
 
 Rules that keep it plug-and-play:
 
@@ -253,7 +259,8 @@ drop-in once everything else is proven on `inprocess`.
    content hash is lossless and lands first; perceptual/boilerplate skipping is
    configurable.
 2. **Job durability** — real queue (**Celery**), but behind a `JobRunner`
-   interface in its own `app/jobs/` module, with an `inprocess` default so the
+   interface in its own `app/orchestra/ai/ingestion/jobs/` module (colocated
+   with the ingestion pipeline it serves), with an `inprocess` default so the
    app runs with no extra infrastructure and Celery never leaks into call sites
    (§1.3).
 3. **Scope** — plan only for now; no implementation until sign-off.
