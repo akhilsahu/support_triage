@@ -57,6 +57,17 @@ async def lifespan(app: FastAPI):
         await redis_client.connect()
         logger.info("Redis connected")
 
+        # Fail any ingestion job that can no longer be progressing (killed by
+        # this restart, or stalled). Otherwise its row stays non-terminal and
+        # the dashboard polls a progress bar that never finishes or errors.
+        try:
+            from app.orchestra.ai.ingestion.jobs.sweeper import sweep_interrupted_jobs
+            swept = await sweep_interrupted_jobs()
+            if swept:
+                logger.info("Interrupted ingestion jobs marked failed", count=swept)
+        except Exception as e:
+            logger.warning("Ingestion job sweep skipped", error=str(e))
+
         # Agno session store preflight — surface a missing/unreachable
         # `agno_sessions` DB at boot. Without it, chat still works but silently
         # loses history/memory/summaries (fail-safe degrade), so make it visible.
