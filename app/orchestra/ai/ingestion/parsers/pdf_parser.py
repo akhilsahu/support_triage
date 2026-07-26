@@ -34,6 +34,42 @@ from app.orchestra.ai.ingestion.core.base import BaseParser
 logger = structlog.get_logger()
 
 
+# Decorative page furniture -- guilloche watermarks, security-print borders --
+# is embedded as a full-size image on every page of some documents. It carries
+# no text and no information, so a vision call on it costs money and latency and
+# comes back either empty or as a refusal. On the reported 54-page PDF, 55 of 59
+# vision-eligible images were exactly this.
+#
+# Thresholds are deliberately conservative, measured against that document:
+#   decorative: std 2.2 / 12.5 / 16.1   content pages: std 21.0 / 24.1 / 40.4
+# so std < 8 (near-blank) and modal_frac > 0.85 (one tone dominates) sit well
+# clear of real content. The ambiguous middle is left alone -- a wasted API call
+# is much cheaper than silently dropping a real chart.
+_BLANK_STD_MAX = 8.0
+_BLANK_MODAL_FRAC_MIN = 0.85
+
+
+def _is_uninformative_image(img_bytes: bytes) -> bool:
+    """True for near-blank / single-tone decorative images.
+
+    Fails OPEN: any analysis problem (missing Pillow, odd format) returns False
+    so the image still goes to vision. Losing real content would be far worse
+    than an unnecessary call.
+    """
+    try:
+        import numpy as np
+        from PIL import Image
+
+        im = Image.open(io.BytesIO(img_bytes)).convert("L").resize((160, 160))
+        a = np.asarray(im, dtype=np.uint8)
+        if float(a.std()) < _BLANK_STD_MAX:
+            return True
+        hist = np.bincount(a.ravel(), minlength=256).astype(float)
+        return float(hist.max() / hist.sum()) > _BLANK_MODAL_FRAC_MIN
+    except Exception:
+        return False
+
+
 # Vision models sometimes decline an image ("I'm unable to view or extract text
 # from images...") instead of describing it. That refusal is not document
 # content, but it was being appended to the page text and indexed -- on the
@@ -324,7 +360,8 @@ class PdfParser(BaseParser):
         if stats and stats["total"]:
             logger.info("ingestion.pdf.vision_dedupe",
                         filename=filename, total=stats["total"],
-                        api_calls=stats["api_calls"], skipped=stats["deduped"])
+                        api_calls=stats["api_calls"], skipped=stats["deduped"],
+                        decorative=stats.get("blank", 0))
 
         logger.info("ingestion.pdf.pymupdf",
                     filename=filename, pages=len(pages), body_font=body_size)
@@ -377,6 +414,16 @@ class PdfParser(BaseParser):
                 logger.debug("ingestion.pdf.embedded_image_cached",
                              page=page_num, w=w, h=h)
                 return cache[digest]
+
+            # Skip decorative furniture before paying for a vision call.
+            if _is_uninformative_image(img_bytes):
+                if stats is not None:
+                    stats["blank"] = stats.get("blank", 0) + 1
+                if cache is not None:
+                    cache[digest] = ""
+                logger.info("ingestion.pdf.embedded_image_decorative",
+                            page=page_num, w=w, h=h)
+                return ""
 
             b64    = base64.b64encode(img_bytes).decode()
             mime   = f"image/{img_ext}" if img_ext != "jpg" else "image/jpeg"
