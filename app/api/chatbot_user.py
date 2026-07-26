@@ -18,7 +18,7 @@ import uuid
 from typing import Optional
 
 import structlog
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -26,6 +26,7 @@ from sqlalchemy import select
 from app.core.chatbot_auth import (
     create_customer_token, get_or_create_user, resolve_customer, verify_google_id_token,
 )
+from app.core.rate_limit import client_ip, enforce_rate_limit
 
 logger = structlog.get_logger()
 router = APIRouter(tags=["Chatbot Users"])
@@ -52,7 +53,7 @@ async def preflight_google_login(slug: str):
 
 
 @router.post("/api/chat/{slug}/auth/google")
-async def google_login(slug: str, req: GoogleLoginRequest,
+async def google_login(slug: str, req: GoogleLoginRequest, request: Request,
                        chatbot_slug: Optional[str] = Query(None, alias="chatbot")):
     """
     Sign an end customer in with Google on the hosted chat page.
@@ -66,6 +67,10 @@ async def google_login(slug: str, req: GoogleLoginRequest,
     """
     from app.api.customer import _get_brand
     from app.models.chat import ChatSession
+
+    # Throttle before verification -- each attempt otherwise hits Google's
+    # tokeninfo endpoint. Fails open if Redis is down.
+    await enforce_rate_limit("chatbot_login_ip", client_ip(request), 20, 300)
 
     info = verify_google_id_token(req.id_token)
 
@@ -162,5 +167,68 @@ async def my_sessions(current: Optional[str] = Query(None),
         # Current space on top (already date-sorted within each group).
         sessions.sort(key=lambda s: not s["is_current_space"])
         return JSONResponse({"sessions": sessions}, headers=_CORS)
+    finally:
+        await db.close()
+
+
+@router.options("/api/chat/me")
+async def preflight_me():
+    return JSONResponse({}, headers={**_CORS, "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS"})
+
+
+@router.delete("/api/chat/me")
+async def delete_me(request: Request, authorization: Optional[str] = Header(None)):
+    """
+    Erase the signed-in customer: their profile, every login identity, all their
+    conversations across every space, and the messages in them.
+
+    This is the customer's own right-to-erasure path (India DPDP / GDPR-style),
+    which matters because chatbot identity is platform-wide -- one account can
+    span several brands, so deletion has to reach all of them.
+
+    Irreversible. Staff-facing analytics keep no personally identifying copy of
+    these rows: the conversation logs themselves are removed with the sessions.
+    """
+    from app.core.database import AsyncSessionLocal
+    from app.core.redis import redis_client
+    from app.models.chat import ChatSession
+    from app.models.space import ConversationLog
+    from app.api.v1.chat_sessions import _history_key
+
+    await enforce_rate_limit("chatbot_delete_ip", client_ip(request), 10, 300)
+
+    db = AsyncSessionLocal()
+    try:
+        user = await resolve_customer(authorization, db)
+        if user is None:
+            return JSONResponse({"detail": "Not signed in."}, status_code=401, headers=_CORS)
+
+        sessions = (await db.execute(
+            select(ChatSession).where(ChatSession.chatbot_user_id == user.id)
+        )).scalars().all()
+
+        deleted_messages = 0
+        for sess in sessions:
+            sid = str(sess.id)
+            logs = (await db.execute(
+                select(ConversationLog).where(ConversationLog.session_id == sid)
+            )).scalars().all()
+            for log in logs:
+                await db.delete(log)
+            deleted_messages += len(logs)
+            await db.delete(sess)
+            try:
+                await redis_client.delete(_history_key(sid))   # cached transcript
+            except Exception:
+                logger.warning("chatbot_user.history_cache_clear_failed", session_id=sid)
+
+        await db.delete(user)   # identities cascade
+        await db.commit()
+        logger.info("chatbot_user.deleted",
+                    sessions=len(sessions), messages=deleted_messages)
+        return JSONResponse(
+            {"deleted": True, "conversations": len(sessions), "messages": deleted_messages},
+            headers=_CORS,
+        )
     finally:
         await db.close()

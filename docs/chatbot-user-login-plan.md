@@ -202,7 +202,9 @@ add `chat_sessions.chatbot_user_id` and `chatbots.login_after_messages`.
 - **C — Frontend gate:** checkbox + free-messages input on Chatbot UI page; soft gate +
   Google button + "N free messages left" hint + token storage; header avatar/logout.
 - **D — History drawer:** drawer UI, current-space-first ordering, cross-space resume.
-- **E — Privacy polish:** consent notice, deletion endpoint, rate-limits.
+- **E — Privacy polish:** consent notice (shipped with the gate in C), DELETE
+  /api/chat/me erasure endpoint + "Delete my data" in the history drawer, and
+  rate limits on the login/erasure endpoints. **Done.**
 
 ## 7. Test plan
 - **Backend:** token verify (mocked); identity upsert + link-by-email idempotency;

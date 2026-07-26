@@ -107,3 +107,18 @@ export async function fetchCustomerSessions(currentSlug: string): Promise<Custom
   const data = await res.json()
   return (data.sessions ?? []) as CustomerSession[]
 }
+
+/** Erase the signed-in customer: profile, login identities, and every
+ *  conversation across all spaces. Irreversible — the caller must confirm. */
+export async function deleteCustomerData(): Promise<{ conversations: number; messages: number }> {
+  const auth = readCustomerAuth()
+  if (!auth) throw new Error('Not signed in.')
+  const res = await fetch(`${API_CONFIG.baseURL}/api/chat/me`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${auth.token}` },
+  })
+  if (!res.ok) throw new Error('Could not delete your data. Please try again.')
+  const data = await res.json()
+  clearCustomerAuth()
+  return { conversations: data.conversations ?? 0, messages: data.messages ?? 0 }
+}

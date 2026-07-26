@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { X, MessageSquare, Plus } from 'lucide-react'
-import { fetchCustomerSessions, type CustomerSession } from '../../lib/customerAuth'
+import { fetchCustomerSessions, deleteCustomerData, type CustomerSession } from '../../lib/customerAuth'
 
 // Past-conversation drawer for a signed-in customer.
 //
@@ -23,7 +23,7 @@ function timeAgo(iso: string | null): string {
 }
 
 export function ChatHistoryDrawer({
-  open, onClose, currentSlug, currentSessionId, isDark, onResume, onNewChat,
+  open, onClose, currentSlug, currentSessionId, isDark, onResume, onNewChat, onDeleted,
 }: {
   open: boolean
   onClose: () => void
@@ -32,9 +32,13 @@ export function ChatHistoryDrawer({
   isDark: boolean
   onResume: (session: CustomerSession) => void
   onNewChat: () => void
+  onDeleted?: () => void
 }) {
   const [sessions, setSessions] = useState<CustomerSession[]>([])
   const [loading, setLoading] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -141,6 +145,49 @@ export function ChatHistoryDrawer({
             </section>
           ))}
         </div>
+
+        {/* Data controls — the customer's own erasure path. Identity is
+            platform-wide, so this deletes their chats with every brand. */}
+        <footer className={`px-3 py-3 border-t ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
+          {!confirmDelete ? (
+            <button onClick={() => { setConfirmDelete(true); setDeleteError('') }}
+              className={`text-[11.5px] underline underline-offset-2 ${mutedCls} hover:opacity-80`}>
+              Delete my data
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <p className={`text-[11.5px] ${mutedCls}`}>
+                Permanently delete your account and every conversation you've had — with this
+                brand and any other on this platform? This can't be undone.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={deleting}
+                  onClick={async () => {
+                    setDeleting(true); setDeleteError('')
+                    try {
+                      await deleteCustomerData()
+                      onDeleted?.()
+                      onClose()
+                    } catch (e) {
+                      setDeleteError(e instanceof Error ? e.message : 'Delete failed.')
+                    } finally {
+                      setDeleting(false)
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded-lg text-[11.5px] font-medium bg-red-500/90 text-white
+                             hover:bg-red-500 disabled:opacity-50">
+                  {deleting ? 'Deleting…' : 'Delete everything'}
+                </button>
+                <button onClick={() => setConfirmDelete(false)} disabled={deleting}
+                  className={`px-2.5 py-1 rounded-lg text-[11.5px] ${mutedCls} hover:opacity-80`}>
+                  Cancel
+                </button>
+              </div>
+              {deleteError && <p className="text-[11.5px] text-red-400">{deleteError}</p>}
+            </div>
+          )}
+        </footer>
       </aside>
     </>
   )

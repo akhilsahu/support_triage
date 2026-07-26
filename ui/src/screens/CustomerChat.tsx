@@ -1001,6 +1001,13 @@ export function CustomerChat() {
         currentSlug={slug}
         currentSessionId={sessionId}
         isDark={isDark}
+        onDeleted={() => {
+          // Account gone — drop back to an anonymous, empty chat.
+          setCustomer(null)
+          setMessages([])
+          setSessionId(crypto.randomUUID())
+          setSearchParams({}, { replace: true })
+        }}
         onNewChat={() => {
           setMessages([])
           setEscalated(false)

@@ -151,7 +151,8 @@ _PUBLIC_CORS_PREFIXES = (
 )
 _PUBLIC_CORS_HEADERS = {
     "Access-Control-Allow-Origin":  "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    # DELETE is used by the customer's own data-erasure endpoint (DELETE /api/chat/me).
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     # Authorization carries the signed-in chatbot customer's token (see
     # app/core/chatbot_auth.py). Without it here the preflight rejects every
     # authenticated customer request, since these public endpoints are reached
