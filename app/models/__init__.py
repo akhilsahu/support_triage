@@ -6,6 +6,7 @@ from app.models.chatbot import Chatbot
 from app.models.chatbot_user import ChatbotUser, ChatbotUserIdentity
 from app.models.datasource import SpaceDataSource
 from app.models.document import Document
+from app.models.ingestion_job import IngestionJob
 from app.models.knowledge_base import KnowledgeBase, KnowledgeBaseItem, AgentKnowledgeBase
 from app.models.agent import Agent, AgentType, AgentStatus
 from app.models.workflow import Workflow, ExecutionType, WorkflowStatus
@@ -22,6 +23,7 @@ __all__ = [
     "ChatbotUser", "ChatbotUserIdentity",
     "SpaceDataSource",
     "Document",
+    "IngestionJob",
     "KnowledgeBase", "KnowledgeBaseItem", "AgentKnowledgeBase",
 
     "Agent", "AgentType", "AgentStatus",

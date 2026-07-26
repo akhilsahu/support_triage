@@ -212,6 +212,11 @@ class Settings(BaseSettings):
     WS_MAX_CONNECTIONS: int = 1000
     WS_MESSAGE_QUEUE_SIZE: int = 100
 
+    # Background jobs (document ingestion). "inprocess" needs no extra
+    # infrastructure; "celery" gives restart-safe durability at the cost of
+    # running a broker + worker. See app/orchestra/ai/ingestion/jobs/.
+    JOB_BACKEND: str = "inprocess"
+
     # JWT Auth
     JWT_TTL_HOURS: int = 72
 

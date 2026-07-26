@@ -96,6 +96,16 @@ class PdfParser(BaseParser):
             page_dict = page.get_text("dict")
             page_plain = page.get_text().strip()
 
+            # Report progress before doing the page's work. Vision-heavy pages
+            # take seconds each, so this is where a background ingestion gets
+            # its only meaningful "still alive, page N of M" signal.
+            progress_cb = getattr(self, "_progress_cb", None)
+            if progress_cb:
+                try:
+                    progress_cb(page_idx + 1, doc.page_count)
+                except Exception:   # progress reporting must never break parsing
+                    logger.debug("ingestion.pdf.progress_cb_failed", page=page_idx + 1)
+
             # PyMuPDF's block order follows the PDF content stream, not
             # necessarily top-to-bottom visual position — some PDFs draw
             # headings (e.g. ones inside a styled box/banner) as a separate

@@ -14,6 +14,7 @@ Documents API — ChromaDB-backed RAG endpoints.
 from __future__ import annotations
 
 import functools
+import tempfile
 import uuid
 from pathlib import Path
 from typing import List, Optional
@@ -23,8 +24,11 @@ import structlog
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import current_space
+from app.core.database import get_db
 from app.rag.document_parser import ParsedDocument
 from app.orchestra.ai.chunking import chunk as chunk_document, get_config as get_chunk_config
 from app.orchestra.ai.ingestion import get_ingestion_service
@@ -81,6 +85,19 @@ class RagUploadResponse(BaseModel):
     pages: int
     chunks: int
     collection: str
+    message: str
+
+
+class RagUploadAcceptedResponse(BaseModel):
+    """202 response — the document was accepted and is being processed.
+
+    Ingestion of a large PDF takes minutes (vision runs over every embedded
+    image), so the client gets a job id to follow instead of holding a request
+    open past its timeout. Poll /documents/ingestion-jobs/{job_id}.
+    """
+    job_id: str
+    filename: str
+    status: str
     message: str
 
 
@@ -157,7 +174,7 @@ async def rag_ui_chat_client(client_id: str):
 
 # ── Upload ────────────────────────────────────────────────────────────────────
 
-@router.post("/rag/upload", response_model=RagUploadResponse)
+@router.post("/rag/upload", response_model=RagUploadAcceptedResponse, status_code=202)
 async def rag_upload(
     file: UploadFile = File(...),
     x_session_id: Optional[str] = Header(default=None, alias="X-Session-Id"),
@@ -166,15 +183,26 @@ async def rag_upload(
     x_kb_description: Optional[str] = Header(default=None, alias="X-KB-Description"),
     x_kb_expiry: Optional[str] = Header(default=None, alias="X-KB-Expiry"),
     org=Depends(current_space),
+    db: AsyncSession = Depends(get_db),
 ):
     """
-    Upload a document into the org's knowledge base. JWT required.
+    Accept a document for ingestion. JWT required.
+
+    Returns 202 immediately with a job id: parsing an image-heavy PDF runs
+    vision over every embedded image and takes minutes, so holding the request
+    open guaranteed a client timeout. Validation that can fail fast (file type,
+    size, emptiness) still happens here so the user gets those errors inline;
+    everything slow moves to a background job. Poll
+    /documents/ingestion-jobs/{job_id} for progress.
+
     client_id is the org's UUID (immutable) — not slug, not from headers.
     """
-    client_id  = str(org.id)
-    session_id = x_session_id or str(uuid.uuid4())
-    doc_type   = x_doc_type if x_doc_type in VALID_DOC_TYPES else "general"
-    kb_name    = x_kb_name or ""
+    from app.models.ingestion_job import IngestionJob
+    from app.orchestra.ai.ingestion.jobs import get_job_runner
+
+    session_id  = x_session_id or str(uuid.uuid4())
+    doc_type    = x_doc_type if x_doc_type in VALID_DOC_TYPES else "general"
+    kb_name     = x_kb_name or ""
     description = x_kb_description or ""
     expiry_date = x_kb_expiry or ""
 
@@ -193,87 +221,88 @@ async def rag_upload(
     if not raw:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    try:
-        # svc.parse is fully synchronous and, for image-heavy PDFs, spends
-        # minutes inside blocking OpenAI vision calls. Running it directly in
-        # this async handler blocked the event loop for the whole parse, so
-        # every other request to the server -- health checks, chat, dashboard --
-        # stalled until the upload finished. Offloading to a worker thread keeps
-        # the loop free; this request still waits, but nothing else does.
-        parsed: ParsedDocument = await anyio.to_thread.run_sync(svc.parse, raw, filename)
-    except (ValueError, RuntimeError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    except Exception as e:
-        logger.error("Document parse error", filename=filename, error=str(e))
-        raise HTTPException(status_code=422, detail=f"Failed to parse document: {e}")
+    # Hand the bytes to the worker via disk rather than memory: the payload has
+    # to survive this request, and under the Celery backend it crosses a process
+    # boundary. The task deletes it when it finishes, success or failure.
+    tmp_dir = Path(tempfile.gettempdir()) / "support247_uploads"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = tmp_dir / f"{uuid.uuid4().hex}_{Path(filename).name}"
+    temp_path.write_bytes(raw)
 
-    if not parsed.pages or not parsed.full_text.strip():
-        raise HTTPException(status_code=422, detail="Document appears empty or has no extractable text.")
-
-    # Chunk — strategy chosen automatically from file extension
-    cfg = get_chunk_config(filename)
-    logger.info("Chunking", filename=filename, strategy=cfg.strategy.value,
-                chunk_size=cfg.chunk_size, overlap=cfg.overlap)
-    chunks = chunk_document(parsed)
-    if not chunks:
-        raise HTTPException(status_code=422, detail="Document produced no chunks.")
-
-    # Index into ChromaDB (client_documents collection, isolated by client_id)
-    doc_id = str(uuid.uuid4())[:8]
-    store  = get_vector_store()
-
-    # Compute TTL from expiry date if provided
-    ttl_days = None
-    if expiry_date:
-        try:
-            from datetime import date
-            delta = (date.fromisoformat(expiry_date) - date.today()).days
-            ttl_days = max(1, delta)
-        except ValueError:
-            ttl_days = None
-
-    semantic_summary = await _generate_summary(parsed.full_text)
-
-    # Indexing embeds every chunk (123 for a 21-page PDF) — seconds of blocking
-    # CPU, so it goes to a worker thread for the same reason as the parse above.
-    await anyio.to_thread.run_sync(
-        functools.partial(
-            store.upsert_client_chunks,
-            client_id=client_id,
-            session_id=session_id,
-            doc_id=doc_id,
-            filename=filename,
-            extension=parsed.extension,
-            strategy=cfg.strategy.value,
-            doc_type=doc_type,
-            ttl_days=ttl_days,
-            kb_name=kb_name,
-            space_id=str(org.id),
-            org_name=org.display_name,
-            description=description,
-            semantic_summary=semantic_summary,
-            chunks=[
-                {"text": c.text, "page": c.page, "chunk_index": c.chunk_index, "section": c.section}
-                for c in chunks
-            ],
-        )
-    )
-
-    logger.info("Document indexed", client_id=client_id, doc_id=doc_id,
-                filename=filename, chunks=len(chunks))
-
-    return RagUploadResponse(
-        doc_id=doc_id,
+    job_row = IngestionJob(
+        space_id=org.id,
         filename=filename,
-        extension=parsed.extension,
-        pages=parsed.page_count,
-        chunks=len(chunks),
-        collection=COLLECTION_CLIENT,
-        message=(
-            f"'{filename}' indexed successfully — "
-            f"{parsed.page_count} pages, {len(chunks)} chunks."
-        ),
+        doc_type=doc_type,
+        kb_name=kb_name or None,
+        status="queued",
+        progress=0,
+        stage_detail="Waiting to start",
     )
+    db.add(job_row)
+    await db.commit()
+    await db.refresh(job_row)
+
+    get_job_runner().enqueue(
+        "ingest_document",
+        job_id=str(job_row.id),
+        space_id=str(org.id),
+        temp_path=str(temp_path),
+        filename=filename,
+        doc_type=doc_type,
+        session_id=session_id,
+        kb_name=kb_name,
+        description=description,
+        expiry_date=expiry_date,
+        org_name=org.display_name or "",
+    )
+
+    logger.info("ingestion.job.queued", job_id=str(job_row.id),
+                filename=filename, space_id=str(org.id))
+
+    return RagUploadAcceptedResponse(
+        job_id=str(job_row.id),
+        filename=filename,
+        status="queued",
+        message=f"'{filename}' uploaded — processing in the background.",
+    )
+
+
+# ── Ingestion job status ──────────────────────────────────────────────────────
+
+@router.get("/ingestion-jobs")
+async def list_ingestion_jobs(
+    limit: int = 20,
+    org=Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recent ingestion jobs for this space, newest first — drives the
+    "processing…" rows in the knowledge base listing."""
+    from app.models.ingestion_job import IngestionJob
+    rows = (await db.execute(
+        select(IngestionJob)
+        .where(IngestionJob.space_id == org.id)
+        .order_by(IngestionJob.created_at.desc())
+        .limit(max(1, min(limit, 100)))
+    )).scalars().all()
+    return {"jobs": [r.to_dict() for r in rows]}
+
+
+@router.get("/ingestion-jobs/{job_id}")
+async def get_ingestion_job(
+    job_id: str,
+    org=Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """Single job, for polling one upload's progress."""
+    from app.models.ingestion_job import IngestionJob
+    try:
+        row = await db.get(IngestionJob, uuid.UUID(job_id))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid job id.")
+    # Scope to the caller's space so one tenant can't read another's jobs.
+    if row is None or row.space_id != org.id:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return row.to_dict()
 
 
 # ── Chat ──────────────────────────────────────────────────────────────────────

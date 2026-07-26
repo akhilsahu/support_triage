@@ -30,8 +30,14 @@ class IngestionService:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def parse(self, raw: bytes, filename: str) -> ParsedDocument:
-        """Parse file bytes into a ParsedDocument. Tries primary parser first, then fallback."""
+    def parse(self, raw: bytes, filename: str, progress_cb=None) -> ParsedDocument:
+        """Parse file bytes into a ParsedDocument. Tries primary parser first, then fallback.
+
+        progress_cb: optional `fn(current, total)` called as pages are parsed, so
+        a long-running background ingestion can report progress. Attached to the
+        parser instance rather than passed down, keeping every parser's parse()
+        signature unchanged — parsers that don't report progress simply ignore it.
+        """
         chain = self._get_chain(filename)
         if not chain:
             raise ValueError(
@@ -45,7 +51,11 @@ class IngestionService:
                 logger.info("ingestion.parsing", filename=filename,
                             parser=type(parser).__name__,
                             size_kb=round(len(raw) / 1024, 1))
-                doc = parser.parse(raw, filename)
+                parser._progress_cb = progress_cb
+                try:
+                    doc = parser.parse(raw, filename)
+                finally:
+                    parser._progress_cb = None   # parsers are reused across uploads
                 # PdfParser already runs its own running-header/footer
                 # detection up front, from raw per-page lines (see
                 # PdfParser._detect_boilerplate_lines) — more precise than
