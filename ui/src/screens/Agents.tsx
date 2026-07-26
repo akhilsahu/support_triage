@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../store/useAppStore'
 import { Plus, X, Lock, ChevronRight, Database, Trash2, CheckCircle, Settings2, Loader2, Bot, MessageCircle } from 'lucide-react'
@@ -549,8 +549,10 @@ export function Agents() {
   const navigate  = useNavigate()
   const spaceSlug   = useAppStore(s => s.spaceSlug)
   const currentChatbotId = useAppStore(s => s.currentChatbotId)
+  const setCurrentChatbotId = useAppStore(s => s.setCurrentChatbotId)
   const [agents, setAgents]             = useState<OrgAgent[]>([])
   const [loading, setLoading]           = useState(true)
+  const [loadError, setLoadError]       = useState(false)
   const [dataSources, setDataSources]   = useState<DataSource[]>([])
   const [docTypes, setDocTypes]         = useState<string[]>([])
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null)
@@ -566,13 +568,36 @@ export function Agents() {
   const [transferSaved, setTransferSaved]       = useState(false)
   const [showTransferModal, setShowTransferModal] = useState(false)
 
+  // Guards against a race that produced the exact symptom of "doesn't load,
+  // requests fail": the sidebar independently resolves/corrects
+  // currentChatbotId on mount (e.g. a stale id left over from another space,
+  // or a since-deleted chatbot). If this effect fires first with that stale
+  // id, the backend correctly 404s. loadSeq lets a slow/stale response never
+  // overwrite what a newer request already set; the 404 branch below recovers
+  // by clearing the bad id instead of surfacing an error for what's actually
+  // a transient, self-correcting state.
+  const loadSeq = useRef(0)
+
   const loadAgents = async () => {
+    const seq = ++loadSeq.current
     setLoading(true)
+    setLoadError(false)
     try {
       const data = await apiClient.listOrgAgents(currentChatbotId)
+      if (seq !== loadSeq.current) return   // a newer request already resolved
       setAgents(data)
-    } catch { /* backend down */ }
-    finally { setLoading(false) }
+      setLoading(false)
+    } catch (e: any) {
+      if (seq !== loadSeq.current) return
+      if (e?.response?.status === 404 && currentChatbotId) {
+        // Stale/invalid chatbot selection -- fall back to the space's default
+        // instead of showing an error; the effect below re-fires on the change.
+        setCurrentChatbotId(null)
+        return
+      }
+      setLoadError(true)
+      setLoading(false)
+    }
   }
 
   const loadChatbotSettings = async () => {
@@ -754,6 +779,13 @@ export function Agents() {
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-400">
           <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading agents…
+        </div>
+      ) : loadError ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Couldn't load your agents. Please check your connection and try again.
+          </p>
+          <Button size="sm" onClick={loadAgents}>Retry</Button>
         </div>
       ) : (
         <>
