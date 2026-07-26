@@ -49,6 +49,27 @@ http.interceptors.request.use(config => {
   return config
 })
 
+// A 401 here always means the stored owner session is no longer valid (JWT
+// expired, or revoked via token_version bump on logout-all/password change) --
+// every call on this instance already carries a token, and login/register use
+// their own separate fetch() calls (see useAuthForm.ts), so this can never
+// misfire on a login attempt. Without this, PrivateRoute only checks that
+// *some* token string is stored, not that the server still accepts it, so
+// every dashboard page was left to silently fail its own requests forever
+// with no way back to login except manually clicking Sign out.
+http.interceptors.response.use(
+  res => res,
+  err => {
+    if (err?.response?.status === 401 && !window.location.pathname.startsWith('/app/login')) {
+      import('../store/useAppStore').then(({ useAppStore }) => {
+        useAppStore.getState().logout()
+        window.location.assign('/app/login')
+      })
+    }
+    return Promise.reject(err)
+  },
+)
+
 export const apiClient = {
   healthCheck: () => http.get(API_CONFIG.endpoints.health).then(r => r.data),
 
