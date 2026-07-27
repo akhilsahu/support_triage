@@ -132,6 +132,11 @@ class IngestionConfig:
     pdf_heading_detection:        bool = True
     pdf_min_text_chars:           int  = 20       # below this → treat page as scanned
     pdf_embedded_image_min_area:  int  = 10_000   # px² — skip logos/icons below this
+    # Pages a section label may run without a new heading before it's treated as
+    # a heading-detection miss and cleared. Legal/policy documents routinely
+    # carry one "TERMS & CONDITIONS" heading over dozens of pages, so this has
+    # to be generous or correct labels get thrown away (see pdf_parser).
+    pdf_stale_section_pages:      int  = 40
 
     # ── LibreOffice (legacy .doc / .ppt / .xls) ──────────────────────────────
     libreoffice_enabled: bool = True
@@ -158,6 +163,7 @@ def build_ingestion_config() -> IngestionConfig:
         pdf_heading_detection       = _bool("INGESTION_PDF_HEADING_DETECTION",       True),
         pdf_min_text_chars          = _int ("INGESTION_PDF_MIN_TEXT_CHARS",          20),
         pdf_embedded_image_min_area = _int ("INGESTION_PDF_EMBEDDED_IMAGE_MIN_AREA", 10_000),
+        pdf_stale_section_pages     = _int ("INGESTION_PDF_STALE_SECTION_PAGES",      40),
 
         libreoffice_enabled = _bool("INGESTION_LIBREOFFICE_ENABLED", True),
         libreoffice_path    = _env ("INGESTION_LIBREOFFICE_PATH",     "soffice"),

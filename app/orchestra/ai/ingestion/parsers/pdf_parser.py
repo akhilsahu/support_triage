@@ -106,7 +106,14 @@ class PdfParser(BaseParser):
     # section — reset to empty rather than let a stale (possibly wrong) label
     # propagate indefinitely. An empty section is honest; a wrong one silently
     # breaks metadata filtering.
-    _STALE_SECTION_PAGE_LIMIT = 15
+    #
+    # Fallback only: the effective value comes from
+    # cfg.pdf_stale_section_pages. 15 proved far too aggressive for the
+    # documents this platform actually ingests — a credit-card T&C carried one
+    # "TERMS & CONDITIONS" heading across 26 pages, so the reset fired mid-section
+    # and stripped a correct label (and its retrieval signal, since the section
+    # is prepended to chunk text) from everything after it.
+    _STALE_SECTION_PAGE_LIMIT = 40
 
     def parse(self, raw: bytes, filename: str) -> ParsedDocument:
         import fitz  # PyMuPDF — raises ImportError if not installed; service walks to PyPdfParser
@@ -183,7 +190,8 @@ class PdfParser(BaseParser):
             # long time, stop trusting the old label — flush what's pending
             # under it and continue with an empty section rather than mislabel
             # everything from here on.
-            if current_section and (page_idx + 1) - section_start_page > self._STALE_SECTION_PAGE_LIMIT:
+            stale_limit = getattr(self.cfg, "pdf_stale_section_pages", None) or self._STALE_SECTION_PAGE_LIMIT
+            if current_section and (page_idx + 1) - section_start_page > stale_limit:
                 _flush()
                 current_section = ""
                 section_start_page = page_idx + 1
