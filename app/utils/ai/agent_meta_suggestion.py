@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Optional
+import hashlib
 from uuid import UUID
 
 import structlog
@@ -39,9 +40,18 @@ logger = structlog.get_logger()
 
 # ── Public helpers ────────────────────────────────────────────────────────────
 
-def build_doc_type_key(doc_types: list[str]) -> str:
-    """Stable, sorted cache key from a list of doc_types."""
-    return ",".join(sorted(set(doc_types))) if doc_types else "general"
+def build_doc_type_key(doc_types: list[str], kb_ids: list[str] | None = None) -> str:
+    """Stable cache key from the doc_types and, when given, the knowledge bases.
+
+    The KB must be part of the key: two knowledge bases in the same space can
+    easily share a doc_type ("general"), and without this they collide -- a
+    request for one KB would be served the other KB's cached suggestion.
+    """
+    types = ",".join(sorted(set(doc_types))) if doc_types else "general"
+    if kb_ids:
+        digest = hashlib.sha1(",".join(sorted(kb_ids)).encode()).hexdigest()[:8]
+        return f"kb{digest}:{types}"
+    return types
 
 
 # Keep for backward compat
@@ -57,6 +67,9 @@ async def get_or_generate(
     doc_id: str | None = None,
     agent_name: str | None = None,
     force: bool = False,
+    kb_ids: list[str] | None = None,
+    kb_name: str = "",
+    kb_doc_ids: list[str] | None = None,
 ) -> dict:
     """
     Return a cached AgentMetaSuggestion or generate a new one via LLM.
@@ -74,7 +87,7 @@ async def get_or_generate(
     from app.models.space import AgentMetaSuggestion
 
     _doc_id  = doc_id or ""
-    type_key = build_doc_type_key(doc_types)
+    type_key = build_doc_type_key(doc_types, kb_ids)
 
     # ── Check cache ──────────────────────────────────────────────────────────
     result = await db.execute(
@@ -106,7 +119,8 @@ async def get_or_generate(
     # ── Generate via LLM ─────────────────────────────────────────────────────
     generated = await _generate(space_id=str(space_id), org_name=org_name,
                                 doc_types=doc_types, doc_id=_doc_id,
-                                agent_name=agent_name)
+                                agent_name=agent_name, kb_name=kb_name,
+                                kb_doc_ids=kb_doc_ids)
 
     # ── Persist to cache ─────────────────────────────────────────────────────
     suggestion = AgentMetaSuggestion(
@@ -157,7 +171,8 @@ async def link_agent(db: AsyncSession, suggestion_id: str, agent_id: UUID) -> No
 # ── LLM generation ────────────────────────────────────────────────────────────
 
 async def _generate(space_id: str, org_name: str, doc_types: list[str],
-                    doc_id: str = "", agent_name: str | None = None) -> dict:
+                    doc_id: str = "", agent_name: str | None = None,
+                    kb_name: str = "", kb_doc_ids: list[str] | None = None) -> dict:
     """
     Build context from ChromaDB + call LLM to produce name/description/system_prompt.
     Falls back to deterministic defaults if LLM fails.
@@ -168,13 +183,14 @@ async def _generate(space_id: str, org_name: str, doc_types: list[str],
     # Fetch doc metadata from ChromaDB (only when doc_types provided)
     loop = asyncio.get_event_loop()
     doc_context = ""
-    if doc_types:
+    if doc_types or kb_doc_ids:
         doc_context = await loop.run_in_executor(
-            None, lambda: _fetch_doc_context(space_id, doc_types, doc_id)
+            None, lambda: _fetch_doc_context(space_id, doc_types, doc_id, kb_doc_ids)
         )
 
     prompt = _build_prompt(org_name=org_name, doc_types=doc_types,
-                           doc_context=doc_context, agent_name=agent_name)
+                           doc_context=doc_context, agent_name=agent_name,
+                           kb_name=kb_name)
 
     try:
         result = await llm_service.generate_with_fallback(
@@ -211,17 +227,55 @@ async def _generate(space_id: str, org_name: str, doc_types: list[str],
 
 # ── ChromaDB context builder ──────────────────────────────────────────────────
 
-def _fetch_doc_context(space_id: str, doc_types: list[str], doc_id: str = "") -> str:
+def _fetch_doc_context(space_id: str, doc_types: list[str], doc_id: str = "",
+                       kb_doc_ids: list[str] | None = None) -> str:
     """
     Collect distinct document metadata (filename, kb_name, description) for the
-    given doc_types (and optionally a specific doc_id) from the org's ChromaDB partition.
-    Returns a bullet list string for inclusion in the LLM prompt.
+    LLM prompt.
+
+    When kb_doc_ids is given, sampling is restricted to exactly those documents.
+    Filtering by doc_type alone matches any document of that type anywhere in the
+    space, so a request scoped to one knowledge base was being described using a
+    different KB's documents -- an SBI credit-card KB in a space named "HDFC
+    LIFE" produced an "HDFC LIFE Support" agent.
     """
     try:
         from app.rag.vector_store import get_vector_store, COLLECTION_CLIENT
 
         col = get_vector_store()._collection(COLLECTION_CLIENT)
         lines: list[str] = []
+
+        # KB-scoped: describe exactly the documents the caller asked about.
+        if kb_doc_ids:
+            results = col.get(
+                where={"$and": [
+                    {"client_id": {"$eq": space_id}},
+                    {"doc_id":    {"$in": list(kb_doc_ids)}},
+                ]},
+                include=["metadatas", "documents"],
+                limit=20,
+            )
+            seen_docs: set[str] = set()
+            metas = results.get("metadatas") or []
+            docs  = results.get("documents") or []
+            while len(docs) < len(metas):
+                docs.append("")
+            for meta, body in zip(metas, docs):
+                did = (meta or {}).get("doc_id", "")
+                if not did or did in seen_docs:
+                    continue
+                seen_docs.add(did)
+                name = (meta or {}).get("filename") or (meta or {}).get("kb_name") or did
+                desc = (meta or {}).get("semantic_summary") or (meta or {}).get("description") or ""
+                excerpt = (body or "")[:300].replace("\n", " ").strip()
+                line = f"- {name}"
+                if desc:
+                    line += f": {desc[:200]}"
+                elif excerpt:
+                    line += f": {excerpt}"
+                lines.append(line)
+            if lines:
+                return "\n".join(lines[:10])
 
         for doc_type in doc_types:
             try:
@@ -282,15 +336,19 @@ def _fetch_doc_context(space_id: str, doc_types: list[str], doc_id: str = "") ->
 # ── Prompt builder ────────────────────────────────────────────────────────────
 
 def _build_prompt(org_name: str, doc_types: list[str], doc_context: str,
-                  agent_name: str | None = None) -> str:
-    if doc_types and doc_context:
-        types_str = ", ".join(doc_types)
+                  agent_name: str | None = None, kb_name: str = "") -> str:
+    if doc_context:
+        types_str = ", ".join(doc_types) if doc_types else "general"
+        kb_line = f'Knowledge base: "{kb_name}"\n' if kb_name else ""
         context_block = (
+            f"{kb_line}"
             f"The agent will answer questions using these knowledge base documents:\n"
             f"{doc_context}\n\n"
             f"Document types covered: {types_str}\n\n"
-            "Name the agent after the specific product or topic in the documents. "
-            "For example: a doc about PS5 → 'PS5 Support', not 'Tech Support Agent'.\n\n"
+            "Name the agent after the specific product or topic in THESE documents, "
+            "not after the company operating the platform -- one company may run "
+            "several unrelated agents. For example: documents about a PS5 → "
+            "'PS5 Support', not 'Acme Corp Support'.\n\n"
         )
     else:
         # Name-only mode — no documents available

@@ -516,8 +516,13 @@ async def get_agent_suggestion(
     from app.rag.vector_store import get_vector_store
     import asyncio
 
-    # 1. If doc_types is empty but kb_ids is provided, resolve doc_types from KB items
-    if not req.doc_types and req.kb_ids:
+    # Knowledge-base context. Resolved here and passed through to generation:
+    # the KB's name and its own documents are what the agent should be described
+    # from, not the space name or whatever else shares its doc_type.
+    kb_name = ""
+    kb_doc_ids: list[str] = []
+
+    if req.kb_ids:
         from sqlalchemy import select
         from app.models.knowledge_base import KnowledgeBaseItem
         from uuid import UUID as _UUID
@@ -528,17 +533,24 @@ async def get_agent_suggestion(
             uuid_kb_ids = []
 
         if uuid_kb_ids:
+            from app.models.knowledge_base import KnowledgeBase
+            kb_rows = (await db.execute(
+                select(KnowledgeBase).where(KnowledgeBase.id.in_(uuid_kb_ids))
+            )).scalars().all()
+            kb_name = ", ".join(k.name for k in kb_rows if k.name)
+
             result = await db.execute(
                 select(KnowledgeBaseItem).where(KnowledgeBaseItem.kb_id.in_(uuid_kb_ids))
             )
             items = result.scalars().all()
-            
+
             doc_ids = []
             for item in items:
                 if item.item_type == "doc" and item.doc_id:
                     doc_ids.append(item.doc_id)
                 elif item.indexed_doc_id:
                     doc_ids.append(item.indexed_doc_id)
+            kb_doc_ids = doc_ids
 
             kb_doc_types = set()
             loop = asyncio.get_event_loop()
@@ -550,7 +562,7 @@ async def get_agent_suggestion(
                 if meta and meta.get("doc_type"):
                     kb_doc_types.add(meta["doc_type"])
             
-            if kb_doc_types:
+            if kb_doc_types and not req.doc_types:
                 req.doc_types = list(kb_doc_types)
 
     # 2. If doc_types is still empty but doc_id is provided, resolve doc_type from doc_id metadata
@@ -563,8 +575,8 @@ async def get_agent_suggestion(
         if meta and meta.get("doc_type"):
             req.doc_types = [meta["doc_type"]]
 
-    if not req.doc_types and not req.agent_name:
-        raise HTTPException(400, "Provide doc_types or agent_name.")
+    if not req.doc_types and not req.agent_name and not kb_doc_ids:
+        raise HTTPException(400, "Provide doc_types, kb_ids or agent_name.")
 
     try:
         return await get_or_generate(
@@ -575,6 +587,9 @@ async def get_agent_suggestion(
             doc_id=req.doc_id,
             agent_name=req.agent_name,
             force=req.force,
+            kb_ids=req.kb_ids,
+            kb_name=kb_name,
+            kb_doc_ids=kb_doc_ids,
         )
     except Exception as e:
         import logging
