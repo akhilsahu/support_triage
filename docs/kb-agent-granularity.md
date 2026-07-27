@@ -27,16 +27,66 @@ That last point is the crux of the whole decision.
 
 ## 2. The options
 
-| | Retrieval scope | Ambiguous question ("what's my annual fee?") |
-|---|---|---|
-| **A. One KB, both PDFs, one agent** | both cards | agent sees both → can answer per card, or ask |
-| **B. Two KBs, one agent per card** | one card each | **triage silently guesses a card** |
-| **C. Two KBs, one agent linked to both** | both cards | same as A, but documents stay separately managed |
+| | Retrieval scope | Who picks the card | Ambiguous question ("what's my annual fee?") |
+|---|---|---|---|
+| **A. One KB, both PDFs, one agent** | both cards | nobody | agent sees both → can answer per card, or ask |
+| **B. Two KBs, one agent per card** | one card each | **triage (guesses)** | silently answers about the wrong card |
+| **C. Two KBs, one agent linked to both** | both cards | nobody | same as A, documents stay separately managed |
+| **D. One chatbot per card** | one card each | **the customer, via the link/embed** | already scoped — no ambiguity to resolve |
 
 A and C are functionally identical for retrieval; they differ only in how the
 documents are organised and reused.
 
-## 3. Recommendation: one agent covering both cards (C preferred over A)
+### D is materially different from B
+
+B and D both isolate a card, but they resolve the ambiguity in completely
+different places:
+
+- **B asks triage to infer the card from the customer's words** — and triage is
+  explicitly told never to ask and always to guess. It fails silently.
+- **D resolves it before the conversation starts.** The chatbot is chosen by the
+  URL (`/{slug}/{chatbotSlug}`) or the embed snippet on the page — a deployment
+  decision, not an LLM inference. A customer reading the Prime product page, or
+  following a link from a Prime statement, is already in the Prime chatbot.
+
+The chain is `chatbot -> agents -> KBs`, and both junctions
+(`ChatbotCustomAgent`, `AgentKnowledgeBase`) are many-to-many, so nothing has to
+be duplicated to do this.
+
+D also gets per-card presentation for free: each chatbot has its own welcome UI,
+suggested questions, branding and login gate.
+
+**The catch:** D only works where the entry point is card-specific. If everything
+funnels through one generic "SBI Cards support" page, the customer never made a
+choice and you are back to A/C.
+
+## 3. Recommendation: it depends on the entry point
+
+**If entry points are card-specific** (product page embed, statement link, app
+deep link) → **option D, one chatbot per card.** Best isolation, zero triage
+guessing, per-card welcome UI, and clean full-budget retrieval. This is the
+strongest option when it applies, and the space already uses this pattern at
+brand level (separate HDFC LIFE and SBI CREDIT CARD chatbots).
+
+**If there is a single generic entry point** → **option C**, below: one agent
+covering both KBs, because the customer never told anyone which card they hold.
+
+**You can have both, with no duplication** — the M2M junctions allow:
+
+```
+KB "SBI Prime"     ─┬─ agent "Prime Support"    ── chatbot "SBI Prime"
+KB "SBI Cashback"  ─┼─ agent "Cashback Support" ── chatbot "SBI Cashback"
+       both KBs    ─┴─ agent "SBI Cards (all)"  ── chatbot "SBI Cards" (generic)
+```
+
+Same two KBs and the same documents throughout; only the wiring differs. Note
+the generic chatbot deliberately gets ONE agent spanning both KBs rather than
+both card agents — giving it both card agents would reintroduce the triage guess.
+
+Chatbot count is capped per space (`Space.max_chatbots`, currently 2 of 19 used),
+so there is headroom, but it is a real limit at larger card portfolios.
+
+### If you go with a single entry point: one agent covering both cards (C over A)
 
 **Do not split into one agent per card**, because the failure mode is bad and
 silent. "What is the annual fee?" contains no card name. Under option B, triage
@@ -100,19 +150,32 @@ every chunk self-identifying and largely removes the conflation risk.
 
 ## 6. Concrete plan
 
-1. Keep **two KBs** — "SBI Cashback CC" and "SBI Prime CC" — one PDF each.
-2. Create **one agent**, link it to both KBs.
-3. Set `rag_top_k` to ~8–10 on that agent.
-4. Add the disambiguation instruction to its system prompt (§3.2).
-5. Test with deliberately ambiguous questions ("What is the annual fee?",
-   "What are the reward points?") and confirm the answer names the card rather
-   than silently picking one.
-6. Only if step 5 shows conflation: implement document-level filtering (§5).
+Common to every path — **keep two KBs**, "SBI Cashback CC" and "SBI Prime CC",
+one PDF each. KBs are the retrieval unit, so this is the decision that preserves
+every later option; merging the PDFs is the only genuinely irreversible choice.
+
+**If entry points are card-specific (recommended):**
+1. One chatbot per card, each with its own agent on that card's KB.
+2. Embed the matching chatbot on each card's page / statement link.
+3. Leave `rag_top_k` at the default — retrieval is single-product.
+4. Optionally add a generic "SBI Cards" chatbot with one agent spanning both KBs
+   for any non-card-specific entry point.
+
+**If there is only a generic entry point:**
+1. One agent, linked to both KBs.
+2. Raise `rag_top_k` to ~8-10 (5 split across two products is ~2-3 chunks each).
+3. Add the disambiguation instruction to its system prompt (§3).
+4. Test with deliberately ambiguous questions ("What is the annual fee?", "What
+   are the reward points?") and confirm the answer names the card rather than
+   silently picking one.
+5. Only if step 4 shows conflation: implement document-level filtering (§5).
 
 ## 7. Open questions
 
-1. Do customers usually name the card? If your chat logs show they do, option B
-   becomes viable and gives cleaner retrieval.
+1. Where do customers actually enter the chat? A card-specific page or link makes
+   option D clearly best; a single generic support page rules it out.
+2. Do customers usually name the card in their first message? If your chat logs
+   show they do, option B becomes viable and gives cleaner retrieval.
 2. How many cards will this eventually cover? Two is comfortable for one agent;
    beyond ~5, revisit §5.
 3. Should triage be allowed to ask a clarifying question? That is a deliberate
