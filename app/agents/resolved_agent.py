@@ -8,7 +8,38 @@ doesn't need to know which table the agent came from.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import List
+from typing import Any, List
+
+from sqlalchemy import inspect as sa_inspect
+
+# Above this, a KB is a document library rather than a product range, and
+# "which of these 20 documents do you mean?" is not a sensible question to ask.
+_MAX_PRODUCTS = 8
+
+
+def _product_names(agent) -> List[str]:
+    """
+    Distinct document titles across the agent's KBs — the candidate products a
+    question like "what is the annual fee?" could be about.
+
+    Returns [] unless the kb/items relationships were eager-loaded, since this
+    runs under async SQLAlchemy where a lazy load raises. Callers that want
+    product names must load them (see db_utils/agent_loader.py).
+    """
+    def loaded(obj: Any, attr: str) -> bool:
+        return obj is not None and attr not in sa_inspect(obj).unloaded
+
+    titles: List[str] = []
+    for link in (agent.knowledge_bases or []):
+        if not loaded(link, "kb") or not loaded(link.kb, "items"):
+            return []
+        for item in link.kb.items:
+            title = (item.title or "").strip()
+            if item.item_type == "doc" and title and title not in titles:
+                titles.append(title)
+
+    # One document is unambiguous; too many is a library, not a product range.
+    return titles if 2 <= len(titles) <= _MAX_PRODUCTS else []
 
 
 @dataclass
@@ -28,6 +59,7 @@ class ResolvedAgent:
     keywords_list:      List[str]
     skills_list:        List[str] = field(default_factory=list)   # PromptSkill UUIDs
     kb_ids:             List[str] = field(default_factory=list)   # KnowledgeBase UUIDs
+    product_names:      List[str] = field(default_factory=list)   # doc titles, if 2+
 
     # ── Factories ──────────────────────────────────────────────────────────────
 
@@ -72,4 +104,5 @@ class ResolvedAgent:
             keywords_list=agent.keywords_list,
             skills_list=agent.skills_list,
             kb_ids=[str(lnk.kb_id) for lnk in (agent.knowledge_bases or [])],
+            product_names=_product_names(agent),
         )

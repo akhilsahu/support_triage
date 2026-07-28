@@ -37,6 +37,38 @@ RAG_QUALITY_DIRECTIVES = (
 )
 
 
+# Appended only when an agent's knowledge spans two or more documents, which is
+# taken to mean two or more products (e.g. two credit cards in one KB).
+#
+# Triage can never ask the customer anything (see TRIAGE_COORDINATOR_PROMPT
+# rule 3 — it must always guess), so the specialist agent is the only place that
+# can resolve "what is the annual fee?" when the answer differs per product.
+#
+# Bias is toward answering for every product rather than asking: one turn beats
+# two, and a bot that re-asks every turn feels broken.
+# Format with: MULTI_PRODUCT_DIRECTIVES.format(products=...)
+MULTI_PRODUCT_DIRECTIVES = (
+    "[MULTIPLE PRODUCTS]:\n"
+    "Your knowledge covers more than one product. The source documents are:\n"
+    "{products}\n"
+    "- Always make clear which product an answer applies to. Use the product's "
+    "real name as it appears in the document text, not the file name.\n"
+    "- If the answer is the same for every product, answer once, without "
+    "labelling it per product.\n"
+    "- If the answer DIFFERS between products and the customer has not said "
+    "which one they mean, give every product's answer, labelled — e.g. "
+    "'Product A: <answer>. Product B: <answer>.' Prefer this over asking: it "
+    "is one turn instead of two and more useful.\n"
+    "- Only ask which product they mean when listing every product's answer "
+    "would be too long or confusing. Ask once, naming the options.\n"
+    "- Never ask twice. If you already asked and the customer moved on without "
+    "answering, answer for all products from then on.\n"
+    "- Once the customer names a product, keep answering for that product for "
+    "the rest of the conversation unless they say otherwise.\n"
+    "- Never assume which product the customer holds."
+)
+
+
 # Fallback prompt when an agent has neither a base_prompt nor a system_prompt.
 # Format with: DEFAULT_AGENT_PROMPT.format(name=...)
 DEFAULT_AGENT_PROMPT = "You are a helpful support assistant for {name}."

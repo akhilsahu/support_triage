@@ -28,6 +28,7 @@ from app.models.space import (
     Space, ConversationLog,
     BuiltinAgentCatalog, SpaceBuiltinAgentConfig, CustomAgent, ChatbotCustomAgent,
 )
+from app.models.knowledge_base import AgentKnowledgeBase, KnowledgeBase
 from app.models.chatbot import Chatbot
 
 logger = structlog.get_logger()
@@ -160,7 +161,11 @@ async def _get_active_agents(db: AsyncSession, chatbot_id: uuid.UUID) -> list:
 
     custom_res = await db.execute(
         select(CustomAgent)
-        .options(selectinload(CustomAgent.knowledge_bases))
+        .options(
+            selectinload(CustomAgent.knowledge_bases)
+            .selectinload(AgentKnowledgeBase.kb)
+            .selectinload(KnowledgeBase.items)
+        )
         .join(ChatbotCustomAgent, ChatbotCustomAgent.agent_id == CustomAgent.id)
         .where(ChatbotCustomAgent.chatbot_id == chatbot_id, CustomAgent.active == True)
     )

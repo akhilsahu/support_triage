@@ -23,7 +23,11 @@ from app.orchestra.ai.core.config import AgnoConfig
 from app.orchestra.ai.factories.llm import LLMFactory
 from app.orchestra.ai.knowledge.base import BaseKnowledgeBackend
 from app.orchestra.ai.knowledge.null import NullKnowledgeBackend
-from app.orchestra.ai.prompts import DEFAULT_AGENT_PROMPT, RAG_QUALITY_DIRECTIVES
+from app.orchestra.ai.prompts import (
+    DEFAULT_AGENT_PROMPT,
+    MULTI_PRODUCT_DIRECTIVES,
+    RAG_QUALITY_DIRECTIVES,
+)
 
 logger = structlog.get_logger()
 
@@ -200,6 +204,14 @@ class AgentFactory:
                 skill_name = getattr(skill, "name", "Skill")
                 if skill_text:
                     parts.append(f"\n[{skill_name.upper()} DIRECTIVE]: {skill_text}")
+
+        # Disambiguation, when this agent's knowledge spans several products.
+        # Triage is forbidden from asking the customer anything, so this is the
+        # only place a "which product do you mean?" can come from.
+        if resolved.product_names:
+            parts.append(MULTI_PRODUCT_DIRECTIVES.format(
+                products="\n".join(f"  - {p}" for p in resolved.product_names)
+            ))
 
         # Platform answer-quality directives — appended last so they apply on top
         # of any org customisation or skill, for every agent.

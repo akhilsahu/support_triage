@@ -21,6 +21,7 @@ from app.models.space import (
     SpaceBuiltinAgentConfig,
     BuiltinAgentCatalog,
 )
+from app.models.knowledge_base import AgentKnowledgeBase, KnowledgeBase
 
 logger = structlog.get_logger()
 
@@ -35,7 +36,11 @@ async def load_custom_agents_for_chatbot(
     """
     result = await db.execute(
         select(CustomAgent)
-        .options(selectinload(CustomAgent.knowledge_bases))
+        .options(
+            selectinload(CustomAgent.knowledge_bases)
+            .selectinload(AgentKnowledgeBase.kb)
+            .selectinload(KnowledgeBase.items)
+        )
         .join(ChatbotCustomAgent, ChatbotCustomAgent.agent_id == CustomAgent.id)
         .where(
             ChatbotCustomAgent.chatbot_id == chatbot_id,
@@ -96,7 +101,11 @@ async def load_custom_agent_by_slug(
     """
     result = await db.execute(
         select(CustomAgent)
-        .options(selectinload(CustomAgent.knowledge_bases))
+        .options(
+            selectinload(CustomAgent.knowledge_bases)
+            .selectinload(AgentKnowledgeBase.kb)
+            .selectinload(KnowledgeBase.items)
+        )
         .where(
             CustomAgent.space_id == space_id,
             CustomAgent.slug   == slug,
@@ -120,7 +129,11 @@ async def load_custom_agents_for_org(
     """
     result = await db.execute(
         select(CustomAgent)
-        .options(selectinload(CustomAgent.knowledge_bases))
+        .options(
+            selectinload(CustomAgent.knowledge_bases)
+            .selectinload(AgentKnowledgeBase.kb)
+            .selectinload(KnowledgeBase.items)
+        )
         .where(CustomAgent.space_id == space_id, CustomAgent.active == True)
     )
     agents = result.scalars().all()
