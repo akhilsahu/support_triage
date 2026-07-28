@@ -19,6 +19,7 @@ def build_executor(
     active_agents: List[ResolvedAgent],
     session_id: str,
     conversation_id: str = "",
+    chatbot_id: str = "",
 ) -> Any:
     """
     Return the configured executor.
@@ -39,6 +40,7 @@ def build_executor(
             org_name=str(org.display_name),
             active_agents=active_agents,
             session_id=session_id,
+            chatbot_id=chatbot_id,
         )
 
     # Default: DynamicAgentExecutor — thin adapter normalises the run() signature.

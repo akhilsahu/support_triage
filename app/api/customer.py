@@ -493,6 +493,7 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
             active_agents=active_agents,
             session_id=session_id,
             conversation_id=req.conversation_id or session_id,
+            chatbot_id=str(chatbot.id),
         )
         result = await executor.run(message=req.message)
 
@@ -575,6 +576,7 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
         org=org,
         active_agents=active_agents,
         session_id=session_id,
+        chatbot_id=str(chatbot.id),
     )
     t0 = time.time()
 
@@ -734,6 +736,7 @@ async def init_chat_session(slug: str,
             org=org,
             active_agents=active_agents,
             session_id=session_id,
+            chatbot_id=str(chatbot.id),
         )
         await executor.warmup()
 

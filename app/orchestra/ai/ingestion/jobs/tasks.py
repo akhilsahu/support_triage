@@ -163,6 +163,9 @@ async def ingest_document(
                 doc_type=doc_type,
                 ttl_days=ttl_days,
                 kb_name=kb_name,
+                # Agents scope retrieval with `kb_id $in [...]`, so a chunk
+                # without this is unreachable by every custom agent.
+                kb_id=kb_id or "",
                 space_id=space_id,
                 org_name=org_name,
                 description=description,

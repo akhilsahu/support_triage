@@ -135,11 +135,13 @@ class AgnoOrchestrator:
         org_name:      str,
         active_agents: List[ResolvedAgent],
         session_id:    str                            = "new",
+        chatbot_id:    str                            = "",     # scopes the pooled Team
         cfg:           Optional[AgnoConfig]           = None,   # override for tests
         mcp_server:    Optional[Any]                  = None,   # future MCP integration
         skills_map:    Optional[Dict[str, List[Any]]] = None,   # future skills integration
     ):
         self.space_id      = space_id
+        self.chatbot_id    = chatbot_id
         self.org_name      = org_name
         self.active_agents = active_agents
         self.session_id    = session_id
@@ -231,9 +233,16 @@ class AgnoOrchestrator:
     # ── Private ───────────────────────────────────────────────────────────────
 
     async def _runner(self) -> Optional[Any]:
-        """Pool lookup — returns cached Team or builds it once on first call."""
+        """Pool lookup — returns cached Team or builds it once on first call.
+
+        Keyed by chatbot, not just space: two chatbots in one space have
+        different agent sets, and a space-only key meant whichever chatbot was
+        used first served every chatbot in that space from its own agents —
+        one brand answering with another brand's documents. Matches the
+        agent-list cache convention in session/pool.py.
+        """
         return await _pool.get_or_init(
-            session_id=f"{self.space_id}:team",
+            session_id=f"{self.space_id}:{self.chatbot_id or 'default'}:team",
             active_agents=self.active_agents,
             space_id=self.space_id,
             org_name=self.org_name,
