@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, ForeignKey, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -57,6 +57,17 @@ class ChatSession(Base):
     message_count   = Column(Integer, default=0, nullable=False)
     started_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
     last_message_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # HITL clarification (ask_user) — set when the agent's last run paused on a
+    # question instead of answering. All three are NULL together, or set together.
+    # A new HTTP request means a new orchestrator instance with no memory of the
+    # paused run's Python objects, so the requirement has to be serialized here
+    # (RunRequirement.to_dict()) rather than kept in process memory. Short-lived by
+    # design: cleared the moment the next message resumes the run, or on expiry —
+    # see docs/structured-response-rendering-plan.md.
+    pending_run_id      = Column(String(64), nullable=True)
+    pending_requirement = Column(JSONB, nullable=True)
+    pending_since       = Column(DateTime, nullable=True)
 
     chatbot         = relationship("Chatbot", back_populates="chat_sessions")
 

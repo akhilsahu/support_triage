@@ -45,6 +45,7 @@ class SessionPool:
         mcp_server:        Optional[Any]              = None,
         skills_map:        Optional[Dict[str, List[Any]]] = None,
         knowledge_backend: Optional[Any]              = None,
+        leader:            Optional[ResolvedAgent]    = None,  # triage → Team config
     ) -> Optional[Any]:
         """Return cached Team/Agent or build it once on first call."""
         if session_id in self._runners:
@@ -73,6 +74,7 @@ class SessionPool:
                     org_name=org_name,
                     mcp_server=mcp_server,
                     skills_map=skills_map,
+                    leader=leader,
                 )
             except Exception:
                 logger.exception("pool.build_failed", session_id=session_id)

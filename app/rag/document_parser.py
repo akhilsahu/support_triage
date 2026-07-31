@@ -146,19 +146,29 @@ def _parse_pdf(raw: bytes, filename: str) -> ParsedDocument:
 
         heading_threshold = body_size * 1.15  # 15% larger than body = heading
 
-        # Build ParsedPage list: new section on each heading-like span
+        # Build ParsedPage list: new section on each heading-like span.
+        #
+        # `page` on the emitted ParsedPage is the REAL 1-indexed PDF page where
+        # that section's text begins (buffer_start_page) — not a count of how
+        # many sections have been flushed so far. A section is one ParsedPage
+        # regardless of how many real pages its body text spans (that's the
+        # point of the heading-based grouping), but a citation showing "page N"
+        # has to mean the real PDF page N, or every citation past the first
+        # page with 0-or-2 headings silently drifts from the real document.
         pages: list[ParsedPage] = []
         current_section = ""
         buffer: list[str] = []
-        logical_page = 1
+        logical_page = 1              # fallback only — see buffer_start_page
+        buffer_start_page: int | None = None
 
         def _flush():
-            nonlocal logical_page
+            nonlocal logical_page, buffer_start_page
             text = "\n".join(buffer).strip()
             if text:
-                pages.append(ParsedPage(page=logical_page, text=text, section=current_section))
+                pages.append(ParsedPage(page=buffer_start_page or logical_page, text=text, section=current_section))
                 logical_page += 1
             buffer.clear()
+            buffer_start_page = None
 
         for page_idx in range(doc.page_count):
             for block in doc.load_page(page_idx).get_text("dict")["blocks"]:
@@ -179,6 +189,8 @@ def _parse_pdf(raw: bytes, filename: str) -> ParsedDocument:
                         _flush()
                         current_section = line_text
                     else:
+                        if buffer_start_page is None:
+                            buffer_start_page = page_idx + 1
                         buffer.append(line_text)
 
         _flush()

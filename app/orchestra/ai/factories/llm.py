@@ -20,18 +20,37 @@ logger = structlog.get_logger()
 
 # ── Per-provider builders ─────────────────────────────────────────────────────
 
+def _uses_max_completion_tokens(model_id: str) -> bool:
+    """
+    OpenAI's reasoning-model family (o1/o3/o4, gpt-5*) rejects the `max_tokens`
+    param outright and requires `max_completion_tokens` instead. Without this,
+    every call to one of these models fails at the API, and — because nothing
+    downstream distinguishes an API error from a real answer — the raw error
+    string was silently returned to the customer as the reply. Confirmed
+    against gpt-5-mini; see docs/ambiguous-question-clarification-plan.md,
+    "gpt-5-mini never ran".
+
+    NOTE: this family may also reject a custom `temperature` (fixed at 1 on
+    o1/o3) — not confirmed here, so not "fixed" by guessing; only the measured
+    max_tokens failure is addressed.
+    """
+    m = (model_id or "").lower()
+    return m.startswith(("gpt-5", "o1", "o3", "o4"))
+
+
 def _build_openai(cfg: AgnoConfig, temperature: float, max_tokens: int) -> Optional[Any]:
     try:
         from app.config import settings
         if not settings.OPENAI_API_KEY:
             return None
         from agno.models.openai import OpenAIChat
-        return OpenAIChat(
-            id=cfg.llm_model or "gpt-4o-mini",
-            api_key=settings.OPENAI_API_KEY,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        model_id = cfg.llm_model or "gpt-4o-mini"
+        kwargs: dict = dict(id=model_id, api_key=settings.OPENAI_API_KEY, temperature=temperature)
+        if _uses_max_completion_tokens(model_id):
+            kwargs["max_completion_tokens"] = max_tokens
+        else:
+            kwargs["max_tokens"] = max_tokens
+        return OpenAIChat(**kwargs)
     except Exception as e:
         logger.warning("llm.openai_failed", error=str(e))
         return None

@@ -20,12 +20,16 @@ def build_executor(
     session_id: str,
     conversation_id: str = "",
     chatbot_id: str = "",
+    leader: ResolvedAgent | None = None,
 ) -> Any:
     """
     Return the configured executor.
 
     ORCHESTRATOR=agno   → AgnoOrchestrator  (keyword routing, SessionPool cache)
     ORCHESTRATOR=dynamic (default) → DynamicAgentExecutor (LLM triage, stateless)
+
+    `leader` is the triage agent, used only by the agno backend to configure the
+    Team leader's routing instructions.
 
     The returned object always exposes:
         async def run(message: str) -> dict
@@ -41,6 +45,7 @@ def build_executor(
             active_agents=active_agents,
             session_id=session_id,
             chatbot_id=chatbot_id,
+            leader=leader,
         )
 
     # Default: DynamicAgentExecutor — thin adapter normalises the run() signature.

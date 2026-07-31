@@ -24,6 +24,7 @@ from app.orchestra.ai.factories.llm import LLMFactory
 from app.orchestra.ai.knowledge.base import BaseKnowledgeBackend
 from app.orchestra.ai.knowledge.null import NullKnowledgeBackend
 from app.orchestra.ai.prompts import (
+    ASK_USER_INSTRUCTIONS,
     DEFAULT_AGENT_PROMPT,
     MULTI_PRODUCT_DIRECTIVES,
     RAG_QUALITY_DIRECTIVES,
@@ -44,6 +45,51 @@ def _effective_max_tokens(agent_max_tokens: Optional[int]) -> int:
     if settings.AGENT_MAX_TOKENS_OVERRIDE:
         return settings.AGENT_MAX_TOKENS_LIMIT
     return agent_max_tokens or settings.AGENT_MAX_TOKENS_LIMIT
+
+
+def _member_role(resolved: ResolvedAgent) -> Optional[str]:
+    """
+    What the Team leader matches on when routing.
+
+    Agno lists each member as Role then Description, and its route-mode
+    instructions tell the leader to pick "the member whose role and tools are
+    the best match" — so role is the field routing actually reads. Naming the
+    covered products is a stronger signal than the owner-written description,
+    which is prose aimed at humans.
+
+    None when there are no products: agno omits the line entirely and routes on
+    the description as before, rather than printing it twice. Ignored when the
+    agent runs standalone (no leader, nothing to route).
+    """
+    if resolved.products:
+        return f"Answers questions about: {', '.join(resolved.product_names)}"
+    return None
+
+
+def _build_tools(resolved: ResolvedAgent, shared_tools: List[Any]) -> List[Any]:
+    """
+    Shared MCP tools plus two optional Agno toolkits:
+
+    - UserFeedbackTools (ask_user), multi-product agents only — the specialist
+      is the only component that has seen the retrieved chunks and therefore
+      knows the answer actually differs per product; see
+      docs/ambiguous-question-clarification-plan.md "Why this has to live in
+      the agent". Single-product agents have nothing to disambiguate.
+    - RenderTools (render_table/render_cards/render_tabs), every agent, gated
+      only by RENDER_TOOLS_ENABLED — a layout choice isn't tied to product
+      ambiguity the way asking is; see
+      docs/structured-response-rendering-plan.md.
+    """
+    tools = list(shared_tools)
+    if resolved.products and len(resolved.products) >= 2:
+        from agno.tools.user_feedback import UserFeedbackTools
+        tools.append(UserFeedbackTools(instructions=ASK_USER_INSTRUCTIONS))
+
+    from app.orchestra.ai.tools.render_tools import RENDER_TOOLS_ENABLED, RenderTools
+    if RENDER_TOOLS_ENABLED:
+        tools.append(RenderTools())
+
+    return tools
 
 
 class AgentFactory:
@@ -114,12 +160,14 @@ class AgentFactory:
         add_knowledge = self.cfg.add_knowledge_to_context and kb_bundle.has_knowledge
 
         kwargs: dict = dict(
+            knowledge_retriever=self._knowledge_retriever(resolved, kb_bundle),
             name=resolved.name,
             id=resolved.slug,
+            role=_member_role(resolved),
             description=resolved.description or resolved.name,
             model=model,
             instructions=self._build_system_prompt(resolved, skills or []),
-            tools=tools or [],
+            tools=_build_tools(resolved, tools or []),
             knowledge=kb_bundle.knowledge,
             knowledge_filters=kb_bundle.filters,
             search_knowledge=kb_bundle.has_knowledge,
@@ -176,6 +224,36 @@ class AgentFactory:
         ]
 
     # ── Overridable internals ─────────────────────────────────────────────────
+
+    def _knowledge_retriever(
+        self,
+        resolved:  ResolvedAgent,
+        kb_bundle: Any,
+    ) -> Optional[Any]:
+        """
+        Per-product retriever for multi-product agents, else None (agno falls
+        back to its own single search over the agent's whole scope).
+
+        Without this, one product can take the entire top-k and the agent
+        silently answers for that product alone — see per_product.py.
+        """
+        if not kb_bundle.has_knowledge or not resolved.products:
+            return None
+
+        from app.config import settings
+        from app.orchestra.ai.knowledge.per_product import build_per_product_retriever
+
+        return build_per_product_retriever(
+            knowledge=kb_bundle.knowledge,
+            base_filters=kb_bundle.filters,
+            doc_ids=resolved.product_doc_ids,
+            # What a single search would have returned in total, so splitting it
+            # per product keeps the context size unchanged.
+            top_n=settings.RERANK_TOP_N if settings.RERANK_ENABLED else settings.RAG_TOP_K,
+            # The backend already resolved the right candidate budget (over-fetch
+            # when reranking, plain top-k otherwise).
+            fetch_k=getattr(kb_bundle.knowledge, "max_results", None) or settings.RAG_TOP_K,
+        )
 
     def _build_system_prompt(
         self,

@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 import structlog
@@ -52,6 +52,13 @@ class CustomerChatRequest(BaseModel):
     conversation_id: Optional[str] = None
 
 
+class ClarifyRequest(BaseModel):
+    question: str
+    header: str
+    options: List[str] = []
+    multi_select: bool = False
+
+
 class CustomerChatResponse(BaseModel):
     reply: str
     agent: str
@@ -61,6 +68,15 @@ class CustomerChatResponse(BaseModel):
     response_ms: int
     citations: List[dict] = []
     message_id: Optional[str] = None
+    # Set when the agent paused mid-turn to ask the customer something instead
+    # of answering (see agno.py's ask_user pause/resume). The customer's pick —
+    # or typed answer — is sent back through the normal send() path as an
+    # ordinary message; see docs/structured-response-rendering-plan.md.
+    clarify: Optional[ClarifyRequest] = None
+    # Structured table/card/tabs the agent queued via RenderTools (see
+    # tools/render_tools.py). Loosely typed like citations -- shape matches
+    # ui/src/renderengine/chatblocks's ChatBlock.
+    blocks: List[dict] = []
 
 
 class SessionInitResponse(BaseModel):
@@ -141,6 +157,41 @@ async def _get_active_agents_cached(db: AsyncSession, chatbot_id: uuid.UUID, spa
     return agents
 
 
+async def _get_triage_agent_cached(db: AsyncSession, chatbot_id: uuid.UUID, space_id: str):
+    """
+    Return this chatbot's triage agent, or None.
+
+    Fetched separately from _get_active_agents because it is not an agent that
+    answers customers — it configures the Team leader. Cached under the same
+    "{space_id}:" prefix so invalidate_bot_agents clears it alongside the
+    agent list.
+    """
+    from app.orchestra.ai.session.pool import pool as _pool
+    cache_key = f"{space_id}:{chatbot_id}:triage"
+    cached = _pool.get_agents(cache_key)
+    if cached is not None:
+        return cached[0] if cached else None
+
+    from app.agents.resolved_agent import ResolvedAgent
+    from sqlalchemy.orm import selectinload
+
+    res = await db.execute(
+        select(SpaceBuiltinAgentConfig)
+        .options(selectinload(SpaceBuiltinAgentConfig.catalog))
+        .join(BuiltinAgentCatalog, SpaceBuiltinAgentConfig.catalog_id == BuiltinAgentCatalog.id)
+        .where(
+            SpaceBuiltinAgentConfig.chatbot_id == chatbot_id,
+            SpaceBuiltinAgentConfig.enabled == True,
+            BuiltinAgentCatalog.platform_enabled == True,
+            BuiltinAgentCatalog.agent_type == "triage",
+        )
+    )
+    cfg = res.scalars().first()
+    triage = ResolvedAgent.from_builtin(cfg) if cfg else None
+    _pool.set_agents(cache_key, [triage] if triage else [])
+    return triage
+
+
 async def _get_active_agents(db: AsyncSession, chatbot_id: uuid.UUID) -> list:
     """Return resolved active agents (builtins + custom) for a chatbot."""
     from sqlalchemy.orm import selectinload
@@ -154,6 +205,16 @@ async def _get_active_agents(db: AsyncSession, chatbot_id: uuid.UUID) -> list:
             SpaceBuiltinAgentConfig.chatbot_id == chatbot_id,
             BuiltinAgentCatalog.platform_enabled == True,
             SpaceBuiltinAgentConfig.enabled == True,
+            # Triage is excluded deliberately: this list is "agents that answer
+            # customers", and triage is not one — it is the Team leader, which in
+            # Agno is the Team object itself (model + instructions), never a
+            # member. Including it made TeamFactory both use it as leader AND
+            # build it as a member, so it ran twice per message.
+            #
+            # The list is also consumed by presentation code that would otherwise
+            # advertise "Triage" to customers — homepage sections (api/space.py)
+            # and suggestion chips (api/v1/chatbots.py). Wire a triage leader via
+            # TeamFactory.build(leader=...) instead of relaxing this filter.
             BuiltinAgentCatalog.agent_type != "triage",
         )
     )
@@ -390,12 +451,82 @@ async def _persist_turn(
         intent=result.get("intent"), agent_slug=agent_slug,
         rag_hit=result.get("rag_hit", False),
         citations=result.get("citations") or None,
+        blocks=result.get("blocks") or None,
     )
     db.add(assistant_log)
     await db.commit()
 
     await redis_client.expire(_history_key(session_id), HISTORY_TTL)
     return session_id, str(assistant_log.id)
+
+
+# ── HITL pause/resume (ask_user) ────────────────────────────────────────────
+
+# How long a paused run waits for the customer to answer before the next
+# message is treated as a fresh turn instead of a resume attempt. Deliberately
+# generous — abandoning early means the resume silently fails and the customer
+# has to ask again from scratch.
+_PENDING_CLARIFY_TTL = timedelta(minutes=30)
+
+
+async def _get_pending_clarify(db: AsyncSession, session_id: Optional[str], space_id) -> Optional[dict]:
+    """
+    Look up an unresolved ask_user pause for this session. Returns
+    {run_id, requirements} for resume(), or None if there is nothing pending or
+    it expired — an expired one is cleared here so it doesn't linger.
+    """
+    from app.models.chat import ChatSession
+
+    if not session_id:
+        return None
+    try:
+        sess_uuid = uuid.UUID(session_id)
+    except ValueError:
+        return None
+
+    session = (await db.execute(
+        select(ChatSession).where(ChatSession.id == sess_uuid, ChatSession.space_id == space_id)
+    )).scalar_one_or_none()
+    if not session or not session.pending_run_id:
+        return None
+
+    if session.pending_since and datetime.utcnow() - session.pending_since > _PENDING_CLARIFY_TTL:
+        session.pending_run_id = None
+        session.pending_requirement = None
+        session.pending_since = None
+        await db.commit()
+        return None
+
+    return {"run_id": session.pending_run_id, "requirements": session.pending_requirement.get("requirements", [])}
+
+
+async def _set_pending_clarify(db: AsyncSession, session_id: str, pending: dict) -> None:
+    """Persist the paused run so the next message can resume() it."""
+    from app.models.chat import ChatSession
+
+    session = (await db.execute(
+        select(ChatSession).where(ChatSession.id == uuid.UUID(session_id))
+    )).scalar_one_or_none()
+    if not session:
+        return
+    session.pending_run_id = pending["run_id"]
+    session.pending_requirement = pending
+    session.pending_since = datetime.utcnow()
+    await db.commit()
+
+
+async def _clear_pending_clarify(db: AsyncSession, session_id: str) -> None:
+    from app.models.chat import ChatSession
+
+    session = (await db.execute(
+        select(ChatSession).where(ChatSession.id == uuid.UUID(session_id))
+    )).scalar_one_or_none()
+    if not session or not session.pending_run_id:
+        return
+    session.pending_run_id = None
+    session.pending_requirement = None
+    session.pending_since = None
+    await db.commit()
 
 
 # ── OPTIONS preflights (widget embeds / cross-origin callers) ─────────────────
@@ -493,14 +624,24 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
         # Resolve the canonical session id BEFORE the run so session_id + user_id
         # thread into the orchestrator's memory from the very first turn.
         session_id = _canonical_session_id(req.session_id)
+        # If the agent paused on ask_user last turn, this message is the
+        # customer's answer, not a new question — resume that run instead of
+        # starting a fresh one. See docs/structured-response-rendering-plan.md.
+        pending = await _get_pending_clarify(db, session_id, org.id)
         executor = build_executor(
             org=org,
             active_agents=active_agents,
             session_id=session_id,
             conversation_id=req.conversation_id or session_id,
             chatbot_id=str(chatbot.id),
+            leader=await _get_triage_agent_cached(db, chatbot.id, str(org.id)),
         )
-        result = await executor.run(message=req.message)
+        if pending:
+            result = await executor.resume(
+                run_id=pending["run_id"], requirements=pending["requirements"], answer=req.message,
+            )
+        else:
+            result = await executor.run(message=req.message)
 
         # 3. Auto-escalation
         await _maybe_escalate(db, chatbot, org, result, req.session_id, req.message)
@@ -508,6 +649,13 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
         # 4. Persist both turns and return
         elapsed_ms = int((time.time() - t0) * 1000)
         session_id, message_id = await _persist_turn(db, org, chatbot, session_id, result, elapsed_ms, req.message, customer)
+
+        # Carry the pause forward (or clear it) now that the session row is
+        # guaranteed to exist — _persist_turn creates it lazily on turn 1.
+        if executor.pending:
+            await _set_pending_clarify(db, session_id, executor.pending)
+        elif pending:
+            await _clear_pending_clarify(db, session_id)
 
         return JSONResponse(
             CustomerChatResponse(
@@ -519,6 +667,8 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
                 response_ms=elapsed_ms,
                 citations=result.get("citations", []),
                 message_id=message_id,
+                clarify=result.get("clarify"),
+                blocks=result.get("blocks") or [],
             ).model_dump(),
             headers=_CORS,
         )
@@ -582,6 +732,7 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
         active_agents=active_agents,
         session_id=session_id,
         chatbot_id=str(chatbot.id),
+        leader=await _get_triage_agent_cached(db, chatbot.id, str(org.id)),
     )
     t0 = time.time()
 
@@ -636,7 +787,10 @@ async def get_chat_suggestions(slug: str,
     from app.utils.ai.chat_suggestions import get_suggestions
     from app.rag.vector_store import get_vector_store
 
-    org, chatbot, db = await _get_brand(slug)
+    # chatbot_slug MUST be forwarded: without it _get_brand falls back to the
+    # space's default chatbot, and every sibling chatbot in the space was served
+    # the default one's chips (its frozen snapshot, then its cache entry).
+    org, chatbot, db = await _get_brand(slug, chatbot_slug)
     try:
         # Frozen chips from a published homepage snapshot -- serve them and skip
         # the LLM, matching the frozen welcome sections (see space.py serving).
@@ -659,6 +813,7 @@ async def get_chat_suggestions(slug: str,
             active_agents, doc_types = [], []
         suggestions = await get_suggestions(
             space_id=org.id,
+            chatbot_id=chatbot.id,
             org_name=org.display_name,
             active_agents=active_agents,
             doc_types=doc_types,
@@ -742,6 +897,7 @@ async def init_chat_session(slug: str,
             active_agents=active_agents,
             session_id=session_id,
             chatbot_id=str(chatbot.id),
+            leader=await _get_triage_agent_cached(db, chatbot.id, str(org.id)),
         )
         await executor.warmup()
 
@@ -773,7 +929,10 @@ async def get_session_history(slug: str, session_id: str,
     """Restore a chat session. Returns message history for frontend rendering."""
     from app.core.chatbot_auth import resolve_customer
 
-    org, chatbot, db = await _get_brand(slug)
+    # The session is found by space + session id, so the resolved chatbot is not
+    # used below — but every endpoint in this file forwards chatbot_slug, and one
+    # that quietly resolves the default chatbot is a trap for the next change.
+    org, chatbot, db = await _get_brand(slug, chatbot_slug)
     try:
         from app.models.chat import ChatSession
         try:
@@ -819,6 +978,7 @@ async def get_session_history(slug: str, session_id: str,
                 "message":    log.message,
                 "agent_slug": log.agent_slug,
                 "citations":  log.citations or [],
+                "blocks":     log.blocks or [],
                 "timestamp":  log.timestamp.isoformat() if log.timestamp else None,
             }
             for log in logs_result.scalars().all()

@@ -4,7 +4,13 @@ Generate contextual chat suggestion chips for the customer chat page.
 If any active agent has RAG enabled, we sample chunks from ChromaDB and
 ask the LLM to generate questions a customer would naturally ask about that content.
 
-Results cached in Redis for 1 hour.
+Everything here is scoped to ONE CHATBOT, not to the space. A space can host
+several brands (e.g. an insurance chatbot and a credit-card chatbot side by
+side), and chips generated from the space's whole document set advertise the
+wrong brand — a credit-card widget offering "Can I return my policy within 15
+days?". So both the sample and the cache key carry the chatbot id.
+
+Results cached in Redis for 1 hour, per chatbot.
 """
 from __future__ import annotations
 
@@ -22,17 +28,26 @@ _FALLBACKS = [
 ]
 
 _CACHE_TTL = 60 * 60
-_CACHE_KEY  = "chat:suggestions:{space_id}"
+# Keyed by chatbot, not space. A space-only key was shared by every chatbot in
+# the space, so whichever one was asked first won the key for an hour and served
+# its chips to all the others.
+_CACHE_KEY  = "chat:suggestions:{space_id}:{chatbot_id}"
 
 
 async def get_suggestions(
     space_id: UUID,
+    chatbot_id: UUID,
     org_name: str,
     active_agents: list,
     doc_types: list[str],
 ) -> list[str]:
-    """Return 4 suggestion strings — always returns something."""
-    cache_key = _CACHE_KEY.format(space_id=str(space_id))
+    """
+    Return 4 suggestion strings for one chatbot — always returns something.
+
+    active_agents must be that chatbot's agents; their linked KnowledgeBases are
+    what the content sample is restricted to.
+    """
+    cache_key = _CACHE_KEY.format(space_id=str(space_id), chatbot_id=str(chatbot_id))
 
     # Redis cache
     try:
@@ -54,8 +69,15 @@ async def get_suggestions(
     return suggestions
 
 
-async def _sample_rag_content(space_id: UUID, rag_agents: list, doc_types: list[str]) -> str:
-    """Sample a handful of ChromaDB chunks to give the LLM real context."""
+async def _sample_rag_content(space_id: UUID, kb_ids: list[str], doc_types: list[str]) -> str:
+    """
+    Sample a handful of ChromaDB chunks to give the LLM real context.
+
+    kb_ids are the KnowledgeBases this chatbot's agents are linked to. When they
+    exist that is the only scope used — doc_types come from the whole space and
+    would pull in a sibling chatbot's documents. doc_types remain the fallback
+    for builtin agents, which have no linked KBs and select content by category.
+    """
     try:
         from app.rag.vector_store import get_vector_store, COLLECTION_CLIENT
 
@@ -63,16 +85,21 @@ async def _sample_rag_content(space_id: UUID, rag_agents: list, doc_types: list[
         client_id = str(space_id)
         sample_texts: list[str] = []
 
-        # Use doc_types from RAG agents if available, else all org doc_types
-        types_to_sample = doc_types[:3] if doc_types else ["general"]
-
-        for dt in types_to_sample:
+        if kb_ids:
+            from app.rag.vector_store import client_where
+            wheres = [client_where(client_id, kb_ids=kb_ids)]
+        else:
             from app.rag.vector_store import client_doc_type_where
-            where = client_doc_type_where(client_id, dt)
+            types_to_sample = doc_types[:3] if doc_types else ["general"]
+            wheres = [client_doc_type_where(client_id, dt) for dt in types_to_sample]
+
+        for where in wheres:
             hits = store.query(
                 collection=COLLECTION_CLIENT,
                 query_text="what can customers ask about",
-                top_k=3,
+                # One combined query when scoping by KB, so ask it for the whole
+                # budget instead of the 3-per-doc_type the loop used.
+                top_k=6 if kb_ids else 3,
                 where=where,
             )
             for h in hits:
@@ -109,12 +136,17 @@ async def _generate(
             for a in specialists
         ) or "- General support agent"
 
-        doc_line = ", ".join(doc_types) if doc_types else ""
+        # The KnowledgeBases this chatbot's agents can actually read.
+        kb_ids = [kb for a in rag_agents for kb in (getattr(a, "kb_ids", None) or [])]
+
+        # doc_types is a space-wide list. Once we can scope by KB it is a source
+        # of another brand's topics, so it only survives as the builtin fallback.
+        doc_line = "" if kb_ids else (", ".join(doc_types) if doc_types else "")
 
         # Sample real KB content if RAG agents exist
         rag_context = ""
         if rag_agents:
-            rag_context = await _sample_rag_content(space_id, rag_agents, doc_types)
+            rag_context = await _sample_rag_content(space_id, kb_ids, doc_types)
 
         system = (
             "You generate short suggested questions for a customer support chat widget.\n"

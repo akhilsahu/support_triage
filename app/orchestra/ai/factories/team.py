@@ -1,20 +1,19 @@
 """
 TeamFactory — builds Agno Team or single Agent from a ResolvedAgent list.
 
-Routing strategy (smart triage):
-  1 specialist  → return Agent directly   (no team overhead)
-  2+ specialists:
-    - Default mode: route (triage picks one specialist per message)
-    - Triage instructions tell it to respond with:
-        {"mode": "coordinate", "agents": ["finance", "logistics"]}
-      when it detects a multi-domain query. The AgnoOrchestrator
-      handles switching to coordinate mode dynamically.
+Routing strategy:
+  1 specialist  → return Agent directly   (no team overhead, no routing)
+  2+ specialists → Team, whose leader routes
 
   team_mode = "route"      — Agno picks one specialist per message  (default)
   team_mode = "coordinate" — all specialists contribute to one reply
 
-Triage agent (slug="triage") is used as the Team leader when present in
-active_agents. If absent, agno's built-in Team routing is used directly.
+Note that route mode is enforced by Agno's instructions, not by code: nothing
+prevents the leader delegating to more than one member.
+
+The leader is the Team object itself — Agno has no separate leader agent, so a
+triage agent can only supply the Team's instructions (and later its model), via
+build(leader=...). It is never a member; that is what made triage run twice.
 """
 
 from __future__ import annotations
@@ -36,8 +35,8 @@ class TeamFactory:
     """
     Builds Agno Team from a list of ResolvedAgents.
 
-    The triage agent (slug="triage"), when present, is used as the Team
-    leader with smart routing instructions. Specialists become Team members.
+    Specialists become Team members. The triage agent, when one is passed as
+    `leader`, configures the Team rather than becoming a member.
     """
 
     def __init__(
@@ -62,6 +61,7 @@ class TeamFactory:
         org_name:          str,
         mcp_server:        Optional[Any] = None,
         skills_map:        Optional[dict] = None,
+        leader:            Optional[ResolvedAgent] = None,
     ) -> Optional[Any]:
         """
         Full build entry point called by SessionPool._build().
@@ -100,6 +100,7 @@ class TeamFactory:
             memory=memory,
             skills_map=skills_map or {},
             db=db,
+            leader=leader,
         )
 
     def build(
@@ -110,9 +111,16 @@ class TeamFactory:
         memory:        Optional[Any]       = None,
         skills_map:    Optional[dict]      = None,  # {slug: [PromptSkill, ...]}
         db:            Optional[Any]       = None,  # Agno session db (leader/standalone)
+        leader:        Optional[ResolvedAgent] = None,  # triage agent, configures the Team
     ) -> Optional[Any]:
         """
         Build Team or Agent from active agents.
+
+        `leader` is the triage agent when the space has one. It configures the
+        Team (name, description, routing instructions) rather than joining it —
+        see _build_team. Without it, Agno's own leader routes on the platform
+        prompt. Ignored when there is only one specialist, since there is no
+        Team and therefore nothing to route.
 
         Placement of native session features:
           * single specialist → that Agent IS the conversation → gets db +
@@ -130,8 +138,11 @@ class TeamFactory:
             logger.warning("agno not installed — pip install agno")
             return None
 
-        triage_resolved   = next((a for a in active_agents if a.slug == "triage"), None)
-        specialists       = [a for a in active_agents if a.slug != "triage"]
+        # The leader is never a member: in Agno the Team object IS the leader
+        # (its own model + instructions), so a triage agent can only configure
+        # the Team, not join it. The slug filter is belt-and-braces for callers
+        # that still pass triage in the list.
+        specialists = [a for a in active_agents if a.slug != "triage"]
 
         if not specialists:
             logger.warning("team_factory.no_specialists", space_id=self.space_id)
@@ -161,7 +172,7 @@ class TeamFactory:
         if not agno_agents:
             return None
 
-        return self._build_team(agno_agents, specialists, triage_resolved, org_name, memory, db)
+        return self._build_team(agno_agents, specialists, leader, org_name, memory, db)
 
     # ── Private ───────────────────────────────────────────────────────────────
 
@@ -169,7 +180,7 @@ class TeamFactory:
         self,
         agno_agents:      List[Any],
         specialists:      List[ResolvedAgent],
-        triage_resolved:  Optional[ResolvedAgent],
+        leader:           Optional[ResolvedAgent],
         org_name:         str,
         memory:           Optional[Any],
         db:               Optional[Any] = None,
@@ -183,16 +194,15 @@ class TeamFactory:
                 for s in specialists
             )
 
-            # Triage leader instructions — smart route vs coordinate
-            triage_instructions = TRIAGE_COORDINATOR_PROMPT.format(
-                specialist_list=specialist_desc
-            )
-            if triage_resolved and triage_resolved.system_prompt:
-                # Allow org-level system_prompt to override the base triage instructions
-                triage_instructions = (
-                    triage_resolved.system_prompt.strip()
-                    + "\n\n"
-                    + triage_instructions
+            # Routing instructions. A triage agent's system_prompt REPLACES the
+            # platform prompt rather than prefixing it: the two are both routing
+            # policies, and concatenating them gives the leader contradictory
+            # rules with no way to tell which wins.
+            if leader and leader.system_prompt:
+                triage_instructions = leader.system_prompt.strip()
+            else:
+                triage_instructions = TRIAGE_COORDINATOR_PROMPT.format(
+                    specialist_list=specialist_desc
                 )
 
             team_kwargs: dict = dict(
@@ -214,7 +224,7 @@ class TeamFactory:
                 space_id=self.space_id,
                 mode=self.cfg.team_mode,
                 members=len(agno_agents),
-                triage_leader=triage_resolved.slug if triage_resolved else "none",
+                triage_leader=leader.slug if leader else "none",
                 session=db is not None,
             )
             return team

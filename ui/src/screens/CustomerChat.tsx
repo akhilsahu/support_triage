@@ -12,6 +12,7 @@ import { SourceCitation } from '../components/ui/SourceCitation'
 import { NotFound } from './NotFound'
 import type { SourceItem } from '../types'
 import { SectionRenderer } from '../renderengine/homepage'
+import { ChatBlockRenderer, CHAT_BLOCKS_ENABLED, type ChatBlock } from '../renderengine/chatblocks'
 import { CustomerLoginGate } from '../components/chat/CustomerLoginGate'
 import { ChatHistoryDrawer } from '../components/chat/ChatHistoryDrawer'
 import {
@@ -145,6 +146,72 @@ const THEMES: Record<ThemeKey, ThemeTokens> = {
 const THEME_CYCLE: ThemeKey[] = ['indigo', 'dark', 'light']
 const THEME_LABELS: Record<ThemeKey, string> = { indigo: 'Indigo', dark: 'Dark', light: 'Light' }
 
+// ── Clarify widget (HITL ask_user) ────────────────────────────────────────────
+//
+// Renders the question's options as chips (single-select) or checkboxes +
+// confirm (multi-select). Whichever the customer picks is sent through the
+// exact same send(text) path as anything they'd type -- clicking "SBI Card
+// PRIME" sends that literal string as a normal chat message, which is what
+// makes the transcript read as an ordinary exchange instead of a special
+// "answer" event (see docs/structured-response-rendering-plan.md). Options
+// disable themselves the instant one is picked, purely to stop a double-send
+// if the customer clicks twice before the next message arrives.
+function ClarifyWidget({ clarify, theme: tk, onSend }: {
+  clarify: ClarifyRequest; theme: ThemeTokens; onSend: (text: string) => void
+}) {
+  const [answered, setAnswered]   = useState(false)
+  const [picked, setPicked]       = useState<string[]>([])
+
+  if (!clarify.options.length) return null   // free-text question — the normal input box already covers this
+
+  const pick = (label: string) => {
+    if (clarify.multi_select) {
+      setPicked(prev => prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label])
+      return
+    }
+    setAnswered(true)
+    onSend(label)
+  }
+
+  const confirmMulti = () => {
+    if (!picked.length) return
+    setAnswered(true)
+    onSend(picked.join(', '))
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      <div className="flex gap-1.5 flex-wrap">
+        {clarify.options.map((label) => {
+          const selected = picked.includes(label)
+          return (
+            <button
+              key={label}
+              type="button"
+              disabled={answered}
+              onClick={() => pick(label)}
+              className={`px-3 py-1.5 rounded-full text-[12.5px] font-medium border transition-colors disabled:opacity-50 disabled:cursor-default
+                         ${tk.chipCls} ${selected ? 'ring-2 ring-indigo-400' : ''}`}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
+      {clarify.multi_select && (
+        <button
+          type="button"
+          disabled={answered || !picked.length}
+          onClick={confirmMulti}
+          className="self-start px-3 py-1.5 rounded-full text-[12.5px] font-semibold bg-indigo-500 text-white disabled:opacity-40"
+        >
+          Confirm
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
 function MarkdownMessage({ text, isDark }: { text: string; isDark: boolean }) {
@@ -269,12 +336,26 @@ function MarkdownMessage({ text, isDark }: { text: string; isDark: boolean }) {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+// Mirrors app/api/customer.py's ClarifyRequest. Present only on a live AI
+// message whose run paused on ask_user instead of answering -- history restore
+// never populates this, so an answered question just becomes plain text on
+// reload with no special replay logic needed (see
+// docs/structured-response-rendering-plan.md, "Scenario 2").
+interface ClarifyRequest {
+  question: string
+  header: string
+  options: string[]
+  multi_select: boolean
+}
+
 interface Message {
   id: string
   role: 'user' | 'ai'
   text: string
   agent?: string
   citations?: SourceItem[]
+  blocks?: ChatBlock[]            // structured table/card/tabs — see renderengine/chatblocks
+  clarify?: ClarifyRequest        // agent is asking a question instead of answering
   ts?: Date
   messageId?: string             // server-side ConversationLog id — anchors feedback
   feedback?: 'up' | 'down'       // customer rating on this AI reply
@@ -474,6 +555,7 @@ export function CustomerChat() {
           id: crypto.randomUUID(), role: h.role === 'user' ? 'user' : 'ai',
           text: h.message, agent: h.agent_slug ?? undefined,
           citations: h.citations ?? [],
+          blocks: h.blocks ?? undefined,
           messageId: h.role === 'user' ? undefined : h.id,
           ts: new Date(h.created_at || Date.now()),
         })))
@@ -581,7 +663,7 @@ export function CustomerChat() {
         return
       }
       if (isFirst && data.session_id) { ownSessionRef.current = true; setSearchParams({ chat: data.session_id }, { replace: true }); setSessionId(data.session_id) }
-      if (data.reply) setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: data.reply, agent: data.agent, citations: data.citations ?? [], ts: new Date(), messageId: data.message_id }])
+      if (data.reply) setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: data.reply, agent: data.agent, citations: data.citations ?? [], blocks: data.blocks ?? undefined, clarify: data.clarify ?? undefined, ts: new Date(), messageId: data.message_id }])
     } catch {
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: 'Connection error. Please try again.', ts: new Date() }])
     } finally { setLoading(false); setTimeout(() => inputRef.current?.focus(), 50) }
@@ -777,6 +859,7 @@ export function CustomerChat() {
               const showAvatar   = !isUser && (idx === 0 || prevMsg?.role !== 'ai')
               const showTime     = idx === messages.length - 1 ||
                                    messages[idx + 1]?.role !== msg.role
+              const isLastMsg    = idx === messages.length - 1
 
               return (
                 <div key={msg.id} className={`flex gap-2.5 animate-fadeIn ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -821,6 +904,12 @@ export function CustomerChat() {
                       <div className={`overflow-hidden ${t.aiBubbleCls}`}>
                         <div className="px-4 py-3.5">
                           <MarkdownMessage text={msg.text} isDark={isDark} />
+                          {CHAT_BLOCKS_ENABLED && msg.blocks && msg.blocks.length > 0 && (
+                            <ChatBlockRenderer blocks={msg.blocks} theme={t} />
+                          )}
+                          {msg.clarify && isLastMsg && !loading && (
+                            <ClarifyWidget clarify={msg.clarify} theme={t} onSend={send} />
+                          )}
                           {msg.citations && msg.citations.length > 0 && (
                             <div className={`mt-3 pt-3 border-t ${isDark ? 'border-white/[0.08]' : 'border-slate-100'}`}>
                               <SourceCitation sources={msg.citations} dark={isDark} />

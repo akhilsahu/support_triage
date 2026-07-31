@@ -177,6 +177,7 @@ def client_where(
     client_id: str,
     doc_id: Optional[str] = None,
     session_id: Optional[str] = None,
+    kb_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Build a ChromaDB `where` filter for client_documents queries.
@@ -190,12 +191,20 @@ def client_where(
 
         # All docs in a session:
         client_where("client_abc", session_id="sess_xyz")
+
+        # Only the KnowledgeBases one chatbot's agents are linked to:
+        client_where("client_abc", kb_ids=["83117a0c-...", "18ab39ee-..."])
     """
     conditions: List[Dict[str, Any]] = [{"client_id": {"$eq": client_id}}]
     if doc_id:
         conditions.append({"doc_id": {"$eq": doc_id}})
     if session_id:
         conditions.append({"session_id": {"$eq": session_id}})
+    if kb_ids:
+        # kb_id is the KnowledgeBase uuid stamped on every chunk at ingestion.
+        # A space can hold several brands' KBs, so this is what narrows a query
+        # from "everything this tenant owns" to "what this chatbot can see".
+        conditions.append({"kb_id": {"$in": list(kb_ids)}})
 
     if len(conditions) == 1:
         return conditions[0]

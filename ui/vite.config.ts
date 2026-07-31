@@ -14,7 +14,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         // Required for SSE (Server-Sent Events) — disables response buffering
         // so event-stream chunks are flushed to the browser immediately.
@@ -27,12 +27,12 @@ export default defineConfig({
       },
       // /space/public/* lives on the backend — proxy for local widget dev
       '/space': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
       // Uploaded assets (chatbot logos, etc.) — served as static files by the backend
       '/uploads': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
     },

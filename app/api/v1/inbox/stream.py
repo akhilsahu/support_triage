@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.models.staff import StaffMember
 from app.api.v1.inbox.staff_auth import get_current_staff
 from app.services.inbox import sse_manager
@@ -80,7 +80,6 @@ HEARTBEAT_INTERVAL = 25   # seconds between SSE keep-alive pings
 @router.get("/stream")
 async def staff_stream(
     request: Request,
-    db: AsyncSession = Depends(get_db),
 ):
     """
     Persistent SSE connection for staff members and space owners.
@@ -88,7 +87,8 @@ async def staff_stream(
     Events pushed: new_session, session_transferred, queue_updated.
     """
     token = _extract_bearer(request)
-    subject_id, space_id, role = await _resolve_token(token, db)
+    async with AsyncSessionLocal() as db:
+        subject_id, space_id, role = await _resolve_token(token, db)
     # For staff use their id; for owner use space_id as the SSE key
     staff_id = subject_id if role == "staff" else f"owner_{space_id}"
 

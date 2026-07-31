@@ -170,6 +170,7 @@ class ConversationLog(Base):
     agent_slug      = Column(String(80), nullable=True)
     rag_hit         = Column(Boolean, nullable=True)
     citations       = Column(JSONB, nullable=True)     # retrieved chunks used for this reply
+    blocks          = Column(JSONB, nullable=True)     # structured table/card/tabs (see tools/render_tools.py)
     sentiment_score = Column(Float, nullable=True)
     response_ms     = Column(Integer, nullable=True)   # latency in ms
     feedback        = Column(String(10), nullable=True)  # customer rating: "up" | "down"

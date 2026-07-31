@@ -107,9 +107,11 @@ one KB.
 
 ### Required mitigations
 
-1. **Raise `rag_top_k`.** Default is 5 (`default_rag_top_k`). Split across two
-   products that is ~2–3 chunks per card, so a comparison answer can miss one
-   side entirely. Suggest 8–10 for a multi-product agent.
+1. ~~**Raise `rag_top_k`.**~~ **Done differently — see §5.** `rag_top_k` turned
+   out to be dead on the Agno path (retrieval uses `RERANK_FETCH_K` →
+   `RERANK_TOP_N`), and raising the total would not have helped anyway: the
+   problem is not too few chunks but all of them landing on one product.
+   Multi-product agents now split the existing budget per document instead.
 2. **Make the agent's system prompt disambiguation-aware**, e.g.:
    *"These documents cover multiple SBI credit cards. Always state which card an
    answer applies to. If the customer has not said which card they hold and the
@@ -135,13 +137,35 @@ This also has a scale limit: one agent over 10 cards would dilute retrieval badl
 At that point the fix is not more agents but per-document filtering (§5) or a
 card-selection step in the UI.
 
-## 5. Optional follow-up: fix the real gap
+## 5. The real gap — now closed
 
-The underlying limitation is that **`doc_id` is written into chunk metadata at
+The underlying limitation was that **`doc_id` is written into chunk metadata at
 ingestion but is not usable as an agent-level filter** — only `kb_id` and
-`doc_type` are. Adding an optional document-level scope to `_build_where` would
-allow one KB to serve several narrowly-scoped agents, removing the "one KB per
-card" workaround entirely.
+`doc_type` were.
+
+**This is now implemented** (`knowledge/per_product.py`). An agent whose KBs hold
+2–8 indexed documents retrieves each document separately and interleaves the
+results, so every product is represented in context. The budget is split, not
+increased, so context size and cost per message are unchanged; the cost is N
+searches instead of one, run concurrently.
+
+Measured on the SBI cards KB — chunks retrieved per card:
+
+| Question | Before | After |
+|---|---|---|
+| reward points | **Prime 8, Cashback 0** | Prime 4, Cashback 4 |
+| annual fee | Cashback 5, Prime 3 | Prime 4, Cashback 4 |
+| foreign currency markup | Cashback 4, Prime 4 | Prime 4, Cashback 4 |
+
+"Reward points" previously answered for Prime alone with no sign anything was
+missing. It now covers both, including "the Cashback card earns cashback, not
+reward points" — which needed a directive change too, because balanced retrieval
+alone still let the model drop a product it had nothing to say about.
+
+The path is inert for single-product agents: no fan-out, no behaviour change.
+
+This removes the "one KB per card" workaround, so a single KB serving several
+narrowly-scoped agents is now viable.
 
 Cheaper partial mitigation, worth doing regardless: **prepend the product name to
 chunk text** for multi-product KBs (the section header already does this where
@@ -161,14 +185,16 @@ every later option; merging the PDFs is the only genuinely irreversible choice.
 4. Optionally add a generic "SBI Cards" chatbot with one agent spanning both KBs
    for any non-card-specific entry point.
 
-**If there is only a generic entry point:**
-1. One agent, linked to both KBs.
-2. Raise `rag_top_k` to ~8-10 (5 split across two products is ~2-3 chunks each).
-3. Add the disambiguation instruction to its system prompt (§3).
-4. Test with deliberately ambiguous questions ("What is the annual fee?", "What
-   are the reward points?") and confirm the answer names the card rather than
-   silently picking one.
-5. Only if step 4 shows conflation: implement document-level filtering (§5).
+**If there is only a generic entry point:** this is now the default and needs no
+configuration. One agent linked to both KBs gets per-document retrieval (§5) and
+the disambiguation directives automatically, from the document count alone.
+Worth re-testing after adding a card, with deliberately ambiguous questions
+("What is the annual fee?", "What are the reward points?"), confirming the answer
+names each card rather than silently picking one.
+
+Note that per-card chatbots and per-document retrieval compose: splitting a
+chatbot down to a single card leaves its agent with one document, which turns the
+fan-out off by itself.
 
 ## 7. Open questions
 

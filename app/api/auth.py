@@ -50,10 +50,14 @@ BUILTIN_AGENTS = [
             "If the intent is unclear or potentially harmful, route to the most general available agent. "
             "Output strictly valid JSON with keys 'agent' and 'intent'. No markdown, no explanation."
         ),
-        "system_prompt": (
-            "Classify the customer message and route to the correct specialist agent. "
-            "Be concise and accurate."
-        ),
+        # No system_prompt on purpose. For triage it is an OWNER OVERRIDE of the
+        # routing policy: TeamFactory uses it as the Team leader's instructions
+        # INSTEAD of TRIAGE_COORDINATOR_PROMPT. Seeding a value here meant every
+        # default chatbot silently shipped a two-sentence prompt in place of the
+        # real one, while chatbots created later (see _seed_new_chatbot_agents in
+        # api/v1/chatbots.py, which seeds no prompt) got the real one — the same
+        # space routing two different ways. Empty means "owner has not
+        # customised routing", which is what the leader path checks for.
         "temperature": 0.2,
         "max_tokens": 200,
     },

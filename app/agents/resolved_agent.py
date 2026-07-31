@@ -8,38 +8,47 @@ doesn't need to know which table the agent came from.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any, List
+from typing import Any, List, Tuple
 
 from sqlalchemy import inspect as sa_inspect
 
 # Above this, a KB is a document library rather than a product range, and
 # "which of these 20 documents do you mean?" is not a sensible question to ask.
+# It also caps the fan-out of per-product retrieval, which is one search per
+# product per message.
 _MAX_PRODUCTS = 8
 
 
-def _product_names(agent) -> List[str]:
+def _products(agent) -> List[Tuple[str, str]]:
     """
-    Distinct document titles across the agent's KBs — the candidate products a
-    question like "what is the annual fee?" could be about.
+    Distinct (doc_id, title) pairs across the agent's KBs — the candidate
+    products a question like "what is the annual fee?" could be about.
+
+    Items with no doc_id are skipped: an unindexed document can neither be
+    cited nor searched on its own, so promising it in the prompt would be a
+    product the agent cannot actually answer for.
 
     Returns [] unless the kb/items relationships were eager-loaded, since this
     runs under async SQLAlchemy where a lazy load raises. Callers that want
-    product names must load them (see db_utils/agent_loader.py).
+    products must load them (see db_utils/agent_loader.py).
     """
     def loaded(obj: Any, attr: str) -> bool:
         return obj is not None and attr not in sa_inspect(obj).unloaded
 
-    titles: List[str] = []
+    found: List[Tuple[str, str]] = []
+    seen: set = set()
     for link in (agent.knowledge_bases or []):
         if not loaded(link, "kb") or not loaded(link.kb, "items"):
             return []
         for item in link.kb.items:
-            title = (item.title or "").strip()
-            if item.item_type == "doc" and title and title not in titles:
-                titles.append(title)
+            title  = (item.title or "").strip()
+            doc_id = (item.doc_id or item.indexed_doc_id or "").strip()
+            if item.item_type == "doc" and title and doc_id and doc_id not in seen:
+                seen.add(doc_id)
+                found.append((doc_id, title))
 
     # One document is unambiguous; too many is a library, not a product range.
-    return titles if 2 <= len(titles) <= _MAX_PRODUCTS else []
+    return found if 2 <= len(found) <= _MAX_PRODUCTS else []
 
 
 @dataclass
@@ -59,7 +68,17 @@ class ResolvedAgent:
     keywords_list:      List[str]
     skills_list:        List[str] = field(default_factory=list)   # PromptSkill UUIDs
     kb_ids:             List[str] = field(default_factory=list)   # KnowledgeBase UUIDs
-    product_names:      List[str] = field(default_factory=list)   # doc titles, if 2+
+    # (doc_id, title) per indexed document, populated only when there are 2+ —
+    # titles drive the disambiguation prompt, doc_ids drive per-product retrieval.
+    products:           List[Tuple[str, str]] = field(default_factory=list)
+
+    @property
+    def product_names(self) -> List[str]:
+        return [title for _, title in self.products]
+
+    @property
+    def product_doc_ids(self) -> List[str]:
+        return [doc_id for doc_id, _ in self.products]
 
     # ── Factories ──────────────────────────────────────────────────────────────
 
@@ -104,5 +123,5 @@ class ResolvedAgent:
             keywords_list=agent.keywords_list,
             skills_list=agent.skills_list,
             kb_ids=[str(lnk.kb_id) for lnk in (agent.knowledge_bases or [])],
-            product_names=_product_names(agent),
+            products=_products(agent),
         )

@@ -7,6 +7,7 @@ build logic. See RAG_QUALITY_PLAN.md for the answer-quality rationale.
   RAG_QUALITY_DIRECTIVES     — appended to EVERY agent's system prompt
   DEFAULT_AGENT_PROMPT       — fallback when an agent has no base/system prompt
   TRIAGE_COORDINATOR_PROMPT  — the Team leader (triage) routing prompt
+  ASK_USER_INSTRUCTIONS      — UserFeedbackTools override for multi-product agents
 """
 
 from __future__ import annotations
@@ -33,7 +34,14 @@ RAG_QUALITY_DIRECTIVES = (
     "'entry age', 'sum assured', 'maturity age'). A single broad search misses "
     "specifics; targeted searches surface each one.\n"
     "- Answer strictly from the retrieved knowledge base; if a detail is not "
-    "present, say so rather than guessing."
+    "present, say so rather than guessing.\n"
+    "- When the customer asks for a specific figure (an amount, a rate, a date) "
+    "and the knowledge base only describes it in general terms (e.g. 'at the "
+    "prevailing rate', 'as shown at application'), do not write around the gap "
+    "by describing related terms instead. State plainly that the exact figure "
+    "is not in your documents, THEN share whatever related information you do "
+    "have. A customer who reads a full paragraph about a fee and never sees the "
+    "number assumes you avoided the question, not that the number is missing."
 )
 
 
@@ -59,6 +67,10 @@ MULTI_PRODUCT_DIRECTIVES = (
     "which one they mean, give every product's answer, labelled — e.g. "
     "'Product A: <answer>. Product B: <answer>.' Prefer this over asking: it "
     "is one turn instead of two and more useful.\n"
+    "- If the retrieved documents cover the question for one product but not "
+    "another, say so for that product — e.g. 'Product B does not offer this.' "
+    "Never leave a product out silently: the customer reads an unlabelled "
+    "answer as applying to the product they hold.\n"
     "- Only ask which product they mean when listing every product's answer "
     "would be too long or confusing. Ask once, naming the options.\n"
     "- Never ask twice. If you already asked and the customer moved on without "
@@ -66,6 +78,25 @@ MULTI_PRODUCT_DIRECTIVES = (
     "- Once the customer names a product, keep answering for that product for "
     "the rest of the conversation unless they say otherwise.\n"
     "- Never assume which product the customer holds."
+)
+
+
+# Overrides agno.tools.user_feedback.UserFeedbackTools.DEFAULT_INSTRUCTIONS.
+# Only attached to multi-product agents (see AgentFactory._build_tools) — asking
+# is an enhancement layered on top of MULTI_PRODUCT_DIRECTIVES's answer-for-all
+# default, never a replacement for it, per the measured false-ask rate in
+# docs/ambiguous-question-clarification-plan.md. This text only changes HOW an
+# ask is shaped when the model already decided to ask; it does not push the
+# model toward asking more often.
+ASK_USER_INSTRUCTIONS = (
+    "You have access to the `ask_user` tool to ask the customer which product "
+    "they mean, when — and only when — MULTI_PRODUCT_DIRECTIVES says asking is "
+    "appropriate instead of answering for every product.\n"
+    "- Ask exactly ONE question per call, with 2-4 options naming the real "
+    "product names.\n"
+    "- Never call this after the customer has already named their product "
+    "earlier in the conversation.\n"
+    "- Set multi_select to false — a customer holds one product, not several."
 )
 
 

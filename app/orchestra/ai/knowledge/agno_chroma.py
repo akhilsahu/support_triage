@@ -63,6 +63,27 @@ def _make_filters(
     return {"$and": conds}
 
 
+def scoped_to_doc(filters: Any, doc_id: str) -> Any:
+    """
+    Narrow an agent's filters to a single indexed document.
+
+    Used by per-product retrieval to run one search per document. Lives here
+    because it has to obey the same shape rules as _make_filters: a flat
+    single-condition dict has to be re-wrapped once it gains a second condition.
+    """
+    cond = {"doc_id": {"$eq": doc_id}}
+
+    if isinstance(filters, dict) and "$and" in filters:
+        return {"$and": [*filters["$and"], cond]}
+
+    # Flat single-condition form, e.g. {"client_id": "<uuid>"}.
+    if isinstance(filters, dict) and filters:
+        flat = [{k: {"$eq": v}} for k, v in filters.items()]
+        return {"$and": [*flat, cond]}
+
+    return cond
+
+
 class AgnoChromaKnowledgeBackend(BaseKnowledgeBackend):
     """
     Agno-native knowledge backend using ChromaDB as the vector store.

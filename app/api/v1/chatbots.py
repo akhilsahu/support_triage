@@ -550,7 +550,7 @@ async def generate_homepage_ui(
         except Exception:
             doc_types = []
         payload["suggestions"] = await get_suggestions(
-            space_id=space.id, org_name=space.display_name,
+            space_id=space.id, chatbot_id=chatbot.id, org_name=space.display_name,
             active_agents=active_agents, doc_types=doc_types,
         )
     except Exception:
