@@ -84,8 +84,8 @@ class ImageParser(BaseParser):
     def _vision_call_b64(self, b64: str, mime: str, filename: str,
                          page_num: int = 1) -> str:
         try:
-            from openai import OpenAI
-            resp = OpenAI().chat.completions.create(
+            from app.orchestra.ai.ingestion.parsers.vision import vision_completion
+            return vision_completion(
                 model=self.cfg.vision_model,
                 max_tokens=self.cfg.vision_max_tokens,
                 messages=[{
@@ -97,7 +97,6 @@ class ImageParser(BaseParser):
                     ],
                 }],
             )
-            return resp.choices[0].message.content or ""
         except Exception as e:
             if self.cfg.vision_on_error == "raise":
                 raise RuntimeError(

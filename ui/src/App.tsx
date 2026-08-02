@@ -52,7 +52,7 @@ function LegacyChatRedirect() {
 }
 
 export default function App() {
-  const { isDark, fontSize, setBackendStatus, setActiveHomepage, setHomepageSectionsPlatformEnabled } = useAppStore()
+  const { themeMode, fontSize, setBackendStatus, setActiveHomepage, setHomepageSectionsPlatformEnabled } = useAppStore()
 
   // Fetch active homepage on mount
   useEffect(() => {
@@ -67,11 +67,12 @@ export default function App() {
       .catch(() => {})
   }, [setActiveHomepage, setHomepageSectionsPlatformEnabled])
 
-  // Restore dark mode class on mount
+  // Restore theme mode class on mount
   useEffect(() => {
-    if (isDark) document.documentElement.classList.add('dark')
-    else document.documentElement.classList.remove('dark')
-  }, [isDark])
+    document.documentElement.classList.remove('dark', 'beige')
+    if (themeMode === 'dark') document.documentElement.classList.add('dark')
+    if (themeMode === 'beige') document.documentElement.classList.add('beige')
+  }, [themeMode])
 
   // Apply persisted font size on mount
   useEffect(() => {

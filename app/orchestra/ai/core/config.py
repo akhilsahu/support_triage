@@ -13,8 +13,8 @@ Adding another framework later:
 
 from __future__ import annotations
 import os
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 
 @dataclass
@@ -60,6 +60,14 @@ class AgnoConfig(OrchestraConfig):
     team_mode:              str  = "route"       # route | coordinate
     triage_model:           str  = "gpt-4o-mini" # cheap model for routing
     show_members_responses: bool = False
+
+    # Providers to build as Agno fallback_models, in priority order, after
+    # llm_provider (the primary). Populated by build_config() from
+    # LLM_PROVIDER_PRIORITY — whichever configured providers aren't chosen as
+    # primary become the fallback chain, so a live failure on the primary
+    # (rate limit, timeout, 5xx) retries through the next one automatically.
+    # See factories/llm.py LLMFactory.build_fallbacks().
+    llm_fallback_providers: List[str] = field(default_factory=list)
 
     # MCP tools
     mcp_enabled: bool = False
@@ -118,7 +126,12 @@ def build_config(
     Pass standalone=True to read directly from os.environ (no DB/Settings needed).
     Per-call overrides applied on top.
 
-    Provider priority: openai → watsonx → anthropic
+    Provider order is config-driven via LLM_PROVIDER_PRIORITY (default
+    "openai,openrouter,anthropic,watsonx"): the first entry with a configured
+    API key is PRIMARY; every other configured entry after it, in the same
+    order, becomes cfg.llm_fallback_providers — the live-retry chain Agno
+    falls back through on a rate limit/timeout/5xx (see
+    LLMFactory.build_fallbacks() in factories/llm.py).
     """
     if standalone:
         get = os.environ.get
@@ -126,22 +139,39 @@ def build_config(
         from app.config import settings
         get = lambda k, d=None: getattr(settings, k, d)
 
-    if get("OPENAI_API_KEY"):
-        provider, model = "openai", get("OPENAI_MODEL") or "gpt-4o-mini"
-    elif get("WATSONX_API_KEY"):
-        provider, model = "watsonx", get("WATSONX_MODEL") or "ibm/granite-13b-chat-v2"
-    elif get("ANTHROPIC_API_KEY"):
-        provider, model = "anthropic", get("ANTHROPIC_MODEL") or "claude-3-haiku-20240307"
+    _KEY_SETTINGS = {
+        "openai":     "OPENAI_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "anthropic":  "ANTHROPIC_API_KEY",
+        "watsonx":    "WATSONX_API_KEY",
+    }
+    _MODEL_SETTINGS = {
+        "openai":     ("OPENAI_MODEL", "gpt-4o-mini"),
+        "openrouter": ("OPENROUTER_MODEL", "openai/gpt-4o-mini"),
+        "anthropic":  ("ANTHROPIC_MODEL", "claude-3-haiku-20240307"),
+        "watsonx":    ("WATSONX_MODEL", "ibm/granite-13b-chat-v2"),
+    }
+
+    priority_raw = get("LLM_PROVIDER_PRIORITY") or "openai,openrouter,anthropic,watsonx"
+    priority = [p.strip().lower() for p in priority_raw.split(",") if p.strip()]
+    available = [p for p in priority if p in _KEY_SETTINGS and get(_KEY_SETTINGS[p])]
+
+    if available:
+        provider = available[0]
+        model_setting, model_default = _MODEL_SETTINGS[provider]
+        model = get(model_setting) or model_default
+        fallback_providers = available[1:]
     elif standalone:
         raise SystemExit(
-            "\n  No API key found. Set one of:\n"
+            "\n  No API key found. Set one of (in LLM_PROVIDER_PRIORITY order):\n"
             "    OPENAI_API_KEY\n"
+            "    OPENROUTER_API_KEY\n"
             "    ANTHROPIC_API_KEY\n"
             "    WATSONX_API_KEY\n"
             "  in your .env file.\n"
         )
     else:
-        provider, model = "openai", "gpt-4o-mini"
+        provider, model, fallback_providers = "openai", "gpt-4o-mini", []
 
     rag_backend        = get("RAG_BACKEND")        or ("none" if standalone else "vectorstore")
     knowledge_backend  = get("KNOWLEDGE_BACKEND")  or ("none" if standalone else "agno_chroma")
@@ -159,8 +189,9 @@ def build_config(
         )
 
     return AgnoConfig(
-        llm_provider = provider,
-        llm_model    = model,
+        llm_provider           = provider,
+        llm_model              = model,
+        llm_fallback_providers = fallback_providers,
         triage_model = "gpt-4o-mini",
         temperature  = temperature if temperature is not None else float(get("OPENAI_TEMPERATURE") or 0.4),
         max_tokens   = max_tokens  if max_tokens  is not None else int(get("OPENAI_MAX_TOKENS") or 500),

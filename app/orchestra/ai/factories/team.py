@@ -62,6 +62,7 @@ class TeamFactory:
         mcp_server:        Optional[Any] = None,
         skills_map:        Optional[dict] = None,
         leader:            Optional[ResolvedAgent] = None,
+        clarify_enabled:   bool = False,
     ) -> Optional[Any]:
         """
         Full build entry point called by SessionPool._build().
@@ -101,6 +102,7 @@ class TeamFactory:
             skills_map=skills_map or {},
             db=db,
             leader=leader,
+            clarify_enabled=clarify_enabled,
         )
 
     def build(
@@ -112,6 +114,7 @@ class TeamFactory:
         skills_map:    Optional[dict]      = None,  # {slug: [PromptSkill, ...]}
         db:            Optional[Any]       = None,  # Agno session db (leader/standalone)
         leader:        Optional[ResolvedAgent] = None,  # triage agent, configures the Team
+        clarify_enabled: bool              = False,  # Chatbot.clarify_enabled — see AgentFactory._build_tools
     ) -> Optional[Any]:
         """
         Build Team or Agent from active agents.
@@ -157,6 +160,7 @@ class TeamFactory:
                 skills=(skills_map or {}).get(specialists[0].slug, []),
                 db=db,
                 attach_session=True,
+                clarify_enabled=clarify_enabled,
             )
             if agent:
                 logger.info("team_factory.single_agent", slug=specialists[0].slug)
@@ -168,6 +172,7 @@ class TeamFactory:
             tools=tools,
             memory=None,
             skills_map=skills_map or {},
+            clarify_enabled=clarify_enabled,
         )
         if not agno_agents:
             return None
@@ -209,6 +214,9 @@ class TeamFactory:
                 name=f"{org_name} Support Team",
                 mode=TeamMode(self.cfg.team_mode.lower()),
                 model=self.llm_factory.build(),
+                # Live-retry chain for the leader's own model — see
+                # LLMFactory.build_fallbacks() / AgentFactory.build().
+                fallback_models=self.llm_factory.build_fallbacks() or None,
                 members=agno_agents,
                 instructions=triage_instructions,
                 show_members_responses=self.cfg.show_members_responses,

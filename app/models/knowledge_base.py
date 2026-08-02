@@ -65,6 +65,10 @@ class KnowledgeBaseItem(Base):
     One item inside a KnowledgeBase.
 
     item_type = "doc"  → doc_id points to ChromaDB-indexed file
+    item_type = "url"  → scraped web page; doc_id as for "doc", content holds
+                         the source URL. Same chunks as a file — the separate
+                         type exists so the dashboard can list web pages apart
+                         from uploads (and link back to the live page).
     item_type = "text" → content holds raw text; indexed on ingest
     item_type = "qna"  → question + content (answer); indexed on ingest
     """

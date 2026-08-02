@@ -51,19 +51,52 @@ async def _set_job(job_id: str, **fields) -> None:
         logger.warning("ingestion.job.status_write_failed", job_id=job_id, error=str(e))
 
 
-async def _attach_kb_item(kb_id: str, doc_id: str, title: str) -> None:
-    """Create the KnowledgeBaseItem pointing at the freshly indexed document."""
+_KB_LINK_ATTEMPTS = 3
+_KB_LINK_RETRY_DELAY_S = 2.0
+
+
+async def _attach_kb_item(kb_id: str, doc_id: str, title: str,
+                          item_type: str = "doc", content: Optional[str] = None) -> None:
+    """
+    Create the KnowledgeBaseItem pointing at the freshly indexed document.
+
+    By the time this runs, upsert_client_chunks has already stamped every chunk
+    with this kb_id — they are live and retrievable by any agent linked to the
+    KB. This call is what makes the document show up on the KB dashboard;
+    without it (or on a transient DB failure) the chunks stay retrievable and
+    citable while looking, to the owner, like the upload never happened. A few
+    quick retries cover the transient case; a caller that still fails after
+    this many attempts is a real failure worth surfacing, not swallowing.
+    """
     from app.core.database import AsyncSessionLocal
     from app.models.knowledge_base import KnowledgeBaseItem
-    async with AsyncSessionLocal() as db:
-        db.add(KnowledgeBaseItem(
-            kb_id=UUID(kb_id),
-            item_type="doc",
-            title=title,
-            doc_id=doc_id,
-            indexed_doc_id=doc_id,
-        ))
-        await db.commit()
+
+    last_error: Optional[Exception] = None
+    for attempt in range(_KB_LINK_ATTEMPTS):
+        try:
+            async with AsyncSessionLocal() as db:
+                db.add(KnowledgeBaseItem(
+                    kb_id=UUID(kb_id),
+                    # "url" for scraped pages so the dashboard can list them
+                    # apart from uploaded files; the indexed chunks are
+                    # identical either way, this only affects presentation.
+                    item_type=item_type,
+                    title=title,
+                    doc_id=doc_id,
+                    indexed_doc_id=doc_id,
+                    content=content,   # source URL for item_type="url"
+                ))
+                await db.commit()
+            return
+        except Exception as e:
+            last_error = e
+            if attempt < _KB_LINK_ATTEMPTS - 1:
+                logger.warning("ingestion.job.kb_link_retry",
+                               kb_id=kb_id, doc_id=doc_id, attempt=attempt + 1, error=str(e))
+                await anyio.sleep(_KB_LINK_RETRY_DELAY_S)
+
+    assert last_error is not None
+    raise last_error
 
 
 @job("ingest_document")
@@ -81,8 +114,18 @@ async def ingest_document(
     org_name: str = "",
     kb_id: str = "",
     item_title: str = "",
+    display_name: str = "",
+    item_type: str = "doc",
+    source_url: str = "",
 ) -> None:
-    """Ingest one uploaded document, recording progress on its job row."""
+    """Ingest one uploaded document, recording progress on its job row.
+
+    `filename` drives PARSING (the extension picks the parser). `display_name`,
+    when given, is what gets stored on the chunks and therefore what citations
+    show the customer — used by URL ingestion, where the parser needs a real
+    extension ("page.html") but a citation should read as the page's title.
+    Defaults to `filename` for ordinary file uploads.
+    """
     import uuid as _uuid
     from app.orchestra.ai.chunking import chunk as chunk_document, get_config as get_chunk_config
     from app.orchestra.ai.ingestion import get_ingestion_service
@@ -157,7 +200,7 @@ async def ingest_document(
                 client_id=space_id,
                 session_id=session_id or str(_uuid.uuid4()),
                 doc_id=doc_id,
-                filename=filename,
+                filename=display_name or filename,
                 extension=parsed.extension,
                 strategy=cfg.strategy.value,
                 doc_type=doc_type,
@@ -180,13 +223,17 @@ async def ingest_document(
         # Link into the knowledge base now that there's a real doc_id — doing it
         # at upload time would have stored an empty reference. Deliberately not
         # fatal: the document is already indexed and searchable, so a failure
-        # here shouldn't present the whole ingestion as failed.
+        # here shouldn't present the whole ingestion as failed. _attach_kb_item
+        # already retries transient failures; an error() here means every
+        # retry was exhausted — chunks are live and citable but invisible on
+        # the KB dashboard until someone notices this log line.
         if kb_id:
             try:
-                await _attach_kb_item(kb_id, doc_id, item_title or filename)
+                await _attach_kb_item(kb_id, doc_id, item_title or filename,
+                                      item_type=item_type, content=source_url or None)
             except Exception as e:
-                logger.warning("ingestion.job.kb_link_failed",
-                               job_id=job_id, kb_id=kb_id, error=str(e))
+                logger.error("ingestion.job.kb_link_failed",
+                             job_id=job_id, kb_id=kb_id, doc_id=doc_id, error=str(e))
 
         await _set_job(job_id, status="done", progress=100, doc_id=doc_id,
                        stage_detail=f"{parsed.page_count} pages, {len(chunks)} chunks",

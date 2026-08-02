@@ -350,6 +350,25 @@ class PdfParser(BaseParser):
                     buffer_start_page = page_idx + 1
                 buffer.append(img_text)
 
+            # Flush at every real page boundary, not just on a heading or the
+            # stale-section limit (40 pages — far too generous to help here).
+            # Without this, a section that runs for many pages with no
+            # sub-heading in between (common in a long T&C document) becomes
+            # ONE ParsedPage stamped with a single buffer_start_page, and every
+            # citation drawn from anywhere in that span reports the page where
+            # the section BEGAN, not where the cited text actually is —
+            # verified against this exact document: claimed page 9 for content
+            # that is really on pages 10, 11, and 12.
+            #
+            # current_section is deliberately left untouched by _flush(), so
+            # this does not fragment a genuine multi-page section into
+            # separately-labelled pieces — chunk_by_structure's "same section
+            # as the previous ParsedPage" merge (by_structure.py) re-joins them
+            # into one group afterward, now with correct per-real-page
+            # boundaries preserved inside that group instead of collapsed into
+            # a single page number.
+            _flush()
+
         _flush()
 
         # Fallback: parsing produced no pages → one page per PDF page
@@ -384,8 +403,6 @@ class PdfParser(BaseParser):
         """
         try:
             import base64
-            from openai import OpenAI
-            from app.config import settings
 
             # block["image"] exists when type==1; contains raw image bytes
             # Alternatively use the xref for more format control.
@@ -435,30 +452,30 @@ class PdfParser(BaseParser):
 
             b64    = base64.b64encode(img_bytes).decode()
             mime   = f"image/{img_ext}" if img_ext != "jpg" else "image/jpeg"
-            client = OpenAI(api_key=settings.OPENAI_API_KEY)
             if stats is not None:
                 stats["api_calls"] += 1
 
+            from app.orchestra.ai.ingestion.parsers.vision import vision_completion
             from tenacity import Retrying, stop_after_attempt, wait_exponential
 
+            messages = [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": self.cfg.vision_prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                ],
+            }]
             for attempt in Retrying(
                 stop=stop_after_attempt(5),
                 wait=wait_exponential(multiplier=1, min=2, max=20),
                 reraise=True
             ):
                 with attempt:
-                    resp = client.chat.completions.create(
+                    text = vision_completion(
                         model=self.cfg.vision_model,
                         max_tokens=self.cfg.vision_max_tokens,
-                        messages=[{
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": self.cfg.vision_prompt},
-                                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                            ],
-                        }],
+                        messages=messages,
                     )
-            text = resp.choices[0].message.content or ""
             if _is_vision_refusal(text):
                 # Cache the empty result too: the identical image would be
                 # refused again, so this still saves the repeat API calls.
@@ -483,34 +500,32 @@ class PdfParser(BaseParser):
         """Render a full PyMuPDF page to PNG and send to GPT-4o mini vision."""
         try:
             import base64
-            from openai import OpenAI
-            from app.config import settings
 
             pix  = page.get_pixmap(dpi=self.cfg.vision_dpi)
             png  = pix.tobytes("png")
             b64  = base64.b64encode(png).decode()
-            client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
+            from app.orchestra.ai.ingestion.parsers.vision import vision_completion
             from tenacity import Retrying, stop_after_attempt, wait_exponential
 
+            messages = [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": self.cfg.vision_prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                ],
+            }]
             for attempt in Retrying(
                 stop=stop_after_attempt(5),
                 wait=wait_exponential(multiplier=1, min=2, max=20),
                 reraise=True
             ):
                 with attempt:
-                    resp = client.chat.completions.create(
+                    text = vision_completion(
                         model=self.cfg.vision_model,
                         max_tokens=self.cfg.vision_max_tokens,
-                        messages=[{
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": self.cfg.vision_prompt},
-                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
-                            ],
-                        }],
+                        messages=messages,
                     )
-            text = resp.choices[0].message.content or ""
             if _is_vision_refusal(text):
                 # Same problem as embedded images: a declined page would
                 # otherwise be indexed as if it were the page's content.

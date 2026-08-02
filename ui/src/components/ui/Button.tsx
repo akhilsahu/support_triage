@@ -19,7 +19,7 @@ export function Button({ variant='primary', size='md', loading, className, child
   const variantCls = variant === 'primary' ? dt.primaryBtn : staticVariants[variant]
   return (
     <button {...props} disabled={disabled || loading}
-      className={cn('inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed', variantCls, sizes[size], className)}>
+      className={cn('inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-all duration-150 cubic-bezier(0.16, 1, 0.3, 1) active:scale-[0.98] active:translate-y-[0.5px] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 disabled:active:translate-y-0', variantCls, sizes[size], className)}>
       {loading && <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />}
       {children}
     </button>

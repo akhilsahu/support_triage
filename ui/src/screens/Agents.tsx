@@ -567,6 +567,10 @@ export function Agents() {
   const [savingTransfer, setSavingTransfer]     = useState(false)
   const [transferSaved, setTransferSaved]       = useState(false)
   const [showTransferModal, setShowTransferModal] = useState(false)
+  // Ask-the-customer toggle (chatbot-level) -- default off, same precedent as
+  // human transfer: "how much may this bot involve someone else in the
+  // conversation?" See docs/ambiguous-question-clarification-plan.md.
+  const [clarifyEnabled, setClarifyEnabled]     = useState(false)
 
   // Guards against a race that produced the exact symptom of "doesn't load,
   // requests fail": the sidebar independently resolves/corrects
@@ -608,6 +612,7 @@ export function Agents() {
         setChatbotSlug(bot.slug)
         setHumanTransfer(bot.human_transfer_enabled ?? true)
         setTransferMessage(bot.human_transfer_message || "You're being connected to a human agent. Please hold on.")
+        setClarifyEnabled(bot.clarify_enabled ?? false)
       }
     } catch {}
   }
@@ -619,6 +624,7 @@ export function Agents() {
       await apiClient.updateChatbot(chatbotSlug, {
         human_transfer_enabled: humanTransfer,
         human_transfer_message: transferMessage,
+        clarify_enabled: clarifyEnabled,
       })
       setTransferSaved(true)
       setTimeout(() => setTransferSaved(false), 2000)
@@ -715,6 +721,24 @@ export function Agents() {
                   <p className="text-xs text-gray-400 mt-1">Shown when AI escalates or customer clicks "Talk to a human".</p>
                 </div>
               )}
+
+              <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-800">
+                <div>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Ask which product they mean</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    When an agent covers 2+ products and can't tell which one the customer has, ask instead of guessing or answering for both.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setClarifyEnabled(v => !v)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200
+                    ${clarifyEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'}`}
+                >
+                  <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200
+                    ${clarifyEnabled ? 'translate-x-5' : 'translate-x-0'}`}
+                  />
+                </button>
+              </div>
             </div>
             <div className="px-5 pb-5 flex items-center gap-3">
               <button

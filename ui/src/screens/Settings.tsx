@@ -12,7 +12,7 @@ import type { FontSizeKey } from '../config/typography'
 export function Settings() {
   const navigate = useNavigate()
   const {
-    isDark, toggleTheme,
+    themeMode, setThemeMode,
     fontSize, setFontSize,
     apiKey, setApiKey,
     clientId, setClientId,
@@ -64,10 +64,18 @@ export function Settings() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Dark Mode</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Switch between light and dark theme</p>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Appearance Mode</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Choose between Light, Dark, or Beige theme</p>
             </div>
-            <Toggle checked={isDark} onChange={toggleTheme} />
+            <select
+              value={themeMode}
+              onChange={e => setThemeMode(e.target.value as 'light' | 'dark' | 'beige')}
+              className="px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white capitalize"
+            >
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+              <option value="beige">Beige</option>
+            </select>
           </div>
           <div className="flex items-center justify-between">
             <div>

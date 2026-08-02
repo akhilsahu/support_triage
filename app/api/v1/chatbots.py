@@ -54,6 +54,7 @@ class ChatbotUpdate(BaseModel):
     active: Optional[bool] = None
     human_transfer_enabled: Optional[bool] = None
     human_transfer_message: Optional[str] = None
+    clarify_enabled: Optional[bool] = None
     homepage_sections_enabled: Optional[bool] = None
     homepage_sections_override: Optional[str] = None
     login_after_messages: Optional[int] = None
@@ -73,6 +74,9 @@ class ChatbotOut(BaseModel):
     show_logo: bool
     is_default: bool
     active: bool
+    human_transfer_enabled: bool = True
+    human_transfer_message: Optional[str] = None
+    clarify_enabled: bool = False
     homepage_sections_enabled: bool = False
     homepage_sections_override: Optional[str] = None
     login_after_messages: Optional[int] = None
@@ -233,6 +237,11 @@ async def update_chatbot(
         chatbot.human_transfer_enabled = req.human_transfer_enabled
     if req.human_transfer_message is not None:
         chatbot.human_transfer_message = req.human_transfer_message
+    clarify_changed = (
+        req.clarify_enabled is not None and req.clarify_enabled != chatbot.clarify_enabled
+    )
+    if req.clarify_enabled is not None:
+        chatbot.clarify_enabled = req.clarify_enabled
     if req.homepage_sections_enabled is not None:
         chatbot.homepage_sections_enabled = req.homepage_sections_enabled
     if req.homepage_sections_override is not None:
@@ -263,6 +272,15 @@ async def update_chatbot(
 
     await db.commit()
     await db.refresh(chatbot)
+
+    if clarify_changed:
+        # clarify_enabled changes which tools get attached (see
+        # AgentFactory._build_tools) — the pooled Team/Agent for this space was
+        # built before the change and won't pick it up until evicted. Same
+        # convention as space_agents.py's agent-config edits.
+        from app.orchestra.ai.session.pool import pool as _pool
+        _pool.invalidate_bot_agents(str(space.id))
+
     return chatbot.to_dict()
 
 

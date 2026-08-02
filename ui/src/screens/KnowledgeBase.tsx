@@ -3,12 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Upload, Trash2, FileText, AlertCircle, RefreshCw, X, Plus,
   Eye, Loader2, ChevronDown, ChevronUp, ChevronLeft,
-  MessageSquare, Type, Database, Check, List,
+  MessageSquare, Type, Database, Check, List, Globe,
 } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Skeleton } from '../components/ui/SkeletonLoader'
-import { apiClient, INGESTION_TERMINAL, type IngestionJob } from '../api/client'
+import { apiClient, INGESTION_TERMINAL, type IngestionJob, type UrlPreview } from '../api/client'
 import { IngestionJobRow } from '../components/kb/IngestionJobRow'
 import { CreateAgentModal } from './Agents'
 
@@ -26,7 +26,7 @@ interface KB {
 interface KBItem {
   id: string
   kb_id: string
-  item_type: 'doc' | 'text' | 'qna'
+  item_type: 'doc' | 'url' | 'text' | 'qna'
   title?: string
   doc_id?: string
   question?: string
@@ -101,7 +101,7 @@ function ChunksModal({ docId, docName, onClose }: { docId: string; docName: stri
 
 // ── Upload / Add Item Modal ────────────────────────────────────────────────────
 
-type ItemTab = 'doc' | 'text' | 'qna'
+type ItemTab = 'doc' | 'text' | 'qna' | 'url'
 
 function KBModal({
   kbId,
@@ -122,23 +122,52 @@ function KBModal({
   const [expiryDate, setExpiryDate] = useState('')
   const [question, setQuestion] = useState('')
   const [content, setContent]   = useState('')
+  const [url, setUrl]           = useState('')
   const [file, setFile]         = useState<File | null>(null)
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState('')
+  // URL tab: fetched-but-not-yet-indexed page. Null until the user previews;
+  // cleared whenever the URL changes so a stale preview can't be confirmed.
+  const [preview, setPreview]         = useState<UrlPreview | null>(null)
+  const [previewing, setPreviewing]   = useState(false)
 
   const isNew = !kbId
 
   const tabs: { id: ItemTab; label: string; icon: React.ReactNode }[] = [
     { id: 'doc',  label: 'Document', icon: <FileText className="w-3.5 h-3.5" /> },
+    { id: 'url',  label: 'URL',      icon: <Globe className="w-3.5 h-3.5" /> },
     { id: 'text', label: 'Text',     icon: <Type className="w-3.5 h-3.5" /> },
     { id: 'qna',  label: 'Q & A',    icon: <MessageSquare className="w-3.5 h-3.5" /> },
   ]
+
+  const isValidUrl = (u: string) => /^https?:\/\/\S+\.\S+/i.test(u.trim())
+
+  const handlePreview = async () => {
+    setError('')
+    if (!isValidUrl(url)) { setError('Enter a full URL starting with http:// or https://'); return }
+    setPreviewing(true)
+    try {
+      setPreview(await apiClient.previewUrl(url.trim()))
+    } catch (e: any) {
+      setPreview(null)
+      setError(e?.response?.data?.detail || 'Could not fetch that URL.')
+    } finally {
+      setPreviewing(false)
+    }
+  }
 
   const handleSubmit = async () => {
     setError('')
     if (tab === 'doc' && !file) { setError('Please select a file to upload.'); return }
     if (tab === 'text' && !content.trim()) { setError('Content is required.'); return }
     if (tab === 'qna' && (!question.trim() || !content.trim())) { setError('Question and answer are required.'); return }
+    if (tab === 'url') {
+      const u = url.trim()
+      if (!u) { setError('URL is required.'); return }
+      // Fail here rather than at the API: the backend rejects non-http(s)
+      // schemes anyway, and a local check gives an instant, clearer message.
+      if (!isValidUrl(u)) { setError('Enter a full URL starting with http:// or https://'); return }
+    }
 
     setSaving(true)
     try {
@@ -150,6 +179,7 @@ function KBModal({
           || title.trim()
           || (file ? file.name.replace(/\.[^.]+$/, '') : '')
           || (tab === 'qna' ? question.slice(0, 40) : '')
+          || (tab === 'url' ? (() => { try { return new URL(url.trim()).hostname } catch { return '' } })() : '')
           || 'Knowledge Base'
         const newKb = await apiClient.createKB({ name: autoName })
         kb = newKb
@@ -165,6 +195,17 @@ function KBModal({
           file, undefined, docType, kbName || title || file.name,
           undefined, expiryDate || undefined, resolvedKbId, title || file.name,
         )
+      } else if (tab === 'url') {
+        // Returns 202 + a job id, same as file upload: only the fetch is
+        // synchronous, parse/embed run in the background. The Documents tab
+        // already polls ingestion jobs, so progress surfaces there on its own.
+        // resolvedKbId is what makes the scraped page reachable by agents.
+        // Passing the preview token indexes the exact bytes the user just
+        // reviewed instead of re-fetching a page that may have changed.
+        await apiClient.scrapeUrl(
+          url.trim(), undefined, docType, kbName || title || '', undefined, resolvedKbId,
+          preview?.preview_token,
+        )
       } else if (tab === 'text') {
         await apiClient.addKBItem(resolvedKbId, { item_type: 'text', title: title || undefined, content: content.trim() })
       } else if (tab === 'qna') {
@@ -172,8 +213,11 @@ function KBModal({
       }
 
       onDone(kb || { id: resolvedKbId, name: '', description: '', active: true, item_count: 1 })
-    } catch {
-      setError('Something went wrong. Please try again.')
+    } catch (e: any) {
+      // Surface the server's reason when it gave one -- URL ingestion fails in
+      // specific, actionable ways (404, timeout, no extractable text) that a
+      // generic message would hide.
+      setError(e?.response?.data?.detail || 'Something went wrong. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -231,6 +275,88 @@ function KBModal({
                 <label className={labelCls}>Expiry date (optional)</label>
                 <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className={inputCls} />
               </div>
+            </>
+          )}
+
+          {tab === 'url' && (
+            <>
+              <div className="flex gap-2">
+                <input type="url" value={url}
+                  onChange={e => { setUrl(e.target.value); setPreview(null) }}
+                  placeholder="https://example.com/help/faq"
+                  className={`${inputCls} flex-1`} autoFocus />
+                <button type="button" onClick={handlePreview} disabled={previewing || !url.trim()}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 whitespace-nowrap transition-colors">
+                  {previewing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                  {previewing ? 'Fetching…' : 'Preview'}
+                </button>
+              </div>
+
+              <select value={docType} onChange={e => setDocType(e.target.value)} className={inputCls}>
+                <option value="general">General</option>
+                <option value="faq">FAQ</option>
+                <option value="policy">Policy</option>
+                <option value="manual">Manual</option>
+                <option value="product">Product</option>
+              </select>
+
+              {!preview && (
+                <p className="text-xs text-gray-400">
+                  Preview first to check what actually gets extracted. Works best on
+                  static pages; JavaScript-rendered sites may yield little text.
+                </p>
+              )}
+
+              {preview && (
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 overflow-hidden">
+                  <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+                    <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
+                      {preview.title || '(no title)'}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      {preview.page_count} page{preview.page_count === 1 ? '' : 's'} ·{' '}
+                      {preview.char_count.toLocaleString()} chars ·{' '}
+                      {(preview.size_bytes / 1024).toFixed(0)} KB
+                    </p>
+                    {/* Surfaced explicitly: a redirect landing somewhere else is a
+                        top reason people scrape the wrong page without noticing. */}
+                    {preview.final_url !== url.trim() && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 break-all">
+                        Redirected to {preview.final_url}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* The SPA case: fetched fine, parsed fine, almost no text. Without
+                      calling it out the user indexes an empty shell and only finds
+                      out later when the bot can't answer anything. */}
+                  {preview.char_count < 200 && (
+                    <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                      <span className="text-[11px] text-amber-700 dark:text-amber-400">
+                        Very little text extracted. This page may render its content with
+                        JavaScript, which isn't executed — adding it may add nothing useful.
+                      </span>
+                    </div>
+                  )}
+
+                  {preview.vision_skipped && (
+                    <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
+                      <span className="text-[11px] text-blue-700 dark:text-blue-400">
+                        PDF — images and scanned pages aren't shown here, but they are read
+                        during indexing.
+                      </span>
+                    </div>
+                  )}
+
+                  <pre className="px-3 py-2 text-[11px] leading-relaxed text-gray-600 dark:text-gray-300 whitespace-pre-wrap font-mono max-h-48 overflow-y-auto">
+                    {preview.extract || '(no text extracted)'}
+                    {preview.truncated && (
+                      <span className="text-gray-400">{'\n\n…truncated — the full page will be indexed.'}</span>
+                    )}
+                  </pre>
+                </div>
+              )}
             </>
           )}
 
@@ -449,7 +575,7 @@ function QnaItem({ item, kbId, onDelete }: { item: KBItem; kbId: string; onDelet
 
 // ── KB Detail view (tabbed) ───────────────────────────────────────────────────
 
-type DetailTab = 'docs' | 'text' | 'qna'
+type DetailTab = 'docs' | 'url' | 'text' | 'qna'
 
 function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
   const queryClient = useQueryClient()
@@ -496,16 +622,18 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
   })
 
   const docs  = items?.filter(i => i.item_type === 'doc')  || []
+  const urls  = items?.filter(i => i.item_type === 'url')  || []
   const texts = items?.filter(i => i.item_type === 'text') || []
   const qnas  = items?.filter(i => i.item_type === 'qna')  || []
 
   const tabs: { id: DetailTab; label: string; count: number }[] = [
     { id: 'docs', label: 'Documents', count: docs.length },
+    { id: 'url',  label: 'URLs',      count: urls.length },
     { id: 'text', label: 'Text',      count: texts.length },
     { id: 'qna',  label: 'Q & A',     count: qnas.length },
   ]
 
-  const tabToItemTab: Record<DetailTab, ItemTab> = { docs: 'doc', text: 'text', qna: 'qna' }
+  const tabToItemTab: Record<DetailTab, ItemTab> = { docs: 'doc', url: 'url', text: 'text', qna: 'qna' }
 
   return (
     <div className="p-6 space-y-4">
@@ -536,7 +664,11 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
           </button>
           <button onClick={() => setAddOpen(true)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
-            {activeTab === 'docs' ? <><Upload className="w-4 h-4" /> Upload</> : <><Plus className="w-4 h-4" /> Add</>}
+            {activeTab === 'docs'
+              ? <><Upload className="w-4 h-4" /> Upload</>
+              : activeTab === 'url'
+                ? <><Globe className="w-4 h-4" /> Add URL</>
+                : <><Plus className="w-4 h-4" /> Add</>}
           </button>
         </div>
       </div>
@@ -583,6 +715,59 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{item.title || item.doc_id}</p>
                         <p className="text-xs text-gray-400 font-mono truncate">doc_id: {item.doc_id}</p>
+                        {item.created_at && <p className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</p>}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {item.doc_id && (
+                          <button onClick={() => setViewChunks({ docId: item.doc_id!, name: item.title || item.doc_id! })}
+                            className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View chunks">
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button onClick={() => deleteMutation.mutate(item.id)} disabled={deleteMutation.isPending}
+                          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+          }
+        </>
+      )}
+
+      {/* URLs tab */}
+      {!isLoading && activeTab === 'url' && (
+        <>
+          {/* Ingestion jobs are also rendered here, not only under Documents:
+              a job in flight could be either kind, and a user who just added a
+              URL while on this tab would otherwise see nothing happening. */}
+          {activeJobs.length > 0 && (
+            <div className="space-y-2 mb-2">
+              {activeJobs.map(j => <IngestionJobRow key={j.id} job={j} />)}
+            </div>
+          )}
+          {urls.length === 0 && activeJobs.length === 0
+            ? <EmptyState label="No web pages yet" cta="Add URL" onCta={() => setAddOpen(true)} />
+            : <div className="space-y-2">
+                {urls.map(item => (
+                  <Card key={item.id} className="p-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Globe className="w-4 h-4 text-indigo-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{item.title || item.doc_id}</p>
+                        {/* content holds the source URL for url items — link
+                            back so the original page is one click away. */}
+                        {item.content && (
+                          <a href={item.content} target="_blank" rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="text-xs text-indigo-500 hover:text-indigo-400 hover:underline truncate block">
+                            {item.content}
+                          </a>
+                        )}
                         {item.created_at && <p className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</p>}
                       </div>
                       <div className="flex items-center gap-1">
@@ -714,6 +899,10 @@ export function KnowledgeBase() {
   const [selectedKB, setSelectedKB]     = useState<KB | null>(null)
   const [createOpen, setCreateOpen]     = useState(false)
   const [agentModalKb, setAgentModalKb] = useState<KB | null>(null)
+  // Adding a URL used to mean Open → Upload → URL tab: two clicks behind two
+  // buttons that both read as something else ("Open", "Upload"). Surfaced on
+  // the row so the action is visible where the KB is.
+  const [addUrlKb, setAddUrlKb]         = useState<KB | null>(null)
 
   const { data: kbs, isLoading, isError, refetch } = useQuery<KB[]>({
     queryKey: ['knowledge-bases'],
@@ -782,7 +971,7 @@ export function KnowledgeBase() {
       {kbs && kbs.length > 0 && (
         <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[1fr_80px_120px_140px] gap-4 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700">
+          <div className="grid grid-cols-[1fr_80px_120px_210px] gap-4 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700">
             <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Name</span>
             <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Items</span>
             <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Created</span>
@@ -793,7 +982,7 @@ export function KnowledgeBase() {
           {kbs.map((kb, i) => (
             <div key={kb.id}
               onClick={() => setSelectedKB(kb)}
-              className={`group grid grid-cols-[1fr_80px_120px_140px] gap-4 px-4 py-3 items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
+              className={`group grid grid-cols-[1fr_80px_120px_210px] gap-4 px-4 py-3 items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
                 i < kbs.length - 1 ? 'border-b border-gray-100 dark:border-gray-700/60' : ''
               }`}>
               {/* Name */}
@@ -824,6 +1013,16 @@ export function KnowledgeBase() {
 
               {/* Actions */}
               <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                {/* Always visible, unlike the hover-only actions beside it:
+                    hiding this until hover is what made URL ingestion
+                    undiscoverable in the first place, and hover doesn't exist
+                    on touch at all. */}
+                <button
+                  onClick={() => setAddUrlKb(kb)}
+                  title="Add a web page to this knowledge base"
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors">
+                  <Globe className="w-3.5 h-3.5" /> URL
+                </button>
                 <button
                   onClick={() => setAgentModalKb(kb)}
                   className="px-2.5 py-1.5 text-xs font-medium rounded-md text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors opacity-0 group-hover:opacity-100">
@@ -854,6 +1053,20 @@ export function KnowledgeBase() {
             setCreateOpen(false)
             setSelectedKB(kb)
             setAgentModalKb(kb)   // auto-show agent creation with this KB pre-selected
+          }}
+        />
+      )}
+
+      {/* Same modal the Upload button opens, just pre-selected to the URL tab
+          and bound to this row's KB — no separate flow to keep in sync. */}
+      {addUrlKb !== null && (
+        <KBModal
+          kbId={addUrlKb.id}
+          defaultTab="url"
+          onClose={() => setAddUrlKb(null)}
+          onDone={() => {
+            queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] })
+            setAddUrlKb(null)
           }}
         />
       )}

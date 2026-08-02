@@ -50,6 +50,14 @@ class Chatbot(Base):
     human_transfer_enabled = Column(Boolean, default=True, nullable=False)
     human_transfer_message = Column(Text, default="You're being connected to a human agent. Please hold on.")
 
+    # Owner toggle for asking the customer which product they mean instead of
+    # guessing or answering for all products (Agno UserFeedbackTools / ask_user).
+    # Default off: chatbots that haven't opted in keep today's answer-for-all
+    # behavior unchanged. Gates whether the tool is attached at all; whether a
+    # given agent actually gets it also depends on it having 2+ products — see
+    # AgentFactory._build_tools and docs/ambiguous-question-clarification-plan.md.
+    clarify_enabled = Column(Boolean, default=False, nullable=False)
+
     # Admin override for the AI-recommended homepage empty-state sections.
     # NULL = defer to the renderengine's AI recommendation. JSON shape:
     # {"sections": ["hero", "faq", ...], "overrides": {"promo": {"text": "..."}}}
@@ -124,6 +132,7 @@ class Chatbot(Base):
             "active":                  self.active,
             "human_transfer_enabled":  self.human_transfer_enabled,
             "human_transfer_message":  self.human_transfer_message,
+            "clarify_enabled":         self.clarify_enabled,
             "homepage_sections_override": self.homepage_sections_override,
             "homepage_sections_enabled":  self.homepage_sections_enabled,
             "login_after_messages":       self.login_after_messages,

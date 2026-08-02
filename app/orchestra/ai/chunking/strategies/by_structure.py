@@ -27,6 +27,7 @@ def chunk_by_structure(doc: ParsedDocument, cfg: ChunkConfig) -> List[Chunk]:
         if is_table:
             last = groups[-1] if groups else None
             table_texts = [text]
+            table_pages = [p.page]
             page_start = p.page
             # A tiny group right before a table would otherwise become an
             # isolated near-empty chunk (the normal absorb-forward check below
@@ -36,6 +37,7 @@ def chunk_by_structure(doc: ParsedDocument, cfg: ChunkConfig) -> List[Chunk]:
             if last and not last["is_table"] and len("\n\n".join(last["texts"])) < cfg.min_chunk_size:
                 absorbed = groups.pop()
                 table_texts = [*absorbed["texts"], text]
+                table_pages = [*absorbed["pages"], p.page]
                 page_start  = absorbed["page_start"]
 
             groups.append({
@@ -43,6 +45,7 @@ def chunk_by_structure(doc: ParsedDocument, cfg: ChunkConfig) -> List[Chunk]:
                 "page_start": page_start,
                 "page_end":   p.page,
                 "texts":      table_texts,
+                "pages":      table_pages,   # real page per entry in "texts", same order
                 "is_table":   True,
             })
             continue
@@ -51,10 +54,12 @@ def chunk_by_structure(doc: ParsedDocument, cfg: ChunkConfig) -> List[Chunk]:
 
         if last and not last["is_table"] and last["section"] == section:
             last["texts"].append(text)
+            last["pages"].append(p.page)
             last["page_end"] = p.page
         elif last and not last["is_table"] and len("\n\n".join(last["texts"])) < cfg.min_chunk_size:
             # Absorb tiny trailing section into the new one
             last["texts"].append(text)
+            last["pages"].append(p.page)
             last["page_end"] = p.page
             last["section"]  = last["section"] or section
         else:
@@ -63,6 +68,7 @@ def chunk_by_structure(doc: ParsedDocument, cfg: ChunkConfig) -> List[Chunk]:
                 "page_start": p.page,
                 "page_end":   p.page,
                 "texts":      [text],
+                "pages":      [p.page],   # real page per entry in "texts", same order
                 "is_table":   False,
             })
 
@@ -80,6 +86,7 @@ def chunk_by_structure(doc: ParsedDocument, cfg: ChunkConfig) -> List[Chunk]:
     ):
         tail = groups.pop()
         groups[-1]["texts"].extend(tail["texts"])
+        groups[-1]["pages"].extend(tail["pages"])
         groups[-1]["page_end"] = tail["page_end"]
 
     chunks: List[Chunk] = []
@@ -124,15 +131,57 @@ def chunk_by_structure(doc: ParsedDocument, cfg: ChunkConfig) -> List[Chunk]:
             ))
             idx += 1
         else:
+            # A group that absorbed several real pages (same section running on,
+            # or tiny-section absorption) can still exceed chunk_size and get cut
+            # into multiple pieces here. Every piece used to be stamped with
+            # g["page_start"] regardless of which real page its text actually
+            # came from — a piece drawn from three pages into the group reported
+            # the group's FIRST page, not its own. Build an offset->page map
+            # from the same per-entry pages list "pages" tracks (mirrors
+            # recursive.py's _page_for) so each piece gets the real page its
+            # own text starts on.
+            page_map: List[tuple] = []
+            pos = 0
+            for text_block, page_num in zip(g["texts"], g["pages"]):
+                page_map.append((pos, page_num))
+                pos += len(text_block) + 2   # +2 for the "\n\n" join separator
+
+            def _page_for(char_offset: int) -> int:
+                page = page_map[0][1]
+                for start, pg in page_map:
+                    if char_offset >= start:
+                        page = pg
+                    else:
+                        break
+                return page
+
+            search_from = 0
             for piece in split_recursive(full_text, cfg.chunk_size, cfg.overlap):
                 if len(piece) < cfg.min_chunk_size:
                     continue
+                # split_recursive prepends borrowed trailing words from the
+                # PREVIOUS piece onto this one (for reading context), so this
+                # piece's own text does not start where its raw length would
+                # suggest — tracking a running "offset += len(piece)" drifts by
+                # roughly the overlap size on every piece, which showed up as a
+                # persistent off-by-one-page error once real per-page boundaries
+                # existed to get wrong. Instead, locate a snippet from PAST the
+                # borrowed region (skip cfg.overlap chars in) directly in
+                # full_text — that substring is never borrowed, so .find() gives
+                # this piece's true position.
+                probe_start = min(cfg.overlap, max(0, len(piece) - 20))
+                probe = piece[probe_start:probe_start + 40].strip()
+                found = full_text.find(probe, search_from) if probe else -1
+                if found == -1:
+                    found = full_text.find(probe) if probe else -1
+                piece_offset = (found - probe_start) if found != -1 else search_from
                 chunks.append(Chunk(
                     text=_make_text(piece),
-                    page=g["page_start"],
+                    page=_page_for(max(0, piece_offset)),
                     chunk_index=idx,
                     section=header,
                 ))
                 idx += 1
+                search_from = max(search_from, piece_offset) + 1
 
     return chunks

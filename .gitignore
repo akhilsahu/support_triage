@@ -37,10 +37,16 @@ poetry.lock
 # IDEs
 .vscode/
 .idea/
+.ide/
+.impeccable/
 *.swp
 *.swo
 *~
 .DS_Store
+
+# Agent & AI Assistant Tools
+.claude/settings.local.json
+.claude/*.local.json
 
 # Environment variables
 .env

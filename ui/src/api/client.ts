@@ -51,6 +51,21 @@ export interface IngestionJobAccepted {
 
 export const INGESTION_TERMINAL: IngestionStatus[] = ['done', 'failed']
 
+// What /rag/preview-url returns: the extracted text plus the facts that reveal
+// a wrong scrape (a redirect landing elsewhere, an empty JS-rendered shell).
+export interface UrlPreview {
+  preview_token: string
+  title: string
+  final_url: string
+  content_type: string
+  size_bytes: number
+  page_count: number
+  char_count: number
+  extract: string
+  truncated: boolean
+  vision_skipped: boolean   // PDF: images are read at index time, not in this extract
+}
+
 export interface HomepageSnapshot {
   published: boolean
   draft_payload: HomepagePayload | null
@@ -143,8 +158,18 @@ export const apiClient = {
   deleteDoc: (docId: string) =>
     http.delete(API_CONFIG.endpoints.ragDelete(docId)).then(r => r.data),
 
-  scrapeUrl: (url: string, _clientId?: string, docType?: string, kbName?: string, description?: string) =>
-    http.post('/api/v1/documents/rag/ingest-url', { url, doc_type: docType ?? 'general', kb_name: kbName ?? '', description: description ?? '' }).then(r => r.data),
+  // kbId is required for the scraped page to be reachable: custom agents scope
+  // retrieval by kb_id, so omitting it indexes content no agent can ever find.
+  // Fetch + parse a URL and return what was extracted, WITHOUT indexing it.
+  // The returned preview_token holds the exact bytes; passing it to scrapeUrl
+  // ingests precisely what was shown, with no second fetch.
+  previewUrl: (url: string): Promise<UrlPreview> =>
+    http.post('/api/v1/documents/rag/preview-url', { url }).then(r => r.data),
+
+  // kbId is required for the scraped page to be reachable: custom agents scope
+  // retrieval by kb_id, so omitting it indexes content no agent can ever find.
+  scrapeUrl: (url: string, _clientId?: string, docType?: string, kbName?: string, description?: string, kbId?: string, previewToken?: string) =>
+    http.post('/api/v1/documents/rag/ingest-url', { url, doc_type: docType ?? 'general', kb_name: kbName ?? '', kb_id: kbId ?? null, description: description ?? '', preview_token: previewToken ?? null }).then(r => r.data),
 
   chatWithDoc: (docId: string, question: string, topK = 5) =>
     http.post(API_CONFIG.endpoints.ragChat, { doc_id: docId, question, top_k: topK }).then(r => r.data),
@@ -300,7 +325,7 @@ export const apiClient = {
     http.delete(`/api/v1/chatbots/${slug}`).then(r => r.data),
   setDefaultChatbot: (slug: string) =>
     http.post(`/api/v1/chatbots/${slug}/set-default`).then(r => r.data),
-  updateChatbot: (slug: string, payload: { display_name?: string; description?: string; theme_color?: string; active?: boolean; human_transfer_enabled?: boolean; human_transfer_message?: string; show_logo?: boolean; homepage_sections_enabled?: boolean; homepage_sections_override?: string; quick_topics?: string; trust_badges?: string; login_after_messages?: number | null }) =>
+  updateChatbot: (slug: string, payload: { display_name?: string; description?: string; theme_color?: string; active?: boolean; human_transfer_enabled?: boolean; human_transfer_message?: string; clarify_enabled?: boolean; show_logo?: boolean; homepage_sections_enabled?: boolean; homepage_sections_override?: string; quick_topics?: string; trust_badges?: string; login_after_messages?: number | null }) =>
     http.patch(`/api/v1/chatbots/${slug}`, payload).then(r => r.data),
   getStatMetrics: (slug: string): Promise<{ metrics: { id: string; value: string; label: string; position: number }[] }> =>
     http.get(`/api/v1/chatbots/${slug}/stat-metrics`).then(r => r.data),

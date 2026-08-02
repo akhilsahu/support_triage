@@ -37,6 +37,7 @@ Runner (per chatbot, cached in SessionPool):
 
 from __future__ import annotations
 
+import re
 from typing import Any, AsyncGenerator, Dict, List, Optional
 import structlog
 
@@ -141,6 +142,57 @@ def _extract_citations(response: Any) -> List[Dict[str, Any]]:
                 citations.append(cite)
 
     return citations
+
+
+_STOPWORDS = frozenset((
+    "the a an and or is are was were to of in on for with this that it as by "
+    "be will your you can if at from not no any all its into their they she "
+    "he him her his which who whom what when where why how"
+).split())
+
+
+def _content_words(text: str) -> set:
+    """Lowercased alphanumeric tokens, stopwords and very short words dropped —
+    the signal words a topic actually turns on, not sentence glue."""
+    return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2 and w not in _STOPWORDS}
+
+
+_CITATION_SIMILARITY_THRESHOLD = 0.25
+
+
+def _filter_citations_by_similarity(citations: List[Dict[str, Any]], answer_text: str) -> List[Dict[str, Any]]:
+    """
+    Keep only citations whose excerpt textually overlaps the final answer.
+
+    Every retrieved chunk became a citation regardless of whether the model
+    actually drew from it — a customer could see "7 sources" under an answer
+    that only used two of them, with the rest just noise from the retrieval
+    step. Similarity is word overlap (excerpt words ∩ answer words, over the
+    smaller side, stopwords dropped) rather than exact substring match — the
+    model paraphrases retrieved text, so a literal-match filter would reject
+    sources it genuinely used.
+
+    Falls back to the FULL unfiltered set if the threshold would eliminate
+    every citation: a real RAG-grounded answer showing zero sources is a worse
+    failure mode than an imprecise list, and a short/paraphrase-heavy answer
+    can legitimately share few literal words with any single 300-char excerpt.
+    """
+    if not citations or not answer_text:
+        return citations
+    answer_words = _content_words(answer_text)
+    if not answer_words:
+        return citations
+
+    kept = []
+    for cite in citations:
+        excerpt_words = _content_words(cite.get("excerpt", ""))
+        if not excerpt_words:
+            continue
+        overlap = len(excerpt_words & answer_words) / min(len(excerpt_words), len(answer_words))
+        if overlap >= _CITATION_SIMILARITY_THRESHOLD:
+            kept.append(cite)
+
+    return kept or citations
 
 
 def _as_dict(x: Any) -> Dict[str, Any]:
@@ -304,13 +356,19 @@ def _result(response: Any) -> Dict[str, Any]:
     question, per the decision in docs/structured-response-rendering-plan.md.
     """
     clarify   = _extract_clarify(response)
+    agent     = getattr(response, "agent_id", None) or "team"
+    reply     = clarify["question"] if clarify else (getattr(response, "content", "") or "")
     citations = _extract_citations(response)
+    # Narrow citations to ones the answer actually seems to draw from — see
+    # _filter_citations_by_similarity. Skipped on a paused run: there is no
+    # answer text yet to compare against (reply is the clarifying question),
+    # so filtering would just discard everything retrieved so far.
+    if not clarify:
+        citations = _filter_citations_by_similarity(citations, reply)
     # Paused runs skip blocks too — nothing was rendered before the pause hit,
     # and a stale table from a half-finished turn would be confusing next to
     # a clarifying question.
     blocks    = [] if clarify else _extract_blocks(response)
-    agent     = getattr(response, "agent_id", None) or "team"
-    reply     = clarify["question"] if clarify else (getattr(response, "content", "") or "")
     return {
         "reply":     reply,
         "agent":     agent,
@@ -347,8 +405,10 @@ class AgnoOrchestrator:
         mcp_server:    Optional[Any]                  = None,   # future MCP integration
         skills_map:    Optional[Dict[str, List[Any]]] = None,   # future skills integration
         leader:        Optional[ResolvedAgent]        = None,   # triage → configures the Team
+        clarify_enabled: bool                         = False,  # Chatbot.clarify_enabled
     ):
         self.leader        = leader
+        self.clarify_enabled = clarify_enabled
         self.space_id      = space_id
         self.chatbot_id    = chatbot_id
         self.org_name      = org_name
@@ -528,4 +588,5 @@ class AgnoOrchestrator:
             skills_map=self.skills_map,
             knowledge_backend=_get_knowledge_backend(),
             leader=self.leader,
+            clarify_enabled=self.clarify_enabled,
         )

@@ -18,6 +18,7 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
+import anyio
 import structlog
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -64,6 +65,58 @@ async def _generate_summary(content: str) -> str:
     except Exception as e:
         logger.warning("Failed to generate semantic summary", error=str(e))
     return ""
+
+
+async def _resolve_kb_id(kb_id: Optional[str], org, db: AsyncSession) -> Optional[str]:
+    """
+    Validate that `kb_id` is well-formed AND belongs to the caller's space.
+
+    Ownership is checked here, not just format: without it a caller could pass
+    another space's kb_id and have a KnowledgeBaseItem row appear on that
+    space's dashboard. (Retrieval would still not leak across spaces — chunks
+    are additionally scoped by client_id — but a phantom row in someone else's
+    KB is not something a tenant should be able to create.)
+
+    Returns the id unchanged, or None when no kb_id was supplied.
+    """
+    from app.models.knowledge_base import KnowledgeBase
+
+    if not kb_id:
+        return None
+    try:
+        kb_uuid = uuid.UUID(kb_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid kb_id.")
+
+    found = (await db.execute(
+        select(KnowledgeBase).where(
+            KnowledgeBase.id == kb_uuid,
+            KnowledgeBase.space_id == org.id,
+        )
+    )).scalar_one_or_none()
+    if not found:
+        raise HTTPException(status_code=404, detail="Knowledge base not found.")
+    return str(kb_uuid)
+
+
+async def _link_kb_item(kb_id: Optional[str], doc_id: str, title: str) -> None:
+    """
+    Register the freshly indexed doc as a KnowledgeBaseItem so it shows on the
+    KB dashboard. Reuses the ingestion job's helper (retries transient DB
+    failures) rather than duplicating that logic here.
+
+    Non-fatal by design, matching the file-upload path: the content is already
+    indexed and retrievable, so a dashboard-linking failure should not present
+    the whole ingestion as failed — but it IS logged at error level, because
+    the result is content an agent can use that the owner cannot see.
+    """
+    if not kb_id:
+        return
+    from app.orchestra.ai.ingestion.jobs.tasks import _attach_kb_item
+    try:
+        await _attach_kb_item(kb_id, doc_id, title)
+    except Exception as e:
+        logger.error("ingest.kb_link_failed", kb_id=kb_id, doc_id=doc_id, error=str(e))
 
 
 UI_HTML       = Path(__file__).resolve().parents[2] / "rag" / "ui.html"
@@ -209,12 +262,14 @@ async def rag_upload(
     # When the upload belongs to a knowledge base, the KB item can only be
     # created once ingestion yields a doc_id -- so the job carries the linkage
     # and the task creates the item on success.
-    kb_uuid = None
-    if x_kb_id:
-        try:
-            kb_uuid = uuid.UUID(x_kb_id)
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail="Invalid X-KB-Id.")
+    #
+    # Ownership is verified, not just the uuid format: otherwise a caller could
+    # pass another space's kb_id and have an item row appear on that space's
+    # dashboard once the job finishes. (Retrieval never crossed spaces either
+    # way -- chunks are also scoped by client_id -- but creating rows in
+    # someone else's KB is not something a tenant should be able to do.)
+    resolved_kb = await _resolve_kb_id(x_kb_id, org, db)
+    kb_uuid = uuid.UUID(resolved_kb) if resolved_kb else None
 
     filename = file.filename or "upload"
     svc      = get_ingestion_service()
@@ -503,17 +558,24 @@ class IngestTextRequest(BaseModel):
     text: str
     doc_type: Optional[str] = "general"
     kb_name: Optional[str] = ""
+    # Without this the chunks are stamped kb_id="" and every custom agent
+    # (which scopes retrieval with `kb_id $in [...]`) is blind to them — the
+    # content is indexed but permanently unreachable. See agno_chroma.py.
+    kb_id: Optional[str] = None
     description: Optional[str] = ""
 
 
 @router.post("/rag/ingest-text", response_model=RagUploadResponse)
-async def rag_ingest_text(req: IngestTextRequest, org=Depends(current_space)):
+async def rag_ingest_text(req: IngestTextRequest, org=Depends(current_space),
+                          db: AsyncSession = Depends(get_db)):
     """
     Ingest raw text or markdown from a text box into the org's knowledge base.
     The text is treated as a single plain-text document.
     """
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text content cannot be empty.")
+
+    kb_id = await _resolve_kb_id(req.kb_id, org, db)
 
     doc_type = req.doc_type if req.doc_type in VALID_DOC_TYPES else "general"
     filename = f"{req.title.strip() or 'text-input'}.txt"
@@ -544,6 +606,7 @@ async def rag_ingest_text(req: IngestTextRequest, org=Depends(current_space)):
         doc_type=doc_type,
         ttl_days=None,
         kb_name=req.kb_name or "",
+        kb_id=kb_id or "",
         space_id=str(org.id),
         org_name=org.display_name,
         description=req.description or "",
@@ -553,8 +616,10 @@ async def rag_ingest_text(req: IngestTextRequest, org=Depends(current_space)):
             for c in chunks
         ],
     )
+    await _link_kb_item(kb_id, doc_id, req.title.strip() or filename)
 
-    logger.info("Text ingested", space_id=str(org.id), doc_id=doc_id, chunks=len(chunks))
+    logger.info("Text ingested", space_id=str(org.id), doc_id=doc_id,
+                kb_id=kb_id, chunks=len(chunks))
     return RagUploadResponse(
         doc_id=doc_id, filename=filename, extension=".txt",
         pages=1, chunks=len(chunks), collection=COLLECTION_CLIENT,
@@ -568,99 +633,203 @@ class IngestUrlRequest(BaseModel):
     url: str
     doc_type: Optional[str] = "general"
     kb_name: Optional[str] = ""
+    # See IngestTextRequest.kb_id — without it the scraped page is indexed but
+    # unreachable by every custom agent.
+    kb_id: Optional[str] = None
     description: Optional[str] = ""
+    # From /rag/preview-url. Reuses the exact bytes the user reviewed instead
+    # of re-fetching, so the page can't change between preview and confirm.
+    # Optional: without one this endpoint fetches fresh, keeping it usable
+    # directly from the API.
+    preview_token: Optional[str] = None
 
 
-@router.post("/rag/ingest-url", response_model=RagUploadResponse)
-async def rag_ingest_url(req: IngestUrlRequest, org=Depends(current_space)):
+class PreviewUrlRequest(BaseModel):
+    url: str
+
+
+class PreviewUrlResponse(BaseModel):
+    preview_token: str
+    title: str
+    final_url: str          # after redirects — differs from the input surprisingly often
+    content_type: str
+    size_bytes: int
+    page_count: int
+    char_count: int
+    extract: str            # leading text, for the user to eyeball
+    truncated: bool
+    # True when the source was a PDF: preview skips the vision pass (which can
+    # run minutes), so embedded images/scans are NOT represented in `extract`
+    # but WILL be read during actual indexing.
+    vision_skipped: bool
+
+
+# How much extracted text to hand back. Enough to tell "this is the right page"
+# and "this isn't an empty SPA shell" without shipping a whole document.
+_PREVIEW_EXTRACT_CHARS = 4000
+
+
+@router.post("/rag/preview-url", response_model=PreviewUrlResponse)
+async def rag_preview_url(req: PreviewUrlRequest, org=Depends(current_space)):
     """
-    Scrape a URL, strip HTML, and ingest the page content into the org's knowledge base.
-    Works best with static pages. JS-rendered SPAs may return limited content.
+    Fetch and parse a URL, return what was extracted — WITHOUT indexing it.
+
+    Exists so the user can confirm they got the page they meant before it lands
+    in the knowledge base. The most common failures this surfaces are a
+    redirect landing somewhere unexpected, and a JavaScript-rendered site
+    yielding an empty shell — both invisible if you just index and hope.
+
+    The bytes are cached under `preview_token`; passing that to /rag/ingest-url
+    ingests exactly what was shown here rather than re-fetching.
     """
-    import httpx
-    from urllib.parse import urlparse
+    from dataclasses import replace as _replace
+    from app.orchestra.ai.ingestion.config import build_ingestion_config
+    from app.orchestra.ai.ingestion.ingestion import IngestionService
+    from app.orchestra.ai.ingestion.scraper import fetch_url, store_preview, ScrapeError
 
-    url = req.url.strip()
-    parsed_url = urlparse(url)
-    if parsed_url.scheme not in ("http", "https"):
-        raise HTTPException(status_code=400, detail="Only http/https URLs are supported.")
-
-    # Fetch the page
     try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True,
-                                     headers={"User-Agent": "SupportBot/1.0 (KB Indexer)"}) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=408, detail="Request timed out fetching the URL.")
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=400, detail=f"URL returned {e.response.status_code}.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {e}")
+        page = await fetch_url(req.url.strip())
+    except ScrapeError as e:
+        raise HTTPException(status_code=e.status_hint, detail=str(e))
 
-    content_type = response.headers.get("content-type", "")
-    raw_bytes = response.content
+    # Vision off for preview. On a scanned PDF the vision pass is the slow part
+    # (minutes) and this request has to feel instant — the real ingestion still
+    # runs it. Flagged back to the caller so the UI can say so rather than let
+    # a thin extract look like a broken page.
+    is_pdf = page.filename.endswith(".pdf")
+    cfg = build_ingestion_config()
+    if is_pdf:
+        cfg = _replace(cfg, vision_enabled=False)
 
-    # Route to parser based on content type / URL extension
-    url_path = parsed_url.path.lower()
-    if url_path.endswith(".pdf"):
-        filename = url_path.split("/")[-1] or "page.pdf"
-    elif url_path.endswith(".md"):
-        filename = url_path.split("/")[-1] or "page.md"
-    elif "text/plain" in content_type:
-        filename = "page.txt"
-    else:
-        filename = "page.html"
-
-    # Parse via the ingestion pipeline — HtmlParser gives heading-aware sections
-    # and table extraction; PdfParser/TextParser handle .pdf/.md/.txt. Same
-    # pipeline as file uploads, so URL-sourced docs chunk identically.
-    svc = get_ingestion_service()
     try:
-        parsed = svc.parse(raw_bytes, filename)
+        parsed = await anyio.to_thread.run_sync(
+            IngestionService(cfg).parse, page.raw, page.filename
+        )
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Failed to parse page content: {e}")
+        raise HTTPException(status_code=422, detail=f"Could not read page content: {e}")
 
-    page_title = (parsed.metadata or {}).get("title") or parsed_url.netloc
+    text = (parsed.full_text or "").strip()
+    token = store_preview(str(org.id), page)
 
-    if not parsed.full_text.strip():
-        raise HTTPException(status_code=422, detail="Page has no extractable text content.")
+    logger.info("scraper.preview", space_id=str(org.id), url=req.url,
+                final_url=page.final_url, chars=len(text), pages=parsed.page_count)
 
-    doc_type = req.doc_type if req.doc_type in VALID_DOC_TYPES else "general"
-    cfg = get_chunk_config(filename)
-    chunks = chunk_document(parsed)
-    if not chunks:
-        raise HTTPException(status_code=422, detail="Page produced no chunks.")
-
-    doc_id = str(uuid.uuid4())[:8]
-    store  = get_vector_store()
-    display_name = page_title if filename.endswith(".html") else url
-    semantic_summary = await _generate_summary(parsed.full_text)
-    store.upsert_client_chunks(
-        client_id=str(org.id),
-        session_id=str(uuid.uuid4()),
-        doc_id=doc_id,
-        filename=display_name[:200],
-        extension=f".{filename.split('.')[-1]}",
-        strategy=cfg.strategy.value,
-        doc_type=doc_type,
-        ttl_days=None,
-        kb_name=req.kb_name or "",
-        space_id=str(org.id),
-        org_name=org.display_name,
-        description=req.description or url,
-        semantic_summary=semantic_summary,
-        chunks=[
-            {"text": c.text, "page": c.page, "chunk_index": c.chunk_index, "section": c.section}
-            for c in chunks
-        ],
+    return PreviewUrlResponse(
+        preview_token=token,
+        title=page.title,
+        final_url=page.final_url,
+        content_type=page.content_type,
+        size_bytes=page.size_bytes,
+        page_count=parsed.page_count,
+        char_count=len(text),
+        extract=text[:_PREVIEW_EXTRACT_CHARS],
+        truncated=len(text) > _PREVIEW_EXTRACT_CHARS,
+        vision_skipped=is_pdf,
     )
 
-    logger.info("URL ingested", space_id=str(org.id), url=url, doc_id=doc_id, chunks=len(chunks))
-    return RagUploadResponse(
-        doc_id=doc_id, filename=display_name[:80], extension=f".{filename.split('.')[-1]}",
-        pages=parsed.page_count, chunks=len(chunks), collection=COLLECTION_CLIENT,
-        message=f"URL '{url}' scraped and indexed — {parsed.page_count} page(s), {len(chunks)} chunks.",
+
+@router.post("/rag/ingest-url", response_model=RagUploadAcceptedResponse, status_code=202)
+async def rag_ingest_url(req: IngestUrlRequest, org=Depends(current_space),
+                         db: AsyncSession = Depends(get_db)):
+    """
+    Scrape a URL and ingest the page into the org's knowledge base.
+    Works best with static pages. JS-rendered SPAs may return limited content.
+
+    Split deliberately: the FETCH stays inline (bounded, and its failure modes —
+    404, timeout, blocked host — are exactly what the user needs told
+    immediately and can act on), while parse + vision + embed move to the
+    background job, since a PDF URL runs vision over every page and would
+    outlast any client timeout. Returns 202 + job_id like rag_upload; the KB
+    screen already polls ingestion jobs, so progress shows up the same way.
+
+    All fetching lives in app/orchestra/ai/ingestion/scraper/ — including the
+    SSRF guard and redirect handling. This endpoint only translates a
+    ScrapeError into an HTTP response.
+    """
+    from app.models.ingestion_job import IngestionJob
+    from app.orchestra.ai.ingestion.jobs import get_job_runner
+    from app.orchestra.ai.ingestion.scraper import (
+        fetch_url, load_preview, discard_preview, ScrapeError,
+    )
+
+    kb_id = await _resolve_kb_id(req.kb_id, org, db)
+    url = req.url.strip()
+
+    # Prefer the previewed bytes when the caller has a token: guarantees the
+    # indexed content is exactly what they approved, and skips a second fetch.
+    # A stale/foreign/expired token falls through to a fresh fetch rather than
+    # erroring — the URL is still in the request, so re-fetching is strictly
+    # better than making the user start over.
+    page = load_preview(req.preview_token or "", str(org.id))
+    if page is not None:
+        discard_preview(req.preview_token or "")
+    else:
+        try:
+            page = await fetch_url(url)
+        except ScrapeError as e:
+            raise HTTPException(status_code=e.status_hint, detail=str(e))
+
+    raw_bytes = page.raw
+    filename = page.filename
+    doc_type = req.doc_type if req.doc_type in VALID_DOC_TYPES else "general"
+    # What citations will read as: the page title for HTML, else the URL —
+    # "page.pdf" would be meaningless to a customer reading a citation. A
+    # scraper-recovered title (e.g. a flipbook's bookTitle) is a real name,
+    # so keep it over the URL; a bare hostname is not.
+    display_name = (
+        page.title if filename == "page.html" or " " in page.title else page.final_url
+    )[:200]
+
+    # Same disk hand-off as file uploads: the payload must survive this request
+    # and, under the Celery backend, cross a process boundary. The task deletes
+    # it when it finishes, success or failure.
+    tmp_dir = Path(tempfile.gettempdir()) / "support247_uploads"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = tmp_dir / f"{uuid.uuid4().hex}_{filename}"
+    temp_path.write_bytes(raw_bytes)
+
+    job_row = IngestionJob(
+        space_id=org.id,
+        kb_id=uuid.UUID(kb_id) if kb_id else None,
+        filename=display_name,
+        doc_type=doc_type,
+        kb_name=req.kb_name or None,
+        status="queued",
+        progress=0,
+        stage_detail="Waiting to start",
+    )
+    db.add(job_row)
+    await db.commit()
+    await db.refresh(job_row)
+
+    get_job_runner().enqueue(
+        "ingest_document",
+        job_id=str(job_row.id),
+        space_id=str(org.id),
+        temp_path=str(temp_path),
+        filename=filename,            # drives parser selection (extension)
+        display_name=display_name,    # what citations show
+        doc_type=doc_type,
+        session_id=str(uuid.uuid4()),
+        kb_name=req.kb_name or "",
+        description=req.description or url,
+        expiry_date="",
+        org_name=org.display_name or "",
+        kb_id=kb_id or "",
+        item_title=display_name,
+        # Listed under the KB's "URL" tab rather than "Documents", and the
+        # source URL is kept so the row can link back to the live page.
+        item_type="url",
+        source_url=page.final_url,
+    )
+
+    logger.info("ingestion.job.queued", job_id=str(job_row.id), source="url",
+                url=url, kb_id=kb_id, space_id=str(org.id))
+    return RagUploadAcceptedResponse(
+        job_id=str(job_row.id),
+        filename=display_name,
+        status=job_row.status,
+        message=f"Fetched '{url}' — indexing in the background.",
     )
 
 

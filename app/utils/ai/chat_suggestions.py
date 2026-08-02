@@ -10,7 +10,11 @@ side), and chips generated from the space's whole document set advertise the
 wrong brand — a credit-card widget offering "Can I return my policy within 15
 days?". So both the sample and the cache key carry the chatbot id.
 
-Results cached in Redis for 1 hour, per chatbot.
+Results cached in Redis indefinitely (no expiry), per chatbot — this is only a
+fallback for a chatbot with no homepage draft/snapshot yet (see
+app/api/customer.py's get_chat_suggestions, which checks the durable
+draft/published snapshot first). Once generated here it stays until the owner
+explicitly regenerates their homepage — see get_suggestions()'s docstring.
 """
 from __future__ import annotations
 
@@ -27,10 +31,9 @@ _FALLBACKS = [
     "How do I contact support?",
 ]
 
-_CACHE_TTL = 60 * 60
 # Keyed by chatbot, not space. A space-only key was shared by every chatbot in
-# the space, so whichever one was asked first won the key for an hour and served
-# its chips to all the others.
+# the space, so whichever one was asked first won the key and served its chips
+# to all the others.
 _CACHE_KEY  = "chat:suggestions:{space_id}:{chatbot_id}"
 
 
@@ -46,6 +49,16 @@ async def get_suggestions(
 
     active_agents must be that chatbot's agents; their linked KnowledgeBases are
     what the content sample is restricted to.
+
+    No TTL: once generated, this cache entry is the answer until something
+    explicitly overwrites it. Previously expired after 1 hour, so wording
+    silently changed on whoever happened to open the chat after the cache
+    lapsed — not a refresh, a fresh roll of a non-deterministic LLM call each
+    time. The owner's actual "regenerate" action is the homepage-ui/generate
+    endpoint, which writes into ChatbotHomepageSnapshot.draft_payload — a
+    durable Postgres row that get_chat_suggestions checks BEFORE ever reaching
+    this function, so once a draft exists this Redis path is never consulted
+    again for that chatbot.
     """
     cache_key = _CACHE_KEY.format(space_id=str(space_id), chatbot_id=str(chatbot_id))
 
@@ -62,7 +75,7 @@ async def get_suggestions(
 
     try:
         from app.core.redis import redis_client
-        await redis_client.set(cache_key, suggestions, expire=_CACHE_TTL)
+        await redis_client.set(cache_key, suggestions)   # no expire= -> persists until overwritten
     except Exception:
         pass
 

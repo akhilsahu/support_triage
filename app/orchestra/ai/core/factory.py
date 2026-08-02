@@ -21,6 +21,7 @@ def build_executor(
     conversation_id: str = "",
     chatbot_id: str = "",
     leader: ResolvedAgent | None = None,
+    clarify_enabled: bool = False,
 ) -> Any:
     """
     Return the configured executor.
@@ -30,6 +31,10 @@ def build_executor(
 
     `leader` is the triage agent, used only by the agno backend to configure the
     Team leader's routing instructions.
+
+    `clarify_enabled` is Chatbot.clarify_enabled, the owner's toggle for
+    UserFeedbackTools (ask_user). Used only by the agno backend — the dynamic
+    executor has no equivalent tool.
 
     The returned object always exposes:
         async def run(message: str) -> dict
@@ -46,6 +51,7 @@ def build_executor(
             session_id=session_id,
             chatbot_id=chatbot_id,
             leader=leader,
+            clarify_enabled=clarify_enabled,
         )
 
     # Default: DynamicAgentExecutor — thin adapter normalises the run() signature.

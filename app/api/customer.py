@@ -635,6 +635,7 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
             conversation_id=req.conversation_id or session_id,
             chatbot_id=str(chatbot.id),
             leader=await _get_triage_agent_cached(db, chatbot.id, str(org.id)),
+            clarify_enabled=chatbot.clarify_enabled,
         )
         if pending:
             result = await executor.resume(
@@ -733,6 +734,7 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
         session_id=session_id,
         chatbot_id=str(chatbot.id),
         leader=await _get_triage_agent_cached(db, chatbot.id, str(org.id)),
+        clarify_enabled=chatbot.clarify_enabled,
     )
     t0 = time.time()
 
@@ -792,15 +794,26 @@ async def get_chat_suggestions(slug: str,
     # the default one's chips (its frozen snapshot, then its cache entry).
     org, chatbot, db = await _get_brand(slug, chatbot_slug)
     try:
-        # Frozen chips from a published homepage snapshot -- serve them and skip
-        # the LLM, matching the frozen welcome sections (see space.py serving).
+        from app.models.chatbot import ChatbotHomepageSnapshot
+        snap = None
         try:
-            from app.models.chatbot import ChatbotHomepageSnapshot
             snap = await db.get(ChatbotHomepageSnapshot, chatbot.id)
+            # Frozen chips from a published homepage snapshot -- serve them and
+            # skip the LLM, matching the frozen welcome sections (see space.py
+            # serving).
             if snap and isinstance(snap.published_payload, dict):
                 frozen = snap.published_payload.get("suggestions")
                 if isinstance(frozen, list) and frozen:
                     return {"suggestions": [s for s in frozen if isinstance(s, str)][:4]}
+            # Not published, but a draft may already carry suggestions from a
+            # previous admin "Generate" -- durable (Postgres row, no expiry).
+            # Serving it here means suggestions only ever change when the owner
+            # explicitly regenerates or publishes the homepage, never on their
+            # own from a cache lapsing.
+            if snap and isinstance(snap.draft_payload, dict):
+                draft = snap.draft_payload.get("suggestions")
+                if isinstance(draft, list) and draft:
+                    return {"suggestions": [s for s in draft if isinstance(s, str)][:4]}
         except Exception:
             logger.warning("get_chat_suggestions.snapshot_read_failed", slug=slug)
 
@@ -898,6 +911,7 @@ async def init_chat_session(slug: str,
             session_id=session_id,
             chatbot_id=str(chatbot.id),
             leader=await _get_triage_agent_cached(db, chatbot.id, str(org.id)),
+            clarify_enabled=chatbot.clarify_enabled,
         )
         await executor.warmup()
 

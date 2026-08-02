@@ -130,7 +130,6 @@ app/
 │   └── chain.py               — RAG chain (retrieve → prompt → LLM)
 ├── services/
 │   ├── llm_service.py         — LLM provider abstraction
-│   ├── embedding_service.py   — Embedding provider abstraction
 │   ├── rag_service.py         — High-level RAG orchestration
 │   └── crm_service.py         — CRM integration helpers
 ├── mock/

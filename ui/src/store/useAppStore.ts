@@ -15,8 +15,8 @@ interface AppState {
   logout: () => void
 
   // Theme
-  isDark: boolean
-  toggleTheme: () => void
+  themeMode: 'light' | 'dark' | 'beige'
+  setThemeMode: (mode: 'light' | 'dark' | 'beige') => void
 
   // Sidebar
   sidebarCollapsed: boolean
@@ -97,12 +97,12 @@ export const useAppStore = create<AppState>()(
       setAuth: (token, spaceId, spaceSlug, spaceName, onboardingComplete = false) => set({ token, spaceId, spaceSlug, spaceName, onboardingComplete }),
       logout: () => set({ token: '', spaceId: '', spaceSlug: '', spaceName: '', onboardingComplete: false, messages: [], conversationId: undefined, enabledNavItems: null, unreadSessionIds: [], activeInboxSessionId: null, inboxEvent: null, currentChatbotId: null }),
 
-      isDark: typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : false,
-      toggleTheme: () => set((s) => {
-        const next = !s.isDark
-        if (next) document.documentElement.classList.add('dark')
-        else document.documentElement.classList.remove('dark')
-        return { isDark: next }
+      themeMode: (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light',
+      setThemeMode: (mode) => set(() => {
+        document.documentElement.classList.remove('dark', 'beige')
+        if (mode === 'dark') document.documentElement.classList.add('dark')
+        if (mode === 'beige') document.documentElement.classList.add('beige')
+        return { themeMode: mode }
       }),
 
       sidebarCollapsed: false,
@@ -164,7 +164,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: import.meta.env.PROD ? 'support247-store' : 'support247-store-dev',
-      partialize: (s) => ({ isDark: s.isDark, fontSize: s.fontSize, sidebarCollapsed: s.sidebarCollapsed, apiKey: s.apiKey, clientId: s.clientId, token: s.token, spaceId: s.spaceId, spaceSlug: s.spaceSlug, spaceName: s.spaceName, onboardingComplete: s.onboardingComplete, activeHomepage: s.activeHomepage, homepageSectionsPlatformEnabled: s.homepageSectionsPlatformEnabled, dashboardTheme: s.dashboardTheme, currentChatbotId: s.currentChatbotId }),
+      partialize: (s) => ({ themeMode: s.themeMode, fontSize: s.fontSize, sidebarCollapsed: s.sidebarCollapsed, apiKey: s.apiKey, clientId: s.clientId, token: s.token, spaceId: s.spaceId, spaceSlug: s.spaceSlug, spaceName: s.spaceName, onboardingComplete: s.onboardingComplete, activeHomepage: s.activeHomepage, homepageSectionsPlatformEnabled: s.homepageSectionsPlatformEnabled, dashboardTheme: s.dashboardTheme, currentChatbotId: s.currentChatbotId }),
     }
   )
 )

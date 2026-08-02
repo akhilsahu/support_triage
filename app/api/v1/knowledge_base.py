@@ -47,7 +47,10 @@ class KBUpdate(BaseModel):
     active:      Optional[bool] = None
 
 class KBItemCreate(BaseModel):
-    item_type: str = Field(..., pattern="^(doc|text|qna)$")
+    # "url" items are created by the scrape pipeline (documents.py), not here —
+    # accepted for API completeness so a caller can re-link an already-indexed
+    # page, which behaves exactly like "doc".
+    item_type: str = Field(..., pattern="^(doc|url|text|qna)$")
     title:     Optional[str] = None
     doc_id:    Optional[str] = None    # for item_type="doc"
     question:  Optional[str] = None   # for item_type="qna"
@@ -292,8 +295,9 @@ async def add_item(
 ):
     await _get_kb(kb_id, space, db)   # ownership check
 
-    if req.item_type == "doc" and not req.doc_id:
-        raise HTTPException(400, "doc_id required for item_type='doc'.")
+    # "url" is a presentation variant of "doc" — same doc_id contract.
+    if req.item_type in ("doc", "url") and not req.doc_id:
+        raise HTTPException(400, f"doc_id required for item_type='{req.item_type}'.")
     if req.item_type == "qna" and not req.question:
         raise HTTPException(400, "question required for item_type='qna'.")
     if req.item_type == "text" and not req.content:
@@ -314,7 +318,7 @@ async def add_item(
     kb = await _get_kb(kb_id, space, db)
     if req.item_type in ("text", "qna"):
         await _index_kb_item(item, space, kb)
-    elif req.item_type == "doc" and req.doc_id:
+    elif req.item_type in ("doc", "url") and req.doc_id:
         # Backfill kb_id onto already-uploaded ChromaDB chunks so KB-scoped
         # retrieval can filter by kb_id at query time.
         await _tag_doc_with_kb(doc_id=req.doc_id, kb_id=str(kb_id), space_id=str(space.id))

@@ -103,6 +103,20 @@ class Settings(BaseSettings):
     OPENAI_TEMPERATURE: float = 0.7
     OPENAI_MAX_TOKENS: int = 2000
 
+    # OpenRouter — a single API key/endpoint that proxies many providers'
+    # models (OpenAI, Anthropic, etc). Model id format is "<provider>/<model>",
+    # not a bare OpenAI model id — see https://openrouter.ai/models
+    # (e.g. "openai/gpt-4o-mini", "anthropic/claude-3-haiku").
+    OPENROUTER_API_KEY: Optional[str] = None
+    OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
+
+    # Ordered, comma-separated provider names — first one with a configured
+    # API key becomes the PRIMARY provider; every other configured provider
+    # after it becomes an automatic live-retry fallback (Agno's
+    # fallback_models — see LLMFactory.build_fallbacks() in factories/llm.py).
+    # Valid names: openai, openrouter, anthropic, watsonx.
+    LLM_PROVIDER_PRIORITY: str = "openai,openrouter,anthropic,watsonx"
+
     # Anthropic
     ANTHROPIC_API_KEY: Optional[str] = None
     ANTHROPIC_MODEL: str = "claude-3-opus-20240229"
@@ -122,10 +136,29 @@ class Settings(BaseSettings):
     RAG_DOC_TTL_DAYS: int = 30
 
     # Embeddings
+    # EMBEDDING_PROVIDER only changes HOW the model is reached, not WHICH model:
+    # "openrouter" proxies to the same OpenAI model at the same dimensions, so
+    # switching is a drop-in that keeps existing vectors valid. Unlike the chat
+    # model there is no automatic fallback — a query embedding either succeeds
+    # or search returns nothing, so this is a deliberate single choice.
+    EMBEDDING_PROVIDER: str = "openai"      # openai | openrouter
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIMENSION: int = 1536
     EMBEDDING_BATCH_SIZE: int = 32
     EMBEDDING_DEVICE: str = "cpu"  # unused, kept for compat
+
+    # URL scraping (pluggable) — see app/orchestra/ai/ingestion/scraper/.
+    # SCRAPER_PROVIDER selects the fetch strategy; "httpx" is a plain HTTP GET
+    # and does not run JavaScript, so client-rendered SPAs yield little text.
+    SCRAPER_PROVIDER: str = "httpx"
+    SCRAPER_TIMEOUT_S: int = 15
+    SCRAPER_MAX_BYTES: int = 30 * 1024 * 1024      # 30 MB, matches MAX_UPLOAD_BYTES
+    SCRAPER_MAX_REDIRECTS: int = 5
+    SCRAPER_USER_AGENT: str = "SupportBot/1.0 (KB Indexer)"
+    # SSRF guard. Leave False unless you deliberately index an internal wiki:
+    # True lets a customer-supplied URL reach cloud metadata endpoints and
+    # anything else private the server can route to.
+    SCRAPER_ALLOW_PRIVATE_HOSTS: bool = False
 
     # Reranking (optional, pluggable) — applied on the Agno knowledge retrieval path.
     # Disabled by default; enable + supply a key to activate. Provider is swappable.

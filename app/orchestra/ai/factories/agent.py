@@ -66,22 +66,24 @@ def _member_role(resolved: ResolvedAgent) -> Optional[str]:
     return None
 
 
-def _build_tools(resolved: ResolvedAgent, shared_tools: List[Any]) -> List[Any]:
+def _build_tools(resolved: ResolvedAgent, shared_tools: List[Any], clarify_enabled: bool) -> List[Any]:
     """
     Shared MCP tools plus two optional Agno toolkits:
 
-    - UserFeedbackTools (ask_user), multi-product agents only — the specialist
-      is the only component that has seen the retrieved chunks and therefore
-      knows the answer actually differs per product; see
-      docs/ambiguous-question-clarification-plan.md "Why this has to live in
-      the agent". Single-product agents have nothing to disambiguate.
+    - UserFeedbackTools (ask_user), only when the OWNER has turned it on
+      (Chatbot.clarify_enabled) AND the agent has 2+ products to disambiguate
+      — the owner-facing toggle is the gate; product count is what makes the
+      toggle meaningful for THIS agent. See
+      docs/ambiguous-question-clarification-plan.md "Where does the owner
+      enable this — chatbot or agent?" for why the toggle lives on the
+      chatbot and the per-agent condition is derived, not a second toggle.
     - RenderTools (render_table/render_cards/render_tabs), every agent, gated
       only by RENDER_TOOLS_ENABLED — a layout choice isn't tied to product
       ambiguity the way asking is; see
       docs/structured-response-rendering-plan.md.
     """
     tools = list(shared_tools)
-    if resolved.products and len(resolved.products) >= 2:
+    if clarify_enabled and resolved.products and len(resolved.products) >= 2:
         from agno.tools.user_feedback import UserFeedbackTools
         tools.append(UserFeedbackTools(instructions=ASK_USER_INSTRUCTIONS))
 
@@ -120,6 +122,7 @@ class AgentFactory:
         skills:   Optional[List[Any]] = None,   # PromptSkill ORM objects
         db:       Optional[Any]       = None,   # Agno session db (standalone only)
         attach_session: bool          = False,  # True → this agent IS the conversation
+        clarify_enabled: bool         = False,  # Chatbot.clarify_enabled — gates ask_user
     ) -> Optional[Any]:
         """
         Build a single Agno Agent from a ResolvedAgent.
@@ -134,6 +137,8 @@ class AgentFactory:
                 runner (single-specialist case), attach native history/memory/
                 summary knobs. Team members leave this False — the Team leader
                 owns the conversation; members only retrieve.
+            clarify_enabled: the chatbot owner's toggle for asking the customer
+                which product they mean — see _build_tools.
         """
         try:
             from agno.agent import Agent
@@ -145,6 +150,11 @@ class AgentFactory:
                                        _effective_max_tokens(resolved.max_tokens))
         if not model:
             return None
+        # Live-retry chain (rate limit/timeout/5xx on `model` above) — see
+        # LLMFactory.build_fallbacks(). Configured via LLM_PROVIDER_PRIORITY.
+        fallback_models = self.llm_factory.build_fallbacks(
+            resolved.temperature, _effective_max_tokens(resolved.max_tokens)
+        )
 
         # Build knowledge bundle scoped to this agent's accessible documents.
         # doc_ids come from linked KnowledgeBases; doc_types from builtin agent config.
@@ -166,8 +176,9 @@ class AgentFactory:
             role=_member_role(resolved),
             description=resolved.description or resolved.name,
             model=model,
+            fallback_models=fallback_models or None,
             instructions=self._build_system_prompt(resolved, skills or []),
-            tools=_build_tools(resolved, tools or []),
+            tools=_build_tools(resolved, tools or [], clarify_enabled),
             knowledge=kb_bundle.knowledge,
             knowledge_filters=kb_bundle.filters,
             search_knowledge=kb_bundle.has_knowledge,
@@ -204,6 +215,7 @@ class AgentFactory:
         tools:  Optional[List[Any]] = None,
         memory: Optional[Any]       = None,
         skills_map: Optional[dict]  = None,   # {agent_slug: [PromptSkill, ...]}
+        clarify_enabled: bool       = False,
     ) -> List[Any]:
         """
         Build all agents, silently skipping failures.
@@ -213,11 +225,13 @@ class AgentFactory:
             tools:      Shared tools for all agents
             memory:     Shared memory for all agents
             skills_map: Pre-resolved skills per agent slug
+            clarify_enabled: forwarded to build() — see its docstring
         """
         skills_map = skills_map or {}
         return [
             a for a in (
-                self.build(r, tools=tools, memory=memory, skills=skills_map.get(r.slug, []))
+                self.build(r, tools=tools, memory=memory, skills=skills_map.get(r.slug, []),
+                          clarify_enabled=clarify_enabled)
                 for r in agents
             )
             if a is not None

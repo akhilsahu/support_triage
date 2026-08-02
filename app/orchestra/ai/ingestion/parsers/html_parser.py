@@ -54,19 +54,69 @@ class HtmlParser(BaseParser):
     # ── Core extraction ───────────────────────────────────────────────────────
 
     def _parse_bytes(self, raw: bytes, source: str) -> ParsedDocument:
+        from bs4 import BeautifulSoup
+
+        title = ""
+        try:
+            t = BeautifulSoup(raw, "html.parser").title
+            title = t.string.strip() if t and t.string else ""
+        except Exception:
+            pass
+
+        # Three passes, each less opinionated than the last. Real pages vary
+        # enormously in how they mark up content, and returning nothing is the
+        # worst possible outcome — it indexes an empty document and the failure
+        # only surfaces later as a bot that can't answer.
+        #
+        #   1. chrome stripped + semantic tags — cleanest text on a well-built page
+        #   2. chrome KEPT + semantic tags     — for sites that wrap real content
+        #                                        in <header>/<footer> landmarks
+        #   3. chrome kept + all body text     — for div/span-only markup
+        #
+        # Pass 2 exists because of a real failure: a bank's card page kept 71%
+        # of its content inside <header> and the remaining 29% inside <footer>,
+        # so stripping both discarded the entire page and ingestion failed with
+        # "no extractable text".
+        for strip_chrome, semantic_only in ((True, True), (False, True), (False, False)):
+            pages = self._extract(raw, title, strip_chrome=strip_chrome,
+                                  semantic_only=semantic_only)
+            if any(p.text.strip() for p in pages):
+                if not (strip_chrome and semantic_only):
+                    logger.info("ingestion.html.fallback_used", source=source,
+                                strip_chrome=strip_chrome, semantic_only=semantic_only,
+                                pages=len(pages))
+                break
+        else:
+            pages = []
+
+        filename = Path(source).name if not source.startswith("http") else source
+        logger.info("ingestion.html.done", source=source, pages=len(pages), title=title)
+        return ParsedDocument(
+            filename=filename,
+            extension=".html",
+            pages=pages,
+            metadata={"source": source, "title": title},
+        )
+
+    # Never carries document content in any markup style — safe to always drop.
+    _HARD_NOISE = ("script", "style", "noscript", "iframe", "svg", "canvas", "template")
+    # Usually site chrome, but NOT safe to drop blindly: <header>/<footer> are
+    # also legal inside <article>/<section>, and some sites wrap their whole
+    # page in them. Dropped on the first pass only.
+    _CHROME = ("nav", "aside", "header", "footer")
+
+    def _extract(self, raw: bytes, title: str, *,
+                 strip_chrome: bool, semantic_only: bool) -> List[ParsedPage]:
+        """One extraction attempt. See _parse_bytes for how the passes differ."""
         from bs4 import BeautifulSoup, Tag
 
         soup = BeautifulSoup(raw, "html.parser")
-
-        # Strip noise
-        for tag in soup(["script", "style", "nav", "footer", "header",
-                         "aside", "noscript", "iframe"]):
+        for tag in soup(list(self._HARD_NOISE) + (list(self._CHROME) if strip_chrome else [])):
             tag.decompose()
 
-        title    = soup.title.string.strip() if soup.title and soup.title.string else ""
-        pages:   List[ParsedPage] = []
-        section  = title
-        buffer:  List[str] = []
+        pages:  List[ParsedPage] = []
+        section = title
+        buffer: List[str] = []
         page_num = 1
 
         def _flush():
@@ -78,6 +128,14 @@ class HtmlParser(BaseParser):
             buffer.clear()
 
         body = soup.find("body") or soup
+
+        if not semantic_only:
+            # Last resort: the page uses divs/spans with no semantic tags at
+            # all. Take the whole body as one block — cruder segmentation, but
+            # real content beats a correctly-structured nothing.
+            text = " ".join(body.get_text(separator=" ").split())
+            return [ParsedPage(page=1, text=text, section=title)] if text else []
+
         for el in body.descendants:
             if not isinstance(el, Tag):
                 continue
@@ -97,15 +155,7 @@ class HtmlParser(BaseParser):
                     buffer.append(text)
 
         _flush()
-
-        filename = Path(source).name if not source.startswith("http") else source
-        logger.info("ingestion.html.done", source=source, pages=len(pages), title=title)
-        return ParsedDocument(
-            filename=filename,
-            extension=".html",
-            pages=pages,
-            metadata={"source": source, "title": title},
-        )
+        return pages
 
     def _extract_table(self, table_tag, section: str, page_num: int) -> str:
         rows = []
