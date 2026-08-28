@@ -30,7 +30,6 @@ import { useAppStore } from './store/useAppStore'
 
 import { apiClient } from './api/client'
 import { RouteSeo } from './lib/RouteSeo'
-import { CopilotChatPage } from './screens/CopilotChatPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -146,14 +145,13 @@ export default function App() {
           {/* ── Customer chat lives at the root namespace: /<slug> (default bot)
                  and /<slug>/<chatbotSlug> for a specific bot. Registered after all
                  static marketing routes so those win the match. ── */}
-          <Route path="/copil/:slug" element={<CopilotChatPage />} />
           <Route 
             path="/:slug" 
-            element={import.meta.env.VITE_ENABLE_COPILOT_UI === 'true' ? <CopilotChatPage /> : <CustomerChat />} 
+            element={<CustomerChat />} 
           />
           <Route 
             path="/:slug/:chatbotSlug" 
-            element={import.meta.env.VITE_ENABLE_COPILOT_UI === 'true' ? <CopilotChatPage /> : <CustomerChat />} 
+            element={<CustomerChat />} 
           />
 
           <Route path="*" element={<NotFound />} />
