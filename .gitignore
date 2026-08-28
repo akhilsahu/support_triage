@@ -172,3 +172,7 @@ thingstodo/
 # Expendable files
 expendable/test/
 test/
+tests/
+test_*
+tests_*
+scripts/finetuning/
