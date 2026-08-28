@@ -29,7 +29,8 @@ class OrchestraConfig:
 
     # RAG / Knowledge
     rag_enabled:        bool = True
-    rag_top_k:          int  = 5
+    rag_top_k:          int  = 12
+
     rag_backend:        str  = "vectorstore"   # legacy — kept for DynamicAgentExecutor compat
     knowledge_backend:  str  = "agno_chroma"   # agno_chroma | none  (add new backends in knowledge/factory.py)
     chroma_path:        str  = ".chroma_db"
@@ -60,6 +61,12 @@ class AgnoConfig(OrchestraConfig):
     team_mode:              str  = "route"       # route | coordinate
     triage_model:           str  = "gpt-4o-mini" # cheap model for routing
     show_members_responses: bool = False
+
+    # Chain-of-thought: "" = off (default), low|medium|high = on, from the
+    # REASONING_EFFORT env var. Per-chatbot and per-agent overrides build on
+    # this via dataclasses.replace / LLMFactory.build kwargs — see
+    # ResolvedAgent.llm_model / reasoning_effort.
+    reasoning_effort: str = ""
 
     # Providers to build as Agno fallback_models, in priority order, after
     # llm_provider (the primary). Populated by build_config() from
@@ -216,6 +223,7 @@ def build_config(
         tools_enabled       = False,
         mcp_enabled         = False,
         session_ttl_seconds = 1800,
+        reasoning_effort    = (get("REASONING_EFFORT") or "").strip().lower(),
 
         # Agno-native session store + context features
         session_store             = session_store,

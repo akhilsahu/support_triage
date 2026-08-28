@@ -30,6 +30,7 @@ import { useAppStore } from './store/useAppStore'
 
 import { apiClient } from './api/client'
 import { RouteSeo } from './lib/RouteSeo'
+import { CopilotChatPage } from './screens/CopilotChatPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,7 +53,7 @@ function LegacyChatRedirect() {
 }
 
 export default function App() {
-  const { themeMode, fontSize, setBackendStatus, setActiveHomepage, setHomepageSectionsPlatformEnabled } = useAppStore()
+  const { themeMode, fontSize, setBackendStatus, setActiveHomepage, setHomepageSectionsPlatformEnabled, dashboardTheme } = useAppStore()
 
   // Fetch active homepage on mount
   useEffect(() => {
@@ -64,15 +65,21 @@ export default function App() {
         }
         setHomepageSectionsPlatformEnabled(!!d.homepage_sections_platform_enabled)
       })
-      .catch(() => {})
+      .catch(() => { })
   }, [setActiveHomepage, setHomepageSectionsPlatformEnabled])
 
   // Restore theme mode class on mount
   useEffect(() => {
-    document.documentElement.classList.remove('dark', 'beige')
+    document.documentElement.classList.remove('dark', 'beige', 'dark-beige')
     if (themeMode === 'dark') document.documentElement.classList.add('dark')
     if (themeMode === 'beige') document.documentElement.classList.add('beige')
+    if (themeMode === 'dark-beige') document.documentElement.classList.add('dark-beige')
   }, [themeMode])
+
+  // Apply dashboard theme accent color
+  useEffect(() => {
+    document.documentElement.setAttribute('data-dashboard-theme', dashboardTheme || 'violet')
+  }, [dashboardTheme])
 
   // Apply persisted font size on mount
   useEffect(() => {
@@ -99,36 +106,36 @@ export default function App() {
         <Routes>
           {/* ── Marketing / landing (root namespace, reserved) ── */}
           <Route path="/" element={<DynamicHome />} />
-          <Route path="/about"         element={<AboutPage />} />
-          <Route path="/what-we-do"    element={<WhatWeDoPage />} />
-          <Route path="/how-it-works"  element={<DynamicHowItWorks />} />
-          <Route path="/features"      element={<FeaturesPage />} />
-          <Route path="/pricing"       element={<DynamicPricing />} />
-          <Route path="/privacy"       element={<PrivacyPage />} />
-          <Route path="/terms"         element={<TermsPage />} />
-          <Route path="/cookies"       element={<CookiesPage />} />
-          <Route path="/contact"       element={<ContactPage />} />
-          <Route path="/security"      element={<SecurityPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/what-we-do" element={<WhatWeDoPage />} />
+          <Route path="/how-it-works" element={<DynamicHowItWorks />} />
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/pricing" element={<DynamicPricing />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/cookies" element={<CookiesPage />} />
+          <Route path="/contact" element={<ContactPage />} />
+          <Route path="/security" element={<SecurityPage />} />
 
           {/* ── App (authenticated product) under /app/* ── */}
-          <Route path="/app/onboarding"      element={<OnboardingWizard />} />
-          <Route path="/app/login"          element={<DynamicLogin />} />
+          <Route path="/app/onboarding" element={<OnboardingWizard />} />
+          <Route path="/app/login" element={<DynamicLogin />} />
           <Route path="/app/forgot-password" element={<ForgotPassword />} />
-          <Route path="/app/reset-password"  element={<ResetPassword />} />
-          <Route path="/app/verify-email"    element={<VerifyEmail />} />
-          <Route path="/app/dashboard" element={<PrivateRoute><Layout title="Dashboard" subtitle="SUPPORT247.chat overview"><Dashboard /></Layout></PrivateRoute>} />
-          <Route path="/app/chat" element={<PrivateRoute><Layout title="Chat" subtitle="AI-powered customer support"><Chat /></Layout></PrivateRoute>} />
-          <Route path="/app/agents" element={<PrivateRoute><Layout title="Agents" subtitle="Manage your AI agent fleet"><Agents /></Layout></PrivateRoute>} />
+          <Route path="/app/reset-password" element={<ResetPassword />} />
+          <Route path="/app/verify-email" element={<VerifyEmail />} />
+          <Route path="/app/dashboard" element={<PrivateRoute><Layout><Dashboard /></Layout></PrivateRoute>} />
+          <Route path="/app/chat" element={<PrivateRoute><Layout><Chat /></Layout></PrivateRoute>} />
+          <Route path="/app/agents" element={<PrivateRoute><Layout><Agents /></Layout></PrivateRoute>} />
           <Route path="/app/agents/datasource" element={<PrivateRoute><DataSourceSetup /></PrivateRoute>} />
-          <Route path="/app/agents/test" element={<PrivateRoute><Layout title="Test Chat" subtitle="Preview your chatbot as a customer would see it"><TestChat /></Layout></PrivateRoute>} />
-          <Route path="/app/data-sources" element={<PrivateRoute><Layout title="Data Sources" subtitle="Connect external APIs and live data feeds to your agents"><DataSourceSetup /></Layout></PrivateRoute>} />
-          <Route path="/app/inbox" element={<PrivateRoute><Layout title="Inbox" subtitle="Human support sessions"><Inbox /></Layout></PrivateRoute>} />
-          <Route path="/app/knowledge-base" element={<PrivateRoute><Layout title="Knowledge Bases" subtitle="Group documents, text, and Q&A · assign to agents for targeted RAG"><KnowledgeBase /></Layout></PrivateRoute>} />
-          <Route path="/app/analytics" element={<PrivateRoute><Layout title="Analytics" subtitle="Usage insights and performance"><Analytics /></Layout></PrivateRoute>} />
-          <Route path="/app/settings" element={<PrivateRoute><Layout title="Settings" subtitle="Configure SUPPORT247.chat"><Settings /></Layout></PrivateRoute>} />
-          <Route path="/app/embed-widget" element={<PrivateRoute><Layout title="Embed Widget" subtitle="Copy the embed snippet for any of your chatbots"><EmbedWidget /></Layout></PrivateRoute>} />
-          <Route path="/app/chatbot-ui" element={<PrivateRoute><Layout title="Chatbot UI" subtitle="Design, generate and publish the pre-chat welcome"><ChatbotProfile view="ui" /></Layout></PrivateRoute>} />
-          <Route path="/app/chatbot-profile" element={<PrivateRoute><Layout title="Chatbot Profile" subtitle="Logo and branding per chatbot"><ChatbotProfile view="branding" /></Layout></PrivateRoute>} />
+          <Route path="/app/agents/test" element={<PrivateRoute><Layout><TestChat /></Layout></PrivateRoute>} />
+          <Route path="/app/data-sources" element={<PrivateRoute><Layout><DataSourceSetup /></Layout></PrivateRoute>} />
+          <Route path="/app/inbox" element={<PrivateRoute><Layout><Inbox /></Layout></PrivateRoute>} />
+          <Route path="/app/knowledge-base" element={<PrivateRoute><Layout><KnowledgeBase /></Layout></PrivateRoute>} />
+          <Route path="/app/analytics" element={<PrivateRoute><Layout><Analytics /></Layout></PrivateRoute>} />
+          <Route path="/app/settings" element={<PrivateRoute><Layout><Settings /></Layout></PrivateRoute>} />
+          <Route path="/app/embed-widget" element={<PrivateRoute><Layout><EmbedWidget /></Layout></PrivateRoute>} />
+          <Route path="/app/chatbot-ui" element={<PrivateRoute><Layout><ChatbotProfile view="ui" /></Layout></PrivateRoute>} />
+          <Route path="/app/chatbot-profile" element={<PrivateRoute><Layout><ChatbotProfile view="branding" /></Layout></PrivateRoute>} />
           <Route path="/app/super-admin" element={<SuperAdmin />} />
           {/* Bare /app → dashboard */}
           <Route path="/app" element={<Navigate to="/app/dashboard" replace />} />
@@ -139,8 +146,15 @@ export default function App() {
           {/* ── Customer chat lives at the root namespace: /<slug> (default bot)
                  and /<slug>/<chatbotSlug> for a specific bot. Registered after all
                  static marketing routes so those win the match. ── */}
-          <Route path="/:slug" element={<CustomerChat />} />
-          <Route path="/:slug/:chatbotSlug" element={<CustomerChat />} />
+          <Route path="/copil/:slug" element={<CopilotChatPage />} />
+          <Route 
+            path="/:slug" 
+            element={import.meta.env.VITE_ENABLE_COPILOT_UI === 'true' ? <CopilotChatPage /> : <CustomerChat />} 
+          />
+          <Route 
+            path="/:slug/:chatbotSlug" 
+            element={import.meta.env.VITE_ENABLE_COPILOT_UI === 'true' ? <CopilotChatPage /> : <CustomerChat />} 
+          />
 
           <Route path="*" element={<NotFound />} />
         </Routes>

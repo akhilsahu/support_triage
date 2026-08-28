@@ -1,5 +1,5 @@
 """
-Chat session model.
+Chat session + message thought models.
 
 ChatSession — one row per customer conversation.
 `id` (UUID PK) is the session identifier — used in URLs and as the
@@ -7,13 +7,17 @@ session_id value stored in ConversationLog rows.
 
 No separate session_id column — id IS the session id.
 
+MessageThought — one row per assistant ConversationLog that produced
+reasoning. PK IS message_id (conversation_logs.id), so each thought is
+anchored to exactly one customer-facing message.
+
 Redis cache key: chat:history:{str(id)}
 """
 
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, ForeignKey, Index
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, ForeignKey, Index, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -88,4 +92,52 @@ class ChatSession(Base):
             "message_count":   self.message_count,
             "started_at":      self.started_at.isoformat() if self.started_at else None,
             "last_message_at": self.last_message_at.isoformat() if self.last_message_at else None,
+        }
+
+
+class MessageThought(Base):
+    """
+    Reasoning/thought text for one assistant message. One row per
+    ConversationLog that produced reasoning — PK is the message's id, so a
+    thought can never dangle or duplicate.
+
+    `content` is the merged reasoning text; `segments` keeps per-delta
+    granularity ({seq, content}) for faithful replay. space_id/session_id/
+    chatbot_id/agent_slug are denormalized copies of the owning ConversationLog
+    so analytics can filter without joining it.
+    """
+
+    __tablename__ = "message_thoughts"
+
+    message_id       = Column(UUID(as_uuid=True),
+                              ForeignKey("conversation_logs.id", ondelete="CASCADE"),
+                              primary_key=True)
+    space_id         = Column(UUID(as_uuid=True),
+                              ForeignKey("spaces.id", ondelete="CASCADE"),
+                              nullable=False, index=True)
+    session_id       = Column(String(100), nullable=False, index=True)
+    chatbot_id       = Column(UUID(as_uuid=True),
+                              ForeignKey("chatbots.id", ondelete="SET NULL"),
+                              nullable=True)
+    agent_slug       = Column(String(80), nullable=True)
+    # Future-proof: "reasoning" today, could become "plan"/"reflection" later.
+    role             = Column(String(20), nullable=False, default="reasoning")
+    content          = Column(Text, nullable=False)
+    segments         = Column(JSONB, nullable=True)     # [{seq, content}] per-delta
+    model            = Column(String(120), nullable=True)
+    reasoning_effort = Column(String(20), nullable=True)
+    created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    def to_dict(self) -> dict:
+        return {
+            "message_id":       str(self.message_id),
+            "session_id":       self.session_id,
+            "chatbot_id":       str(self.chatbot_id) if self.chatbot_id else None,
+            "agent_slug":       self.agent_slug,
+            "role":             self.role,
+            "content":          self.content,
+            "segments":         self.segments,
+            "model":            self.model,
+            "reasoning_effort": self.reasoning_effort,
+            "created_at":       self.created_at.isoformat() if self.created_at else None,
         }

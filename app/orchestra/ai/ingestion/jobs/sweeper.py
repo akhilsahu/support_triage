@@ -32,10 +32,13 @@ STALE_AFTER_MINUTES = 30
 
 _NON_TERMINAL = ("queued", "parsing", "chunking", "indexing")
 
-_RESTART_MSG = "Interrupted by a server restart. Please upload the document again."
+_RESTART_MSG = (
+    "Interrupted by a server restart. Click Retry to resume, or upload the "
+    "document again."
+)
 _STALLED_MSG = (
     f"Processing stopped unexpectedly (no progress for over {STALE_AFTER_MINUTES} "
-    "minutes). Please upload the document again."
+    "minutes). Click Retry to resume, or upload the document again."
 )
 
 

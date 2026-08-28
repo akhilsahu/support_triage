@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     ENVIRONMENT: str = "development"
 
+    # Datamuse Online Terms API
+    DATAMUSE_API_URL: str = "https://api.datamuse.com/words"
+
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000
@@ -90,7 +93,7 @@ class Settings(BaseSettings):
         # Normalize: trim + lowercase, drop blanks
         return [s.strip().lower() for s in items if s and s.strip()]
 
-    # IBM watsonx.ai (top priority)
+    # IBM watsonx.ai
     WATSONX_API_KEY: Optional[str] = None
     WATSONX_URL: Optional[str] = "https://us-south.ml.cloud.ibm.com"
     WATSONX_SPACE_ID: Optional[str] = None
@@ -103,6 +106,27 @@ class Settings(BaseSettings):
     OPENAI_TEMPERATURE: float = 0.7
     OPENAI_MAX_TOKENS: int = 2000
 
+    # Together AI
+    TOGETHER_API_KEY: Optional[str] = None
+    TOGETHER_MODEL: Optional[str] = None
+
+    # Fireworks AI
+    FIREWORKS_API_KEY: Optional[str] = None
+    FIREWORKS_MODEL: str = "accounts/fireworks/models/llama-v3p1-70b-instruct"
+
+    # Anyscale
+    ANYSCALE_API_KEY: Optional[str] = None
+    ANYSCALE_MODEL: Optional[str] = None
+
+    # Modal
+    MODAL_API_KEY: Optional[str] = None
+    MODAL_BASE_URL: Optional[str] = None
+    MODAL_MODEL: Optional[str] = None
+
+    # RAG Ingestion Contextual AI Enrichment
+    ENABLE_CONTEXTUAL_ENRICHMENT: bool = True
+
+
     # OpenRouter — a single API key/endpoint that proxies many providers'
     # models (OpenAI, Anthropic, etc). Model id format is "<provider>/<model>",
     # not a bare OpenAI model id — see https://openrouter.ai/models
@@ -114,8 +138,13 @@ class Settings(BaseSettings):
     # API key becomes the PRIMARY provider; every other configured provider
     # after it becomes an automatic live-retry fallback (Agno's
     # fallback_models — see LLMFactory.build_fallbacks() in factories/llm.py).
-    # Valid names: openai, openrouter, anthropic, watsonx.
-    LLM_PROVIDER_PRIORITY: str = "openai,openrouter,anthropic,watsonx"
+    # Priority order for LLM routing. The app will try these in order
+    # if a specific model isn't requested.
+    LLM_PROVIDER_PRIORITY: str = "modal,fireworks,openai,openrouter,together,anthropic,watsonx,anyscale"
+    
+    # Optional override strictly for fact extraction model
+    FACT_FINDER_MODEL: Optional[str] = None
+    FACT_VERIFIER_MODEL: Optional[str] = None
 
     # Anthropic
     ANTHROPIC_API_KEY: Optional[str] = None
@@ -181,7 +210,8 @@ class Settings(BaseSettings):
     ADD_KNOWLEDGE_TO_CONTEXT: bool = True
 
     # RAG
-    RAG_TOP_K: int = 8                               # chunks in context (no-rerank path); widened for recall
+    RAG_TOP_K: int = 12                              # chunks in context (no-rerank path); widened for recall & numeric figures
+
     RAG_SIMILARITY_THRESHOLD: float = 0.7
     RAG_CHUNK_SIZE: int = 1000
     RAG_CHUNK_OVERLAP: int = 200

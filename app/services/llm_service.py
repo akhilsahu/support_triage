@@ -75,6 +75,8 @@ class LLMProvider(str, Enum):
     WATSONX = "watsonx"
     ANTHROPIC = "anthropic"
     OPENAI = "openai"
+    OPENROUTER = "openrouter"
+
 
 
 class LLMModel(str, Enum):
@@ -110,6 +112,7 @@ class LLMService:
     def __init__(self):
         self.openai_client: Optional[AsyncOpenAI] = None
         self.anthropic_client: Optional[AsyncAnthropic] = None
+        self.openrouter_client: Optional[AsyncOpenAI] = None
         self.watsonx_client = None
         self._initialize_clients()
 
@@ -142,6 +145,17 @@ class LLMService:
         else:
             logger.warning("OpenAI unavailable — OPENAI_API_KEY not set")
 
+        openrouter_key = getattr(settings, "OPENROUTER_API_KEY", None)
+        if openrouter_key and not openrouter_key.startswith("your-"):
+            self.openrouter_client = AsyncOpenAI(
+                api_key=openrouter_key,
+                base_url="https://openrouter.ai/api/v1",
+            )
+            logger.info("OpenRouter client initialized")
+        else:
+            logger.warning("OpenRouter unavailable — OPENROUTER_API_KEY not set")
+
+
     def _get_provider_from_model(self, model: str) -> LLMProvider:
         """Determine provider from model name"""
         if model.startswith("gpt"):
@@ -150,9 +164,11 @@ class LLMService:
             return LLMProvider.ANTHROPIC
         elif model.startswith("ibm/") or model.startswith("meta-llama/"):
             return LLMProvider.WATSONX
+        elif "/" in model or model.startswith("openrouter"):
+            return LLMProvider.OPENROUTER
         else:
             raise ValueError(f"Unknown model: {model}")
-    
+
     async def generate(
         self,
         messages: List[Dict[str, str]],
@@ -164,24 +180,13 @@ class LLMService:
     ) -> Dict[str, Any]:
         """
         Generate completion using specified model.
-        
-        Args:
-            messages: List of message dicts with 'role' and 'content'
-            model: Model name (e.g., 'gpt-4', 'claude-3-opus-20240229')
-            temperature: Sampling temperature (0-2 for OpenAI, 0-1 for Claude)
-            max_tokens: Maximum tokens to generate
-            system_prompt: System prompt (optional)
-            **kwargs: Additional provider-specific parameters
-        
-        Returns:
-            Dict with 'content', 'model', 'usage', and 'provider'
         """
         model = model or settings.OPENAI_MODEL
         temperature = temperature if temperature is not None else settings.OPENAI_TEMPERATURE
         max_tokens = max_tokens or settings.OPENAI_MAX_TOKENS
-        
+
         provider = self._get_provider_from_model(model)
-        
+
         logger.info(
             "Generating completion",
             model=model,
@@ -189,7 +194,7 @@ class LLMService:
             temperature=temperature,
             max_tokens=max_tokens
         )
-        
+
         if provider == LLMProvider.WATSONX:
             return await self._generate_watsonx(
                 messages, model, temperature, max_tokens, system_prompt, **kwargs
@@ -202,8 +207,13 @@ class LLMService:
             return await self._generate_anthropic(
                 messages, model, temperature, max_tokens, system_prompt, **kwargs
             )
+        elif provider == LLMProvider.OPENROUTER:
+            return await self._generate_openrouter(
+                messages, model, temperature, max_tokens, system_prompt, **kwargs
+            )
         else:
             raise ValueError(f"Unsupported provider: {provider}")
+
     
     async def _generate_watsonx(
         self,
@@ -455,7 +465,46 @@ class LLMService:
         except Exception as e:
             logger.error(f"Anthropic streaming failed: {e}")
             raise
-    
+
+    async def _generate_openrouter(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        system_prompt: Optional[str],
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Generate completion using OpenRouter API"""
+        if not self.openrouter_client:
+            raise ValueError("OpenRouter client not initialized. Check OPENROUTER_API_KEY.")
+
+        if system_prompt:
+            messages = [{"role": "system", "content": system_prompt}] + messages
+
+        try:
+            response = await self.openrouter_client.chat.completions.create(
+                model=model or getattr(settings, "OPENROUTER_MODEL", "openai/gpt-4o-mini"),
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs
+            )
+            return {
+                "content": response.choices[0].message.content,
+                "model": response.model,
+                "provider": LLMProvider.OPENROUTER.value,
+                "usage": {
+                    "prompt_tokens": getattr(response.usage, "prompt_tokens", 0) if response.usage else 0,
+                    "completion_tokens": getattr(response.usage, "completion_tokens", 0) if response.usage else 0,
+                    "total_tokens": getattr(response.usage, "total_tokens", 0) if response.usage else 0,
+                },
+                "finish_reason": response.choices[0].finish_reason if response.choices else None,
+            }
+        except Exception as e:
+            logger.error(f"OpenRouter generation failed: {e}")
+            raise
+
     async def generate_with_fallback(
         self,
         messages: List[Dict[str, str]],
@@ -464,8 +513,7 @@ class LLMService:
         max_tokens: int = 500,
     ) -> Optional[Dict[str, Any]]:
         """
-        Try OpenAI first, fall back to WatsonX, then Anthropic, log if all unavailable.
-
+        Try OpenAI first, then OpenRouter, WatsonX, Anthropic.
         Returns the LLM response dict on success, or None if all providers fail.
         """
         providers = []
@@ -474,6 +522,11 @@ class LLMService:
             providers.append(("openai", LLMModel.GPT_4O_MINI.value))
         else:
             logger.warning("OpenAI unavailable — skipping")
+
+        if self.openrouter_client:
+            providers.append(("openrouter", getattr(settings, "OPENROUTER_MODEL", "openai/gpt-4o-mini")))
+        else:
+            logger.warning("OpenRouter unavailable — skipping")
 
         if self.watsonx_client:
             providers.append(("watsonx", settings.WATSONX_MODEL))
@@ -494,13 +547,22 @@ class LLMService:
             for attempt in range(_RETRY_ATTEMPTS):
                 try:
                     logger.info(f"Trying LLM provider: {provider_name} ({model})")
-                    result = await self.generate(
-                        messages=messages,
-                        model=model,
-                        system_prompt=system_prompt,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                    )
+                    if provider_name == "openrouter":
+                        result = await self._generate_openrouter(
+                            messages=messages,
+                            model=model,
+                            system_prompt=system_prompt,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                        )
+                    else:
+                        result = await self.generate(
+                            messages=messages,
+                            model=model,
+                            system_prompt=system_prompt,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                        )
                     logger.info(f"LLM response from {provider_name}", tokens=result.get("usage", {}).get("total_tokens"))
                     return result
                 except Exception as e:
@@ -521,6 +583,7 @@ class LLMService:
 
         logger.error("All LLM providers failed — falling back to keyword responses")
         return None
+
 
     def get_available_models(self) -> Dict[str, List[str]]:
         """Get list of available models by provider"""

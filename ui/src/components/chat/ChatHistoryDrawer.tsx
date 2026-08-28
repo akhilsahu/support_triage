@@ -94,10 +94,10 @@ export function ChatHistoryDrawer({
   return (
     <>
       {/* Scrim */}
-      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px]" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] animate-fadeIn" onClick={onClose} />
 
       <aside className={`fixed inset-y-0 left-0 z-50 w-[85%] max-w-sm border-r shadow-2xl
-                         flex flex-col ${panelCls}`}>
+                         flex flex-col animate-slide-drawer ${panelCls}`}>
         <header className={`flex items-center justify-between px-4 py-3.5 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
           <h2 className="text-[14px] font-semibold">Your conversations</h2>
           <button onClick={onClose} aria-label="Close history"

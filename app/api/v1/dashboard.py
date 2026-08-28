@@ -493,6 +493,7 @@ class AgentSuggestionRequest(BaseModel):
     agent_name: Optional[str] = None   # used when doc_types is empty
     force: bool = False
     kb_ids: List[str] = []
+    doc_ids: List[str] = []
 
 
 class LinkAgentRequest(BaseModel):
@@ -522,6 +523,9 @@ async def get_agent_suggestion(
     kb_name = ""
     kb_doc_ids: list[str] = []
 
+    if req.doc_ids:
+        kb_doc_ids = req.doc_ids
+
     if req.kb_ids:
         from sqlalchemy import select
         from app.models.knowledge_base import KnowledgeBaseItem
@@ -539,22 +543,23 @@ async def get_agent_suggestion(
             )).scalars().all()
             kb_name = ", ".join(k.name for k in kb_rows if k.name)
 
-            result = await db.execute(
-                select(KnowledgeBaseItem).where(KnowledgeBaseItem.kb_id.in_(uuid_kb_ids))
-            )
-            items = result.scalars().all()
+            if not kb_doc_ids:
+                result = await db.execute(
+                    select(KnowledgeBaseItem).where(KnowledgeBaseItem.kb_id.in_(uuid_kb_ids))
+                )
+                items = result.scalars().all()
 
-            doc_ids = []
-            for item in items:
-                if item.item_type == "doc" and item.doc_id:
-                    doc_ids.append(item.doc_id)
-                elif item.indexed_doc_id:
-                    doc_ids.append(item.indexed_doc_id)
-            kb_doc_ids = doc_ids
+                doc_ids = []
+                for item in items:
+                    if item.item_type == "doc" and item.doc_id:
+                        doc_ids.append(item.doc_id)
+                    elif item.indexed_doc_id:
+                        doc_ids.append(item.indexed_doc_id)
+                kb_doc_ids = doc_ids
 
             kb_doc_types = set()
             loop = asyncio.get_event_loop()
-            for doc_id in doc_ids:
+            for doc_id in kb_doc_ids:
                 meta = await loop.run_in_executor(
                     None,
                     lambda d=doc_id: get_vector_store().get_doc_meta(d)

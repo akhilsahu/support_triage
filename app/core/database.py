@@ -63,6 +63,10 @@ async def init_db() -> None:
             await conn.execute(text("SELECT 1"))
             # Auto-migrate: Add active_homepage column to platform_settings if it doesn't exist
             await conn.execute(text("ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS active_homepage VARCHAR(50) DEFAULT 'homepage1'"))
+            await conn.execute(text("ALTER TABLE knowledge_base_items ADD COLUMN IF NOT EXISTS description TEXT"))
+            await conn.execute(text("DROP TABLE IF EXISTS documents CASCADE"))
+            # Auto-backfill: populate doc_label for older items where doc_label is NULL
+            await conn.execute(text("UPDATE knowledge_base_items SET doc_label = INITCAP(REPLACE(topic, '_', ' ')) WHERE (doc_label IS NULL OR doc_label = '') AND topic IS NOT NULL AND topic != ''"))
             
         logger.info("Database connection verified successfully and auto-migrations applied")
     except Exception as e:

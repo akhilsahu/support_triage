@@ -7,6 +7,8 @@ import { apiClient } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import { ChatbotUiStudio } from './ChatbotUiStudio'
 import { ChatbotLoginSettings } from './ChatbotLoginSettings'
+import { ModelControls } from '../components/ModelControls'
+import type { ModelEffort } from '../components/ModelControls'
 
 interface Chatbot {
   id: string
@@ -23,6 +25,8 @@ interface Chatbot {
   quick_topics: string | null
   trust_badges: string | null
   login_after_messages: number | null
+  llm_model: string | null
+  reasoning_effort: string | null
 }
 
 const DEFAULT_THEME_COLOR = '#6366f1'
@@ -88,6 +92,8 @@ export function ChatbotProfile({ view = 'branding' }: { view?: 'branding' | 'ui'
   const [savingStats, setSavingStats] = useState(false)
   const [cmpDraft, setCmpDraft] = useState<{ columns: string[]; rows: string[][]; source: string }>({ columns: [], rows: [], source: '' })
   const [savingCmp, setSavingCmp] = useState(false)
+  const [modelDraft, setModelDraft] = useState<ModelEffort>({ model: null, effort: null })
+  const [savingModel, setSavingModel] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Multi-bot UI shows only when the space is allowed more than one chatbot.
@@ -133,6 +139,7 @@ export function ChatbotProfile({ view = 'branding' }: { view?: 'branding' | 'ui'
   // Keep the color picker's draft in sync with whichever bot is selected.
   useEffect(() => {
     setColorDraft(selected?.theme_color || DEFAULT_THEME_COLOR)
+    setModelDraft({ model: selected?.llm_model ?? null, effort: selected?.reasoning_effort ?? null })
     setEditingDesc(false)
     try {
       setTopicsDraft(selected?.quick_topics ? JSON.parse(selected.quick_topics) : [])
@@ -274,6 +281,26 @@ export function ChatbotProfile({ view = 'branding' }: { view?: 'branding' | 'ui'
       setError('Could not update theme color.')
     } finally {
       setSavingColor(false)
+    }
+  }
+
+  // Model/effort are saved together on one explicit click. Nulls clear any
+  // previous override and fall back to the server env config.
+  const saveModel = async () => {
+    if (!selected) return
+    setSavingModel(true)
+    try {
+      const updated = await apiClient.updateChatbot(selected.slug, {
+        llm_model: modelDraft.model,
+        reasoning_effort: modelDraft.effort,
+      })
+      selectBot(updated)
+      setChatbots(prev => prev.map(c => c.id === updated.id ? updated : c))
+      flashSaved()
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Could not update model settings.')
+    } finally {
+      setSavingModel(false)
     }
   }
 
@@ -1094,6 +1121,34 @@ export function ChatbotProfile({ view = 'branding' }: { view?: 'branding' | 'ui'
             </div>
           </div>
           </>)}
+        </Card>
+      )}
+
+      {/* Model & reasoning */}
+      {view !== 'ui' && selected && (
+        <Card className="p-5 space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Model &amp; reasoning</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Default LLM for this chatbot's agents. Agents with their own override in Settings use that instead.
+              "Inherit server default" uses this deployment's env config.
+            </p>
+          </div>
+
+          <ModelControls
+            key={selected.id}
+            value={modelDraft}
+            inheritLabel="Inherit server default"
+            onChange={setModelDraft}
+          />
+
+          {(modelDraft.model !== selected.llm_model || modelDraft.effort !== selected.reasoning_effort) && (
+            <div className="flex items-center gap-2 pt-3 border-t border-gray-100 dark:border-gray-700">
+              <Button size="sm" disabled={savingModel} onClick={saveModel}>
+                {savingModel ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+          )}
         </Card>
       )}
 

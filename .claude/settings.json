@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(python3 -c ' *)",
-      "Bash(time curl -s \"http://localhost:8000/api/v1/space/public/hdfc-lyf?visitor=newgrounded3\")"
-    ]
-  }
-}

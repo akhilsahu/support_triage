@@ -15,8 +15,8 @@ interface AppState {
   logout: () => void
 
   // Theme
-  themeMode: 'light' | 'dark' | 'beige'
-  setThemeMode: (mode: 'light' | 'dark' | 'beige') => void
+  themeMode: 'light' | 'dark' | 'beige' | 'dark-beige'
+  setThemeMode: (mode: 'light' | 'dark' | 'beige' | 'dark-beige') => void
 
   // Sidebar
   sidebarCollapsed: boolean
@@ -99,9 +99,10 @@ export const useAppStore = create<AppState>()(
 
       themeMode: (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light',
       setThemeMode: (mode) => set(() => {
-        document.documentElement.classList.remove('dark', 'beige')
+        document.documentElement.classList.remove('dark', 'beige', 'dark-beige')
         if (mode === 'dark') document.documentElement.classList.add('dark')
         if (mode === 'beige') document.documentElement.classList.add('beige')
+        if (mode === 'dark-beige') document.documentElement.classList.add('dark-beige')
         return { themeMode: mode }
       }),
 

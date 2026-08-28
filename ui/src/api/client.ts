@@ -31,9 +31,13 @@ export interface IngestionJob {
   doc_type: string | null
   kb_name: string | null
   kb_id: string | null
+  source: 'file' | 'url'   // which KB tab this job's progress belongs under
   status: IngestionStatus
   progress: number
   stage_detail: string | null
+  eta_seconds?: number | null
+  context_enriched?: boolean
+  ai_cost_usd?: number
   doc_id: string | null
   pages: number | null
   chunks: number | null
@@ -41,6 +45,7 @@ export interface IngestionJob {
   created_at: string | null
   updated_at: string | null
 }
+
 
 export interface IngestionJobAccepted {
   job_id: string
@@ -129,7 +134,7 @@ export const apiClient = {
   // RAG
   // Returns 202 with a job to poll -- ingestion runs in the background, so this
   // resolves in milliseconds even for documents that take minutes to process.
-  uploadDoc: (file: File, clientId?: string, docType?: string, kbName?: string, kbDescription?: string, expiryDate?: string, kbId?: string, itemTitle?: string): Promise<IngestionJobAccepted> => {
+  uploadDoc: (file: File, clientId?: string, docType?: string, kbName?: string, kbDescription?: string, expiryDate?: string, kbId?: string, itemTitle?: string, topic?: string, docLabel?: string): Promise<IngestionJobAccepted> => {
     const form = new FormData()
     form.append('file', file)
     return http.post(API_CONFIG.endpoints.ragUpload, form, {
@@ -142,12 +147,41 @@ export const apiClient = {
         ...(expiryDate    ? { 'X-KB-Expiry':       expiryDate    } : {}),
         ...(kbId          ? { 'X-KB-Id':           kbId          } : {}),
         ...(itemTitle     ? { 'X-Item-Title':      itemTitle     } : {}),
+        ...(topic         ? { 'X-Topic':           topic         } : {}),
+        ...(docLabel      ? { 'X-Doc-Label':       docLabel      } : {}),
       },
     }).then(r => r.data)
   },
 
+  suggestDocMetadata: (payload: { doc_id?: string; item_id?: string; filename?: string; title?: string; url?: string; content?: string; file?: File }): Promise<{ doc_type?: string; scope?: string; description: string; topic: string; tags?: string[] }> => {
+    if (payload.file) {
+      const formData = new FormData()
+      formData.append('file', payload.file)
+      if (payload.doc_id) formData.append('doc_id', payload.doc_id)
+      if (payload.title) formData.append('title', payload.title)
+      if (payload.url) formData.append('url', payload.url)
+      if (payload.content) formData.append('content', payload.content)
+      return http.post('/api/v1/suggestions/metadata', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).then(r => r.data)
+    }
+    return http.post('/api/v1/suggestions/metadata', payload).then(r => r.data)
+  },
+
+  suggestTerms: (query: string): Promise<{ terms: { word: string }[] }> =>
+    http.get('/api/v1/suggestions/terms', { params: { query } }).then(r => r.data),
+
   listIngestionJobs: (limit = 20): Promise<{ jobs: IngestionJob[] }> =>
     http.get('/api/v1/documents/ingestion-jobs', { params: { limit } }).then(r => r.data),
+
+  // Clear a finished (usually failed) job row. Failures stay visible until
+  // dismissed, so without this one old failure haunts the KB forever.
+  dismissIngestionJob: (jobId: string) =>
+    http.delete(`/api/v1/documents/ingestion-jobs/${jobId}`).then(r => r.data),
+
+  // Re-queue a failed job from its stored payload (202 + job, like an upload).
+  retryIngestionJob: (jobId: string): Promise<IngestionJobAccepted> =>
+    http.post(`/api/v1/documents/ingestion-jobs/${jobId}/retry`).then(r => r.data),
 
   getIngestionJob: (jobId: string): Promise<IngestionJob> =>
     http.get(`/api/v1/documents/ingestion-jobs/${jobId}`).then(r => r.data),
@@ -168,8 +202,9 @@ export const apiClient = {
 
   // kbId is required for the scraped page to be reachable: custom agents scope
   // retrieval by kb_id, so omitting it indexes content no agent can ever find.
-  scrapeUrl: (url: string, _clientId?: string, docType?: string, kbName?: string, description?: string, kbId?: string, previewToken?: string) =>
-    http.post('/api/v1/documents/rag/ingest-url', { url, doc_type: docType ?? 'general', kb_name: kbName ?? '', kb_id: kbId ?? null, description: description ?? '', preview_token: previewToken ?? null }).then(r => r.data),
+  scrapeUrl: (url: string, title?: string, _clientId?: string, docType?: string, kbName?: string, description?: string, kbId?: string, previewToken?: string, topic?: string, docLabel?: string) =>
+    http.post('/api/v1/documents/rag/ingest-url', { url, title: title ?? '', doc_type: docType ?? 'general', kb_name: kbName ?? '', kb_id: kbId ?? null, description: description ?? '', preview_token: previewToken ?? null, topic: topic ?? '', doc_label: docLabel ?? '' }).then(r => r.data),
+
 
   chatWithDoc: (docId: string, question: string, topK = 5) =>
     http.post(API_CONFIG.endpoints.ragChat, { doc_id: docId, question, top_k: topK }).then(r => r.data),
@@ -205,21 +240,55 @@ export const apiClient = {
   // Knowledge Bases (new structured KB API)
   listKBs: () =>
     http.get(API_CONFIG.endpoints.kbList).then(r => r.data),
-  createKB: (payload: { name: string; description?: string }) =>
+  createKB: (payload: { name: string; description?: string; default_topic?: string }) =>
     http.post(API_CONFIG.endpoints.kbCreate, payload).then(r => r.data),
-  updateKB: (id: string, payload: { name?: string; description?: string; active?: boolean }) =>
+  updateKB: (id: string, payload: { name?: string; description?: string; default_topic?: string; active?: boolean }) =>
     http.patch(API_CONFIG.endpoints.kbUpdate(id), payload).then(r => r.data),
   deleteKB: (id: string) =>
     http.delete(API_CONFIG.endpoints.kbDelete(id)).then(r => r.data),
   listKBItems: (kbId: string) =>
     http.get(API_CONFIG.endpoints.kbItems(kbId)).then(r => r.data),
-  addKBItem: (kbId: string, payload: { item_type: string; title?: string; doc_id?: string; question?: string; content?: string }) =>
+  addKBItem: (kbId: string, payload: { item_type: string; title?: string; doc_id?: string; question?: string; content?: string; topic?: string; doc_label?: string; description?: string }) =>
     http.post(API_CONFIG.endpoints.kbItemAdd(kbId), payload).then(r => r.data),
   deleteKBItem: (kbId: string, itemId: string) =>
     http.delete(API_CONFIG.endpoints.kbItemDelete(kbId, itemId)).then(r => r.data),
 
-  updateKBItem: (kbId: string, itemId: string, payload: { question?: string; content?: string; title?: string }) =>
+  updateKBItem: (kbId: string, itemId: string, payload: { question?: string; content?: string; title?: string; topic?: string; doc_label?: string; description?: string }) =>
     http.patch(API_CONFIG.endpoints.kbItemUpdate(kbId, itemId), payload).then(r => r.data),
+
+  // KB Facts — confirmed attributes injected into every answer. Extraction
+  // proposes (verified=false); nothing reaches an agent until confirmed.
+  listFacts: (kbId: string) =>
+    http.get(`/api/v1/space/knowledge-bases/${kbId}/facts`).then(r => r.data),
+  createFact: (kbId: string, payload: { subject: string; label: string; value: string; note?: string; topic?: string }) =>
+    http.post(`/api/v1/space/knowledge-bases/${kbId}/facts`, payload).then(r => r.data),
+  extractFacts: (kbId: string, docId: string) =>
+    http.post(`/api/v1/space/knowledge-bases/${kbId}/facts/extract`, { doc_id: docId }, { timeout: 120000 }).then(r => r.data),
+  extractFactsV2: (kbId: string, docId: string, feedback?: string) =>
+    http.post(`/api/v1/space/knowledge-bases/${kbId}/documents/${docId}/extract-v2`, feedback ? { feedback } : undefined, { timeout: 120000 }).then(r => r.data),
+  verifyExtractFactsV2: (kbId: string, docId: string, facts: any[], feedback?: string) =>
+    http.post(`/api/v1/space/knowledge-bases/${kbId}/documents/${docId}/extract-v2/verify`, { facts, feedback: feedback || undefined }, { timeout: 120000 }).then(r => r.data),
+  graphifyExtractFactsV2: async (kbId: string, docId: string, facts: any[]) => {
+    console.time("graphifyExtractFactsV2 request");
+    const res = await http.post(`/api/v1/space/knowledge-bases/${kbId}/documents/${docId}/extract-v2/graphify`, { facts }, { timeout: 1800000 });
+    console.timeEnd("graphifyExtractFactsV2 request");
+    return res.data;
+  },
+  getExtractFactsV2Status: (kbId: string, docId: string) =>
+    http.get(`/api/v1/space/knowledge-bases/${kbId}/documents/${docId}/extract-v2`).then(r => r.data),
+  syncExtractFactsChat: (kbId: string, docId: string, chatHistory: any[]) =>
+    http.post(`/api/v1/space/knowledge-bases/${kbId}/documents/${docId}/extract-v2/chat`, { chat_history: chatHistory }).then(r => r.data),
+  commitExtractFactsV2: (kbId: string, docId: string, facts: any[]) =>
+    http.post(`/api/v1/space/knowledge-bases/${kbId}/documents/${docId}/extract-v2/commit`, { facts }).then(r => r.data),
+  
+  submitTrainingFeedback: (original_subjects: string[], corrected_hierarchy: any) =>
+    http.post('/api/v1/training/feedback', { original_subjects, corrected_hierarchy }).then(r => r.data),
+  // note/topic accept null so a caller can clear them — the API treats null as
+  // "no change" only when the key is absent, and "" as an explicit clear.
+  updateFact: (kbId: string, factId: string, payload: { subject?: string; label?: string; value?: string; note?: string | null; topic?: string | null; verified?: boolean }) =>
+    http.patch(`/api/v1/space/knowledge-bases/${kbId}/facts/${factId}`, payload).then(r => r.data),
+  deleteFact: (kbId: string, factId: string) =>
+    http.delete(`/api/v1/space/knowledge-bases/${kbId}/facts/${factId}`).then(r => r.data),
 
   markOnboardingComplete: () =>
     http.patch('/api/v1/auth/onboarding-complete').then(r => r.data),
@@ -247,13 +316,14 @@ export const apiClient = {
     http.get('/api/v1/dashboard/doc-types').then(r => r.data),
 
   // Agent Meta Suggestions
-  generateAgentSuggestion: (doc_types: string[], doc_id?: string, force?: boolean, agent_name?: string, kb_ids?: string[]) =>
+  generateAgentSuggestion: (doc_types: string[], doc_id?: string, force?: boolean, agent_name?: string, kb_ids?: string[], doc_ids?: string[]) =>
     http.post('/api/v1/dashboard/agent-suggestions', { 
       doc_types, 
       doc_id: doc_id ?? null, 
       force: force ?? false, 
       agent_name: agent_name ?? null,
-      kb_ids: kb_ids ?? []
+      kb_ids: kb_ids ?? [],
+      doc_ids: doc_ids ?? []
     }).then(r => r.data),
 
   linkSuggestionToAgent: (suggestion_id: string, agent_id: string) =>
@@ -263,11 +333,16 @@ export const apiClient = {
   listOrgAgents: (chatbotId?: string | null) =>
     http.get('/api/v1/org/agents', { params: chatbotId ? { chatbot_id: chatbotId } : {} }).then(r => r.data),
 
+  getOrgAgent: (id: string) =>
+    http.get(`/api/v1/org/agents/${id}`).then(r => r.data),
+
   createOrgAgent: (payload: {
     name: string; description?: string; icon?: string; system_prompt?: string;
     temperature?: number; max_tokens?: number; rag_enabled?: boolean;
     rag_doc_types?: string[]; rag_top_k?: number; keywords?: string[];
-    kb_ids?: string[]
+    kb_ids?: string[]; kb_assignments?: { kb_id: string; doc_ids: string[] }[]; topics?: string[]; slug?: string;
+    // Per-agent LLM override. null = inherit the chatbot default.
+    llm_model?: string | null; reasoning_effort?: string | null
   }, chatbotId?: string | null) =>
     http.post('/api/v1/org/agents', payload, { params: chatbotId ? { chatbot_id: chatbotId } : {} }).then(r => r.data),
 
@@ -283,8 +358,16 @@ export const apiClient = {
     rag_doc_types?: string[]
     rag_top_k?: number
     kb_ids?: string[]
+    kb_assignments?: { kb_id: string; doc_ids: string[] }[]
+    // Topic slugs this agent answers for. [] = every document in its linked KBs.
+    topics?: string[]
+    // URL-safe routing key, unique per space. Omitted = unchanged.
+    slug?: string
+    // Per-agent LLM override. null = inherit the chatbot default.
+    llm_model?: string | null; reasoning_effort?: string | null
   }, chatbotId?: string | null) =>
     http.patch(`/api/v1/org/agents/${id}`, payload, { params: chatbotId ? { chatbot_id: chatbotId } : {} }).then(r => r.data),
+
 
   deleteOrgAgent: (id: string) =>
     http.delete(`/api/v1/org/agents/${id}`).then(r => r.data),
@@ -325,7 +408,9 @@ export const apiClient = {
     http.delete(`/api/v1/chatbots/${slug}`).then(r => r.data),
   setDefaultChatbot: (slug: string) =>
     http.post(`/api/v1/chatbots/${slug}/set-default`).then(r => r.data),
-  updateChatbot: (slug: string, payload: { display_name?: string; description?: string; theme_color?: string; active?: boolean; human_transfer_enabled?: boolean; human_transfer_message?: string; clarify_enabled?: boolean; show_logo?: boolean; homepage_sections_enabled?: boolean; homepage_sections_override?: string; quick_topics?: string; trust_badges?: string; login_after_messages?: number | null }) =>
+  updateChatbot: (slug: string, payload: { display_name?: string; description?: string; theme_color?: string; active?: boolean; human_transfer_enabled?: boolean; human_transfer_message?: string; clarify_enabled?: boolean; show_logo?: boolean; homepage_sections_enabled?: boolean; homepage_sections_override?: string;     quick_topics?: string; trust_badges?: string; login_after_messages?: number | null;
+    // Chatbot-level LLM defaults. null = inherit the server env config.
+    llm_model?: string | null; reasoning_effort?: string | null }) =>
     http.patch(`/api/v1/chatbots/${slug}`, payload).then(r => r.data),
   getStatMetrics: (slug: string): Promise<{ metrics: { id: string; value: string; label: string; position: number }[] }> =>
     http.get(`/api/v1/chatbots/${slug}/stat-metrics`).then(r => r.data),
@@ -348,6 +433,13 @@ export const apiClient = {
     http.post(`/api/v1/chatbots/${slug}/homepage-ui/publish`).then(r => r.data),
   unpublishHomepageUi: (slug: string): Promise<{ published: boolean }> =>
     http.post(`/api/v1/chatbots/${slug}/homepage-ui/unpublish`).then(r => r.data),
+
+  // ── AI System Prompt Generation & Taxonomy Extractor ──
+  generateTriagePrompt: (slug: string): Promise<{ status: string; generated_prompt: string; specialist_agent_count: number; kb_count: number }> =>
+    http.post(`/api/v1/chatbots/${slug}/triage-agent/generate-prompt`, undefined, { timeout: 60000 }).then(r => r.data),
+  generateAgentPrompt: (agentId: string): Promise<{ status: string; generated_prompt: string }> =>
+    http.post(`/api/v1/space-agents/${agentId}/generate-prompt`, undefined, { timeout: 60000 }).then(r => r.data),
+
   uploadChatbotLogo: (slug: string, file: File) => {
     const form = new FormData()
     form.append('file', file)

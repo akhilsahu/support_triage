@@ -7,12 +7,13 @@ import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { useAppStore } from '../store/useAppStore'
 import { API_CONFIG } from '../config/api'
-import { ArrowUp, Sun, Moon, Sparkles, X, User, Bot, Palette, ThumbsUp, ThumbsDown, Copy, Check, History } from 'lucide-react'
+import { ArrowUp, Sun, Moon, Sparkles, X, User, Bot, Palette, ThumbsUp, ThumbsDown, Copy, Check, History, ChevronDown } from 'lucide-react'
 import { SourceCitation } from '../components/ui/SourceCitation'
 import { NotFound } from './NotFound'
 import type { SourceItem } from '../types'
 import { SectionRenderer } from '../renderengine/homepage'
 import { ChatBlockRenderer, CHAT_BLOCKS_ENABLED, type ChatBlock } from '../renderengine/chatblocks'
+import { fetchSSE } from '../lib/fetchSSE'
 import { CustomerLoginGate } from '../components/chat/CustomerLoginGate'
 import { ChatHistoryDrawer } from '../components/chat/ChatHistoryDrawer'
 import {
@@ -212,6 +213,35 @@ function ClarifyWidget({ clarify, theme: tk, onSend }: {
   )
 }
 
+// ── Thinking / chain-of-thought block ─────────────────────────────────────────
+
+function ThinkingBlock({ text, live, isDark }: { text: string; live: boolean; isDark: boolean }) {
+  const [open, setOpen] = useState(live)
+  // Collapse once the reply finishes streaming — the live phase auto-expands.
+  useEffect(() => {
+    if (!live && open) setOpen(false)
+  }, [live])
+
+  return (
+    <div className="mb-2">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`flex items-center gap-1.5 ${isDark ? 'text-indigo-300/70' : 'text-indigo-600/70'} hover:opacity-100 opacity-80 transition-opacity`}
+      >
+        <Sparkles className={`w-3.5 h-3.5 ${live ? 'animate-pulse' : ''}`} />
+        <span className="text-[11px] font-semibold tracking-wide uppercase">{live ? 'Thinking…' : 'Thinking'}</span>
+        <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className={`mt-2 text-[12.5px] leading-relaxed whitespace-pre-wrap rounded-xl px-3 py-2.5 border
+                         ${isDark ? 'bg-white/[0.03] border-white/[0.07] text-[#9aa0c8]' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+          {text || '…'}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
 function MarkdownMessage({ text, isDark }: { text: string; isDark: boolean }) {
@@ -359,6 +389,8 @@ interface Message {
   ts?: Date
   messageId?: string             // server-side ConversationLog id — anchors feedback
   feedback?: 'up' | 'down'       // customer rating on this AI reply
+  reasoning?: string             // chain-of-thought behind this reply (collapsible "Thinking…" block)
+  thinking?: boolean             // true while this AI message is still streaming (live placeholder)
 }
 
 interface SpaceInfo {
@@ -550,15 +582,18 @@ export function CustomerChat() {
           { headers: { ...customerAuthHeader() } })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (!data?.history?.length) return
         setMessages(data.history.map((h: any) => ({
-          id: crypto.randomUUID(), role: h.role === 'user' ? 'user' : 'ai',
-          text: h.message, agent: h.agent_slug ?? undefined,
+          id: h.id || crypto.randomUUID(),
+          role: h.role === 'user' ? 'user' : 'ai',
+          text: h.message || h.content || '',
+          agent: h.agent_slug ?? undefined,
           citations: h.citations ?? [],
           blocks: h.blocks ?? undefined,
+          reasoning: h.reasoning ?? undefined,
           messageId: h.role === 'user' ? undefined : h.id,
-          ts: new Date(h.created_at || Date.now()),
+          ts: new Date(h.timestamp || h.created_at || Date.now()),
         })))
+
         setSessionId(chatParam)
         if (data.ai_disabled || ['active','queued','escalated'].includes(data.status)) setEscalated(true)
       })
@@ -644,28 +679,91 @@ export function CustomerChat() {
     const msg = (text ?? input).trim()
     if (!msg || loading) return
     setInput('')
-    const isFirst = messages.length === 0
-    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', text: msg, ts: new Date() }])
+    const isFirst   = messages.length === 0
+    const userMsgId = crypto.randomUUID()
+    const aiMsgId   = crypto.randomUUID()
+    // Push a live AI placeholder immediately; reasoning deltas and reply
+    // chunks stream into it as SSE events arrive.
+    setMessages(prev => [
+      ...prev,
+      { id: userMsgId, role: 'user', text: msg, ts: new Date() },
+      { id: aiMsgId, role: 'ai', text: '', thinking: true, ts: new Date() },
+    ])
     setLoading(true)
     try {
-      const res  = await fetch(`${API_CONFIG.baseURL}/api/chat/${slug}${botQuery}`, {
+      await fetchSSE({
+        url: `${API_CONFIG.baseURL}/api/chat/${slug}/stream${botQuery}`,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...customerAuthHeader() },
         body: JSON.stringify({ message: msg, session_id: sessionId }),
+        onEvent: (eventType, data) => {
+          if (eventType === 'reasoning') {
+            setMessages(prev => prev.map(m => m.id === aiMsgId
+              ? { ...m, reasoning: (m.reasoning ?? '') + data }
+              : m))
+          } else if (eventType === 'message' || eventType === 'content') {
+            setMessages(prev => prev.map(m => m.id === aiMsgId
+              ? { ...m, text: (m.text ?? '') + data, thinking: false }
+              : m))
+          } else if (eventType === 'done') {
+            let d: any = {}
+            try { d = JSON.parse(data) } catch { /* malformed — ignore */ }
+            setMessages(prev => prev.map(m => m.id === aiMsgId ? {
+              ...m,
+              text:      d.clarify?.question ?? d.reply ?? (m.text || 'No response text.'),
+              thinking:  false,
+              agent:     d.agent,
+              citations: d.citations ?? [],
+              blocks:    d.blocks ?? [],
+              clarify:   d.clarify ?? undefined,
+              messageId: d.message_id,
+              reasoning: d.reasoning ?? m.reasoning,
+            } : m))
+            if (isFirst && d.session_id) {
+              ownSessionRef.current = true
+              setSearchParams({ chat: d.session_id }, { replace: true })
+              setSessionId(d.session_id)
+            }
+          }
+        },
+
+        // Server answered with JSON instead of SSE — the human handoff path
+        // (escalated session) returns the handoff message as a 200 JSON body.
+        onJson: (status, payload) => {
+          const data = (payload ?? {}) as any
+          if (status >= 200 && status < 300 && data?.message) {
+            setMessages(prev => prev.map(m => m.id === aiMsgId
+              ? { ...m, thinking: false, text: data.message, agent: data.agent } : m))
+          } else {
+            setMessages(prev => [
+              ...prev.filter(m => m.id !== aiMsgId),
+              { id: crypto.randomUUID(), role: 'ai', text: data?.detail || 'Something went wrong. Please try again.', ts: new Date() },
+            ])
+          }
+        },
+        onError: (err) => {
+          // Server-side login gate (authoritative). Put the message back in
+          // the box so it isn't lost behind the sign-in step.
+          if (err?.code === 'login_required') {
+            setMessages(prev => prev.filter(m => m.id !== userMsgId && m.id !== aiMsgId))
+            setInput(msg)
+            setLoginRequired(true)
+            return
+          }
+          // Keep any partial reply already streamed; otherwise surface the
+          // server's detail (e.g. 503 "No active agents") or a connection error.
+          setMessages(prev => prev.map(m => m.id === aiMsgId
+            ? { ...m, thinking: false, text: m.text || (err?.detail || 'Connection error. Please try again.') }
+            : m))
+        },
       })
-      const data = await res.json()
-      // Server-side login gate (authoritative). Put the message back in the box
-      // so it isn't lost behind the sign-in step.
-      if (res.status === 401 && data?.code === 'login_required') {
-        setMessages(prev => prev.filter(m => m.text !== msg || m.role !== 'user'))
-        setInput(msg)
-        setLoginRequired(true)
-        return
-      }
-      if (isFirst && data.session_id) { ownSessionRef.current = true; setSearchParams({ chat: data.session_id }, { replace: true }); setSessionId(data.session_id) }
-      if (data.reply) setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: data.reply, agent: data.agent, citations: data.citations ?? [], blocks: data.blocks ?? undefined, clarify: data.clarify ?? undefined, ts: new Date(), messageId: data.message_id }])
     } catch {
-      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', text: 'Connection error. Please try again.', ts: new Date() }])
+      // fetch itself rejected before fetchSSE could route it (rare) — drop the
+      // placeholder and show a generic error.
+      setMessages(prev => [
+        ...prev.filter(m => m.id !== aiMsgId),
+        { id: crypto.randomUUID(), role: 'ai', text: 'Connection error. Please try again.', ts: new Date() },
+      ])
     } finally { setLoading(false); setTimeout(() => inputRef.current?.focus(), 50) }
   }
 
@@ -903,7 +1001,23 @@ export function CustomerChat() {
                       /* ── AI bubble — glassmorphism card ── */
                       <div className={`overflow-hidden ${t.aiBubbleCls}`}>
                         <div className="px-4 py-3.5">
-                          <MarkdownMessage text={msg.text} isDark={isDark} />
+                          {/* Live placeholder dots before any reasoning/reply arrives */}
+                          {msg.thinking && !msg.reasoning && !msg.text && (
+                            <div className="flex items-center gap-2 py-1">
+                              <div className="flex gap-1.5">
+                                {[0, 160, 320].map(d => (
+                                  <span key={d} className={`w-2 h-2 rounded-full animate-bounce ${t.typingDotCls}`}
+                                    style={{ animationDelay: `${d}ms`, animationDuration: '900ms' }} />
+                                ))}
+                              </div>
+                              <span className={`text-[12px] ${t.textSecondary}`}>Thinking…</span>
+                            </div>
+                          )}
+                          {/* Chain-of-thought — auto-expanded while streaming, collapsed on completion */}
+                          {msg.reasoning && (
+                            <ThinkingBlock text={msg.reasoning} live={!!msg.thinking} isDark={isDark} />
+                          )}
+                          {msg.text && <MarkdownMessage text={msg.text} isDark={isDark} />}
                           {CHAT_BLOCKS_ENABLED && msg.blocks && msg.blocks.length > 0 && (
                             <ChatBlockRenderer blocks={msg.blocks} theme={t} />
                           )}
@@ -958,8 +1072,8 @@ export function CustomerChat() {
               )
             })}
 
-            {/* ── Typing indicator ── */}
-            {loading && (
+            {/* ── Typing indicator (hidden while a live AI placeholder bubbles) ── */}
+            {loading && !messages.some(m => m.thinking) && (
               <div className="flex gap-2.5 animate-fadeIn">
                 {space?.logo_url ? (
                   <img src={space.logo_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />

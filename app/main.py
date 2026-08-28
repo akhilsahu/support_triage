@@ -14,14 +14,17 @@ import structlog
 from app.config import settings
 from app.core.database import init_db, close_db, check_db_connection
 from app.core.redis import redis_client
-from app.api.v1 import agents, workflows, tasks, documents, admin, datasources, mock_orders
-from app.api.v1 import space_agents, chat_sessions, chatbots
+from app.api.v1 import agents, workflows, tasks, documents, admin, datasources, mock_orders, suggestions
+from app.api.v1 import space_agents, chat_sessions, chatbots, training
 from app.api.v1.space_agents import kb_router
 from app.api.v1 import knowledge_base
+from app.api.v1 import facts as kb_facts
+from app.api.v1 import fact_extraction
 from app.api import chat, auth, customer, space, chatbot_user
 from app.api.v1 import dashboard, superadmin
 from app.api.v1.inbox import staff_auth, sessions, escalation, stream
 from app.api.v1 import widget as widget_api
+from app.api.v1.copilotkit import setup_copilotkit
 
 logger = structlog.get_logger()
 
@@ -384,8 +387,12 @@ app.include_router(mock_orders.router,   prefix="/api/v1", tags=["Mock API"])
 app.include_router(space_agents.router,  prefix="/api/v1", tags=["Space Agents"])
 app.include_router(kb_router,              prefix="/api/v1", tags=["Space Knowledge Base"])
 app.include_router(knowledge_base.router, prefix="/api/v1", tags=["Knowledge Base"])
+app.include_router(kb_facts.router, prefix="/api/v1", tags=["Knowledge Base Facts"])
+app.include_router(fact_extraction.router, prefix="/api/v1", tags=["Fact Extraction"])
+app.include_router(suggestions.router, prefix="/api/v1", tags=["Suggestions"])
 app.include_router(chat_sessions.router, prefix="/api/v1", tags=["Chat Sessions"])
 app.include_router(chatbots.router,      prefix="/api/v1", tags=["Chatbots"])
+app.include_router(training.router,      prefix="/api/v1")
 app.include_router(space.router, prefix="/api/v1")
 app.include_router(customer.router)
 app.include_router(chatbot_user.router)
@@ -401,6 +408,9 @@ app.include_router(stream.router,     prefix="/api/v1", tags=["Inbox — SSE"])
 _UPLOADS_DIR = Path(settings.CHATBOT_LOGO_DIR).parent
 _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(_UPLOADS_DIR)), name="uploads")
+
+# CopilotKit Runtime
+setup_copilotkit(app)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.core.database import Base
-from app.models import agent, workflow, task, execution, conversation, document  # noqa
+from app.models import agent, workflow, task, execution, conversation  # noqa
 from app.models import space, chat, chatbot, datasource, knowledge_base  # noqa
 
 config = context.config

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, Trash2, CheckCircle, ChevronLeft, Zap, Save, Server, Plug, Loader2 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
+import { Input } from '../components/ui/Input'
+import { Select } from '../components/ui/Select'
 import { apiClient } from '../api/client'
 import { BUILTIN_AGENTS } from '../config/agents'
 
@@ -37,7 +39,6 @@ function KVEditor({ label, rows, onChange, hint }: {
   const edit = (i: number, field: 'key' | 'value', val: string) => {
     const next = [...rows]; next[i] = { ...next[i], [field]: val }; onChange(next)
   }
-  const cls = 'flex-1 px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white placeholder-gray-400 min-w-0'
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -62,8 +63,8 @@ function KVEditor({ label, rows, onChange, hint }: {
             return (
               <div key={i} className="space-y-1.5 bg-gray-50/30 dark:bg-gray-900/10 border border-gray-150 dark:border-gray-850 rounded-xl p-2.5">
                 <div className="flex gap-2 items-center">
-                  <input value={row.key} onChange={e => edit(i,'key', e.target.value)} placeholder="Key (e.g. order_id)" className={cls} />
-                  <input value={row.value} onChange={e => edit(i,'value', e.target.value)} placeholder="Value or {id}" className={cls} />
+                  <Input value={row.key} onChange={e => edit(i,'key', e.target.value)} placeholder="Key (e.g. order_id)" containerClassName="flex-1" />
+                  <Input value={row.value} onChange={e => edit(i,'value', e.target.value)} placeholder="Value or {id}" containerClassName="flex-1" />
                   <button type="button" onClick={() => del(i)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors flex-shrink-0">
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -86,8 +87,6 @@ export function DataSourceSetup() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const defaultAgent = params.get('agent') || ''
-
-  const inputCls = 'w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white placeholder-gray-400'
 
   // Form state
   const [name,        setName]       = useState('')
@@ -371,35 +370,42 @@ export function DataSourceSetup() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Source Name *</label>
-              <input value={name} onChange={e => setName(e.target.value)}
-                placeholder="e.g. Org1 Orders API" className={inputCls} />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Target Fleet Agent *</label>
-              <select value={agentType} onChange={e => setAgentType(e.target.value)} className={inputCls}>
-                <option value="">Select agent…</option>
-                {BUILTIN_AGENTS.filter(a => a.slug !== 'triage').map(a => (
-                  <option key={a.slug} value={a.type}>{a.name}</option>
-                ))}
-              </select>
-            </div>
+            <Input
+              label="Source Name"
+              required
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. Org1 Orders API"
+            />
+            <Select
+              label="Target Fleet Agent"
+              required
+              value={agentType}
+              onChange={e => setAgentType(e.target.value)}
+            >
+              <option value="">Select agent…</option>
+              {BUILTIN_AGENTS.filter(a => a.slug !== 'triage').map(a => (
+                <option key={a.slug} value={a.type}>{a.name}</option>
+              ))}
+            </Select>
           </div>
 
-          <div className="grid grid-cols-[110px_1fr] gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">HTTP Method *</label>
-              <select value={method} onChange={e => setMethod(e.target.value)} className={inputCls}>
-                {HTTP_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">API Endpoint URL *</label>
-              <input value={apiUrl} onChange={e => setApiUrl(e.target.value)}
-                placeholder="https://api.yourorg.com/orders" className={inputCls} />
-            </div>
+          <div className="grid grid-cols-[110px_1fr] gap-3 mt-4">
+            <Select
+              label="HTTP Method"
+              required
+              value={method}
+              onChange={e => setMethod(e.target.value)}
+            >
+              {HTTP_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+            </Select>
+            <Input
+              label="API Endpoint URL"
+              required
+              value={apiUrl}
+              onChange={e => setApiUrl(e.target.value)}
+              placeholder="https://api.yourorg.com/orders"
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-gray-100 dark:border-gray-800">
@@ -420,20 +426,25 @@ export function DataSourceSetup() {
             </div>
 
             {authType !== 'none' ? (
-              <div className="flex gap-3">
+              <div className="flex gap-3 mt-4">
                 {authType === 'api_key' ? (
                   <div className="w-1/3">
-                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Header Name</label>
-                    <input value={authHeader} onChange={e => setAuthHeader(e.target.value)}
-                      placeholder="X-API-Key" className={inputCls} />
+                    <Input
+                      label="Header Name"
+                      value={authHeader}
+                      onChange={e => setAuthHeader(e.target.value)}
+                      placeholder="X-API-Key"
+                    />
                   </div>
                 ) : null}
                 <div className="flex-1">
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-                    {authType === 'bearer' ? 'Bearer Access Token' : authType === 'basic' ? 'Basic Credentials (base64)' : 'API Key Value'}
-                  </label>
-                  <input type="password" value={authValue} onChange={e => setAuthValue(e.target.value)}
-                    placeholder="••••••••••••" className={inputCls} />
+                  <Input
+                    label={authType === 'bearer' ? 'Bearer Access Token' : authType === 'basic' ? 'Basic Credentials (base64)' : 'API Key Value'}
+                    type="password"
+                    value={authValue}
+                    onChange={e => setAuthValue(e.target.value)}
+                    placeholder="••••••••••••"
+                  />
                 </div>
               </div>
             ) : (

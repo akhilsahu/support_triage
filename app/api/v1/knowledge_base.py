@@ -40,10 +40,14 @@ router = APIRouter(prefix="/space/knowledge-bases", tags=["Knowledge Base"])
 class KBCreate(BaseModel):
     name:        str
     description: str = ""
+    # Inherited by items that don't set their own topic — a KB about one thing
+    # sets this once instead of tagging every upload.
+    default_topic: Optional[str] = None
 
 class KBUpdate(BaseModel):
     name:        Optional[str] = None
     description: Optional[str] = None
+    default_topic: Optional[str] = None
     active:      Optional[bool] = None
 
 class KBItemCreate(BaseModel):
@@ -55,12 +59,19 @@ class KBItemCreate(BaseModel):
     doc_id:    Optional[str] = None    # for item_type="doc"
     question:  Optional[str] = None   # for item_type="qna"
     content:   Optional[str] = None   # for item_type="text" or "qna" answer
+    # Slugified on write. `topic` groups the documents describing one thing so
+    # an agent can scope to it; `doc_label` distinguishes them within a topic
+    # and becomes the citation label.
+    topic:     Optional[str] = None
+    doc_label: Optional[str] = None
+    description: Optional[str] = ""
 
 class KBOut(BaseModel):
     id:          str
     space_id:    str
     name:        str
     description: str
+    default_topic: Optional[str] = None
     active:      bool
     item_count:  int
     created_at:  Optional[str]
@@ -72,6 +83,9 @@ class KBItemOut(BaseModel):
     item_type:      str
     title:          Optional[str]
     doc_id:         Optional[str]
+    topic:          Optional[str] = None
+    doc_label:      Optional[str] = None
+    description:    Optional[str] = None
     question:       Optional[str]
     content:        Optional[str]
     indexed_doc_id: Optional[str]
@@ -86,6 +100,7 @@ def _kb_out(kb: KnowledgeBase) -> KBOut:
         space_id=str(kb.space_id),
         name=kb.name,
         description=kb.description or "",
+        default_topic=kb.default_topic,
         active=kb.active,
         item_count=len(kb.__dict__.get("items", [])),
         created_at=kb.created_at.isoformat() if kb.created_at else None,
@@ -99,6 +114,9 @@ def _item_out(item: KnowledgeBaseItem) -> KBItemOut:
         item_type=item.item_type,
         title=item.title,
         doc_id=item.doc_id,
+        topic=item.topic,
+        doc_label=item.doc_label,
+        description=item.description,
         question=item.question,
         content=item.content,
         indexed_doc_id=item.indexed_doc_id,
@@ -123,7 +141,7 @@ async def _tag_doc_with_kb(doc_id: str, kb_id: str, space_id: str) -> None:
         logger.error("kb_item.tag_error", doc_id=doc_id, kb_id=kb_id, error=str(e))
 
 
-async def _index_kb_item(item: KnowledgeBaseItem, space: Space, kb: KnowledgeBase) -> None:
+async def _index_kb_item(item: KnowledgeBaseItem, space: Space, kb: KnowledgeBase, description: str = "") -> None:
     """Index a text/qna KB item into ChromaDB and write indexed_doc_id back."""
     try:
         import uuid as _uuid
@@ -175,6 +193,8 @@ async def _index_kb_item(item: KnowledgeBaseItem, space: Space, kb: KnowledgeBas
             kb_name=str(kb.name),
             space_id=str(space.id),
             org_name=getattr(space, "display_name", ""),
+            description=description,
+            topic=item.topic or "",
             chunks=chunks_payload,
         )
 
@@ -189,6 +209,53 @@ async def _index_kb_item(item: KnowledgeBaseItem, space: Space, kb: KnowledgeBas
         logger.info("kb_item.indexed", item_id=str(item.id), doc_id=idx_doc_id)
     except Exception as e:
         logger.warning("kb_item.index_failed", item_id=str(item.id), error=str(e))
+
+
+async def _apply_topic(item: KnowledgeBaseItem, space: Space,
+                       topic: Optional[str], doc_label: Optional[str],
+                       description: Optional[str] = None) -> None:
+    """
+    Persist a topic/label/description on the item AND re-stamp its ChromaDB chunks.
+
+    Both halves are mandatory. Retrieval filters on the copy in chunk metadata,
+    so writing only the Postgres column leaves a topic-scoped agent matching
+    nothing — and because that is a filter miss rather than an error, it
+    presents as a missing document rather than a stale tag.
+    """
+    from app.rag.vector_store import get_vector_store
+    from app.utils.slug import slugify
+
+    if topic is not None:
+        item.topic = slugify(topic) or None
+    if doc_label is not None:
+        item.doc_label = doc_label.strip() or None
+    if description is not None:
+        item.description = description.strip() or None
+
+    doc_id = item.doc_id or item.indexed_doc_id
+    if not doc_id:
+        return                       # text/qna not indexed yet — stamped at index time
+    try:
+        get_vector_store().retag_doc(
+            client_id=str(space.id),
+            doc_id=doc_id,
+            topic=item.topic or "" if topic is not None else None,
+            doc_label=item.doc_label or "" if doc_label is not None else None,
+            description=item.description or "" if description is not None else None,
+        )
+    except Exception as e:
+        # The row is already correct; a failure here only means retrieval keeps
+        # the old tag until the next edit. Loud, because it is silent otherwise.
+        logger.error("kb_item.retag_failed", item_id=str(item.id), doc_id=doc_id, error=str(e))
+
+
+def _invalidate(space: Space) -> None:
+    """Agents cache their prompts and filters for 1800s — an edit is invisible until this."""
+    try:
+        from app.orchestra.ai.session.pool import pool
+        pool.invalidate_bot_agents(str(space.id))
+    except Exception as e:
+        logger.warning("kb.pool_invalidate_failed", space_id=str(space.id), error=str(e))
 
 
 async def _get_kb(kb_id: UUID, space: Space, db: AsyncSession) -> KnowledgeBase:
@@ -225,10 +292,12 @@ async def create_knowledge_base(
     space: Space = Depends(current_space),
     db:    AsyncSession = Depends(get_db),
 ):
+    from app.utils.slug import slugify
     kb = KnowledgeBase(
         space_id=space.id,
         name=req.name,
         description=req.description,
+        default_topic=slugify(req.default_topic or "") or None,
     )
     db.add(kb)
     await db.commit()
@@ -257,8 +326,12 @@ async def update_knowledge_base(
     if req.name        is not None: kb.name        = req.name
     if req.description is not None: kb.description = req.description
     if req.active      is not None: kb.active      = req.active
+    if req.default_topic is not None:
+        from app.utils.slug import slugify
+        kb.default_topic = slugify(req.default_topic) or None
     await db.commit()
     await db.refresh(kb)
+    _invalidate(space)
     return _kb_out(kb)
 
 
@@ -303,11 +376,18 @@ async def add_item(
     if req.item_type == "text" and not req.content:
         raise HTTPException(400, "content required for item_type='text'.")
 
+    kb_for_default = await _get_kb(kb_id, space, db)
+    from app.utils.slug import slugify
     item = KnowledgeBaseItem(
         kb_id=kb_id,
         item_type=req.item_type,
         title=req.title,
         doc_id=req.doc_id,
+        description=req.description,
+        # An untagged item inherits the KB's default, so a KB about one thing is
+        # tagged once rather than per upload.
+        topic=slugify(req.topic or "") or kb_for_default.default_topic,
+        doc_label=(req.doc_label or "").strip() or None,
         question=req.question,
         content=req.content,
     )
@@ -317,20 +397,27 @@ async def add_item(
 
     kb = await _get_kb(kb_id, space, db)
     if req.item_type in ("text", "qna"):
-        await _index_kb_item(item, space, kb)
+        await _index_kb_item(item, space, kb, description=req.description or "")
     elif req.item_type in ("doc", "url") and req.doc_id:
         # Backfill kb_id onto already-uploaded ChromaDB chunks so KB-scoped
         # retrieval can filter by kb_id at query time.
         await _tag_doc_with_kb(doc_id=req.doc_id, kb_id=str(kb_id), space_id=str(space.id))
+        if item.topic or item.doc_label or item.description:
+            await _apply_topic(item, space, item.topic, item.doc_label, item.description)
+            await db.commit()
 
-    logger.info("kb_item.added", kb_id=str(kb_id), item_type=req.item_type)
+    _invalidate(space)
+    logger.info("kb_item.added", kb_id=str(kb_id), item_type=req.item_type, topic=item.topic)
     return _item_out(item)
 
 
 class KBItemUpdate(BaseModel):
-    question: Optional[str] = None
-    content:  Optional[str] = None
-    title:    Optional[str] = None
+    question:    Optional[str] = None
+    content:     Optional[str] = None
+    title:       Optional[str] = None
+    topic:       Optional[str] = None
+    doc_label:   Optional[str] = None
+    description: Optional[str] = None
 
 
 @router.patch("/{kb_id}/items/{item_id}", response_model=KBItemOut)
@@ -354,8 +441,12 @@ async def update_item(
     if req.question is not None: item.question = req.question
     if req.content  is not None: item.content  = req.content
     if req.title    is not None: item.title     = req.title
+    if req.description is not None: item.description = req.description
+    if req.topic is not None or req.doc_label is not None or req.description is not None:
+        await _apply_topic(item, space, req.topic, req.doc_label, req.description)
     await db.commit()
     await db.refresh(item)
+    _invalidate(space)
     return _item_out(item)
 
 

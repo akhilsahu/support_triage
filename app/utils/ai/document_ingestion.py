@@ -112,7 +112,7 @@ async def reingest_from_db(
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy import select
-    from app.models.document import Document
+    from app.models.knowledge_base import KnowledgeBaseItem
     from app.rag.vector_store import get_vector_store, COLLECTION_CLIENT
 
     from app.config import settings
@@ -122,12 +122,9 @@ async def reingest_from_db(
     store = get_vector_store()
 
     async with async_session() as session:
-        query = select(Document)
+        query = select(KnowledgeBaseItem)
         if doc_id:
-            query = query.where(Document.id == uuid.UUID(doc_id))
-        if space_id:
-            query = query.where(Document.space_id == uuid.UUID(space_id))
-
+            query = query.where(KnowledgeBaseItem.id == uuid.UUID(doc_id))
         result = await session.execute(query)
         docs = result.scalars().all()
 

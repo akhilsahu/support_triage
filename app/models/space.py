@@ -82,8 +82,6 @@ class Space(Base):
                                           cascade="all, delete-orphan")
     conversation_logs      = relationship("ConversationLog", back_populates="space",
                                           cascade="all, delete-orphan")
-    documents              = relationship("Document", back_populates="space",
-                                          cascade="all, delete-orphan")
     data_sources           = relationship("SpaceDataSource", back_populates="space",
                                           cascade="all, delete-orphan")
     knowledge_bases        = relationship("KnowledgeBase", back_populates="space",
@@ -263,6 +261,12 @@ class SpaceBuiltinAgentConfig(Base):
     keywords_json = Column(Text, default="[]")
     skills_json   = Column(Text, default="[]")
 
+    # Per-builtin-agent LLM override. NULL = inherit the chatbot-level default,
+    # then env config. reasoning_effort: "" = off, low/medium/high = on. See
+    # LLMFactory.build.
+    llm_model        = Column(String(120), nullable=True)
+    reasoning_effort = Column(String(20), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -336,7 +340,17 @@ class CustomAgent(Base):
     rag_top_k     = Column(Integer, default=5)
     keywords_json = Column(Text, default="[]")
     skills_json   = Column(Text, default="[]")
+    # Comma-separated topic slugs this agent answers for. Empty means the whole
+    # of every linked KB, which is how agents behaved before topics existed —
+    # so filling this in is opt-in narrowing, never a silent change.
+    topics        = Column(Text, default="")
     active        = Column(Boolean, default=True, nullable=False)
+
+    # Per-agent LLM override. NULL = inherit the chatbot-level default, then
+    # env config. reasoning_effort: "" = off, low/medium/high = on. See
+    # LLMFactory.build.
+    llm_model        = Column(String(120), nullable=True)
+    reasoning_effort = Column(String(20), nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -365,6 +379,10 @@ class CustomAgent(Base):
         try: return json.loads(self.skills_json or "[]")
         except Exception: return []
 
+    @property
+    def topics_list(self) -> list:
+        return [t.strip() for t in (self.topics or "").split(",") if t.strip()]
+
     def to_dict(self) -> dict:
         return {
             "id":            str(self.id),
@@ -383,6 +401,9 @@ class CustomAgent(Base):
             "rag_doc_types": self.rag_doc_types_list,
             "rag_top_k":     self.rag_top_k,
             "keywords":      self.keywords_list,
+            "topics":        self.topics_list,
+            "llm_model":     self.llm_model,
+            "reasoning_effort": self.reasoning_effort,
             "kb_ids":        [str(lnk.kb_id) for lnk in self.knowledge_bases] if self.knowledge_bases else [],
             "created_at":    self.created_at.isoformat() if self.created_at else None,
         }

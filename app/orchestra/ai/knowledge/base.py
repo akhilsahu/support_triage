@@ -38,10 +38,14 @@ class BaseKnowledgeBackend(ABC):
     @abstractmethod
     def for_agent(
         self,
-        space_id:   str,
-        doc_ids:    Optional[List[str]] = None,
-        doc_types:  Optional[List[str]] = None,
+        space_id:         str,
+        doc_ids:          Optional[List[str]] = None,
+        doc_types:        Optional[List[str]] = None,
+        topics:           Optional[List[str]] = None,
+        specific_doc_ids: Optional[List[str]] = None,
+        kb_assignments:  Optional[List[dict]] = None,
     ) -> KnowledgeBundle:
+
         """
         Build a KnowledgeBundle scoped to this agent's accessible documents.
 
@@ -51,6 +55,8 @@ class BaseKnowledgeBackend(ABC):
                        Takes priority over doc_types when both are provided.
             doc_types: Category-based filter (e.g. ["policy", "product"]).
                        Used for builtin agents that search by category.
+            topics:    User-supplied topic slugs. Empty means the whole of the
+                       agent's KBs, which is how agents behaved before topics.
 
         Returns:
             KnowledgeBundle with framework-native knowledge + filter objects.

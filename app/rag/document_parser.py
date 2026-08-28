@@ -554,6 +554,11 @@ class Chunk:
     chunk_index: int
     section: str = ""
     is_table: bool = False
+    # Set on the per-row chunks a table is additionally split into. row_label is
+    # the row's first cell ("SBI Card PRIME") — it makes a chunk identifiable by
+    # what it is about, where chunk ids only say where it sits in the document.
+    is_table_row: bool = False
+    row_label: str = ""
 
 
 def chunk_document(doc: ParsedDocument, _chunk_size: int = 1000, _overlap: int = 150) -> List[Chunk]:

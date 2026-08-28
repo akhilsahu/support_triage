@@ -38,14 +38,22 @@ def _uses_max_completion_tokens(model_id: str) -> bool:
     return m.startswith(("gpt-5", "o1", "o3", "o4"))
 
 
-def _build_openai(cfg: AgnoConfig, temperature: float, max_tokens: int) -> Optional[Any]:
+def _build_openai(
+    cfg: AgnoConfig,
+    temperature: float,
+    max_tokens: int,
+    model: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
+) -> Optional[Any]:
     try:
         from app.config import settings
         if not settings.OPENAI_API_KEY:
             return None
         from agno.models.openai import OpenAIChat
-        model_id = cfg.llm_model or "gpt-4o-mini"
+        model_id = model or cfg.llm_model or "gpt-4o-mini"
         kwargs: dict = dict(id=model_id, api_key=settings.OPENAI_API_KEY, temperature=temperature)
+        if reasoning_effort:
+            kwargs["reasoning_effort"] = reasoning_effort
         if _uses_max_completion_tokens(model_id):
             kwargs["max_completion_tokens"] = max_tokens
         else:
@@ -56,7 +64,13 @@ def _build_openai(cfg: AgnoConfig, temperature: float, max_tokens: int) -> Optio
         return None
 
 
-def _build_openrouter(cfg: AgnoConfig, temperature: float, max_tokens: int) -> Optional[Any]:
+def _build_openrouter(
+    cfg: AgnoConfig,
+    temperature: float,
+    max_tokens: int,
+    model: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
+) -> Optional[Any]:
     """
     OpenRouter proxies many providers' models behind one API key/endpoint —
     the escape hatch when a direct provider account (OpenAI, here) is
@@ -68,40 +82,58 @@ def _build_openrouter(cfg: AgnoConfig, temperature: float, max_tokens: int) -> O
     `max_completion_tokens` field, so _uses_max_completion_tokens's gpt-5/o1
     branch does not apply here regardless of which underlying model an
     OpenRouter model id names.
+
+    `model` / `reasoning_effort` are per-chatbot/per-agent overrides; the
+    "provider/model" prefix is what routes OpenRouter-style overrides here.
     """
     try:
         from app.config import settings
         if not settings.OPENROUTER_API_KEY:
             return None
         from agno.models.openrouter import OpenRouter
-        return OpenRouter(
-            id=cfg.llm_model or settings.OPENROUTER_MODEL,
+        kwargs: dict = dict(
+            id=model or cfg.llm_model or settings.OPENROUTER_MODEL,
             api_key=settings.OPENROUTER_API_KEY,
             temperature=temperature,
             max_tokens=max_tokens,
         )
+        if reasoning_effort:
+            kwargs["reasoning_effort"] = reasoning_effort
+        return OpenRouter(**kwargs)
     except Exception as e:
         logger.warning("llm.openrouter_failed", error=str(e))
         return None
 
 
-def _build_anthropic(cfg: AgnoConfig, _temperature: float, max_tokens: int) -> Optional[Any]:
+def _build_anthropic(
+    cfg: AgnoConfig,
+    _temperature: float,
+    max_tokens: int,
+    model: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
+) -> Optional[Any]:
     try:
         from agno.models.anthropic import Claude
-        return Claude(id=cfg.llm_model or "claude-3-haiku-20240307", max_tokens=max_tokens)
+        return Claude(id=model or cfg.llm_model or "claude-3-haiku-20240307", max_tokens=max_tokens)
     except Exception as e:
         logger.warning("llm.anthropic_failed", error=str(e))
         return None
 
 
-def _build_watsonx(cfg: AgnoConfig, _temperature: float, _max_tokens: int) -> Optional[Any]:
+def _build_watsonx(
+    cfg: AgnoConfig,
+    _temperature: float,
+    _max_tokens: int,
+    model: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
+) -> Optional[Any]:
     try:
         from app.config import settings
         if not (settings.WATSONX_API_KEY and settings.WATSONX_URL and settings.WATSONX_PROJECT_ID):
             return None
         from agno.models.ibm import WatsonX
         return WatsonX(
-            id=cfg.llm_model or "ibm/granite-13b-chat-v2",
+            id=model or cfg.llm_model or "ibm/granite-13b-chat-v2",
             api_key=settings.WATSONX_API_KEY,
             url=settings.WATSONX_URL,
             project_id=settings.WATSONX_PROJECT_ID,
@@ -144,13 +176,37 @@ class LLMFactory:
 
     def build(
         self,
-        temperature: Optional[float] = None,
-        max_tokens:  Optional[int]   = None,
-        provider:    Optional[str]   = None,
+        temperature:      Optional[float] = None,
+        max_tokens:       Optional[int]   = None,
+        provider:         Optional[str]   = None,
+        model:            Optional[str]   = None,
+        reasoning_effort: Optional[str]   = None,
     ) -> Optional[Any]:
+        """
+        Build one model, honoring per-chatbot/per-agent overrides.
+
+        `model` / `reasoning_effort` override cfg for THIS call (they come from
+        ResolvedAgent / a chatbot-level default). A `model` carrying a
+        provider prefix ("openai/gpt-4o-mini", "deepseek/deepseek-reasoner")
+        is an OpenRouter-style id and can only be served by OpenRouter, so it
+        forces that provider and skips the cross-provider fallback chain (a
+        bare OpenAI id would be a guaranteed runtime failure on OpenAIChat).
+        """
         t = temperature if temperature is not None else self.cfg.temperature
         m = max_tokens  if max_tokens  is not None else self.cfg.max_tokens
         p = provider    if provider    is not None else self.cfg.llm_provider
+        eff = reasoning_effort if reasoning_effort is not None else self.cfg.reasoning_effort
+
+        if model and "/" in model:
+            # Provider-prefixed override → OpenRouter only.
+            builder = _PROVIDERS.get("openrouter")
+            if not builder:
+                return None
+            built = builder(self.cfg, t, m, model=model, reasoning_effort=eff)
+            if built is not None:
+                return built
+            logger.warning("llm.openrouter_override_failed", model=model)
+            return None
 
         # Try preferred provider first, then all others in registration order
         fallback = [p] + [k for k in _PROVIDERS if k != p]
@@ -158,19 +214,20 @@ class LLMFactory:
             builder = _PROVIDERS.get(attempt)
             if not builder:
                 continue
-            model = builder(self.cfg, t, m)
-            if model is not None:
+            built = builder(self.cfg, t, m, model=model, reasoning_effort=eff)
+            if built is not None:
                 if attempt != p:
                     logger.warning("llm.fallback_used", requested=p, used=attempt)
-                return model
+                return built
 
         logger.error("llm.all_providers_failed", tried=fallback)
         return None
 
     def build_fallbacks(
         self,
-        temperature: Optional[float] = None,
-        max_tokens:  Optional[int]   = None,
+        temperature:      Optional[float] = None,
+        max_tokens:       Optional[int]   = None,
+        reasoning_effort: Optional[str]   = None,
     ) -> list:
         """
         Build one Model instance per cfg.llm_fallback_providers, in order, for
@@ -190,6 +247,7 @@ class LLMFactory:
         """
         t = temperature if temperature is not None else self.cfg.temperature
         m = max_tokens  if max_tokens  is not None else self.cfg.max_tokens
+        eff = reasoning_effort if reasoning_effort is not None else self.cfg.reasoning_effort
 
         models = []
         for name in self.cfg.llm_fallback_providers:
@@ -198,7 +256,7 @@ class LLMFactory:
                 continue
             from dataclasses import replace
             fallback_cfg = replace(self.cfg, llm_model=_default_model_for(name))
-            model = builder(fallback_cfg, t, m)
+            model = builder(fallback_cfg, t, m, reasoning_effort=eff)
             if model is not None:
                 models.append(model)
         return models

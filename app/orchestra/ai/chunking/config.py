@@ -30,7 +30,15 @@ class ChunkConfig:
     # toward each other and creates query/chunk asymmetry (queries carry no
     # prefix). filename + section already live in chunk metadata, so context is
     # reconstructed at prompt-assembly time instead (see context_enriched.py).
-    context_enriched:    bool = False
+    context_enriched:    bool = True
+
+    # Emit per-row chunks for tables in addition to the whole-table chunk, so a
+    # lookup row is retrievable without dragging its twenty neighbours along.
+    # See table_rows.py for why granularity is driven by column count.
+    table_row_chunks:    bool = True
+    table_row_max:       int  = 200   # above this, decline to expand at all
+    table_row_wide_cols: int  = 4     # more columns than this -> group rows
+    table_row_group:     int  = 10    # rows per group when grouping
 
 
 # ── Shared presets ────────────────────────────────────────────────────────────

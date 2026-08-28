@@ -22,6 +22,8 @@ def build_executor(
     chatbot_id: str = "",
     leader: ResolvedAgent | None = None,
     clarify_enabled: bool = False,
+    llm_model: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> Any:
     """
     Return the configured executor.
@@ -35,6 +37,10 @@ def build_executor(
     `clarify_enabled` is Chatbot.clarify_enabled, the owner's toggle for
     UserFeedbackTools (ask_user). Used only by the agno backend — the dynamic
     executor has no equivalent tool.
+
+    `llm_model` / `reasoning_effort` are the chatbot-level LLM overrides
+    (Chatbot.llm_model / Chatbot.reasoning_effort). Used only by the agno
+    backend — the dynamic executor has no model-config concept.
 
     The returned object always exposes:
         async def run(message: str) -> dict
@@ -52,6 +58,8 @@ def build_executor(
             chatbot_id=chatbot_id,
             leader=leader,
             clarify_enabled=clarify_enabled,
+            llm_model=llm_model,
+            reasoning_effort=reasoning_effort,
         )
 
     # Default: DynamicAgentExecutor — thin adapter normalises the run() signature.

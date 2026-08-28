@@ -120,6 +120,28 @@ def chunk_by_structure(doc: ParsedDocument, cfg: ChunkConfig) -> List[Chunk]:
                 is_table=True,
             ))
             idx += 1
+
+            # ...and additionally one chunk per row, so a single lookup row can
+            # be retrieved without its twenty neighbours. The whole-table chunk
+            # above is kept for comparisons and "show me the fee table".
+            if cfg.table_row_chunks:
+                from app.orchestra.ai.chunking.strategies.table_rows import split_table_rows
+                for row in split_table_rows(
+                    full_text, header,
+                    max_rows=cfg.table_row_max,
+                    wide_cols=cfg.table_row_wide_cols,
+                    group_size=cfg.table_row_group,
+                ):
+                    chunks.append(Chunk(
+                        text=row.text,
+                        page=g["page_start"],
+                        chunk_index=idx,
+                        section=header,
+                        is_table=True,
+                        is_table_row=True,
+                        row_label=row.label,
+                    ))
+                    idx += 1
             continue
 
         if len(full_text) <= cfg.chunk_size:

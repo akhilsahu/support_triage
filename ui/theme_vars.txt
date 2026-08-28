@@ -1,0 +1,100 @@
+ROOT:
+  --tw-color-violet-50: 245 243 255;
+  --tw-color-violet-100: 237 233 254;
+  --tw-color-violet-200: 221 214 254;
+  --tw-color-violet-300: 196 181 253;
+  --tw-color-violet-400: 167 139 250;
+  --tw-color-violet-500: 139 92 246;
+  --tw-color-violet-600: 124 58 237;
+  --tw-color-violet-700: 109 40 217;
+  --tw-color-violet-800: 91 33 182;
+  --tw-color-violet-900: 76 29 149;
+  --tw-color-violet-950: 46 16 101;
+
+  --tw-color-purple-50: 250 245 255;
+  --tw-color-purple-100: 243 232 255;
+  --tw-color-purple-200: 233 213 255;
+  --tw-color-purple-300: 216 180 254;
+  --tw-color-purple-400: 192 132 252;
+  --tw-color-purple-500: 168 85 247;
+  --tw-color-purple-600: 147 51 234;
+  --tw-color-purple-700: 126 34 206;
+  --tw-color-purple-800: 107 33 168;
+  --tw-color-purple-900: 88 28 135;
+  --tw-color-purple-950: 59 7 100;
+
+OCEAN:
+  --tw-color-violet-50: 236 254 255;
+  --tw-color-violet-100: 207 250 254;
+  --tw-color-violet-200: 165 243 252;
+  --tw-color-violet-300: 103 232 249;
+  --tw-color-violet-400: 34 211 238;
+  --tw-color-violet-500: 6 182 212;
+  --tw-color-violet-600: 8 145 178;
+  --tw-color-violet-700: 14 116 144;
+  --tw-color-violet-800: 21 94 117;
+  --tw-color-violet-900: 22 78 99;
+  --tw-color-violet-950: 8 51 68;
+
+  --tw-color-purple-50: 240 253 250;
+  --tw-color-purple-100: 204 251 241;
+  --tw-color-purple-200: 153 246 228;
+  --tw-color-purple-300: 94 234 212;
+  --tw-color-purple-400: 45 212 191;
+  --tw-color-purple-500: 20 184 166;
+  --tw-color-purple-600: 13 148 136;
+  --tw-color-purple-700: 15 118 110;
+  --tw-color-purple-800: 17 94 89;
+  --tw-color-purple-900: 19 78 74;
+  --tw-color-purple-950: 4 47 46;
+
+SUNSET:
+  --tw-color-violet-50: 253 242 248;
+  --tw-color-violet-100: 252 231 243;
+  --tw-color-violet-200: 251 207 232;
+  --tw-color-violet-300: 249 168 212;
+  --tw-color-violet-400: 244 114 182;
+  --tw-color-violet-500: 236 72 153;
+  --tw-color-violet-600: 219 39 119;
+  --tw-color-violet-700: 190 24 93;
+  --tw-color-violet-800: 157 23 77;
+  --tw-color-violet-900: 131 24 67;
+  --tw-color-violet-950: 80 7 36;
+
+  --tw-color-purple-50: 250 245 255;
+  --tw-color-purple-100: 243 232 255;
+  --tw-color-purple-200: 233 213 255;
+  --tw-color-purple-300: 216 180 254;
+  --tw-color-purple-400: 192 132 252;
+  --tw-color-purple-500: 168 85 247;
+  --tw-color-purple-600: 147 51 234;
+  --tw-color-purple-700: 126 34 206;
+  --tw-color-purple-800: 107 33 168;
+  --tw-color-purple-900: 88 28 135;
+  --tw-color-purple-950: 59 7 100;
+
+FOREST:
+  --tw-color-violet-50: 240 253 250;
+  --tw-color-violet-100: 204 251 241;
+  --tw-color-violet-200: 153 246 228;
+  --tw-color-violet-300: 94 234 212;
+  --tw-color-violet-400: 45 212 191;
+  --tw-color-violet-500: 20 184 166;
+  --tw-color-violet-600: 13 148 136;
+  --tw-color-violet-700: 15 118 110;
+  --tw-color-violet-800: 17 94 89;
+  --tw-color-violet-900: 19 78 74;
+  --tw-color-violet-950: 4 47 46;
+
+  --tw-color-purple-50: 236 254 255;
+  --tw-color-purple-100: 207 250 254;
+  --tw-color-purple-200: 165 243 252;
+  --tw-color-purple-300: 103 232 249;
+  --tw-color-purple-400: 34 211 238;
+  --tw-color-purple-500: 6 182 212;
+  --tw-color-purple-600: 8 145 178;
+  --tw-color-purple-700: 14 116 144;
+  --tw-color-purple-800: 21 94 117;
+  --tw-color-purple-900: 22 78 99;
+  --tw-color-purple-950: 8 51 68;
+

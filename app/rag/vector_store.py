@@ -127,6 +127,8 @@ def build_client_metadata(
     org_name: str = "",
     description: str = "",
     semantic_summary: str = "",
+    topic: str = "",
+    doc_label: str = "",
     extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
@@ -158,7 +160,14 @@ def build_client_metadata(
         "org_name":    str(org_name),
         "kb_id":       str(kb_id),
         "kb_name":     str(kb_name),
-        "doc_name":    str(filename),
+        # User-typed grouping. `topic` collects the several documents describing
+        # one thing (a card's brochure, its T&C, the shared fee schedule) so an
+        # agent can scope to it; "" means ungrouped, which every pre-existing
+        # chunk is. `doc_name` was a pure duplicate of `filename` — it is now the
+        # user's label, falling back to the filename. Safe to repurpose because
+        # every reader already does `doc_name or filename`.
+        "topic":       str(topic),
+        "doc_name":    str(doc_label or filename),
         "description": str(description),
         "semantic_summary": str(semantic_summary),
         # Timestamps
@@ -178,6 +187,8 @@ def client_where(
     doc_id: Optional[str] = None,
     session_id: Optional[str] = None,
     kb_ids: Optional[List[str]] = None,
+    topics: Optional[List[str]] = None,
+    doc_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Build a ChromaDB `where` filter for client_documents queries.
@@ -194,6 +205,10 @@ def client_where(
 
         # Only the KnowledgeBases one chatbot's agents are linked to:
         client_where("client_abc", kb_ids=["83117a0c-...", "18ab39ee-..."])
+
+        # Only the topics one agent answers for (a shared reference doc can
+        # carry a topic both agents list, so it is visible to both):
+        client_where("client_abc", topics=["sbi_prime_cc", "sbi_cards_common"])
     """
     conditions: List[Dict[str, Any]] = [{"client_id": {"$eq": client_id}}]
     if doc_id:
@@ -205,6 +220,10 @@ def client_where(
         # A space can hold several brands' KBs, so this is what narrows a query
         # from "everything this tenant owns" to "what this chatbot can see".
         conditions.append({"kb_id": {"$in": list(kb_ids)}})
+    if topics:
+        conditions.append({"topic": {"$in": list(topics)}})
+    if doc_name:
+        conditions.append({"doc_name": {"$eq": doc_name}})
 
     if len(conditions) == 1:
         return conditions[0]
@@ -334,7 +353,7 @@ class VectorStore:
         filename: str,
         extension: str,
         strategy: str,
-        chunks: List[Dict[str, Any]],  # [{text, page, chunk_index, section}]
+        chunks: List[Dict[str, Any]],  # [{text, page, chunk_index, section, extra?}]
         doc_type: str = "general",
         ttl_days: Optional[int] = DEFAULT_TTL_DAYS,
         kb_name: str = "",
@@ -343,13 +362,18 @@ class VectorStore:
         org_name: str = "",
         description: str = "",
         semantic_summary: str = "",
+        topic: str = "",
+        doc_label: str = "",
     ) -> int:
         """
         High-level upsert for client document chunks.
         Builds IDs and metadata automatically.
 
         Args:
-            chunks: list of dicts with keys: text, page, chunk_index, section
+            chunks: list of dicts with keys: text, page, chunk_index, section,
+                    and an optional "extra" dict of per-chunk metadata
+                    (is_table, is_table_row, row_label — see build_client_metadata,
+                    which filters it to Chroma-safe scalar types).
         """
         ids, texts, metas = [], [], []
         for c in chunks:
@@ -373,6 +397,9 @@ class VectorStore:
                 org_name=org_name,
                 description=description,
                 semantic_summary=semantic_summary,
+                topic=topic,
+                doc_label=doc_label,
+                extra=c.get("extra"),
             ))
         return self.upsert(COLLECTION_CLIENT, ids, texts, metas)
 
@@ -523,6 +550,53 @@ class VectorStore:
         logger.info("org_name updated in chunks", client_id=client_id, chunks=len(ids), new_org_name=new_org_name)
         return len(ids)
 
+    def retag_doc(
+        self,
+        client_id: str,
+        doc_id: str,
+        topic: Optional[str] = None,
+        doc_label: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> int:
+        """
+        Re-stamp `topic` / `doc_name` / `description` on an already-indexed document's chunks.
+
+        Topics & descriptions are set on the KB item in Postgres, but retrieval filters on the
+        copy in chunk metadata. Without this, tagging a document that was
+        ingested earlier leaves every chunk at topic="" — a topic-scoped agent
+        then matches nothing and the symptom looks like a missing document
+        rather than a stale tag. Every write of a topic/description must call this.
+
+        Metadata-only, like update_org_name: no re-embedding, so it is cheap
+        enough to run on every edit.
+        """
+        if topic is None and doc_label is None and description is None:
+            return 0
+
+        col = self._collection(COLLECTION_CLIENT)
+        results = col.get(where=client_where(client_id, doc_id=doc_id), include=["metadatas"])
+        ids   = results.get("ids", [])
+        metas = results.get("metadatas", [])
+        if not ids:
+            return 0
+
+        patch: Dict[str, Any] = {}
+        if topic is not None:
+            patch["topic"] = str(topic)
+        if doc_label is not None:
+            # Falls back to the filename already on the chunk, so clearing a
+            # label restores the old display value rather than blanking it.
+            patch["doc_name"] = str(doc_label)
+        if description is not None:
+            patch["description"] = str(description)
+
+        col.update(ids=ids, metadatas=[{**m, **(
+            patch if patch.get("doc_name") else {**patch, "doc_name": m.get("doc_name") or m.get("filename", "")}
+        )} for m in metas])
+        logger.info("chunks retagged", doc_id=doc_id, chunks=len(ids),
+                    topic=topic, doc_label=doc_label, description=description)
+        return len(ids)
+
     def get_doc_chunks(self, client_id: str, doc_id: str) -> List[Dict[str, Any]]:
         """Return all chunks for a specific document, ordered by chunk_index."""
         col = self._collection(COLLECTION_CLIENT)
@@ -538,6 +612,10 @@ class VectorStore:
                 "page":        meta.get("page", 1),
                 "section":     meta.get("section", ""),
                 "text":        text,
+                # The full metadata, for callers that need more than position —
+                # fact extraction selects on is_table_row and cites filename.
+                # Additive: existing callers read the named keys above.
+                "metadata":    dict(meta),
             })
         chunks.sort(key=lambda c: (c["page"], c["chunk_index"]))
         return chunks

@@ -3,15 +3,23 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Upload, Trash2, FileText, AlertCircle, RefreshCw, X, Plus,
   Eye, Loader2, ChevronDown, ChevronUp, ChevronLeft,
-  MessageSquare, Type, Database, Check, List, Globe,
+  MessageSquare, Type, Database, Check, List, Globe, Sparkles, Edit3, Tag,
 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Skeleton } from '../components/ui/SkeletonLoader'
+import { ExtractedFactsModal } from '../components/kb/ExtractedFactsModal'
 import { apiClient, INGESTION_TERMINAL, type IngestionJob, type UrlPreview } from '../api/client'
 import { IngestionJobRow } from '../components/kb/IngestionJobRow'
+import { TopicPicker } from '../components/kb/TopicPicker'
+import { FactsTab } from '../components/kb/FactsTab'
+import { TagInput } from '../components/kb/TagInput'
 import { CreateAgentModal } from './Agents'
-
+import { Input } from '../components/ui/Input'
+import { Select } from '../components/ui/Select'
+import { Textarea } from '../components/ui/Textarea'
+import { Button } from '../components/ui/Button'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface KB {
@@ -29,11 +37,20 @@ interface KBItem {
   item_type: 'doc' | 'url' | 'text' | 'qna'
   title?: string
   doc_id?: string
+  // Owner-supplied grouping. `topic` collects the documents describing one
+  // thing so an agent can scope to it; `doc_label` names this document within
+  // that topic and becomes the citation label.
+  topic?: string | null
+  doc_label?: string | null
+  description?: string | null
   question?: string
   content?: string
   indexed_doc_id?: string
+  context_enriched?: boolean
+  ai_cost_usd?: number
   created_at?: string
 }
+
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -58,17 +75,34 @@ function ChunksModal({ docId, docName, onClose }: { docId: string; docName: stri
   })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[85vh]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Chunks — {docName}</h3>
-            {!loading && <p className="text-xs text-gray-500 mt-0.5">{chunks.length} chunks</p>}
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-white/95 dark:bg-gray-950/95 backdrop-blur-xl flex flex-col"
+    >
+      <motion.div
+        initial={{ y: 40, opacity: 0, scale: 0.98 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        exit={{ y: 40, opacity: 0, scale: 0.98 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        className="w-full h-full max-w-4xl mx-auto flex flex-col overflow-hidden shadow-2xl bg-white dark:bg-gray-900 sm:border-x border-gray-200 dark:border-gray-800"
+      >
+        <div className="flex items-center justify-between px-6 py-4.5 border-b border-gray-100 dark:border-gray-800 shrink-0 bg-white dark:bg-gray-900">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/80 rounded-2xl flex items-center justify-center text-xl shadow-2xs">
+              🧩
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900 dark:text-white">Chunks — {docName}</h2>
+              {!loading && <p className="text-xs text-gray-500 dark:text-gray-400">{chunks.length} chunks</p>}
+            </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </div>
-        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-2">
+        <div className="overflow-y-auto flex-1 px-6 py-6 space-y-3 min-h-0">
           {loading && <div className="flex items-center justify-center py-10 text-gray-400"><Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…</div>}
           {error && <p className="text-sm text-red-500">{error}</p>}
           {!loading && chunks.length === 0 && <p className="text-sm text-gray-400 text-center py-8">No chunks found.</p>}
@@ -94,8 +128,8 @@ function ChunksModal({ docId, docName, onClose }: { docId: string; docName: stri
             </div>
           ))}
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }
 
@@ -130,6 +164,13 @@ function KBModal({
   // cleared whenever the URL changes so a stale preview can't be confirmed.
   const [preview, setPreview]         = useState<UrlPreview | null>(null)
   const [previewing, setPreviewing]   = useState(false)
+  const [previewProgress, setPreviewProgress] = useState(0)
+  const [previewStage, setPreviewStage]       = useState('Connecting to web server…')
+
+  const [description, setDescription] = useState('')
+  const [topic, setTopic]             = useState('')
+  const [docLabels, setDocLabels]     = useState<string[]>([])
+  const [generatingMeta, setGeneratingMeta] = useState(false)
 
   const isNew = !kbId
 
@@ -146,13 +187,63 @@ function KBModal({
     setError('')
     if (!isValidUrl(url)) { setError('Enter a full URL starting with http:// or https://'); return }
     setPreviewing(true)
+    setPreviewProgress(15)
+    setPreviewStage('Connecting to target web server…')
+
+    const t1 = setTimeout(() => { setPreviewProgress(40); setPreviewStage('Downloading HTML page content & assets…') }, 800)
+    const t2 = setTimeout(() => { setPreviewProgress(70); setPreviewStage('Parsing text structure & extracting content…') }, 2200)
+    const t3 = setTimeout(() => { setPreviewProgress(90); setPreviewStage('Generating preview snippet & metadata…') }, 4200)
+
     try {
-      setPreview(await apiClient.previewUrl(url.trim()))
+      const res = await apiClient.previewUrl(url.trim())
+      setPreviewProgress(100)
+      setPreview(res)
+      if (res.title && !title.trim()) {
+        setTitle(res.title)
+      }
     } catch (e: any) {
       setPreview(null)
       setError(e?.response?.data?.detail || 'Could not fetch that URL.')
     } finally {
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
       setPreviewing(false)
+    }
+  }
+
+
+  const handleGenerateMeta = async () => {
+    setError('')
+    setGeneratingMeta(true)
+    try {
+      let fileSnippet = ''
+      if (tab === 'doc' && file) {
+        try {
+          const raw = await file.slice(0, 4000).text()
+          fileSnippet = raw.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ').slice(0, 2000)
+        } catch (err) {
+          console.warn('Could not read file snippet for metadata generation:', err)
+        }
+      }
+
+      const payload: { doc_id?: string; item_id?: string; filename?: string; title?: string; url?: string; content?: string; file?: File } = {}
+      if (tab === 'doc' && file) {
+        payload.file = file
+        payload.filename = file.name
+      }
+      if (title.trim()) payload.title = title.trim()
+      if (url.trim()) payload.url = url.trim()
+
+      const snippet = content.trim() || fileSnippet || preview?.extract || question.trim()
+      if (snippet) payload.content = snippet
+
+      const res = await apiClient.suggestDocMetadata(payload)
+      if (res.description) setDescription(res.description)
+      if (res.topic) setTopic(res.topic)
+      if (res.tags && res.tags.length > 0) setDocLabels(res.tags)
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Could not generate metadata suggestions.')
+    } finally {
+      setGeneratingMeta(false)
     }
   }
 
@@ -181,10 +272,12 @@ function KBModal({
           || (tab === 'qna' ? question.slice(0, 40) : '')
           || (tab === 'url' ? (() => { try { return new URL(url.trim()).hostname } catch { return '' } })() : '')
           || 'Knowledge Base'
-        const newKb = await apiClient.createKB({ name: autoName })
+        const newKb = await apiClient.createKB({ name: autoName, default_topic: topic || undefined })
         kb = newKb
         resolvedKbId = newKb.id
       }
+
+      const formattedLabel = docLabels.join(', ') || undefined
 
       if (tab === 'doc' && file) {
         // Ingestion is asynchronous now, so there's no doc_id yet. The upload
@@ -193,7 +286,8 @@ function KBModal({
         // the listing, driven by the ingestion job.
         await apiClient.uploadDoc(
           file, undefined, docType, kbName || title || file.name,
-          undefined, expiryDate || undefined, resolvedKbId, title || file.name,
+          description || undefined, expiryDate || undefined, resolvedKbId, title || file.name,
+          topic || undefined, formattedLabel || undefined,
         )
       } else if (tab === 'url') {
         // Returns 202 + a job id, same as file upload: only the fetch is
@@ -203,13 +297,13 @@ function KBModal({
         // Passing the preview token indexes the exact bytes the user just
         // reviewed instead of re-fetching a page that may have changed.
         await apiClient.scrapeUrl(
-          url.trim(), undefined, docType, kbName || title || '', undefined, resolvedKbId,
-          preview?.preview_token,
+          url.trim(), title.trim() || preview?.title || undefined, undefined, docType, kbName || title || '', description || undefined, resolvedKbId,
+          preview?.preview_token, topic || undefined, formattedLabel || undefined,
         )
       } else if (tab === 'text') {
-        await apiClient.addKBItem(resolvedKbId, { item_type: 'text', title: title || undefined, content: content.trim() })
+        await apiClient.addKBItem(resolvedKbId, { item_type: 'text', title: title || undefined, content: content.trim(), description: description || undefined, topic: topic || undefined, doc_label: formattedLabel })
       } else if (tab === 'qna') {
-        await apiClient.addKBItem(resolvedKbId, { item_type: 'qna', question: question.trim(), content: content.trim() })
+        await apiClient.addKBItem(resolvedKbId, { item_type: 'qna', question: question.trim(), content: content.trim(), description: description || undefined, topic: topic || undefined, doc_label: formattedLabel })
       }
 
       onDone(kb || { id: resolvedKbId, name: '', description: '', active: true, item_count: 1 })
@@ -224,116 +318,178 @@ function KBModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-            {isNew ? 'New Knowledge Base' : 'Add Item'}
-          </h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400"><X className="w-4 h-4" /></button>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-white/95 dark:bg-gray-950/95 backdrop-blur-xl flex flex-col"
+    >
+      <motion.div
+        initial={{ y: 40, opacity: 0, scale: 0.98 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        exit={{ y: 40, opacity: 0, scale: 0.98 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        className="w-full h-full max-w-4xl mx-auto flex flex-col overflow-hidden shadow-2xl bg-white dark:bg-gray-900 sm:border-x border-gray-200 dark:border-gray-800"
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800 shrink-0 bg-white dark:bg-gray-900">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/80 rounded-2xl flex items-center justify-center text-xl shadow-2xs">
+              📚
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900 dark:text-white">{isNew ? 'New Knowledge Base' : 'Add Knowledge Item'}</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Upload documents, fetch URLs, or paste text.</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        <div className="flex gap-1 px-5 pt-4">
+        <div className="flex gap-1 px-6 pt-6 shrink-0">
           {tabs.map(t => (
             <button key={t.id} onClick={() => { setTab(t.id); setError('') }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                tab === t.id ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-xl transition-all ${
+                tab === t.id ? 'bg-indigo-600 text-white shadow-xs' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
               }`}>
               {t.icon}{t.label}
             </button>
           ))}
         </div>
 
-        <div className="px-5 py-4 space-y-3">
+        <div className="p-6 space-y-6 flex-1 overflow-y-auto min-h-0">
           {isNew && (
-            <input type="text" value={kbName} onChange={e => setKbName(e.target.value)}
-              placeholder="Knowledge base name (optional — auto-generated if blank)" className={inputCls} />
+            <div className="mb-6">
+              <Input label="Knowledge Base Name" value={kbName} onChange={e => setKbName(e.target.value)}
+                placeholder="Knowledge base name (optional — auto-generated if blank)" />
+            </div>
           )}
 
           {tab === 'doc' && (
-            <>
+            <div className="space-y-6">
               <input ref={fileInputRef} type="file" accept=".pdf,.txt,.md,.docx" className="hidden"
                 onChange={e => setFile(e.target.files?.[0] || null)} />
               <div onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-indigo-300 dark:hover:border-indigo-600 rounded-xl p-5 text-center cursor-pointer transition-colors bg-gray-50 dark:bg-gray-800/50">
+                className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-500/50 rounded-2xl p-10 text-center cursor-pointer transition-colors bg-gray-50/50 dark:bg-gray-800/30 group">
                 {file
-                  ? <div className="flex items-center justify-center gap-2 text-sm text-indigo-600 dark:text-indigo-400"><FileText className="w-4 h-4" />{file.name}</div>
-                  : <><Upload className="w-5 h-5 text-gray-400 mx-auto mb-1.5" /><p className="text-xs font-medium text-gray-600 dark:text-gray-300">Click to select file</p><p className="text-xs text-gray-400 mt-0.5">PDF · TXT · MD · DOCX</p></>
+                  ? <div className="flex flex-col items-center justify-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 font-medium">
+                      <FileText className="w-8 h-8 opacity-80" />
+                      {file.name}
+                    </div>
+                  : <>
+                      <Upload className="w-8 h-8 text-gray-400 dark:text-gray-500 mx-auto mb-3 group-hover:text-indigo-500 transition-colors" />
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Click to select file</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">PDF · TXT · MD · DOCX</p>
+                    </>
                 }
               </div>
-              <input type="text" value={title} onChange={e => setTitle(e.target.value)}
-                placeholder="Document name (optional)" className={inputCls} />
-              <select value={docType} onChange={e => setDocType(e.target.value)} className={inputCls}>
+              <Input label="Document Name (optional)" value={title} onChange={e => setTitle(e.target.value)}
+                placeholder="Custom display name" />
+              <Select label="Document Type" value={docType} onChange={e => setDocType(e.target.value)}>
                 <option value="general">General</option>
                 <option value="faq">FAQ</option>
                 <option value="policy">Policy</option>
                 <option value="manual">Manual</option>
                 <option value="product">Product</option>
-              </select>
-              <div>
-                <label className={labelCls}>Expiry date (optional)</label>
-                <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className={inputCls} />
-              </div>
-            </>
+              </Select>
+              <Input label="Expiry Date (optional)" type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
+            </div>
           )}
 
           {tab === 'url' && (
-            <>
-              <div className="flex gap-2">
-                <input type="url" value={url}
-                  onChange={e => { setUrl(e.target.value); setPreview(null) }}
-                  placeholder="https://example.com/help/faq"
-                  className={`${inputCls} flex-1`} autoFocus />
+            <div className="space-y-6">
+              <div className="flex gap-3 items-end">
+                <div className="flex-1">
+                  <Input label="Website URL" type="url" value={url}
+                    onChange={e => { setUrl(e.target.value); setPreview(null) }}
+                    placeholder="https://example.com/help/faq" autoFocus />
+                </div>
                 <button type="button" onClick={handlePreview} disabled={previewing || !url.trim()}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 whitespace-nowrap transition-colors">
-                  {previewing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                  className="flex items-center gap-2 px-6 py-3 h-[46px] text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 whitespace-nowrap transition-colors shadow-xs">
+                  {previewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
                   {previewing ? 'Fetching…' : 'Preview'}
                 </button>
               </div>
 
-              <select value={docType} onChange={e => setDocType(e.target.value)} className={inputCls}>
+              <Input
+                label="Page Title (optional)"
+                type="text"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder={preview?.title || "e.g., Return Policy & Refund FAQ"}
+              />
+
+              <Select label="Document Type" value={docType} onChange={e => setDocType(e.target.value)}>
                 <option value="general">General</option>
                 <option value="faq">FAQ</option>
                 <option value="policy">Policy</option>
                 <option value="manual">Manual</option>
                 <option value="product">Product</option>
-              </select>
+              </Select>
 
-              {!preview && (
+              {previewing && (
+                <div className="p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-800/70 bg-gradient-to-r from-indigo-50/60 via-white to-violet-50/60 dark:from-indigo-950/40 dark:via-gray-900 dark:to-violet-950/40 shadow-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 animate-spin" />
+                      <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                        Fetching Web Page Preview
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-mono font-medium text-indigo-600 dark:text-indigo-400">
+                      {previewProgress}%
+                    </span>
+                  </div>
+
+                  <div className="w-full h-2 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-500 rounded-full transition-all duration-500 ease-out"
+                      style={{ width: `${previewProgress}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-gray-600 dark:text-gray-400 flex items-center gap-1.5 truncate max-w-[70%]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse flex-shrink-0" />
+                      {previewStage}
+                    </span>
+                    <span className="text-gray-400 font-mono text-[10px] truncate max-w-[28%]">
+                      {url.trim().replace(/^https?:\/\//, '').slice(0, 24)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {!preview && !previewing && (
                 <p className="text-xs text-gray-400">
                   Preview first to check what actually gets extracted. Works best on
                   static pages; JavaScript-rendered sites may yield little text.
                 </p>
               )}
 
+
               {preview && (
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 overflow-hidden">
-                  <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
-                    <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
+                <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 overflow-hidden shadow-sm">
+                  <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+                    <p className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
                       {preview.title || '(no title)'}
                     </p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">
+                    <p className="text-xs text-gray-500 mt-1 font-medium">
                       {preview.page_count} page{preview.page_count === 1 ? '' : 's'} ·{' '}
                       {preview.char_count.toLocaleString()} chars ·{' '}
                       {(preview.size_bytes / 1024).toFixed(0)} KB
                     </p>
-                    {/* Surfaced explicitly: a redirect landing somewhere else is a
-                        top reason people scrape the wrong page without noticing. */}
                     {preview.final_url !== url.trim() && (
-                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 break-all">
+                      <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1.5 break-all font-medium">
                         Redirected to {preview.final_url}
                       </p>
                     )}
                   </div>
 
-                  {/* The SPA case: fetched fine, parsed fine, almost no text. Without
-                      calling it out the user indexes an empty shell and only finds
-                      out later when the bot can't answer anything. */}
                   {preview.char_count < 200 && (
-                    <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
-                      <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                      <span className="text-[11px] text-amber-700 dark:text-amber-400">
+                    <div className="flex items-start gap-2 px-5 py-3 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-200 dark:border-indigo-800">
+                      <AlertCircle className="w-4 h-4 text-indigo-500 flex-shrink-0 mt-0.5" />
+                      <span className="text-xs font-medium text-indigo-700 dark:text-indigo-400">
                         Very little text extracted. This page may render its content with
                         JavaScript, which isn't executed — adding it may add nothing useful.
                       </span>
@@ -341,65 +497,109 @@ function KBModal({
                   )}
 
                   {preview.vision_skipped && (
-                    <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
-                      <span className="text-[11px] text-blue-700 dark:text-blue-400">
+                    <div className="px-5 py-3 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-200 dark:border-indigo-800">
+                      <span className="text-xs font-medium text-indigo-700 dark:text-indigo-400">
                         PDF — images and scanned pages aren't shown here, but they are read
                         during indexing.
                       </span>
                     </div>
                   )}
 
-                  <pre className="px-3 py-2 text-[11px] leading-relaxed text-gray-600 dark:text-gray-300 whitespace-pre-wrap font-mono max-h-48 overflow-y-auto">
+                  <pre className="px-5 py-4 text-xs leading-relaxed text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono max-h-64 overflow-y-auto">
                     {preview.extract || '(no text extracted)'}
                     {preview.truncated && (
-                      <span className="text-gray-400">{'\n\n…truncated — the full page will be indexed.'}</span>
+                      <span className="text-gray-400 block mt-2">{'\n\n…truncated — the full page will be indexed.'}</span>
                     )}
                   </pre>
                 </div>
               )}
-            </>
+            </div>
           )}
 
           {tab === 'text' && (
-            <>
-              <input type="text" value={title} onChange={e => setTitle(e.target.value)}
-                placeholder="Title (optional)" className={inputCls} />
-              <textarea value={content} onChange={e => setContent(e.target.value)}
-                placeholder="Paste plain text or Markdown…" rows={8}
-                className={`${inputCls} resize-none font-mono text-xs`} />
-              <p className="text-xs text-gray-400">{content.length} chars · Markdown supported</p>
-            </>
+            <div className="space-y-6">
+              <Input label="Title (optional)" value={title} onChange={e => setTitle(e.target.value)} />
+              <Textarea label="Content" value={content} onChange={e => setContent(e.target.value)}
+                placeholder="Paste plain text or Markdown…" rows={12}
+                className="font-mono text-sm leading-relaxed"
+                hint={`${content.length} chars · Markdown supported`} />
+            </div>
           )}
 
           {tab === 'qna' && (
-            <>
-              <input type="text" value={question} onChange={e => setQuestion(e.target.value)}
-                placeholder="Question *" className={inputCls} autoFocus />
-              <textarea value={content} onChange={e => setContent(e.target.value)}
-                placeholder="Answer *" rows={5} className={`${inputCls} resize-none`} />
-            </>
+            <div className="space-y-6">
+              <Input label="Question *" value={question} onChange={e => setQuestion(e.target.value)} autoFocus />
+              <Textarea label="Answer *" value={content} onChange={e => setContent(e.target.value)} rows={8} />
+            </div>
           )}
 
+          {/* Common Chunk Metadata */}
+          <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-800 space-y-6 bg-gray-50/30 dark:bg-gray-800/10 -mx-6 px-6 pb-6 rounded-b-3xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                Common Chunk Metadata (Optional)
+              </h3>
+              <button
+                type="button"
+                onClick={handleGenerateMeta}
+                disabled={generatingMeta || (!file && !url.trim() && !content.trim() && !title.trim() && !question.trim())}
+                className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-xl border border-indigo-200 dark:border-indigo-800/50 disabled:opacity-50 transition-colors shadow-2xs"
+                title="Generate Description and Topic Tag using AI"
+              >
+                {generatingMeta ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                ) : (
+                  <Sparkles className="w-4 h-4 text-indigo-500" />
+                )}
+                <span>{generatingMeta ? 'Suggesting…' : '✨ Auto-suggest'}</span>
+              </button>
+            </div>
+
+            <Input
+              label="Topic / Category Tag"
+              value={topic}
+              onChange={e => setTopic(e.target.value)}
+              placeholder="e.g. SBI Credit Card, Refund Policy"
+            />
+
+            <div className="space-y-1.5">
+              <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">Doc Labels (Citation Tags)</label>
+              <TagInput
+                tags={docLabels}
+                onChange={setDocLabels}
+                placeholder="Add Citation Tags (press Enter or comma…)"
+              />
+            </div>
+
+            <Textarea
+              label="Document Description"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Summary applied as context to all chunks"
+              rows={3}
+            />
+          </div>
+
           {error && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-              <span className="text-xs text-red-600 dark:text-red-400">{error}</span>
+            <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+              <span className="text-sm font-semibold text-red-600 dark:text-red-400">{error}</span>
             </div>
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-200 dark:border-gray-700">
-          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/80 shrink-0">
+          <button onClick={onClose} className="px-5 py-2.5 text-sm font-semibold rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">Cancel</button>
           <button onClick={handleSubmit} disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 transition-colors">
+            className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 transition-all shadow-xs">
             {saving
               ? <><Loader2 className="w-4 h-4 animate-spin" /> {isNew ? 'Creating…' : 'Adding…'}</>
               : isNew ? <><Plus className="w-4 h-4" /> Create</> : <><Plus className="w-4 h-4" /> Add</>
             }
           </button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }
 
@@ -407,6 +607,9 @@ function KBModal({
 
 function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => void; onDone: () => void }) {
   const [text, setText]       = useState('')
+  const [description, setDescription] = useState('')
+  const [topic, setTopic]             = useState('')
+  const [generatingMeta, setGeneratingMeta] = useState(false)
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
   const [preview, setPreview] = useState<{ q: string; a: string }[]>([])
@@ -433,11 +636,34 @@ function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => 
     setPreview(pairs)
   }
 
+  const handleGenerateMeta = async () => {
+    setError('')
+    setGeneratingMeta(true)
+    try {
+      const res = await apiClient.suggestDocMetadata({
+        title: 'Bulk Q&A Import',
+        content: text.trim().slice(0, 1500),
+      })
+      if (res.description) setDescription(res.description)
+      if (res.topic) setTopic(res.topic)
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Could not generate metadata suggestions.')
+    } finally {
+      setGeneratingMeta(false)
+    }
+  }
+
   const handleImport = async () => {
     setSaving(true)
     try {
       for (const pair of preview) {
-        await apiClient.addKBItem(kbId, { item_type: 'qna', question: pair.q, content: pair.a })
+        await apiClient.addKBItem(kbId, {
+          item_type: 'qna',
+          question: pair.q,
+          content: pair.a,
+          description: description || undefined,
+          topic: topic || undefined,
+        })
       }
       onDone()
     } catch {
@@ -448,31 +674,49 @@ function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[85vh]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Bulk Import Q&A</h3>
-            <p className="text-xs text-gray-400 mt-0.5">One pair per block, separated by blank line</p>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-white/95 dark:bg-gray-950/95 backdrop-blur-xl flex flex-col"
+    >
+      <motion.div
+        initial={{ y: 40, opacity: 0, scale: 0.98 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        exit={{ y: 40, opacity: 0, scale: 0.98 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        className="w-full h-full max-w-4xl mx-auto flex flex-col overflow-hidden shadow-2xl bg-white dark:bg-gray-900 sm:border-x border-gray-200 dark:border-gray-800"
+      >
+        <div className="flex items-center justify-between px-6 py-4.5 border-b border-gray-100 dark:border-gray-800 shrink-0 bg-white dark:bg-gray-900">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/80 rounded-2xl flex items-center justify-center text-xl shadow-2xs">
+              📥
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900 dark:text-white">Bulk Import Q&A</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">One pair per block, separated by a blank line.</p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 min-h-0">
           {preview.length === 0 ? (
-            <>
-              <div className="rounded-lg bg-gray-50 dark:bg-gray-800 px-4 py-3 text-xs text-gray-500 font-mono leading-relaxed">
+            <div className="space-y-6">
+              <div className="rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200/50 dark:border-gray-700 px-5 py-4 text-xs text-gray-500 dark:text-gray-400 font-mono leading-relaxed shadow-inner">
                 Q: What is your return policy?{'\n'}A: We accept returns within 30 days.{'\n\n'}Q: How do I track my order?{'\n'}A: Use the tracking link in your confirmation email.
               </div>
-              <textarea
+              <Textarea
                 value={text}
                 onChange={e => { setText(e.target.value); setError('') }}
                 placeholder={'Q: Your question here\nA: Your answer here\n\nQ: Another question\nA: Another answer'}
                 rows={12}
-                className={`${inputCls} resize-none font-mono text-xs`}
+                className="font-mono text-sm leading-relaxed"
+                autoFocus
               />
-            </>
+            </div>
           ) : (
             <div className="space-y-3">
               <p className="text-xs text-gray-500">{preview.length} pairs ready to import</p>
@@ -485,6 +729,44 @@ function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => 
             </div>
           )}
 
+          {/* Common Chunk Metadata */}
+          <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-800 space-y-6 bg-gray-50/30 dark:bg-gray-800/10 -mx-6 px-6 pb-6 rounded-b-3xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                Common Chunk Metadata (Optional)
+              </h3>
+              <button
+                type="button"
+                onClick={handleGenerateMeta}
+                disabled={generatingMeta || !text.trim()}
+                className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-xl border border-indigo-200 dark:border-indigo-800/50 disabled:opacity-50 transition-colors shadow-2xs"
+                title="Generate Description and Topic Tag using AI"
+              >
+                {generatingMeta ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                ) : (
+                  <Sparkles className="w-4 h-4 text-indigo-500" />
+                )}
+                <span>{generatingMeta ? 'Suggesting…' : '✨ Auto-suggest'}</span>
+              </button>
+            </div>
+
+            <Input
+              label="Topic / Category Tag"
+              value={topic}
+              onChange={e => setTopic(e.target.value)}
+              placeholder="e.g. SBI Credit Card, Refund Policy"
+            />
+
+            <Textarea
+              label="Document Description"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Summary applied as context to all chunks"
+              rows={3}
+            />
+          </div>
+
           {error && (
             <div className="flex items-start gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
               <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
@@ -493,30 +775,246 @@ function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => 
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-200 dark:border-gray-700">
-          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/80 shrink-0">
+          <button onClick={onClose} className="px-5 py-2.5 text-sm font-semibold rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">Cancel</button>
           {preview.length === 0
             ? <button onClick={handlePreview} disabled={!text.trim()}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 transition-colors">
+                className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100 disabled:opacity-50 transition-all shadow-xs">
                 <Eye className="w-4 h-4" /> Preview
               </button>
             : <>
-                <button onClick={() => setPreview([])} className="px-4 py-2 text-sm rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Back</button>
+                <button onClick={() => setPreview([])} className="px-5 py-2.5 text-sm font-semibold rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">Back</button>
                 <button onClick={handleImport} disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 transition-colors">
+                  className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 transition-all shadow-xs">
                   {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing…</> : <><Check className="w-4 h-4" /> Import {preview.length} pairs</>}
                 </button>
               </>
           }
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ── Edit KB Item Modal ────────────────────────────────────────────────────────
+
+function EditKBItemModal({
+  item,
+  kbId,
+  knownTags = [],
+  onClose,
+  onDone,
+}: {
+  item: KBItem
+  kbId: string
+  knownTags?: string[]
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [title, setTitle]             = useState(item.title || '')
+  const [description, setDescription] = useState(item.description || '')
+  const [topic, setTopic]             = useState(item.topic || '')
+  const [docLabels, setDocLabels]     = useState<string[]>(
+    (item.doc_label || '').split(',').map(t => t.trim()).filter(Boolean)
+  )
+  const [question, setQuestion]       = useState(item.question || '')
+  const [content, setContent]         = useState(item.content || '')
+  const [saving, setSaving]           = useState(false)
+  const [generatingMeta, setGeneratingMeta] = useState(false)
+  const [error, setError]             = useState('')
+
+  const handleGenerateMeta = async () => {
+    setError('')
+    setGeneratingMeta(true)
+    try {
+      const payload: { doc_id?: string; item_id?: string; filename?: string; title?: string; url?: string; content?: string } = {
+        item_id: item.id,
+        doc_id: item.id,
+      }
+      if (item.item_type === 'doc' && (item.title?.includes('.') || title.includes('.'))) {
+        payload.filename = title || item.title || undefined
+      }
+      if (title.trim() || item.title) payload.title = title.trim() || item.title || undefined
+      if (item.item_type === 'url') payload.url = item.content
+
+      const snippet = content.trim() || question.trim() || item.content || description.trim() || title.trim() || item.title
+      if (snippet) payload.content = snippet
+
+      const res = await apiClient.suggestDocMetadata(payload)
+      if (res.description) setDescription(res.description)
+      if (res.topic) setTopic(res.topic)
+      if (res.tags && res.tags.length > 0) setDocLabels(res.tags)
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Could not generate metadata suggestions.')
+    } finally {
+      setGeneratingMeta(false)
+    }
+  }
+
+  const handleSave = async () => {
+    setError('')
+    setSaving(true)
+    try {
+      await apiClient.updateKBItem(kbId, item.id, {
+        title: title.trim() || undefined,
+        description: description.trim() || undefined,
+        topic: topic.trim() || undefined,
+        doc_label: docLabels.join(', ') || undefined,
+        question: item.item_type === 'qna' ? question.trim() : undefined,
+        content: (item.item_type === 'text' || item.item_type === 'qna') ? content.trim() : undefined,
+      })
+      onDone()
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Failed to update item.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-white/95 dark:bg-gray-950/95 backdrop-blur-xl flex flex-col"
+    >
+      <motion.div
+        initial={{ y: 40, opacity: 0, scale: 0.98 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        exit={{ y: 40, opacity: 0, scale: 0.98 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        className="w-full h-full max-w-4xl mx-auto flex flex-col overflow-hidden shadow-2xl bg-white dark:bg-gray-900 sm:border-x border-gray-200 dark:border-gray-800"
+      >
+        <div className="flex items-center justify-between px-6 py-4.5 border-b border-gray-100 dark:border-gray-800 shrink-0 bg-white dark:bg-gray-900">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/80 rounded-2xl flex items-center justify-center text-xl shadow-2xs">
+              📝
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900 dark:text-white">View & Edit Item Details</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                Type: {item.item_type.toUpperCase()} · ID: {item.id.slice(0, 8)}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 min-h-0">
+          {/* Title */}
+          <Input
+            label="Title / Display Name"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Title"
+          />
+
+          {/* Item Specific Content Editors */}
+          {item.item_type === 'text' && (
+            <Textarea
+              label="Content Body"
+              value={content}
+              onChange={e => setContent(e.target.value)}
+              rows={8}
+              className="font-mono text-sm leading-relaxed"
+            />
+          )}
+
+          {item.item_type === 'qna' && (
+            <div className="space-y-6">
+              <Textarea
+                label="Question"
+                value={question}
+                onChange={e => setQuestion(e.target.value)}
+                rows={2}
+              />
+              <Textarea
+                label="Answer"
+                value={content}
+                onChange={e => setContent(e.target.value)}
+                rows={6}
+              />
+            </div>
+          )}
+
+          {/* Common Chunk Metadata */}
+          <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-800 space-y-6 bg-gray-50/30 dark:bg-gray-800/10 -mx-6 px-6 pb-6 rounded-b-3xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                Chunk Metadata (Topic & Description)
+              </h3>
+              <button
+                type="button"
+                onClick={handleGenerateMeta}
+                disabled={generatingMeta}
+                className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-xl border border-indigo-200 dark:border-indigo-800/50 disabled:opacity-50 transition-colors shadow-2xs"
+                title="Generate Description and Topic Tag using AI"
+              >
+                {generatingMeta ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                ) : (
+                  <Sparkles className="w-4 h-4 text-indigo-500" />
+                )}
+                <span>{generatingMeta ? 'Suggesting…' : '✨ Auto-suggest'}</span>
+              </button>
+            </div>
+
+            <Input
+              label="Topic / Category Tag"
+              value={topic}
+              onChange={e => setTopic(e.target.value)}
+              placeholder="Topic Tag (e.g. SBI Credit Card)"
+            />
+
+            <div className="space-y-1.5">
+              <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">Doc Labels (Citation Tags)</label>
+              <TagInput
+                tags={docLabels}
+                onChange={setDocLabels}
+                knownTags={knownTags}
+                placeholder="Add Citation Tags (press Enter or comma…)"
+              />
+            </div>
+
+            <Textarea
+              label="Description"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Document Description (summary applied as context to all chunks)"
+              rows={3}
+            />
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+              <span className="text-sm font-semibold text-red-600 dark:text-red-400">{error}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/80 shrink-0">
+          <button onClick={onClose} className="px-5 py-2.5 text-sm font-semibold rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 transition-all shadow-xs"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save Changes
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   )
 }
 
 // ── Inline editable Q&A item ──────────────────────────────────────────────────
 
-function QnaItem({ item, kbId, onDelete }: { item: KBItem; kbId: string; onDelete: () => void }) {
+function QnaItem({ item, kbId, onDelete, onEdit }: { item: KBItem; kbId: string; onDelete: () => void; onEdit?: () => void }) {
   const [question, setQuestion] = useState(item.question || '')
   const [answer, setAnswer]     = useState(item.content  || '')
   const [dirty, setDirty]       = useState(false)
@@ -549,7 +1047,7 @@ function QnaItem({ item, kbId, onDelete }: { item: KBItem; kbId: string; onDelet
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">A:</label>
+        <label className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">A:</label>
         <textarea
           value={answer}
           onChange={e => { setAnswer(e.target.value); setDirty(true); setSaved(false) }}
@@ -561,13 +1059,21 @@ function QnaItem({ item, kbId, onDelete }: { item: KBItem; kbId: string; onDelet
       <div className="flex items-center justify-between pt-1">
         <div className="flex items-center gap-1.5 text-xs">
           {saving && <><Loader2 className="w-3 h-3 animate-spin text-gray-400" /><span className="text-gray-400">Saving…</span></>}
-          {saved  && <><Check className="w-3 h-3 text-emerald-500" /><span className="text-emerald-600">Saved</span></>}
-          {dirty && !saving && !saved && <span className="text-amber-500">Unsaved</span>}
+          {saved  && <><Check className="w-3 h-3 text-indigo-500" /><span className="text-indigo-600">Saved</span></>}
+          {dirty && !saving && !saved && <span className="text-indigo-500">Unsaved</span>}
         </div>
-        <button onClick={onDelete}
-          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors">
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-1">
+          {onEdit && (
+            <button onClick={onEdit}
+              className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View & Edit Details">
+              <Edit3 className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button onClick={onDelete}
+            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
     </Card>
   )
@@ -575,7 +1081,7 @@ function QnaItem({ item, kbId, onDelete }: { item: KBItem; kbId: string; onDelet
 
 // ── KB Detail view (tabbed) ───────────────────────────────────────────────────
 
-type DetailTab = 'docs' | 'url' | 'text' | 'qna'
+type DetailTab = 'docs' | 'url' | 'text' | 'qna' | 'facts'
 
 function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
   const queryClient = useQueryClient()
@@ -583,7 +1089,10 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
   const [addOpen, setAddOpen]           = useState(false)
   const [bulkOpen, setBulkOpen]         = useState(false)
   const [agentModal, setAgentModal]     = useState(false)
+  const [editingItem, setEditingItem]   = useState<KBItem | null>(null)
   const [viewChunks, setViewChunks]     = useState<{ docId: string; name: string } | null>(null)
+  const [extractingDoc, setExtractingDoc] = useState<{ docId: string; name: string } | null>(null)
+  const [jobError, setJobError]         = useState('')
 
   const { data: items, isLoading } = useQuery<KBItem[]>({
     queryKey: ['kb-items', kb.id],
@@ -606,9 +1115,12 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
 
   // Failures stay visible so the user knows the upload didn't land; successes
   // vanish because the finished document itself takes their place in the list.
-  const activeJobs = (jobsData?.jobs ?? []).filter(
-    j => j.kb_id === kb.id && j.status !== 'done',
-  )
+  // Split by source so a URL scrape reports progress under URLs and a file
+  // upload under Documents — a job showing on the tab you aren't looking at
+  // reads as "nothing happened", and one showing on both reads as two uploads.
+  const kbJobs   = (jobsData?.jobs ?? []).filter(j => j.kb_id === kb.id && j.status !== 'done')
+  const fileJobs = kbJobs.filter(j => j.source !== 'url')
+  const urlJobs  = kbJobs.filter(j => j.source === 'url')
 
   // Pull in the real document as soon as its job finishes.
   const doneCount = (jobsData?.jobs ?? []).filter(j => j.kb_id === kb.id && j.status === 'done').length
@@ -621,6 +1133,61 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kb-items', kb.id] }),
   })
 
+  const dismissJob = useMutation({
+    mutationFn: (jobId: string) => apiClient.dismissIngestionJob(jobId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ingestion-jobs', kb.id] }),
+  })
+
+  const retryJob = useMutation({
+    mutationFn: (jobId: string) => apiClient.retryIngestionJob(jobId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ingestion-jobs', kb.id] }),
+    // A job without a stored payload (uploaded before this feature shipped) can't
+    // be resumed — tell the user rather than letting the click do nothing.
+    onError: (e: any) => setJobError(e?.response?.data?.detail || 'Could not retry the upload.'),
+  })
+
+  const setTopic = useMutation({
+    mutationFn: ({ itemId, topic }: { itemId: string; topic: string }) =>
+      apiClient.updateKBItem(kb.id, itemId, { topic }),
+    // The server also re-stamps the document's chunks and drops the agent
+    // cache, so the new scoping is live on the next message.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kb-items', kb.id] }),
+  })
+
+  // Topics already in use, offered for reuse so a shared document gets tagged
+  // with the exact slug an agent is already scoped to rather than a near-miss.
+  const knownTopics = Array.from(
+    new Set((items ?? []).map(i => i.topic).filter((t): t is string => !!t)),
+  ).sort()
+
+  const knownTags = Array.from(
+    new Set(
+      (items ?? []).flatMap(i => [
+        ...(i.doc_label ? i.doc_label.split(',').map(t => t.trim()) : []),
+        i.topic || ''
+      ]).filter(Boolean)
+    )
+  ).sort()
+
+  // How many agents actually read each topic — shown on the row because an
+  // owner tagging a shared document wants to see that both agents pick it up,
+  // and "no agent reads this" is the failure worth catching early.
+  const { data: agents } = useQuery<{ slug: string; topics?: string[]; is_builtin?: boolean }[]>({
+    queryKey: ['agents-topics'],
+    queryFn: () => apiClient.listOrgAgents(),
+  })
+  const readersOf = (topic?: string | null) => {
+    if (!topic || !agents) return undefined
+    // An agent with no topics reads its whole knowledge base, so it reads this.
+    return agents.filter(a => !a.is_builtin && (!a.topics?.length || a.topics.includes(topic))).length
+  }
+
+  const { data: factList } = useQuery<{ verified: boolean }[]>({
+    queryKey: ['kb-facts', kb.id],
+    queryFn: () => apiClient.listFacts(kb.id),
+  })
+  const factCount = (factList || []).length
+
   const docs  = items?.filter(i => i.item_type === 'doc')  || []
   const urls  = items?.filter(i => i.item_type === 'url')  || []
   const texts = items?.filter(i => i.item_type === 'text') || []
@@ -631,17 +1198,32 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
     { id: 'url',  label: 'URLs',      count: urls.length },
     { id: 'text', label: 'Text',      count: texts.length },
     { id: 'qna',  label: 'Q & A',     count: qnas.length },
+    // Facts sit last: they are derived from the documents above, so they only
+    // make sense once something has been uploaded.
+    { id: 'facts', label: 'Facts',    count: factCount },
   ]
 
-  const tabToItemTab: Record<DetailTab, ItemTab> = { docs: 'doc', url: 'url', text: 'text', qna: 'qna' }
+  // Which "Add" form the toolbar button opens for each tab. Facts maps to 'doc'
+  // because facts are not uploaded — they are extracted from a document, so the
+  // useful action from an empty Facts tab is to add one.
+  const tabToItemTab: Record<DetailTab, ItemTab> = {
+    docs: 'doc', url: 'url', text: 'text', qna: 'qna', facts: 'doc',
+  }
 
   return (
-    <div className="p-6 space-y-4">
+    <motion.div
+      key="detail"
+      layoutId={kb.id}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className="p-6 space-y-4"
+    >
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors">
+        <Button variant="ghost" size="sm" onClick={onBack} className="rounded-full w-9 h-9 !px-0">
           <ChevronLeft className="w-5 h-5" />
-        </button>
+        </Button>
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{kb.name}</h2>
@@ -653,23 +1235,20 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
         {/* Action buttons */}
         <div className="flex items-center gap-2">
           {activeTab === 'qna' && (
-            <button onClick={() => setBulkOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            <Button variant="secondary" onClick={() => setBulkOpen(true)}>
               <List className="w-3.5 h-3.5" /> Bulk Import
-            </button>
+            </Button>
           )}
-          <button onClick={() => setAgentModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+          <Button variant="secondary" onClick={() => setAgentModal(true)}>
             <Plus className="w-3.5 h-3.5" /> Create Agent
-          </button>
-          <button onClick={() => setAddOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+          </Button>
+          <Button onClick={() => setAddOpen(true)}>
             {activeTab === 'docs'
               ? <><Upload className="w-4 h-4" /> Upload</>
               : activeTab === 'url'
                 ? <><Globe className="w-4 h-4" /> Add URL</>
                 : <><Plus className="w-4 h-4" /> Add</>}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -690,6 +1269,15 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
         ))}
       </div>
 
+      {jobError && (
+        <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 rounded-lg">
+          <span>{jobError}</span>
+          <button onClick={() => setJobError('')} className="text-red-400 hover:text-red-600 dark:hover:text-red-300 flex-shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Tab content */}
       {isLoading && (
         <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}</div>
@@ -698,12 +1286,17 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
       {/* Docs tab */}
       {!isLoading && activeTab === 'docs' && (
         <>
-          {activeJobs.length > 0 && (
+          {fileJobs.length > 0 && (
             <div className="space-y-2 mb-2">
-              {activeJobs.map(j => <IngestionJobRow key={j.id} job={j} />)}
+              {fileJobs.map(j => (
+                <IngestionJobRow key={j.id} job={j}
+                  onRetry={() => retryJob.mutate(j.id)}
+                  retrying={retryJob.isPending && retryJob.variables === j.id}
+                  onDismiss={() => dismissJob.mutate(j.id)} />
+              ))}
             </div>
           )}
-          {docs.length === 0 && activeJobs.length === 0
+          {docs.length === 0 && fileJobs.length === 0
             ? <EmptyState label="No documents yet" cta="Upload" onCta={() => setAddOpen(true)} />
             : <div className="space-y-2">
                 {docs.map(item => (
@@ -715,13 +1308,51 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{item.title || item.doc_id}</p>
                         <p className="text-xs text-gray-400 font-mono truncate">doc_id: {item.doc_id}</p>
-                        {item.created_at && <p className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</p>}
+                        {item.description && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">{item.description}</p>
+                        )}
+                        {item.doc_label && (
+                          <div className="flex flex-wrap items-center gap-1 mt-1">
+                            {item.doc_label.split(',').map(t => t.trim()).filter(Boolean).map((t, idx) => (
+                              <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 rounded-full shadow-2xs">
+                                <Tag className="w-2.5 h-2.5 text-indigo-500 opacity-70" />
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <TopicPicker
+                            value={item.topic}
+                            known={knownTopics}
+                            agentCount={readersOf(item.topic)}
+                            onSave={topic => setTopic.mutateAsync({ itemId: item.id, topic })}
+                          />
+                          {item.context_enriched && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 rounded-md">
+                              <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
+                              Enriched {item.ai_cost_usd ? `· $${item.ai_cost_usd.toFixed(4)}` : ''}
+                            </span>
+                          )}
+                          {item.created_at && <span className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</span>}
+                        </div>
+
                       </div>
                       <div className="flex items-center gap-1">
+                        <button onClick={() => setEditingItem(item)}
+                          className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View & Edit Details">
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
                         {item.doc_id && (
                           <button onClick={() => setViewChunks({ docId: item.doc_id!, name: item.title || item.doc_id! })}
                             className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View chunks">
                             <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {item.doc_id && (
+                          <button onClick={() => setExtractingDoc({ docId: item.doc_id!, name: item.title || item.doc_id! })}
+                            className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors" title="Extract Facts (V2)">
+                            <Sparkles className="w-3.5 h-3.5" />
                           </button>
                         )}
                         <button onClick={() => deleteMutation.mutate(item.id)} disabled={deleteMutation.isPending}
@@ -740,15 +1371,17 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
       {/* URLs tab */}
       {!isLoading && activeTab === 'url' && (
         <>
-          {/* Ingestion jobs are also rendered here, not only under Documents:
-              a job in flight could be either kind, and a user who just added a
-              URL while on this tab would otherwise see nothing happening. */}
-          {activeJobs.length > 0 && (
+          {urlJobs.length > 0 && (
             <div className="space-y-2 mb-2">
-              {activeJobs.map(j => <IngestionJobRow key={j.id} job={j} />)}
+              {urlJobs.map(j => (
+                <IngestionJobRow key={j.id} job={j}
+                  onRetry={() => retryJob.mutate(j.id)}
+                  retrying={retryJob.isPending && retryJob.variables === j.id}
+                  onDismiss={() => dismissJob.mutate(j.id)} />
+              ))}
             </div>
           )}
-          {urls.length === 0 && activeJobs.length === 0
+          {urls.length === 0 && urlJobs.length === 0
             ? <EmptyState label="No web pages yet" cta="Add URL" onCta={() => setAddOpen(true)} />
             : <div className="space-y-2">
                 {urls.map(item => (
@@ -768,13 +1401,51 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
                             {item.content}
                           </a>
                         )}
-                        {item.created_at && <p className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</p>}
+                        {item.description && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">{item.description}</p>
+                        )}
+                        {item.doc_label && (
+                          <div className="flex flex-wrap items-center gap-1 mt-1">
+                            {item.doc_label.split(',').map(t => t.trim()).filter(Boolean).map((t, idx) => (
+                              <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 rounded-full shadow-2xs">
+                                <Tag className="w-2.5 h-2.5 text-indigo-500 opacity-70" />
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <TopicPicker
+                            value={item.topic}
+                            known={knownTopics}
+                            agentCount={readersOf(item.topic)}
+                            onSave={topic => setTopic.mutateAsync({ itemId: item.id, topic })}
+                          />
+                          {item.context_enriched && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 rounded-md">
+                              <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
+                              Enriched {item.ai_cost_usd ? `· $${item.ai_cost_usd.toFixed(4)}` : ''}
+                            </span>
+                          )}
+                          {item.created_at && <span className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</span>}
+                        </div>
+
                       </div>
                       <div className="flex items-center gap-1">
+                        <button onClick={() => setEditingItem(item)}
+                          className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View & Edit Details">
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
                         {item.doc_id && (
                           <button onClick={() => setViewChunks({ docId: item.doc_id!, name: item.title || item.doc_id! })}
                             className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View chunks">
                             <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {item.doc_id && (
+                          <button onClick={() => setExtractingDoc({ docId: item.doc_id!, name: item.title || item.doc_id! })}
+                            className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors" title="Extract Facts (V2)">
+                            <Sparkles className="w-3.5 h-3.5" />
                           </button>
                         )}
                         <button onClick={() => deleteMutation.mutate(item.id)} disabled={deleteMutation.isPending}
@@ -799,18 +1470,37 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
                 {texts.map(item => (
                   <Card key={item.id} className="p-3">
                     <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 bg-amber-50 dark:bg-amber-900/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Type className="w-4 h-4 text-amber-500" />
+                      <div className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Type className="w-4 h-4 text-indigo-500" />
                       </div>
                       <div className="flex-1 min-w-0">
                         {item.title && <p className="text-sm font-medium text-gray-900 dark:text-white mb-0.5">{item.title}</p>}
+                        {item.description && (
+                          <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400 mb-1 leading-relaxed">{item.description}</p>
+                        )}
+                        {item.doc_label && (
+                          <div className="flex flex-wrap items-center gap-1 mb-1.5">
+                            {item.doc_label.split(',').map(t => t.trim()).filter(Boolean).map((t, idx) => (
+                              <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 rounded-full shadow-2xs">
+                                <Tag className="w-2.5 h-2.5 text-indigo-500 opacity-70" />
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-3 leading-relaxed">{item.content}</p>
                         {item.created_at && <p className="text-xs text-gray-400 mt-1">{new Date(item.created_at).toLocaleDateString()}</p>}
                       </div>
-                      <button onClick={() => deleteMutation.mutate(item.id)} disabled={deleteMutation.isPending}
-                        className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50 flex-shrink-0">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button onClick={() => setEditingItem(item)}
+                          className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View & Edit Details">
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => deleteMutation.mutate(item.id)} disabled={deleteMutation.isPending}
+                          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </Card>
                 ))}
@@ -827,11 +1517,17 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
             : <div className="space-y-3">
                 {qnas.map(item => (
                   <QnaItem key={item.id} item={item} kbId={kb.id}
+                    onEdit={() => setEditingItem(item)}
                     onDelete={() => deleteMutation.mutate(item.id)} />
                 ))}
               </div>
           }
         </>
+      )}
+
+      {/* Facts tab — extracted from the documents and URLs above, then confirmed. */}
+      {!isLoading && activeTab === 'facts' && (
+        <FactsTab kbId={kb.id} docs={[...docs, ...urls]} topics={knownTopics} />
       )}
 
       {/* Modals */}
@@ -862,6 +1558,19 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
         />
       )}
 
+      {editingItem && (
+        <EditKBItemModal
+          item={editingItem}
+          kbId={kb.id}
+          knownTags={knownTags}
+          onClose={() => setEditingItem(null)}
+          onDone={() => {
+            setEditingItem(null)
+            queryClient.invalidateQueries({ queryKey: ['kb-items', kb.id] })
+          }}
+        />
+      )}
+
       {viewChunks && (
         <ChunksModal docId={viewChunks.docId} docName={viewChunks.name} onClose={() => setViewChunks(null)} />
       )}
@@ -873,7 +1582,16 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
           prefill={{ kb_ids: [kb.id] }}
         />
       )}
-    </div>
+
+      {extractingDoc && (
+        <ExtractedFactsModal
+          docId={extractingDoc.docId}
+          docName={extractingDoc.name}
+          kbId={kb.id}
+          onClose={() => setExtractingDoc(null)}
+        />
+      )}
+    </motion.div>
   )
 }
 
@@ -914,27 +1632,32 @@ export function KnowledgeBase() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] }),
   })
 
-  if (selectedKB) {
-    return <KBDetail kb={selectedKB} onBack={() => setSelectedKB(null)} />
-  }
-
   return (
-    <div className="p-6 space-y-4">
+    <AnimatePresence mode="wait">
+      {selectedKB ? (
+        <KBDetail key="detail" kb={selectedKB} onBack={() => setSelectedKB(null)} />
+      ) : (
+    <motion.div
+      key="list"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className="p-6 space-y-4"
+    >
       {/* Toolbar */}
       <div className="flex items-center justify-end gap-2">
-        <button onClick={() => refetch()}
-          className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-colors" title="Refresh">
+        <Button variant="ghost" onClick={() => refetch()} title="Refresh" className="p-2 w-auto px-2">
           <RefreshCw className="w-4 h-4" />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="secondary"
           onClick={() => setAgentModalKb({ id: '', name: '', description: '', active: true, item_count: 0 })}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+        >
           <Plus className="w-4 h-4" /> Create Agent
-        </button>
-        <button onClick={() => setCreateOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+        </Button>
+        <Button onClick={() => setCreateOpen(true)}>
           <Plus className="w-4 h-4" /> New Knowledge Base
-        </button>
+        </Button>
       </div>
 
       {/* Loading */}
@@ -960,10 +1683,9 @@ export function KnowledgeBase() {
           </div>
           <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">No knowledge bases yet</p>
           <p className="text-xs text-gray-400 mb-5">Create one and add documents, text, or Q&A pairs</p>
-          <button onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+          <Button onClick={() => setCreateOpen(true)}>
             <Plus className="w-4 h-4" /> New Knowledge Base
-          </button>
+          </Button>
         </div>
       )}
 
@@ -980,11 +1702,14 @@ export function KnowledgeBase() {
 
           {/* Rows */}
           {kbs.map((kb, i) => (
-            <div key={kb.id}
+            <Card
+              key={kb.id}
+              layoutId={kb.id}
+              interactive
+              delayClass={`animate-stagger-${(i % 4) + 1}`}
               onClick={() => setSelectedKB(kb)}
-              className={`group grid grid-cols-[1fr_80px_120px_210px] gap-4 px-4 py-3 items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
-                i < kbs.length - 1 ? 'border-b border-gray-100 dark:border-gray-700/60' : ''
-              }`}>
+              className="group grid grid-cols-[1fr_80px_120px_210px] gap-4 px-4 py-3 items-center cursor-pointer border-b-0 rounded-none first:rounded-t-lg last:rounded-b-lg border-b border-gray-200 dark:border-gray-700/60 last:border-0"
+            >
               {/* Name */}
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center flex-shrink-0">
@@ -1033,13 +1758,14 @@ export function KnowledgeBase() {
                   className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
-                <button
+                <Button
+                  size="sm"
                   onClick={() => setSelectedKB(kb)}
-                  className="px-2.5 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+                >
                   Open
-                </button>
+                </Button>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
@@ -1078,6 +1804,8 @@ export function KnowledgeBase() {
           prefill={agentModalKb.id ? { kb_ids: [agentModalKb.id] } : undefined}
         />
       )}
-    </div>
+    </motion.div>
+      )}
+    </AnimatePresence>
   )
 }

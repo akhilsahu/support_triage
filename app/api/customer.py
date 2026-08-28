@@ -29,6 +29,7 @@ from app.models.space import (
     BuiltinAgentCatalog, SpaceBuiltinAgentConfig, CustomAgent, ChatbotCustomAgent,
 )
 from app.models.knowledge_base import AgentKnowledgeBase, KnowledgeBase
+from app.models.chat import MessageThought
 from app.models.chatbot import Chatbot
 
 logger = structlog.get_logger()
@@ -77,6 +78,11 @@ class CustomerChatResponse(BaseModel):
     # tools/render_tools.py). Loosely typed like citations -- shape matches
     # ui/src/renderengine/chatblocks's ChatBlock.
     blocks: List[dict] = []
+    # The chain-of-thought behind this reply, when the model produced one
+    # (e.g. a reasoning model). Persisted to message_thoughts, never into the
+    # transcript message text. Streamed clients get it live as separate
+    # "reasoning" SSE events; this field carries it for non-streaming clients.
+    reasoning: Optional[str] = None
 
 
 class SessionInitResponse(BaseModel):
@@ -456,8 +462,50 @@ async def _persist_turn(
     db.add(assistant_log)
     await db.commit()
 
-    await redis_client.expire(_history_key(session_id), HISTORY_TTL)
+    from app.api.v1.chat_sessions import _invalidate_history_cache
+    await _invalidate_history_cache(session_id, redis_client)
     return session_id, str(assistant_log.id)
+
+
+
+
+async def _persist_thoughts(
+    db: AsyncSession,
+    org: Space,
+    chatbot: Chatbot,
+    session_id: str,
+    message_id: str,
+    result: dict,
+    segments: Optional[list] = None,
+) -> None:
+    """
+    Persist this turn's chain-of-thought to message_thoughts, if any.
+
+    `message_id` is the assistant ConversationLog.id returned by
+    _persist_turn — the FK that anchors each thought row to exactly one
+    customer-facing message. Reasoning text lives here, never in
+    conversation_logs.message, so the transcript stays clean while the
+    thinking is retained for admin review and analytics.
+
+    `segments` is the ordered per-delta list ({seq, content}) from a streamed
+    run; the non-streaming path persists just the merged text.
+    """
+    reasoning = result.get("reasoning")
+    if not reasoning or not message_id:
+        return
+    db.add(MessageThought(
+        message_id=uuid.UUID(message_id),
+        space_id=org.id,
+        session_id=session_id,
+        chatbot_id=chatbot.id,
+        agent_slug=result.get("agent"),
+        role="reasoning",
+        content=reasoning,
+        segments=segments or None,
+        model=result.get("model"),
+        reasoning_effort=result.get("reasoning_effort"),
+    ))
+    await db.commit()
 
 
 # ── HITL pause/resume (ask_user) ────────────────────────────────────────────
@@ -636,6 +684,8 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
             chatbot_id=str(chatbot.id),
             leader=await _get_triage_agent_cached(db, chatbot.id, str(org.id)),
             clarify_enabled=chatbot.clarify_enabled,
+            llm_model=chatbot.llm_model,
+            reasoning_effort=chatbot.reasoning_effort,
         )
         if pending:
             result = await executor.resume(
@@ -650,6 +700,7 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
         # 4. Persist both turns and return
         elapsed_ms = int((time.time() - t0) * 1000)
         session_id, message_id = await _persist_turn(db, org, chatbot, session_id, result, elapsed_ms, req.message, customer)
+        await _persist_thoughts(db, org, chatbot, session_id, message_id, result)
 
         # Carry the pause forward (or clear it) now that the session row is
         # guaranteed to exist — _persist_turn creates it lazily on turn 1.
@@ -670,6 +721,7 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
                 message_id=message_id,
                 clarify=result.get("clarify"),
                 blocks=result.get("blocks") or [],
+                reasoning=result.get("reasoning"),
             ).model_dump(),
             headers=_CORS,
         )
@@ -700,8 +752,9 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
       4. After last chunk: persist turn + escalation check → send 'done' event
 
     Events:
-      data: <text chunk>           — one per streamed token/sentence
-      event: done  data: <JSON>   — {session_id, agent, rag_hit} — stream complete
+      event: reasoning  data: <text>     — one per chain-of-thought delta (before the reply)
+      data: <text chunk>                 — one per streamed token/sentence
+      event: done  data: <JSON>   — {session_id, agent, rag_hit, message_id, reasoning} — stream complete
       event: error data: <msg>    — on failure
     """
     from app.orchestra.ai.core.factory import build_executor
@@ -735,42 +788,84 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
         chatbot_id=str(chatbot.id),
         leader=await _get_triage_agent_cached(db, chatbot.id, str(org.id)),
         clarify_enabled=chatbot.clarify_enabled,
+        llm_model=chatbot.llm_model,
+        reasoning_effort=chatbot.reasoning_effort,
     )
     t0 = time.time()
+    # If the agent paused on ask_user last turn, this message is the customer's
+    # answer, not a new question — resume that run (same contract as the
+    # non-streaming customer_chat). A resumed run is not streamed: it returns
+    # its full reply, which we emit as a single chunk + the done event.
+    pending = await _get_pending_clarify(db, session_id, org.id)
 
     async def generate():
         chunks: List[str] = []
+        reasoning_chunks: List[str] = []
         try:
-            async for chunk in executor.stream(req.message):
-                chunks.append(chunk)
-                yield {"data": chunk}
+            if pending:
+                result = await executor.resume(
+                    run_id=pending["run_id"], requirements=pending["requirements"], answer=req.message,
+                )
+                reply_text = result.get("reply", "")
+                chunks = [reply_text]
+                if reply_text:
+                    yield {"data": reply_text}
+                if executor.pending:
+                    await _set_pending_clarify(db, session_id, executor.pending)
+                else:
+                    await _clear_pending_clarify(db, session_id)
+            else:
+                # agno yields tagged ("reasoning"|"content", text) tuples; the
+                # dynamic adapter still yields plain strings (content).
+                async for chunk in executor.stream(req.message):
+                    if isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] != "content":
+                        reasoning_chunks.append(chunk[1])
+                        yield {"event": "reasoning", "data": chunk[1]}
+                    else:
+                        text = chunk[1] if isinstance(chunk, tuple) and len(chunk) == 2 else chunk
+                        chunks.append(text)
+                        yield {"data": text}
 
-            # Stream complete — pull structured metadata the SSE text stream
-            # couldn't carry inline (agent/rag_hit/citations from the final run).
-            reply_text = "".join(chunks)
-            meta = getattr(executor, "last_result", None) or {}
-            result = {
-                "reply":     reply_text,
-                "agent":     meta.get("agent", "team"),
-                "intent":    meta.get("intent", meta.get("agent", "team")),
-                "rag_hit":   meta.get("rag_hit", False),
-                "citations": meta.get("citations", []),
-            }
+                # Stream complete — pull structured metadata the SSE text stream
+                # couldn't carry inline (agent/rag_hit/citations from the final run).
+                reply_text = "".join(chunks)
+                meta = getattr(executor, "last_result", None) or {}
+                result = {
+                    "reply":     reply_text,
+                    "agent":     meta.get("agent", "team"),
+                    "intent":    meta.get("intent", meta.get("agent", "team")),
+                    "rag_hit":   meta.get("rag_hit", False),
+                    "citations": meta.get("citations", []),
+                    "blocks":    meta.get("blocks", []),
+                    "clarify":   meta.get("clarify"),
+                    "reasoning": meta.get("reasoning"),
+                    "model":     meta.get("model"),
+                    "reasoning_effort": meta.get("reasoning_effort"),
+                }
             elapsed_ms = int((time.time() - t0) * 1000)
             await _maybe_escalate(db, chatbot, org, result, session_id, req.message)
-            session_id, message_id = await _persist_turn(
+            _, message_id = await _persist_turn(
                 db, org, chatbot, session_id, result, elapsed_ms, req.message
             )
+            # Per-delta segments for faithful replay — only when reasoning
+            # actually streamed live (reasoning_chunks non-empty).
+            segments = [{"seq": i, "content": c} for i, c in enumerate(reasoning_chunks)] or None
+            await _persist_thoughts(db, org, chatbot, session_id, message_id, result, segments)
             yield {
                 "event": "done",
                 "data":  json.dumps({
                     "session_id": session_id,
+                    "reply":      reply_text,
                     "agent":      result.get("agent", "team"),
                     "rag_hit":    result.get("rag_hit", False),
                     "citations":  result.get("citations", []),
+                    "blocks":     result.get("blocks", []),
                     "message_id": message_id,
+                    "reasoning":  result.get("reasoning"),
+                    "clarify":    result.get("clarify"),
                 }),
             }
+
         except Exception:
             logger.exception("customer_chat_stream.failed", slug=slug)
             yield {"event": "error", "data": "Stream failed. Please try again."}
@@ -912,6 +1007,8 @@ async def init_chat_session(slug: str,
             chatbot_id=str(chatbot.id),
             leader=await _get_triage_agent_cached(db, chatbot.id, str(org.id)),
             clarify_enabled=chatbot.clarify_enabled,
+            llm_model=chatbot.llm_model,
+            reasoning_effort=chatbot.reasoning_effort,
         )
         await executor.warmup()
 
@@ -985,6 +1082,19 @@ async def get_session_history(slug: str, session_id: str,
             .where(ConversationLog.session_id == session_id)
             .order_by(ConversationLog.timestamp)
         )
+        logs = logs_result.scalars().all()
+
+        # Reasoning/thoughts keyed by assistant message id (message_thoughts
+        # PK is conversation_logs.id). Attach to the matching log entries so a
+        # restored widget can re-render the "Thinking…" block.
+        thoughts_by_msg = {}
+        if logs:
+            t_result = await db.execute(
+                select(MessageThought).where(MessageThought.session_id == session_id)
+            )
+            for t in t_result.scalars().all():
+                thoughts_by_msg[str(t.message_id)] = t.content
+
         history = [
             {
                 "id":         str(log.id),
@@ -993,10 +1103,13 @@ async def get_session_history(slug: str, session_id: str,
                 "agent_slug": log.agent_slug,
                 "citations":  log.citations or [],
                 "blocks":     log.blocks or [],
+                "reasoning":  thoughts_by_msg.get(str(log.id)),
                 "timestamp":  log.timestamp.isoformat() if log.timestamp else None,
+                "created_at": log.timestamp.isoformat() if log.timestamp else None,
             }
-            for log in logs_result.scalars().all()
+            for log in logs
         ]
+
         await _set_history_cache(session_id, history, redis_client)
         return {"session_id": session_id, "history": history, **session_meta}
     finally:

@@ -153,7 +153,7 @@ export function Sidebar() {
     return (
       <NavLink key={item.id} to={item.path} end={item.path === '/app/dashboard'}
         className={({ isActive }) => cn(
-          'relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group',
+          'relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 group',
           isActive
             ? dt.navActive
             : flagUnread

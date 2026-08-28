@@ -45,8 +45,12 @@ poetry.lock
 .DS_Store
 
 # Agent & AI Assistant Tools
-.claude/settings.local.json
-.claude/*.local.json
+.claude/
+.agents/
+.bob/
+.codex/
+.github/skills/
+.skills.json
 
 # Environment variables
 .env
@@ -164,3 +168,7 @@ Thumbs.db
 
 # my things-to-do list
 thingstodo/
+
+# Expendable files
+expendable/test/
+test/

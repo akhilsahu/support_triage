@@ -10,10 +10,12 @@ Lifecycle:
   run()     — gets the cached runner, calls arun(), returns a structured dict
   stream()  — gets the cached runner, calls arun(stream=True), yields text
 
-Both run() and stream() return the same seven keys, built by _result():
-  {reply, agent, intent, rag_hit, citations, clarify, blocks}
-stream() cannot return them inline (it yields plain text), so it stashes them on
-self.last_result for the caller to read once the generator is exhausted.
+Both run() and stream() return the same keys, built by _result():
+  {reply, agent, intent, rag_hit, citations, clarify, blocks,
+   reasoning, model, reasoning_effort}
+stream() cannot return them inline (it yields tagged ("reasoning"|"content",
+text) tuples), so it stashes them on self.last_result for the caller to read
+once the generator is exhausted.
 
 `clarify` is non-None when the run paused on UserFeedbackTools.ask_user instead
 of answering — see resume() and docs/structured-response-rendering-plan.md.
@@ -79,16 +81,23 @@ def _citation_from_chunk(chunk: Any, seen: set, out: List[Dict[str, Any]]) -> No
     key    = f"{doc_id}:{page}"
     if key in seen:
         return
-    seen.add(key)
+    fname  = meta.get("filename") or meta.get("doc_name") or doc_id
+    sec    = meta.get("section", "")
+    breadcrumb = f"[DOCUMENT BREADCRUMB: {fname} > {sec} (Page {page})]" if sec else f"[DOCUMENT BREADCRUMB: {fname} (Page {page})]"
     out.append({
-        "filename": meta.get("filename") or meta.get("doc_name") or doc_id,
-        "page":     page,
-        "section":  meta.get("section", ""),
-        "score":    meta.get("rrf_score") or chunk.get("score", 0.0),
-        "excerpt":  (chunk.get("content") or "")[:300],
-        "doc_id":   doc_id,
-        "kb_name":  meta.get("kb_name", ""),
+        "filename":    fname,
+        "page":        page,
+        "section":     sec,
+        "breadcrumb":  breadcrumb,
+        "description": meta.get("description", ""),
+        "topic":       meta.get("topic", ""),
+        "score":       meta.get("rrf_score") or chunk.get("score", 0.0),
+        "excerpt":     (chunk.get("content") or "")[:300],
+        "doc_id":      doc_id,
+        "kb_name":     meta.get("kb_name", ""),
     })
+
+
 
 
 def _extract_citations(response: Any) -> List[Dict[str, Any]]:
@@ -286,6 +295,9 @@ def _empty(reason: str) -> Dict[str, Any]:
         "citations": [],
         "clarify":   None,
         "blocks":    [],
+        "reasoning": None,
+        "model":     None,
+        "reasoning_effort": None,
     }
 
 
@@ -377,6 +389,17 @@ def _result(response: Any) -> Dict[str, Any]:
         "citations": citations,
         "clarify":   clarify,
         "blocks":    blocks,
+        # Chain-of-thought for this reply, when the model produced any. Both
+        # RunOutput and TeamRunOutput expose reasoning_content; on a paused
+        # run it's whatever was thought before the pause hit. Persisted to
+        # message_thoughts, never to conversation_logs.message.
+        "reasoning": getattr(response, "reasoning_content", None) or None,
+        # Best-effort snapshot of the model that answered (for the thoughts
+        # row + admin display). The resolved chain-of-thought effort is stamped
+        # by the orchestrator after this returns (agent → chatbot → env) — see
+        # AgnoOrchestrator._reasoning_effort_for.
+        "model":     getattr(response, "model", None) or None,
+        "reasoning_effort": None,
     }
 
 
@@ -406,6 +429,8 @@ class AgnoOrchestrator:
         skills_map:    Optional[Dict[str, List[Any]]] = None,   # future skills integration
         leader:        Optional[ResolvedAgent]        = None,   # triage → configures the Team
         clarify_enabled: bool                         = False,  # Chatbot.clarify_enabled
+        llm_model:        Optional[str]               = None,   # Chatbot-level model override
+        reasoning_effort: Optional[str]               = None,   # Chatbot-level effort override
     ):
         self.leader        = leader
         self.clarify_enabled = clarify_enabled
@@ -415,6 +440,8 @@ class AgnoOrchestrator:
         self.active_agents = active_agents
         self.session_id    = session_id
         self._cfg_override = cfg
+        self._chatbot_llm_model        = llm_model
+        self._chatbot_reasoning_effort = reasoning_effort
         self.mcp_server    = mcp_server
         self.skills_map    = skills_map or {}
         # Structured result of the last stream() — agent/rag_hit/citations that
@@ -446,6 +473,9 @@ class AgnoOrchestrator:
                 return _empty("runner_error")
 
             result = _result(response)
+            # Snapshot the resolved chain-of-thought effort (agent → chatbot →
+            # env) that produced this reply, for the message_thoughts row.
+            result["reasoning_effort"] = self._reasoning_effort_for(result["agent"])
             self.pending = _serialize_pending(response)
             logger.info("agno.run", space_id=self.space_id, agent=result["agent"],
                         rag_hit=result["rag_hit"], citations=len(result["citations"]),
@@ -498,6 +528,7 @@ class AgnoOrchestrator:
                 return _empty("runner_error")
 
             result = _result(response)
+            result["reasoning_effort"] = self._reasoning_effort_for(result["agent"])
             self.pending = _serialize_pending(response)
             logger.info("agno.resume", space_id=self.space_id, agent=result["agent"],
                         rag_hit=result["rag_hit"], citations=len(result["citations"]),
@@ -508,14 +539,23 @@ class AgnoOrchestrator:
             logger.exception("agno.resume_error", space_id=self.space_id)
             return _empty("resume_error")
 
-    async def stream(self, message: str) -> AsyncGenerator[str, None]:
+    async def stream(self, message: str) -> AsyncGenerator[tuple, None]:
+        """
+        Stream a reply as tagged ("reasoning"|"content", text) tuples.
+
+        Reasoning deltas are emitted as ("reasoning", ...) BEFORE the reply so
+        the SSE layer can surface a live "Thinking…" block; the reply itself is
+        ("content", ...). Non-agno executors (see factory.py) still yield plain
+        strings, which the caller treats as content.
+        """
         runner = await self._runner()
         if not runner:
-            yield _empty("no_runner")["reply"]
+            yield ("content", _empty("no_runner")["reply"])
             return
 
         self.last_result = None
         final = None
+        reasoning_parts: List[str] = []
         try:
             # yield_run_output=True appends one final RunOutput after the deltas.
             # Without it agno emits RunContent only, so there is nothing carrying
@@ -531,11 +571,18 @@ class AgnoOrchestrator:
                 # "TeamRunContent", and the final output has event=None.
                 cls = type(ev).__name__
 
+                # Chain-of-thought delta (streamed before the reply). Tagged so
+                # the SSE layer can emit a separate "reasoning" event.
+                if cls in ("ReasoningContentDeltaEvent", "TeamReasoningContentDeltaEvent"):
+                    content = getattr(ev, "reasoning_content", None) or getattr(ev, "content", None)
+                    if content:
+                        reasoning_parts.append(content)
+                        yield ("reasoning", content)
                 # Incremental text delta → stream it to the client.
-                if cls == "RunContentEvent":
+                elif cls == "RunContentEvent":
                     content = getattr(ev, "content", None)
                     if content:
-                        yield content
+                        yield ("content", content)
                 # The run's result: full content + references + agent_id.
                 # Capture it, do NOT yield it, or the whole reply repeats.
                 elif cls in ("RunOutput", "TeamRunOutput"):
@@ -554,6 +601,14 @@ class AgnoOrchestrator:
                     self.last_result = _empty("runner_error")
                 else:
                     self.last_result = _result(final)
+                    self.last_result["reasoning_effort"] = self._reasoning_effort_for(self.last_result["agent"])
+                    # The final output carries the complete reasoning; the
+                    # deltas may have been partial, so prefer it when present.
+                    final_reasoning = getattr(final, "reasoning_content", None) or None
+                    if final_reasoning:
+                        reasoning_parts = [final_reasoning]
+                    if reasoning_parts:
+                        self.last_result["reasoning"] = "".join(p for p in reasoning_parts if p)
                     logger.info("agno.stream", space_id=self.space_id,
                                 agent=self.last_result["agent"],
                                 rag_hit=self.last_result["rag_hit"],
@@ -561,13 +616,45 @@ class AgnoOrchestrator:
                                 session_id=self.session_id)
         except Exception:
             logger.exception("agno.stream_error", space_id=self.space_id)
-            yield _empty("stream_error")["reply"]
+            yield ("content", _empty("stream_error")["reply"])
 
     async def warmup(self) -> None:
         """Pre-build and cache the Team so the first message has no cold-start delay."""
         await self._runner()
 
     # ── Private ───────────────────────────────────────────────────────────────
+
+    def _effective_cfg(self) -> AgnoConfig:
+        """
+        The cfg this runner builds with: chatbot-level llm_model/reasoning_effort
+        overrides folded on top of the env default. Agents that don't set their
+        own override inherit these; _runner() passes the result to the pool so
+        the cached runner is built with them.
+        """
+        cfg = self._cfg_override or _get_cfg()
+        if self._chatbot_llm_model is not None or self._chatbot_reasoning_effort is not None:
+            from dataclasses import replace
+            cfg = replace(
+                cfg,
+                llm_model=self._chatbot_llm_model if self._chatbot_llm_model is not None else cfg.llm_model,
+                reasoning_effort=(
+                    self._chatbot_reasoning_effort if self._chatbot_reasoning_effort is not None
+                    else cfg.reasoning_effort
+                ),
+            )
+        return cfg
+
+    def _reasoning_effort_for(self, agent_slug: str) -> str:
+        """Effective chain-of-thought effort for the agent that answered:
+        agent override → chatbot override → env default ("" = off). The leader
+        is the triage agent, not a specialist — it answers routing messages
+        under agent_id "team", so consult it explicitly before the fallback."""
+        if agent_slug == "team" and self.leader and self.leader.reasoning_effort is not None:
+            return self.leader.reasoning_effort
+        for a in self.active_agents:
+            if a.slug == agent_slug and a.reasoning_effort is not None:
+                return a.reasoning_effort
+        return self._effective_cfg().reasoning_effort or ""
 
     async def _runner(self) -> Optional[Any]:
         """Pool lookup — returns cached Team or builds it once on first call.
@@ -577,13 +664,19 @@ class AgnoOrchestrator:
         used first served every chatbot in that space from its own agents —
         one brand answering with another brand's documents. Matches the
         agent-list cache convention in session/pool.py.
+
+        Chatbot-level LLM overrides (llm_model / reasoning_effort) are folded
+        into the cfg BEFORE the pool builds the runner, so they become the
+        default every agent inherits unless it sets its own override. Agent
+        level is applied later in AgentFactory.build via
+        ResolvedAgent.llm_model/reasoning_effort.
         """
         return await _pool.get_or_init(
             session_id=f"{self.space_id}:{self.chatbot_id or 'default'}:team",
             active_agents=self.active_agents,
             space_id=self.space_id,
             org_name=self.org_name,
-            cfg=self._cfg_override or _get_cfg(),
+            cfg=self._effective_cfg(),
             mcp_server=self.mcp_server,
             skills_map=self.skills_map,
             knowledge_backend=_get_knowledge_backend(),

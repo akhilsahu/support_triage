@@ -11,6 +11,8 @@ class NullKnowledgeBackend(BaseKnowledgeBackend):
         space_id:  str,
         doc_ids:   Optional[List[str]] = None,
         doc_types: Optional[List[str]] = None,
+        topics:    Optional[List[str]] = None,
+        **kwargs,
     ) -> KnowledgeBundle:
         return KnowledgeBundle.empty()
 

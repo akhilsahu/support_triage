@@ -39,7 +39,13 @@ async def load_custom_agents_for_chatbot(
         .options(
             selectinload(CustomAgent.knowledge_bases)
             .selectinload(AgentKnowledgeBase.kb)
-            .selectinload(KnowledgeBase.items)
+            .selectinload(KnowledgeBase.items),
+            # Facts are rendered into the system prompt at build time. They must
+            # load in THIS query: ResolvedAgent runs under async SQLAlchemy,
+            # where a lazy load raises rather than fetching.
+            selectinload(CustomAgent.knowledge_bases)
+            .selectinload(AgentKnowledgeBase.kb)
+            .selectinload(KnowledgeBase.facts),
         )
         .join(ChatbotCustomAgent, ChatbotCustomAgent.agent_id == CustomAgent.id)
         .where(
@@ -104,7 +110,13 @@ async def load_custom_agent_by_slug(
         .options(
             selectinload(CustomAgent.knowledge_bases)
             .selectinload(AgentKnowledgeBase.kb)
-            .selectinload(KnowledgeBase.items)
+            .selectinload(KnowledgeBase.items),
+            # Facts are rendered into the system prompt at build time. They must
+            # load in THIS query: ResolvedAgent runs under async SQLAlchemy,
+            # where a lazy load raises rather than fetching.
+            selectinload(CustomAgent.knowledge_bases)
+            .selectinload(AgentKnowledgeBase.kb)
+            .selectinload(KnowledgeBase.facts),
         )
         .where(
             CustomAgent.space_id == space_id,
@@ -132,7 +144,13 @@ async def load_custom_agents_for_org(
         .options(
             selectinload(CustomAgent.knowledge_bases)
             .selectinload(AgentKnowledgeBase.kb)
-            .selectinload(KnowledgeBase.items)
+            .selectinload(KnowledgeBase.items),
+            # Facts are rendered into the system prompt at build time. They must
+            # load in THIS query: ResolvedAgent runs under async SQLAlchemy,
+            # where a lazy load raises rather than fetching.
+            selectinload(CustomAgent.knowledge_bases)
+            .selectinload(AgentKnowledgeBase.kb)
+            .selectinload(KnowledgeBase.facts),
         )
         .where(CustomAgent.space_id == space_id, CustomAgent.active == True)
     )

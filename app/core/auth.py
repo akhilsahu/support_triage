@@ -122,3 +122,17 @@ async def current_space(
         )
 
     return org
+
+
+_bearer_optional = HTTPBearer(auto_error=False)
+
+async def current_space_optional(
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    if not creds:
+        return None
+    try:
+        return await current_space(creds, db)
+    except Exception:
+        return None

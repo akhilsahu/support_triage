@@ -132,6 +132,20 @@ class IngestionConfig:
     pdf_heading_detection:        bool = True
     pdf_min_text_chars:           int  = 20       # below this → treat page as scanned
     pdf_embedded_image_min_area:  int  = 10_000   # px² — skip logos/icons below this
+    # Above this many image blocks on ONE page, the page is a decomposed graphic
+    # rather than a page carrying figures, and its images are skipped.
+    #
+    # A cover page is often stored as one artwork sliced into many tiles. Measured
+    # on the 57-page SBI MITC: 190 of its image blocks sat on exactly two pages —
+    # the cover (34 chars of text, 95 images) and the back cover (336 chars, 95
+    # images) — and 138 of them survived every existing filter, because an
+    # individual tile is high-variance and byte-unique so it looks like content to
+    # both the decorative check and the dedup cache. Captioning 95 fragments of
+    # one graphic yields noise, not content, and cost 138 vision calls: >6 minutes
+    # against 12.7s with vision off.
+    #
+    # A genuine figure-heavy page carries a handful of images, not dozens.
+    pdf_max_images_per_page:      int  = 12
     # Pages a section label may run without a new heading before it's treated as
     # a heading-detection miss and cleared. Legal/policy documents routinely
     # carry one "TERMS & CONDITIONS" heading over dozens of pages, so this has
@@ -163,6 +177,7 @@ def build_ingestion_config() -> IngestionConfig:
         pdf_heading_detection       = _bool("INGESTION_PDF_HEADING_DETECTION",       True),
         pdf_min_text_chars          = _int ("INGESTION_PDF_MIN_TEXT_CHARS",          20),
         pdf_embedded_image_min_area = _int ("INGESTION_PDF_EMBEDDED_IMAGE_MIN_AREA", 10_000),
+        pdf_max_images_per_page     = _int ("INGESTION_PDF_MAX_IMAGES_PER_PAGE", 12),
         pdf_stale_section_pages     = _int ("INGESTION_PDF_STALE_SECTION_PAGES",      40),
 
         libreoffice_enabled = _bool("INGESTION_LIBREOFFICE_ENABLED", True),

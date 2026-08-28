@@ -23,14 +23,15 @@ from typing import List
 from app.rag.document_parser import Chunk
 
 
-def enrich_for_prompt(text: str, filename: str, section: str = "") -> str:
-    """Build 'filename > section:\\n{text}' for prompt/display. Does not mutate."""
-    prefix = f"{filename} > {section}:" if section else f"{filename}:"
+def enrich_for_prompt(text: str, filename: str, section: str = "", page: int = 1) -> str:
+    """Build '[DOCUMENT BREADCRUMB: filename > section (Page N)]\\n{text}' for prompt/display. Does not mutate."""
+    breadcrumb = f"{filename} > {section}" if section else filename
+    prefix = f"[DOCUMENT BREADCRUMB: {breadcrumb} (Page {page})]"
     return f"{prefix}\n{text}"
 
 
 def apply_context_enriched(chunks: List[Chunk], filename: str) -> List[Chunk]:
-    """Embed-time mutation (opt-in). Prepends context into Chunk.text in place."""
+    """Embed-time mutation (opt-in). Prepends breadcrumb context into Chunk.text in place."""
     for c in chunks:
-        c.text = enrich_for_prompt(c.text, filename, c.section)
+        c.text = enrich_for_prompt(c.text, filename, c.section, c.page)
     return chunks

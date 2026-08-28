@@ -11,6 +11,7 @@ import {
   ArrowRightLeft, Users, Plus, Trash2, Inbox as InboxIcon,
   ChevronRight, MessageCircle, UserCheck,
 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import apiClient from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import { API_CONFIG } from '../config/api'
@@ -293,56 +294,70 @@ function ChatView({ session: initialSession, token, onClose, onResolved, reloadT
             <p className="text-sm">No messages yet</p>
           </div>
         )}
-        {history.map((h, i) => {
-          const isAgent = h.role === 'human_agent'
-          const isUser  = h.role === 'user'
-          const isAI    = h.role === 'assistant'
-          return (
-            <div key={i} className={`flex items-end gap-2 ${isAgent ? 'justify-end' : 'justify-start'}`}>
-              {/* Avatar left */}
-              {(isUser || isAI) && (
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
-                  ${isUser ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300'}`}
-                >
-                  {isUser ? 'C' : 'AI'}
-                </div>
-              )}
-
-              <div className="flex flex-col gap-1" style={{ maxWidth: '65%' }}>
-                {/* Role label */}
-                {!isUser && !isAgent && (
-                  <span className="text-xs text-gray-400 px-1">{h.role}</span>
+        <AnimatePresence initial={false}>
+          {history.map((h, i) => {
+            const isAgent = h.role === 'human_agent'
+            const isUser  = h.role === 'user'
+            const isAI    = h.role === 'assistant'
+            return (
+              <motion.div 
+                key={i} 
+                initial={{ opacity: 0, y: 15, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                className={`flex items-end gap-3 w-full ${isAgent ? 'justify-end' : 'justify-start'}`}
+              >
+                {/* Avatar left */}
+                {(isUser || isAI) && (
+                  <div className={`w-8 h-8 rounded-2xl flex items-center justify-center text-xs font-bold flex-shrink-0 shadow-sm
+                    ${isUser ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-300 border border-gray-200 dark:border-gray-700' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
+                  >
+                    {isUser ? 'C' : 'AI'}
+                  </div>
                 )}
+
+                <div className={`flex flex-col gap-1.5 min-w-0 ${isAgent ? 'items-end' : 'items-start'}`} style={{ maxWidth: '75%' }}>
+                  {/* Meta row */}
+                  <div className={`flex items-center gap-2 px-1 ${isAgent ? 'flex-row-reverse' : ''}`}>
+                    {!isUser && !isAgent && (
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
+                        {h.role}
+                      </span>
+                    )}
+                    {isAgent && (
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[color:color-mix(in_srgb,var(--impeccable-accent)_15%,transparent)] text-[color:var(--impeccable-accent)] border border-[color:color-mix(in_srgb,var(--impeccable-accent)_30%,transparent)] shadow-sm">
+                        Agent
+                      </span>
+                    )}
+                    {h.timestamp && (
+                      <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500">
+                        {new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Bubble */}
+                  <div className={`rounded-3xl px-5 py-3 text-[14.5px] leading-relaxed backdrop-blur-md shadow-sm ${
+                    isAgent 
+                      ? 'bg-[color:var(--impeccable-accent)] text-white rounded-br-sm shadow-lg shadow-[color:color-mix(in_srgb,var(--impeccable-accent)_20%,transparent)] border border-white/10 dark:border-white/5' 
+                      : isUser  
+                        ? 'bg-white/70 dark:bg-gray-900/60 text-gray-900 dark:text-gray-100 rounded-bl-sm border border-gray-200/80 dark:border-gray-800/80' 
+                        : 'bg-white/40 dark:bg-gray-800/40 text-gray-600 dark:text-gray-300 rounded-bl-sm italic border border-gray-200/50 dark:border-gray-700/50'
+                  }`}>
+                    {h.message}
+                  </div>
+                </div>
+
+                {/* Avatar right */}
                 {isAgent && (
-                  <span className="text-xs text-indigo-400 px-1 text-right">Agent</span>
+                  <div className="w-8 h-8 rounded-2xl bg-[color:var(--impeccable-accent)] flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-md shadow-[color:color-mix(in_srgb,var(--impeccable-accent)_30%,transparent)]">
+                    A
+                  </div>
                 )}
-
-                {/* Bubble */}
-                <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                  isAgent ? 'bg-indigo-600 text-white rounded-br-sm' :
-                  isUser  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-sm shadow-sm border border-gray-100 dark:border-gray-700' :
-                            'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-bl-sm italic'
-                }`}>
-                  {h.message}
-                </div>
-
-                {/* Timestamp */}
-                {h.timestamp && (
-                  <span className={`text-xs px-1 ${isAgent ? 'text-right text-gray-400' : 'text-gray-400'}`}>
-                    {new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                )}
-              </div>
-
-              {/* Avatar right */}
-              {isAgent && (
-                <div className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-                  A
-                </div>
-              )}
-            </div>
-          )
-        })}
+              </motion.div>
+            )
+          })}
+        </AnimatePresence>
         <div ref={bottomRef} />
 
         {/* New message pill — floats when user has scrolled up */}

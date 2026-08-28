@@ -448,6 +448,62 @@ response = await client.post(
 answer = response.json()
 ```
 
+Ingestion is asynchronous: `POST /rag/upload` and `POST /rag/ingest-url` return `202`
+with a `job_id`, and progress is polled via `GET /documents/ingestion-jobs`. A failed
+or restart-interrupted job keeps its replayable payload on the row and can be
+re-queued with `POST /documents/ingestion-jobs/{job_id}/retry` — so a large PDF
+killed by a server restart is resumed with Retry instead of forcing a re-upload.
+File jobs replay the original temp bytes; URL jobs re-fetch the page when the
+cached bytes are gone. See `docs/ingestion-async-and-ratelimit-plan.md` for the
+design.
+
+### Chain-of-thought / reasoning
+
+When the configured model produces reasoning (e.g. a reasoning model like
+`deepseek-reasoner`), the chain-of-thought is captured and persisted to the
+`message_thoughts` table — one row per assistant message, keyed by
+`message_id` (FK → `conversation_logs.id`). Migration: `0041_message_thoughts`.
+
+- `content` holds the merged reasoning text; `segments` keeps per-delta
+  granularity `[{seq, content}]` for faithful replay of streamed runs.
+- `space_id`/`session_id`/`chatbot_id`/`agent_slug` are denormalized copies of
+  the owning `ConversationLog` for analytics joins.
+- Reasoning is **never** written into `conversation_logs.message` — the
+  customer-facing transcript stays clean.
+- The customer widget streams reasoning live as `event: reasoning` SSE chunks
+  (collapsible "Thinking…" block), and the `done` event carries the full
+  `reasoning` text. Non-streaming `POST /api/chat/{slug}` returns `reasoning`
+  on `CustomerChatResponse`. Session-history endpoints (`/chat/{slug}/session/
+  {id}` and `/chat-sessions/{id}`) attach `reasoning` per message on restore.
+
+### Per-agent model & reasoning-effort overrides
+
+Each chatbot and each agent (built-in or custom) can override the LLM model and
+the reasoning effort. The model is entered as a free-text provider-prefixed id
+(e.g. `openai/gpt-4o-mini`, `deepseek/deepseek-reasoner`); the effort is one of
+`Off` / `Low` / `Medium` / `High`. Override resolution order:
+
+1. **Agent override** — `space_builtin_agent_configs.llm_model` /
+   `reasoning_effort` or `custom_agents.llm_model` / `reasoning_effort`.
+2. **Chatbot override** — `chatbots.llm_model` / `reasoning_effort`.
+3. **Env default (config)** — `LLM_MODEL` / `REASONING_EFFORT` (`AgnoConfig`).
+
+A `NULL` (UI: "Inherit") at any level falls through to the next level down; the
+env default for `REASONING_EFFORT` is `""` (off), so reasoning is off unless a
+level sets `low`/`medium`/`high`. `""` (UI: "Off") is stored distinctly and
+forces reasoning off even when the config default has it on. A model id
+containing `/` routes to OpenRouter and skips the provider fallback chain.
+Changes are applied on the next message (the team runner cache is invalidated).
+Admin UI: **Chatbot Profile → Model & reasoning** sets chatbot defaults;
+**Agents → Settings** and **Create Agent** set per-agent overrides. Migration:
+`0042_agent_model_reasoning`.
+
+The **routing leader** (the triage agent configuring the team, or Agno's own
+leader when none exists) resolves the same way — triage override → chatbot
+default → env — instead of being pinned off. The leader only uses chain-of-
+thought when its override or the chatbot default sets `low`/`medium`/`high`,
+and a triage `reasoning_effort` of `""` still pins routing reasoning off.
+
 ## 🧪 Testing
 
 ```bash
@@ -629,6 +685,8 @@ A deployable chat widget. One space can have multiple chatbots (e.g. one per pro
 | description | TEXT | |
 | active | BOOLEAN | |
 | greeting | TEXT | First message shown to customers |
+| llm_model | VARCHAR(120) | Per-chatbot LLM override (`openai/gpt-4o-mini`). NULL = inherit env config |
+| reasoning_effort | VARCHAR(20) | `''` (off) \| `low` \| `medium` \| `high`. NULL = inherit env config (off by default) |
 | created_at / updated_at | TIMESTAMP | |
 
 **Relations:** many-to-many with `custom_agents` via `chatbot_custom_agents`; one-to-many with `space_builtin_agent_configs`.
@@ -667,6 +725,8 @@ Per-space toggle + customisation for each built-in agent type.
 | system_prompt | TEXT | Space-editable override |
 | temperature | FLOAT | |
 | max_tokens | INT | |
+| llm_model | VARCHAR(120) | Per-agent LLM override. NULL = inherit chatbot default |
+| reasoning_effort | VARCHAR(20) | `''` (off) \| `low` \| `medium` \| `high`. NULL = inherit chatbot default |
 
 **Relations:** many-to-one with both `spaces` and `builtin_agent_catalog`.
 
@@ -688,6 +748,8 @@ User-created agents. Fully configurable — RAG, KB links, system prompt, routin
 | keywords_json | TEXT | JSON array — fallback routing keywords |
 | skills_json | TEXT | JSON array of PromptSkill IDs |
 | active | BOOLEAN | |
+| llm_model | VARCHAR(120) | Per-agent LLM override (`deepseek/deepseek-reasoner`). NULL = inherit chatbot default |
+| reasoning_effort | VARCHAR(20) | `''` (off) \| `low` \| `medium` \| `high`. NULL = inherit chatbot default |
 | created_at / updated_at | TIMESTAMP | |
 
 **Relations:** many-to-many with `chatbots` via `chatbot_custom_agents`; one-to-many with `agent_knowledge_bases`.

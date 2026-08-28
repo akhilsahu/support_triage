@@ -85,6 +85,14 @@ async def _resolve_chatbot(db: AsyncSession, org: Space, chatbot_id: Optional[UU
 
 # ── Request / Response ────────────────────────────────────────────────────────
 
+from app.utils.slug import slugify as _slugify
+
+
+class KBAssignment(BaseModel):
+    kb_id: str
+    doc_ids: Optional[List[str]] = Field(default_factory=list)
+
+
 class AgentUpdateRequest(BaseModel):
     name:          Optional[str] = None
     description:   Optional[str] = None
@@ -98,6 +106,17 @@ class AgentUpdateRequest(BaseModel):
     rag_doc_types: Optional[List[str]] = None
     rag_top_k:     Optional[int] = Field(None, ge=1, le=20)
     kb_ids:        Optional[List[str]] = None   # knowledge base UUIDs
+    kb_assignments: Optional[List[KBAssignment]] = None   # granular KB & doc selection
+    # Topic slugs this agent answers for. Empty/omitted = every document in its
+    # linked KBs, which is how agents behaved before topics existed.
+    topics:        Optional[List[str]] = None
+    # URL-safe routing key, unique per space. Omitted = unchanged.
+    slug:          Optional[str] = None
+    # Per-agent LLM override. Explicit null = inherit the chatbot default.
+    # llm_model is provider-prefixed ("openai/gpt-4o-mini"); reasoning_effort
+    # is '' (off) | low | medium | high.
+    llm_model:        Optional[str] = None
+    reasoning_effort: Optional[str] = None
 
 
 class CreateAgentRequest(BaseModel):
@@ -108,10 +127,18 @@ class CreateAgentRequest(BaseModel):
     temperature:   float = Field(0.4, ge=0.0, le=1.0)
     max_tokens:    int = Field(500, ge=50, le=4000)
     rag_enabled:   bool = False
-    rag_doc_types: List[str] = []
+    rag_doc_types: Optional[List[str]] = Field(default_factory=list)
     rag_top_k:     int = Field(5, ge=1, le=20)
     keywords:      List[str] = []
     kb_ids:        List[str] = []
+    kb_assignments: Optional[List[KBAssignment]] = None   # granular KB & doc selection
+    topics:        List[str] = []
+    # URL-safe routing key, unique per space. Omitted/blank = auto-derived from name.
+    slug:          Optional[str] = None
+    # Per-agent LLM override. llm_model is provider-prefixed
+    # ("openai/gpt-4o-mini"); reasoning_effort is '' (off) | low | medium | high.
+    llm_model:        Optional[str] = None
+    reasoning_effort: Optional[str] = None
 
 
 class AgentOut(BaseModel):
@@ -131,6 +158,10 @@ class AgentOut(BaseModel):
     rag_top_k:     int
     keywords:      List[str]
     kb_ids:        List[str]
+    kb_assignments: Optional[List[KBAssignment]] = None
+    topics:        List[str] = []
+    llm_model:        Optional[str] = None
+    reasoning_effort: Optional[str] = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -154,10 +185,23 @@ def _builtin_out(config: SpaceBuiltinAgentConfig) -> AgentOut:
         rag_top_k=config.effective_rag_top_k,
         keywords=config.keywords_list,
         kb_ids=[],
+        kb_assignments=[],
+        llm_model=config.llm_model,
+        reasoning_effort=config.reasoning_effort,
     )
 
 
 def _custom_out(agent: CustomAgent) -> AgentOut:
+    kb_assignments = []
+    kb_ids = []
+    if agent.knowledge_bases:
+        for lnk in agent.knowledge_bases:
+            kstr = str(lnk.kb_id)
+            kb_ids.append(kstr)
+            kb_assignments.append(KBAssignment(
+                kb_id=kstr,
+                doc_ids=lnk.doc_ids or []
+            ))
     return AgentOut(
         id=str(agent.id),
         slug=agent.slug,
@@ -174,8 +218,13 @@ def _custom_out(agent: CustomAgent) -> AgentOut:
         rag_doc_types=agent.rag_doc_types_list,
         rag_top_k=agent.rag_top_k,
         keywords=agent.keywords_list,
-        kb_ids=[str(lnk.kb_id) for lnk in agent.knowledge_bases] if agent.knowledge_bases else [],
+        kb_ids=kb_ids,
+        kb_assignments=kb_assignments,
+        topics=agent.topics_list,
+        llm_model=agent.llm_model,
+        reasoning_effort=agent.reasoning_effort,
     )
+
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -199,7 +248,42 @@ def _builtin_out_from_catalog(cat: BuiltinAgentCatalog) -> AgentOut:
         rag_top_k=cat.default_rag_top_k,
         keywords=[],
         kb_ids=[],
+        llm_model=None,
+        reasoning_effort=None,
     )
+
+
+def _apply_builtin_update(config: SpaceBuiltinAgentConfig, req: AgentUpdateRequest) -> None:
+    """Apply an AgentUpdateRequest to an existing builtin config row in place."""
+    if req.enabled is not None:
+        config.enabled = req.enabled
+    if req.system_prompt is not None:
+        config.system_prompt = req.system_prompt
+    if req.temperature is not None:
+        config.temperature = req.temperature
+    if req.max_tokens is not None:
+        config.max_tokens = req.max_tokens
+    if req.rag_enabled is not None:
+        config.rag_enabled = req.rag_enabled
+    if req.rag_doc_types is not None:
+        config.rag_doc_types = ",".join(req.rag_doc_types)
+    if req.rag_top_k is not None:
+        config.rag_top_k = req.rag_top_k
+    if req.keywords is not None:
+        config.keywords_json = json.dumps(req.keywords)
+    # Explicit null clears the override (inherit the chatbot default).
+    if "llm_model" in req.model_fields_set:
+        config.llm_model = (req.llm_model or "").strip() or None
+    if "reasoning_effort" in req.model_fields_set:
+        # Explicit null = inherit chatbot default; '' (off) and
+        # low|medium|high are distinct stored values.
+        if req.reasoning_effort is None:
+            config.reasoning_effort = None
+        else:
+            val = req.reasoning_effort.strip().lower()
+            if val not in ("", "low", "medium", "high"):
+                raise HTTPException(400, "reasoning_effort must be null | '' | low | medium | high.")
+            config.reasoning_effort = val
 
 
 @router.get("", response_model=List[AgentOut])
@@ -296,8 +380,31 @@ async def update_org_agent(
     org: Space = Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
-    # ── Builtin: agent_id may be catalog.id (no config yet) or config.id ────────
-    # First check if it's a catalog id with no config (org enabling for first time)
+    # ── Builtin config id: the row backing an already-enabled builtin (e.g.
+    # triage). The UI sends this id for builtins with an existing config row
+    # (_builtin_out returns config.id); without this branch such an id fell
+    # through to the custom lookup and 404'd.
+    bc = await db.execute(
+        select(SpaceBuiltinAgentConfig)
+        .options(selectinload(SpaceBuiltinAgentConfig.catalog))
+        .where(
+            SpaceBuiltinAgentConfig.id == agent_id,
+            SpaceBuiltinAgentConfig.space_id == org.id,
+        )
+    )
+    config = bc.scalar_one_or_none()
+    if config:
+        if config.catalog.locked and req.enabled is False:
+            raise HTTPException(400, f"{config.catalog.name} cannot be disabled.")
+        _apply_builtin_update(config, req)
+        await db.commit()
+        await db.refresh(config)
+        from app.orchestra.ai.session.pool import pool as _pool
+        _pool.invalidate_bot_agents(str(org.id))
+        return _builtin_out(config)
+
+    # ── Builtin catalog id: platform definition, no config row yet (org
+    # enabling it for the first time) ──────────────────────────────────────────
     cat_result = await db.execute(
         select(BuiltinAgentCatalog).where(BuiltinAgentCatalog.id == agent_id)
     )
@@ -338,26 +445,12 @@ async def update_org_agent(
                 rag_doc_types=",".join(req.rag_doc_types) if req.rag_doc_types else None,
                 rag_top_k=req.rag_top_k,
                 keywords_json=json.dumps(req.keywords) if req.keywords else "[]",
+                llm_model=req.llm_model,
+                reasoning_effort=req.reasoning_effort,
             )
             db.add(config)
         else:
-            # Update existing config
-            if req.enabled is not None:
-                config.enabled = req.enabled
-            if req.system_prompt is not None:
-                config.system_prompt = req.system_prompt
-            if req.temperature is not None:
-                config.temperature = req.temperature
-            if req.max_tokens is not None:
-                config.max_tokens = req.max_tokens
-            if req.rag_enabled is not None:
-                config.rag_enabled = req.rag_enabled
-            if req.rag_doc_types is not None:
-                config.rag_doc_types = ",".join(req.rag_doc_types)
-            if req.rag_top_k is not None:
-                config.rag_top_k = req.rag_top_k
-            if req.keywords is not None:
-                config.keywords_json = json.dumps(req.keywords)
+            _apply_builtin_update(config, req)
 
         await db.commit()
         await db.refresh(config)
@@ -406,13 +499,57 @@ async def update_org_agent(
         agent.rag_doc_types = ",".join(req.rag_doc_types)
     if req.rag_top_k is not None:
         agent.rag_top_k = req.rag_top_k
-    if req.kb_ids is not None:
+    if req.topics is not None:
+        from app.utils.slug import slugify
+        agent.topics = ",".join(t for t in (slugify(x) for x in req.topics) if t)
+    if req.slug is not None:
+        new_slug = _slugify(req.slug, max_len=80) if req.slug.strip() else ""
+        if not new_slug:
+            raise HTTPException(400, "Agent slug must contain at least one letter, number, or underscore.")
+        if new_slug == "triage":
+            raise HTTPException(400, "Slug 'triage' is reserved.")
+        dupe = await db.execute(
+            select(CustomAgent).where(
+                CustomAgent.space_id == org.id,
+                CustomAgent.slug == new_slug,
+                CustomAgent.id != agent.id,
+            )
+        )
+        if dupe.scalar_one_or_none():
+            raise HTTPException(409, f"Agent slug '{new_slug}' already exists.")
+        agent.slug = new_slug
+    # LLM overrides: explicit null clears the override (inherit chatbot default).
+    if "llm_model" in req.model_fields_set:
+        agent.llm_model = (req.llm_model or "").strip() or None
+    if "reasoning_effort" in req.model_fields_set:
+        # Explicit null = inherit chatbot default; '' (off) and low|medium|high
+        # are distinct stored values.
+        if req.reasoning_effort is None:
+            agent.reasoning_effort = None
+        else:
+            val = req.reasoning_effort.strip().lower()
+            if val not in ("", "low", "medium", "high"):
+                raise HTTPException(400, "reasoning_effort must be null | '' | low | medium | high.")
+            agent.reasoning_effort = val
+    if req.kb_assignments is not None or req.kb_ids is not None:
         from uuid import UUID as _UUID
         await db.execute(delete(AgentKnowledgeBase).where(AgentKnowledgeBase.agent_id == agent.id))
-        for kb_id in set(req.kb_ids):
-            db.add(AgentKnowledgeBase(agent_id=agent.id, kb_id=_UUID(kb_id)))
+        assignments = req.kb_assignments if req.kb_assignments is not None else [
+            KBAssignment(kb_id=k, doc_ids=[]) for k in (req.kb_ids or [])
+        ]
+        seen_kbs = set()
+        for asgn in assignments:
+            if asgn.kb_id in seen_kbs:
+                continue
+            seen_kbs.add(asgn.kb_id)
+            db.add(AgentKnowledgeBase(
+                agent_id=agent.id,
+                kb_id=_UUID(asgn.kb_id),
+                doc_ids=asgn.doc_ids if asgn.doc_ids else None
+            ))
 
     await db.commit()
+
     from app.orchestra.ai.session.pool import pool as _pool
     _pool.invalidate_bot_agents(str(org.id))
     res = await db.execute(
@@ -441,17 +578,33 @@ async def create_org_agent(
     if name_check.scalar_one_or_none():
         raise HTTPException(409, f"An agent named '{req.name.strip()}' already exists.")
 
-    base_slug = re.sub(r"[^a-z0-9_]", "_", req.name.lower().strip())[:40].strip("_")
-    slug = base_slug
-    i = 1
-    while True:
+    effort = None if req.reasoning_effort is None else req.reasoning_effort.strip().lower()
+    if effort is not None and effort not in ("", "low", "medium", "high"):
+        raise HTTPException(400, "reasoning_effort must be null | '' | low | medium | high.")
+
+    if req.slug and req.slug.strip():
+        slug = _slugify(req.slug, max_len=80)
+        if not slug:
+            raise HTTPException(400, "Agent slug must contain at least one letter, number, or underscore.")
+        if slug == "triage":
+            raise HTTPException(400, "Slug 'triage' is reserved.")
         existing = await db.execute(
             select(CustomAgent).where(CustomAgent.space_id == org.id, CustomAgent.slug == slug)
         )
-        if not existing.scalar_one_or_none():
-            break
-        slug = f"{base_slug}_{i}"
-        i += 1
+        if existing.scalar_one_or_none():
+            raise HTTPException(409, f"Agent slug '{slug}' already exists.")
+    else:
+        base_slug = re.sub(r"[^a-z0-9_]", "_", req.name.lower().strip())[:40].strip("_")
+        slug = base_slug
+        i = 1
+        while True:
+            existing = await db.execute(
+                select(CustomAgent).where(CustomAgent.space_id == org.id, CustomAgent.slug == slug)
+            )
+            if (not existing.scalar_one_or_none()) and slug != "triage":
+                break
+            slug = f"{base_slug}_{i}"
+            i += 1
 
     chatbot = await _resolve_chatbot(db, org, chatbot_id)
 
@@ -465,9 +618,12 @@ async def create_org_agent(
         temperature=req.temperature,
         max_tokens=req.max_tokens,
         rag_enabled=req.rag_enabled,
-        rag_doc_types=",".join(req.rag_doc_types),
+        rag_doc_types=",".join(req.rag_doc_types) if req.rag_doc_types else "",
         rag_top_k=req.rag_top_k,
+        llm_model=(req.llm_model or "").strip() or None,
+        reasoning_effort=effort,
         keywords_json=json.dumps(req.keywords),
+        topics=",".join(t for t in (_slugify(x) for x in req.topics) if t),
         active=True,
     )
     db.add(agent)
@@ -476,12 +632,24 @@ async def create_org_agent(
     # Link to the target chatbot (many-to-many junction)
     db.add(ChatbotCustomAgent(chatbot_id=chatbot.id, agent_id=agent.id))
 
-    if req.kb_ids:
+    if req.kb_assignments or req.kb_ids:
         from uuid import UUID as _UUID
-        for kb_id in set(req.kb_ids):
-            db.add(AgentKnowledgeBase(agent_id=agent.id, kb_id=_UUID(kb_id)))
+        assignments = req.kb_assignments if req.kb_assignments is not None else [
+            KBAssignment(kb_id=k, doc_ids=[]) for k in (req.kb_ids or [])
+        ]
+        seen_kbs = set()
+        for asgn in assignments:
+            if asgn.kb_id in seen_kbs:
+                continue
+            seen_kbs.add(asgn.kb_id)
+            db.add(AgentKnowledgeBase(
+                agent_id=agent.id,
+                kb_id=_UUID(asgn.kb_id),
+                doc_ids=asgn.doc_ids if asgn.doc_ids else None
+            ))
 
     await db.commit()
+
     res = await db.execute(
         select(CustomAgent)
         .options(selectinload(CustomAgent.knowledge_bases))
@@ -506,9 +674,37 @@ async def delete_org_agent(
         raise HTTPException(404, "Custom agent not found.")
     await db.delete(agent)
     await db.commit()
-    from app.orchestra.ai.session.pool import pool as _pool
     _pool.invalidate_bot_agents(str(org.id))
     logger.info("custom_agent.deleted", space_id=str(org.id), agent_id=str(agent_id))
+
+
+@router.post("/{agent_id}/generate-prompt")
+async def generate_specialist_agent_prompt_endpoint(
+    agent_id: UUID,
+    org: Space = Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Auto-generate a domain-focused Specialist System Prompt for this CustomAgent
+    by analyzing its linked Knowledge Bases.
+    """
+    ca = await db.execute(
+        select(CustomAgent).where(CustomAgent.id == agent_id, CustomAgent.space_id == org.id)
+    )
+    agent = ca.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(404, "Custom agent not found.")
+
+    from app.utils.ai.triage_prompt_generator import generate_prompt_for_specialist_agent
+    try:
+        result = await generate_prompt_for_specialist_agent(db, agent.id, save_to_db=True)
+        from app.orchestra.ai.session.pool import pool as _pool
+        _pool.invalidate_bot_agents(str(org.id))
+        return result
+    except Exception as e:
+        logger.error("generate_specialist_agent_prompt.failed", agent_id=str(agent_id), error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to generate agent prompt: {str(e)}")
+
 
 
 # ── Knowledge base chunks ─────────────────────────────────────────────────────

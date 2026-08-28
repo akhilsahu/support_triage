@@ -177,7 +177,7 @@ class TeamFactory:
         if not agno_agents:
             return None
 
-        return self._build_team(agno_agents, specialists, leader, org_name, memory, db)
+        return self._build_team(agno_agents, specialists, leader, org_name, memory, db, clarify_enabled)
 
     # ── Private ───────────────────────────────────────────────────────────────
 
@@ -189,15 +189,23 @@ class TeamFactory:
         org_name:         str,
         memory:           Optional[Any],
         db:               Optional[Any] = None,
+        clarify_enabled:  bool          = False,
     ) -> Optional[Any]:
         try:
             from agno.team import Team, TeamMode
 
-            # Build the specialist list description for triage instructions
-            specialist_desc = "\n".join(
-                f"  - {s.slug}: {s.description or s.name}"
-                for s in specialists
-            )
+            # Build rich multi-attribute specialist descriptions for triage instructions
+            def _format_specialist(s: ResolvedAgent) -> str:
+                lines = [f"  - Agent Slug: '{s.slug}' (Name: '{s.name}')"]
+                if s.description:
+                    lines.append(f"    * Primary Role / Description: {s.description}")
+                if s.topic_names:
+                    lines.append(f"    * Covered Products / Topics / Knowledge Scope: {', '.join(s.topic_names)}")
+                if s.keywords_list:
+                    lines.append(f"    * Key Routing Terms: {', '.join(s.keywords_list)}")
+                return "\n".join(lines)
+
+            specialist_desc = "\n\n".join(_format_specialist(s) for s in specialists)
 
             # Routing instructions. A triage agent's system_prompt REPLACES the
             # platform prompt rather than prefixing it: the two are both routing
@@ -210,18 +218,34 @@ class TeamFactory:
                     specialist_list=specialist_desc
                 )
 
+            # Leader's own model. reasoning_effort=None lets LLMFactory inherit
+            # the effective chatbot→env default (self.cfg was built by
+            # AgnoOrchestrator._effective_cfg, so the chatbot override is
+            # already folded in); an explicit '' still pins reasoning OFF.
+            leader_effort = leader.reasoning_effort if leader else None
+            leader_model = self.llm_factory.build(
+                model=leader.llm_model if leader else None,
+                reasoning_effort=leader_effort,
+            )
             team_kwargs: dict = dict(
                 name=f"{org_name} Support Team",
                 mode=TeamMode(self.cfg.team_mode.lower()),
-                model=self.llm_factory.build(),
+                model=leader_model,
                 # Live-retry chain for the leader's own model — see
                 # LLMFactory.build_fallbacks() / AgentFactory.build().
-                fallback_models=self.llm_factory.build_fallbacks() or None,
+                fallback_models=self.llm_factory.build_fallbacks(
+                    reasoning_effort=leader_effort
+                ) or None,
                 members=agno_agents,
                 instructions=triage_instructions,
                 show_members_responses=self.cfg.show_members_responses,
                 debug_mode=self.cfg.debug,
             )
+
+            if clarify_enabled:
+                from agno.tools.user_feedback import UserFeedbackTools
+                from app.orchestra.ai.prompts import ASK_USER_INSTRUCTIONS
+                team_kwargs["tools"] = [UserFeedbackTools(instructions=ASK_USER_INSTRUCTIONS)]
             # HISTORY / MEMORY / SUMMARY live on the leader (the conversation).
             from app.orchestra.ai.session.store import session_runner_kwargs
             team_kwargs.update(session_runner_kwargs(self.cfg, db, memory))

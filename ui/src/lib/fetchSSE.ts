@@ -20,31 +20,68 @@
  *
  *   // To close:
  *   controller.abort()
+ *
+ * POST support: pass `method: 'POST'` + `body`. A server that answers with
+ * plain JSON instead of SSE (e.g. a human-handoff or error payload) is routed
+ * to `onJson`; non-2xx responses throw an error carrying `status`, `code` and
+ * `detail` parsed from the JSON body (e.g. the customer chat's 401
+ * `login_required` gate).
  */
 
 export interface FetchSSEOptions {
   url: string
   headers?: Record<string, string>
+  method?: string
+  body?: BodyInit | null
   onEvent: (eventType: string, data: string) => void
-  onError?: (err: Error) => void
+  onJson?: (status: number, data: unknown) => void
+  onError?: (err: Error & { status?: number; code?: string; detail?: string }) => void
   signal?: AbortSignal
+}
+
+export interface FetchSSEError extends Error {
+  status?: number
+  code?: string
+  detail?: string
 }
 
 export async function fetchSSE({
   url,
   headers = {},
+  method,
+  body,
   onEvent,
+  onJson,
   onError,
   signal,
 }: FetchSSEOptions): Promise<void> {
   try {
     const response = await fetch(url, {
+      method,
+      body,
       headers: { Accept: 'text/event-stream', ...headers },
       signal,
     })
 
     if (!response.ok) {
-      throw new Error(`SSE connection failed: ${response.status} ${response.statusText}`)
+      const payload = await response.json().catch(() => null)
+      const err: FetchSSEError = new Error(
+        `SSE connection failed: ${response.status} ${response.statusText}`
+      )
+      err.status = response.status
+      if (payload && typeof payload === 'object') {
+        err.code   = (payload as any).code
+        err.detail = (payload as any).detail
+      }
+      throw err
+    }
+
+    // Not an SSE stream — the server answered with JSON (handoff payload,
+    // simple error, etc.). Surface it whole so the caller can render it.
+    if (!(response.headers.get('content-type') ?? '').includes('text/event-stream')) {
+      const data = await response.json().catch(() => null)
+      onJson?.(response.status, data)
+      return
     }
     if (!response.body) {
       throw new Error('SSE response has no body')
@@ -96,6 +133,6 @@ export async function fetchSSE({
     // AbortError means the caller closed the connection intentionally — not an error
     if (signal?.aborted) return
     if (err instanceof DOMException && err.name === 'AbortError') return
-    onError?.(err instanceof Error ? err : new Error(String(err)))
+    onError?.(err instanceof Error ? err as FetchSSEError : new Error(String(err)))
   }
 }

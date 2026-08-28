@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import current_space
 from app.core.database import get_db
 from app.core.redis import get_redis, RedisClient
-from app.models.chat import ChatSession
+from app.models.chat import ChatSession, MessageThought
 from app.models.space import ConversationLog, Space
 
 logger = structlog.get_logger()
@@ -64,12 +64,29 @@ async def _load_history_from_db(session_id: str, db: AsyncSession) -> list[dict]
         .order_by(ConversationLog.timestamp)
     )
     logs = result.scalars().all()
+
+    # Reasoning/thoughts keyed by assistant message id (message_thoughts PK is
+    # conversation_logs.id). Kept out of the admin-facing message text, like
+    # the customer transcript.
+    thoughts_by_msg = {}
+    if logs:
+        t_result = await db.execute(
+            select(MessageThought).where(MessageThought.session_id == session_id)
+        )
+        for t in t_result.scalars().all():
+            thoughts_by_msg[str(t.message_id)] = t.content
+
     return [
         {
+            "id":         str(log.id),
             "role":       log.role,
             "message":    log.message,
             "agent_slug": log.agent_slug,
+            "citations":  log.citations or [],
+            "blocks":     log.blocks or [],
+            "reasoning":  thoughts_by_msg.get(str(log.id)),
             "timestamp":  log.timestamp.isoformat() if log.timestamp else None,
+            "created_at": log.timestamp.isoformat() if log.timestamp else None,
         }
         for log in logs
     ]
@@ -121,35 +138,40 @@ async def upsert_session(
     agent_slug: str,
 ) -> None:
     """
-    Create or update the ChatSession row and append to Redis history cache.
+    Create or update the ChatSession row and invalidate Redis history cache.
     Called after every chat turn in customer.py.
     """
-    result = await db.execute(
-        select(ChatSession).where(ChatSession.session_id == session_id)
-    )
-    session = result.scalar_one_or_none()
+    try:
+        sess_uuid = UUID(session_id)
+        result = await db.execute(
+            select(ChatSession).where(ChatSession.id == sess_uuid)
+        )
+        session = result.scalar_one_or_none()
+    except (ValueError, TypeError):
+        session = None
 
     if not session:
         title = user_message[:100].strip()
         session = ChatSession(
+            id=UUID(session_id) if session_id else UUID(),
             space_id=space_id,
-            session_id=session_id,
             title=title,
             agent_slug=agent_slug,
             status="open",
-            message_count=1,
+            message_count=2,
             last_message_at=datetime.utcnow(),
         )
         db.add(session)
     else:
         session.agent_slug      = agent_slug
-        session.message_count   = (session.message_count or 0) + 1
+        session.message_count   = (session.message_count or 0) + 2
         session.last_message_at = datetime.utcnow()
 
     await db.commit()
 
-    # Extend Redis TTL so active sessions stay hot
-    await redis.expire(_history_key(session_id), HISTORY_TTL)
+    # Invalidate Redis cache so subsequent reads load updated turns
+    await _invalidate_history_cache(session_id, redis)
+
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────

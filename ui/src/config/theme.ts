@@ -4,12 +4,12 @@ export const theme = {
   colors: {
     primary: 'indigo',
     agents: {
-      triage:       { bg: 'bg-blue-500',    badge: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',    dot: 'bg-blue-500'    },
-      logistics:    { bg: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300', dot: 'bg-emerald-500' },
-      finance:      { bg: 'bg-purple-500',  badge: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',  dot: 'bg-purple-500'  },
-      order:        { bg: 'bg-orange-500',  badge: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',  dot: 'bg-orange-500'  },
-      support:      { bg: 'bg-teal-500',    badge: 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300',    dot: 'bg-teal-500'    },
-      custom:       { bg: 'bg-indigo-500',  badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300',  dot: 'bg-indigo-500'  },
+      triage:       { bg: 'bg-indigo-500 text-white',    badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',    dot: 'bg-indigo-500'    },
+      logistics:    { bg: 'bg-indigo-500 text-white', badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300', dot: 'bg-indigo-500' },
+      finance:      { bg: 'bg-indigo-500 text-white',  badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',  dot: 'bg-indigo-500'  },
+      order:        { bg: 'bg-indigo-500 text-white',  badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',  dot: 'bg-indigo-500'  },
+      support:      { bg: 'bg-indigo-500 text-white',    badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',    dot: 'bg-indigo-500'    },
+      custom:       { bg: 'bg-indigo-500 text-white',  badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',  dot: 'bg-indigo-500'  },
     },
     sentiment: {
       negative: 'bg-red-400',

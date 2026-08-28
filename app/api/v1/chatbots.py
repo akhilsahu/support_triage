@@ -60,6 +60,10 @@ class ChatbotUpdate(BaseModel):
     login_after_messages: Optional[int] = None
     quick_topics: Optional[str] = None
     trust_badges: Optional[str] = None
+    # Chatbot-level LLM defaults. NULL = inherit env config. llm_model is a
+    # provider-prefixed model id ("openai/gpt-4o-mini", "deepseek/deepseek-reasoner");
+    # reasoning_effort is "" (off) | low | medium | high.    llm_model: Optional[str] = None
+    reasoning_effort: Optional[str] = None
 
 
 class ChatbotOut(BaseModel):
@@ -82,6 +86,8 @@ class ChatbotOut(BaseModel):
     login_after_messages: Optional[int] = None
     quick_topics: Optional[str] = None
     trust_badges: Optional[str] = None
+    llm_model: Optional[str] = None
+    reasoning_effort: Optional[str] = None
     created_at: Optional[str]
 
 
@@ -269,15 +275,42 @@ async def update_chatbot(
             chatbot.trust_badges = validate_trust_badges_payload(req.trust_badges)
         except ValueError as e:
             raise HTTPException(400, str(e))
+    # LLM overrides: explicit null clears the override (inherit env); a value
+    # validates against the provider-prefixed id / effort set.
+    llm_changed = (
+        "llm_model" in req.model_fields_set and req.llm_model != chatbot.llm_model
+    )
+    if "llm_model" in req.model_fields_set:
+        val = (req.llm_model or "").strip()
+        if val and "/" not in val:
+            raise HTTPException(400, "llm_model must be a provider-prefixed id (e.g. 'openai/gpt-4o-mini').")
+        chatbot.llm_model = val or None
+    effort_changed = (
+        "reasoning_effort" in req.model_fields_set
+        and req.reasoning_effort != chatbot.reasoning_effort
+    )
+    if "reasoning_effort" in req.model_fields_set:
+        # Explicit null = inherit env config; '' (off) and low|medium|high are
+        # distinct stored values so a chatbot can force reasoning off even when
+        # the config default has it on.
+        if req.reasoning_effort is None:
+            chatbot.reasoning_effort = None
+        else:
+            val = req.reasoning_effort.strip().lower()
+            if val not in ("", "low", "medium", "high"):
+                raise HTTPException(400, "reasoning_effort must be null | '' | low | medium | high.")
+            chatbot.reasoning_effort = val
 
     await db.commit()
     await db.refresh(chatbot)
 
-    if clarify_changed:
+    if clarify_changed or llm_changed or effort_changed:
         # clarify_enabled changes which tools get attached (see
-        # AgentFactory._build_tools) — the pooled Team/Agent for this space was
-        # built before the change and won't pick it up until evicted. Same
-        # convention as space_agents.py's agent-config edits.
+        # AgentFactory._build_tools); llm_model/reasoning_effort change which
+        # model answers (see AgnoOrchestrator._effective_cfg). Either way the
+        # pooled Team/Agent for this space was built before the change and
+        # won't pick it up until evicted. Same convention as space_agents.py's
+        # agent-config edits.
         from app.orchestra.ai.session.pool import pool as _pool
         _pool.invalidate_bot_agents(str(space.id))
 
@@ -662,3 +695,24 @@ async def unpublish_homepage_ui(
         snap.published_at = None
         await db.commit()
     return {"published": False}
+
+
+@router.post("/{chatbot_slug}/triage-agent/generate-prompt")
+async def generate_triage_prompt_endpoint(
+    chatbot_slug: str,
+    space: Space = Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Auto-generate a structured 3-part Triage System Prompt for this chatbot's
+    Team Leader by analyzing all Specialist Agents and Knowledge Bases linked to it.
+    """
+    chatbot = await _get_chatbot(chatbot_slug, space.id, db)
+    from app.utils.ai.triage_prompt_generator import generate_triage_prompt_for_chatbot
+    try:
+        result = await generate_triage_prompt_for_chatbot(db, chatbot.id, save_to_db=True)
+        return result
+    except Exception as e:
+        logger.error("generate_triage_prompt_endpoint.failed", chatbot_id=str(chatbot.id), error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to generate triage prompt: {str(e)}")
+

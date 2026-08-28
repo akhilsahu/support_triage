@@ -26,8 +26,9 @@ from app.orchestra.ai.knowledge.null import NullKnowledgeBackend
 from app.orchestra.ai.prompts import (
     ASK_USER_INSTRUCTIONS,
     DEFAULT_AGENT_PROMPT,
-    MULTI_PRODUCT_DIRECTIVES,
+    MULTI_TOPIC_DIRECTIVES,
     RAG_QUALITY_DIRECTIVES,
+    TOPIC_FACTS_DIRECTIVES,
 )
 
 logger = structlog.get_logger()
@@ -54,15 +55,15 @@ def _member_role(resolved: ResolvedAgent) -> Optional[str]:
     Agno lists each member as Role then Description, and its route-mode
     instructions tell the leader to pick "the member whose role and tools are
     the best match" — so role is the field routing actually reads. Naming the
-    covered products is a stronger signal than the owner-written description,
+    covered topics is a stronger signal than the owner-written description,
     which is prose aimed at humans.
 
-    None when there are no products: agno omits the line entirely and routes on
+    None when there are no topics: agno omits the line entirely and routes on
     the description as before, rather than printing it twice. Ignored when the
     agent runs standalone (no leader, nothing to route).
     """
-    if resolved.products:
-        return f"Answers questions about: {', '.join(resolved.product_names)}"
+    if resolved.topics:
+        return f"Answers questions about: {', '.join(resolved.topic_names)}"
     return None
 
 
@@ -71,21 +72,22 @@ def _build_tools(resolved: ResolvedAgent, shared_tools: List[Any], clarify_enabl
     Shared MCP tools plus two optional Agno toolkits:
 
     - UserFeedbackTools (ask_user), only when the OWNER has turned it on
-      (Chatbot.clarify_enabled) AND the agent has 2+ products to disambiguate
-      — the owner-facing toggle is the gate; product count is what makes the
+      (Chatbot.clarify_enabled) AND the agent has 2+ topics to disambiguate
+      — the owner-facing toggle is the gate; topic count is what makes the
       toggle meaningful for THIS agent. See
       docs/ambiguous-question-clarification-plan.md "Where does the owner
       enable this — chatbot or agent?" for why the toggle lives on the
       chatbot and the per-agent condition is derived, not a second toggle.
     - RenderTools (render_table/render_cards/render_tabs), every agent, gated
-      only by RENDER_TOOLS_ENABLED — a layout choice isn't tied to product
+      only by RENDER_TOOLS_ENABLED — a layout choice isn't tied to topic
       ambiguity the way asking is; see
       docs/structured-response-rendering-plan.md.
     """
     tools = list(shared_tools)
-    if clarify_enabled and resolved.products and len(resolved.products) >= 2:
+    if clarify_enabled:
         from agno.tools.user_feedback import UserFeedbackTools
         tools.append(UserFeedbackTools(instructions=ASK_USER_INSTRUCTIONS))
+
 
     from app.orchestra.ai.tools.render_tools import RENDER_TOOLS_ENABLED, RenderTools
     if RENDER_TOOLS_ENABLED:
@@ -138,7 +140,7 @@ class AgentFactory:
                 summary knobs. Team members leave this False — the Team leader
                 owns the conversation; members only retrieve.
             clarify_enabled: the chatbot owner's toggle for asking the customer
-                which product they mean — see _build_tools.
+                which topic they mean — see _build_tools.
         """
         try:
             from agno.agent import Agent
@@ -146,14 +148,20 @@ class AgentFactory:
             logger.warning("agno not installed — pip install agno")
             return None
 
-        model = self.llm_factory.build(resolved.temperature,
-                                       _effective_max_tokens(resolved.max_tokens))
+        model = self.llm_factory.build(
+            resolved.temperature,
+            _effective_max_tokens(resolved.max_tokens),
+            model=resolved.llm_model,
+            reasoning_effort=resolved.reasoning_effort,
+        )
         if not model:
             return None
         # Live-retry chain (rate limit/timeout/5xx on `model` above) — see
         # LLMFactory.build_fallbacks(). Configured via LLM_PROVIDER_PRIORITY.
         fallback_models = self.llm_factory.build_fallbacks(
-            resolved.temperature, _effective_max_tokens(resolved.max_tokens)
+            resolved.temperature,
+            _effective_max_tokens(resolved.max_tokens),
+            reasoning_effort=resolved.reasoning_effort,
         )
 
         # Build knowledge bundle scoped to this agent's accessible documents.
@@ -162,8 +170,12 @@ class AgentFactory:
         kb_bundle = self.knowledge_backend.for_agent(
             space_id=self.space_id,
             doc_ids=list(resolved.kb_ids) if not resolved.is_builtin and resolved.kb_ids else None,
+            specific_doc_ids=list(resolved.specific_doc_ids) if not resolved.is_builtin and resolved.specific_doc_ids else None,
+            kb_assignments=list(resolved.kb_assignments) if not resolved.is_builtin and resolved.kb_assignments else None,
             doc_types=list(resolved.rag_doc_types_list) if resolved.rag_enabled else None,
+            topics=list(resolved.topic_scope) or None,
         )
+
 
         # CONTEXT: reliable RAG — always inject retrieved references when this
         # agent has knowledge, in addition to the agentic search tool.
@@ -177,7 +189,8 @@ class AgentFactory:
             description=resolved.description or resolved.name,
             model=model,
             fallback_models=fallback_models or None,
-            instructions=self._build_system_prompt(resolved, skills or []),
+            instructions=self._build_system_prompt(resolved, skills or [], clarify_enabled),
+
             tools=_build_tools(resolved, tools or [], clarify_enabled),
             knowledge=kb_bundle.knowledge,
             knowledge_filters=kb_bundle.filters,
@@ -245,24 +258,24 @@ class AgentFactory:
         kb_bundle: Any,
     ) -> Optional[Any]:
         """
-        Per-product retriever for multi-product agents, else None (agno falls
+        Per-topic retriever for multi-topic agents, else None (agno falls
         back to its own single search over the agent's whole scope).
 
-        Without this, one product can take the entire top-k and the agent
-        silently answers for that product alone — see per_product.py.
+        Without this, one topic can take the entire top-k and the agent
+        silently answers for that topic alone — see per_topic.py.
         """
-        if not kb_bundle.has_knowledge or not resolved.products:
+        if not kb_bundle.has_knowledge or not resolved.topics:
             return None
 
         from app.config import settings
-        from app.orchestra.ai.knowledge.per_product import build_per_product_retriever
+        from app.orchestra.ai.knowledge.per_topic import build_per_topic_retriever
 
-        return build_per_product_retriever(
+        return build_per_topic_retriever(
             knowledge=kb_bundle.knowledge,
             base_filters=kb_bundle.filters,
-            doc_ids=resolved.product_doc_ids,
+            topics=resolved.topics,
             # What a single search would have returned in total, so splitting it
-            # per product keeps the context size unchanged.
+            # per topic keeps the context size unchanged.
             top_n=settings.RERANK_TOP_N if settings.RERANK_ENABLED else settings.RAG_TOP_K,
             # The backend already resolved the right candidate budget (over-fetch
             # when reranking, plain top-k otherwise).
@@ -273,6 +286,7 @@ class AgentFactory:
         self,
         resolved: ResolvedAgent,
         skills:   List[Any],
+        clarify_enabled: bool = False,
     ) -> str:
         """
         Assemble the final system prompt from:
@@ -297,13 +311,43 @@ class AgentFactory:
                 if skill_text:
                     parts.append(f"\n[{skill_name.upper()} DIRECTIVE]: {skill_text}")
 
-        # Disambiguation, when this agent's knowledge spans several products.
+        # Disambiguation, when this agent's knowledge spans several topics.
         # Triage is forbidden from asking the customer anything, so this is the
-        # only place a "which product do you mean?" can come from.
-        if resolved.product_names:
-            parts.append(MULTI_PRODUCT_DIRECTIVES.format(
-                products="\n".join(f"  - {p}" for p in resolved.product_names)
+        # only place a "which topic do you mean?" can come from.
+        if resolved.topic_names:
+            parts.append(MULTI_TOPIC_DIRECTIVES.format(
+                topics="\n".join(f"  - {t}" for t in resolved.topic_names)
             ))
+
+        if clarify_enabled:
+            parts.append(
+                "[CLARIFICATION DIRECTIVE — USE `ask_user` TOOL]:\n"
+                "When a customer asks a general or ambiguous question (e.g., 'What is the annual fee?', 'What are the charges?', 'How to apply?') "
+                "that applies to multiple products, cards, or policies in your knowledge base, DO NOT answer for all of them at once or guess. "
+                "YOU MUST call the `ask_user` tool immediately to present a choice of available products so the customer can pick which one they hold."
+            )
+
+
+        # Confirmed attributes. Deliberately NOT gated on topic count: the
+        # per-topic retriever exists only for a 2-8 topic agent, so hanging
+        # facts off it would silently drop them for a one-document agent.
+        if resolved.fact_sheet:
+            parts.append(TOPIC_FACTS_DIRECTIVES.format(facts=resolved.fact_sheet))
+
+        # Dynamically inject domain-specific package directives (terminology, MCC codes, SOP steps)
+        try:
+            from app.utils.ai.agent_meta_suggestion import _detect_domain_package
+            ctx_text = f"{resolved.description} {' '.join(resolved.topic_names)} {' '.join(resolved.keywords_list)}"
+            domain_pkg = _detect_domain_package(
+                context_text=ctx_text,
+                agent_name=resolved.name,
+                doc_types=resolved.rag_doc_types_list,
+            )
+            if domain_pkg:
+                terms_str = "\n".join(f"  • {t}" for t in domain_pkg["terminology"])
+                parts.append(f"[DOMAIN DIRECTIVES — {domain_pkg['domain_name']}]:\n{terms_str}")
+        except Exception:
+            pass
 
         # Platform answer-quality directives — appended last so they apply on top
         # of any org customisation or skill, for every agent.

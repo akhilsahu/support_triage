@@ -230,14 +230,10 @@ async def _generate(space_id: str, org_name: str, doc_types: list[str],
 def _fetch_doc_context(space_id: str, doc_types: list[str], doc_id: str = "",
                        kb_doc_ids: list[str] | None = None) -> str:
     """
-    Collect distinct document metadata (filename, kb_name, description) for the
-    LLM prompt.
+    Collect distinct document metadata (filename, kb_name, description, excerpts)
+    for the LLM prompt.
 
     When kb_doc_ids is given, sampling is restricted to exactly those documents.
-    Filtering by doc_type alone matches any document of that type anywhere in the
-    space, so a request scoped to one knowledge base was being described using a
-    different KB's documents -- an SBI credit-card KB in a space named "HDFC
-    LIFE" produced an "HDFC LIFE Support" agent.
     """
     try:
         from app.rag.vector_store import get_vector_store, COLLECTION_CLIENT
@@ -245,7 +241,7 @@ def _fetch_doc_context(space_id: str, doc_types: list[str], doc_id: str = "",
         col = get_vector_store()._collection(COLLECTION_CLIENT)
         lines: list[str] = []
 
-        # KB-scoped: describe exactly the documents the caller asked about.
+        # KB-scoped / doc_ids-scoped: describe exactly the documents requested.
         if kb_doc_ids:
             results = col.get(
                 where={"$and": [
@@ -253,7 +249,7 @@ def _fetch_doc_context(space_id: str, doc_types: list[str], doc_id: str = "",
                     {"doc_id":    {"$in": list(kb_doc_ids)}},
                 ]},
                 include=["metadatas", "documents"],
-                limit=20,
+                limit=30,
             )
             seen_docs: set[str] = set()
             metas = results.get("metadatas") or []
@@ -265,9 +261,9 @@ def _fetch_doc_context(space_id: str, doc_types: list[str], doc_id: str = "",
                 if not did or did in seen_docs:
                     continue
                 seen_docs.add(did)
-                name = (meta or {}).get("filename") or (meta or {}).get("kb_name") or did
+                name = (meta or {}).get("filename") or (meta or {}).get("title") or (meta or {}).get("kb_name") or did
                 desc = (meta or {}).get("semantic_summary") or (meta or {}).get("description") or ""
-                excerpt = (body or "")[:300].replace("\n", " ").strip()
+                excerpt = (body or "")[:350].replace("\n", " ").strip()
                 line = f"- {name}"
                 if desc:
                     line += f": {desc[:200]}"
@@ -275,7 +271,7 @@ def _fetch_doc_context(space_id: str, doc_types: list[str], doc_id: str = "",
                     line += f": {excerpt}"
                 lines.append(line)
             if lines:
-                return "\n".join(lines[:10])
+                return "\n".join(lines[:12])
 
         for doc_type in doc_types:
             try:
@@ -300,7 +296,6 @@ def _fetch_doc_context(space_id: str, doc_types: list[str], doc_id: str = "",
                 seen: set[str] = set()
                 metas = results.get("metadatas") or []
                 docs = results.get("documents") or []
-                # Ensure we handle cases where documents list might be shorter or missing
                 while len(docs) < len(metas):
                     docs.append("")
                 
@@ -333,16 +328,108 @@ def _fetch_doc_context(space_id: str, doc_types: list[str], doc_id: str = "",
         return "\n".join(f"• type={dt}" for dt in doc_types)
 
 
+DOMAIN_PACKAGES = {
+    "credit_card": {
+        "domain_name": "Credit Card & Retail Financial Products",
+        "keywords": ["credit card", "card", "prime", "cashback", "mitc", "reward", "lounge", "annual fee", "visa", "mastercard", "rupay"],
+        "terminology": [
+            "Annual Fee & Renewal Spend Waiver Thresholds (e.g. ₹2,999 fee waived on ₹3 Lakh annual spends)",
+            "Welcome Gift Vouchers (e.g. ₹3,000 e-gift vouchers from Yatra/Shoppers Stop upon fee payment) vs Spend Milestone Rewards (e.g. ₹1,000 Pizza Hut on ₹50k spends or ₹7,000 Yatra on ₹5L spends)",
+            "Reward Points Earning Matrix (10X birthday rewards, utility bills, retail spends)",
+            "Airport Lounge Access (Domestic & Priority Pass International visits)",
+            "Excluded Categories & MCC Penalties (Fuel, Cash Advances, Jewelry exclusions)",
+            "Add-on Card Eligibility & Fraud Liability Protection"
+        ],
+        "sop_steps": [
+            "Step 1: Identify Card Variant & Canonical Product Title (e.g. SBI Prime Credit Card)",
+            "Step 2: Extract Fee & Waiver Schedule into a Markdown Table",
+            "Step 3: Separately list Initial Welcome Gifts from Spend Milestone Rewards",
+            "Step 4: Present Earning Matrix, Lounge Access, & Security Covers in clean tables",
+            "Step 5: Detail Exclusions & Non-Eligible Transaction MCC rules"
+        ]
+    },
+    "insurance": {
+        "domain_name": "Insurance Policies & Claim Coverage",
+        "keywords": ["insurance", "policy", "premium", "claim", "sum assured", "rider", "death benefit", "maturity", "surrender", "grace period"],
+        "terminology": [
+            "Policy Term & Premium Paying Term (PPT)",
+            "Sum Assured & Guaranteed Additions / Bonuses",
+            "Optional Rider Coverage (Critical Illness, Accidental Total Disability)",
+            "Surrender Value, Free Look Period, & Grace Period",
+            "Claim Settlement Workflow & Required Documentation Checklist",
+            "Excluded Illnesses & Waiting Period Clauses"
+        ],
+        "sop_steps": [
+            "Step 1: Identify Policy Name, Variant, and Plan Option",
+            "Step 2: Detail Premium Schedule, Payment Term, & Sum Assured",
+            "Step 3: Extract Rider Benefits & Eligibility Options into a Markdown Table",
+            "Step 4: Present Claim Settlement Steps & Document Checklist in a Table",
+            "Step 5: Cite Exclusions, Waiting Periods, & Surrender Terms"
+        ]
+    },
+    "finance": {
+        "domain_name": "Banking, Loans & Financial Services",
+        "keywords": ["loan", "interest", "emi", "mortgage", "deposit", "rate", "apr", "tenure", "processing fee", "prepayment"],
+        "terminology": [
+            "Interest Rate, Floating/Fixed APR, & Repayment Tenure",
+            "EMI Schedule & Amortization Calculations",
+            "Prepayment / Foreclosure Charges & Lock-in Periods",
+            "KYC Requirements & Financial Eligibility Criteria",
+            "Processing Fees, Stamp Duty, & Statutory Taxes"
+        ],
+        "sop_steps": [
+            "Step 1: Identify Loan / Banking Product & Account Type",
+            "Step 2: Detail Interest Rates & Processing Charges in a Markdown Table",
+            "Step 3: Outline EMI Repayment Options & Prepayment Terms",
+            "Step 4: List Required KYC Documents & Eligibility Thresholds"
+        ]
+    },
+    "saas_it": {
+        "domain_name": "SaaS Platform & Technical API Support",
+        "keywords": ["api", "endpoint", "token", "auth", "webhook", "sdk", "rate limit", "payload", "http", "status"],
+        "terminology": [
+            "API Key Authentication & OAuth Token Handlers",
+            "Rate Limits, Throttling, & Quota Allocation",
+            "HTTP Status Codes (200, 400, 401, 403, 429, 500) & Error Remediation",
+            "SDK Initialization & Webhook Event Payloads",
+            "Uptime SLA & Escalation Protocols"
+        ],
+        "sop_steps": [
+            "Step 1: Identify Technical Feature, Endpoint, or Error Symptom",
+            "Step 2: Provide Authentication Setup & Request Headers",
+            "Step 3: Present Request/Response Schemas & Error Codes in Markdown Tables",
+            "Step 4: Supply Webhook Retry & Rate Limit Remediation Code"
+        ]
+    }
+}
+
+
+def _detect_domain_package(context_text: str, agent_name: str | None = None, doc_types: list[str] | None = None) -> dict:
+    combined = (context_text + " " + (agent_name or "") + " " + " ".join(doc_types or [])).lower()
+    best_pkg = None
+    best_score = 0
+    for key, pkg in DOMAIN_PACKAGES.items():
+        score = sum(1 for kw in pkg["keywords"] if kw in combined)
+        if score > best_score:
+            best_score = score
+            best_pkg = pkg
+    return best_pkg or DOMAIN_PACKAGES["finance"]
+
+
 # ── Prompt builder ────────────────────────────────────────────────────────────
 
 def _build_prompt(org_name: str, doc_types: list[str], doc_context: str,
                   agent_name: str | None = None, kb_name: str = "") -> str:
+    domain_pkg = _detect_domain_package(doc_context, agent_name, doc_types)
+    terms_str = "\n".join(f"  • {t}" for t in domain_pkg["terminology"])
+    sop_str = "\n".join(f"  • {s}" for s in domain_pkg["sop_steps"])
+
     if doc_context:
         types_str = ", ".join(doc_types) if doc_types else "general"
         kb_line = f'Knowledge base: "{kb_name}"\n' if kb_name else ""
         context_block = (
             f"{kb_line}"
-            f"The agent will answer questions using these knowledge base documents:\n"
+            f"The agent will answer questions using these specific knowledge base documents:\n"
             f"{doc_context}\n\n"
             f"Document types covered: {types_str}\n\n"
             "Name the agent after the specific product or topic in THESE documents, "
@@ -359,20 +446,32 @@ def _build_prompt(org_name: str, doc_types: list[str], doc_context: str,
         )
 
     return (
-        f'You are configuring a customer support agent for "{org_name}".\n\n'
+        f'You are configuring an expert customer support agent for "{org_name}" under the "{domain_pkg["domain_name"]}" domain package.\n\n'
         f"{context_block}"
+        f"Domain Specific Terminology & Concepts to Enforce:\n{terms_str}\n\n"
+        f"Domain Runtime SOP Protocol Steps:\n{sop_str}\n\n"
+        "Synthesize a highly effective, production-grade System Prompt that functions as an actionable Agent Skill Protocol.\n"
         "Return a JSON object with exactly these three fields:\n"
         "{\n"
-        '  "name": "<2–5 words — specific agent name>",\n'
-        '  "description": "<1–2 sentences — what this agent covers; used by triage to route customers>",\n'
-        '  "system_prompt": "<Structured prompt with: (1) Role, (2) Responsibilities, '
-        "(3) Constraints — stay on topic, don't make up info, "
-        "(4) Escalation — escalate unresolved issues to human support. "
-        'No greetings.>"\n'
+        '  "name": "<2–5 words — specific product or topic agent name>",\n'
+        '  "description": "<1–2 sentences — what this agent covers; used by triage to route customer queries>",\n'
+        '  "system_prompt": "<Actionable Skill Protocol with: '
+        '(1) Role & Skill Domain: Define expert role for the specific product/topic. '
+        '(2) Domain Coverage & Responsibilities: Outline covered rules, pricing, terms, and eligibility using domain terminology. '
+        '(3) Welcome vs Milestone Distinction Rule: Explicitly distinguish initial sign-up welcome gift vouchers (upon fee payment) from spend milestone rewards (upon hitting spend targets). '
+        '(4) Ambiguous Query Clarification Rule: When a query applies to multiple product variants or plans in the knowledge base, instruct the agent to use `ask_user` tool to clarify which specific option the customer holds. '
+        '(5) Strict Verbatim Numerical & Rate Preservation: Quote all fees, pricing, rates, limits, and percentages verbatim without cross-contaminating figures between variants. '
+        '(6) Rich Visual Formatting: Present fees, rates, charges, and comparisons in clean Markdown Tables or render_table/render_cards tools rather than plain text bullet lists. '
+        '(7) Restriction & Exclusion Verification: Check explicit non-eligible rules/clauses and cite restriction codes (e.g. MCC codes, policy clause references) for excluded items. '
+        '(8) Domain 5-Step Runtime SOP Protocol. '
+        '(9) Escalation Protocol: Escalate unresolved or out-of-scope issues to human support. No greetings.>" \n'
         "}\n\n"
-        "Rules: name reflects actual topic · description is specific for triage routing · "
-        "system_prompt is written as instructions to the agent, not a customer greeting."
+        "Rules: Name reflects the actual document topic · Description is specific for triage routing · "
+        "System Prompt acts as a structured Agent Skill Protocol with domain terminology, numerical precision, markdown table formatting, domain SOP protocol, and welcome vs milestone clarification guardrails."
     )
+
+
+
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

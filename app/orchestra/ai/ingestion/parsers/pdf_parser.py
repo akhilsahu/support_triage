@@ -115,9 +115,43 @@ class PdfParser(BaseParser):
     # is prepended to chunk text) from everything after it.
     _STALE_SECTION_PAGE_LIMIT = 40
 
+    # Consecutive vision failures after which vision is abandoned for the rest
+    # of THIS document.
+    #
+    # Vision failures are caught and turned into "" per page, which looks safe —
+    # but the retries inside the API client are not free. Measured on the 102-page
+    # SBI MITC with the vision provider out of credit: every scanned-looking page
+    # paid three retries with backoff, and ingestion sat at "Reading document"
+    # for over six minutes without finishing. The same document parses in 12.7s
+    # with vision off. A provider that has failed twice in a row is down, not
+    # flaky, and the remaining pages will fail identically.
+    _VISION_FAILURE_LIMIT = 2
+
     def parse(self, raw: bytes, filename: str) -> ParsedDocument:
         import fitz  # PyMuPDF — raises ImportError if not installed; service walks to PyPdfParser
+        # Per-document, so one bad document never disables vision for the next.
+        self._vision_failures = 0
+        self._vision_off = False
         return self._parse_pymupdf(raw, filename, fitz)
+
+    # ── Vision circuit breaker ────────────────────────────────────────────────
+
+    def _vision_ok(self) -> bool:
+        """False once the provider has failed enough times to call it down."""
+        return self.cfg.vision_enabled and not getattr(self, "_vision_off", False)
+
+    def _vision_failed(self, page_num: int) -> None:
+        self._vision_failures = getattr(self, "_vision_failures", 0) + 1
+        if self._vision_failures >= self._VISION_FAILURE_LIMIT and not self._vision_off:
+            self._vision_off = True
+            logger.warning(
+                "ingestion.pdf.vision_disabled",
+                page=page_num, failures=self._vision_failures,
+                reason="provider unavailable — parsing the rest of this document without vision",
+            )
+
+    def _vision_succeeded(self) -> None:
+        self._vision_failures = 0
 
     # ── PyMuPDF ───────────────────────────────────────────────────────────────
 
@@ -199,7 +233,7 @@ class PdfParser(BaseParser):
             # ── Case 1: Fully scanned page ────────────────────────────────────
             # No text at all (or too little) → render whole page to vision.
             if len(page_plain) < self.cfg.pdf_min_text_chars:
-                if self.cfg.vision_enabled:
+                if self._vision_ok():
                     vision_text = self._vision_page(page, page_idx + 1)
                     if vision_text:
                         _flush()
@@ -218,10 +252,23 @@ class PdfParser(BaseParser):
             page_tables = self._find_page_tables(page) if self.cfg.pdf_table_aware else []
             emitted_table_idxs: set = set()
 
+            # A page holding dozens of image blocks is one artwork sliced into
+            # tiles (a cover page, typically), not a page of figures. Each tile
+            # is high-variance and byte-unique, so it defeats both the decorative
+            # check and the dedup cache and reaches the API looking like content.
+            # Decided per page, before any extraction, so the tiles cost nothing.
+            image_blocks = sum(1 for b in sorted_blocks if b["type"] == 1)
+            page_images_ok = image_blocks <= self.cfg.pdf_max_images_per_page
+            if not page_images_ok:
+                logger.info("ingestion.pdf.page_images_skipped",
+                            page=page_idx + 1, image_blocks=image_blocks,
+                            limit=self.cfg.pdf_max_images_per_page,
+                            reason="decomposed graphic, not figures")
+
             for block in sorted_blocks:
 
                 # Case 3: Embedded image block (chart, diagram, infographic)
-                if block["type"] == 1 and self.cfg.vision_enabled:
+                if block["type"] == 1 and page_images_ok and self._vision_ok():
                     img_text = self._vision_image_block(doc, block, page_idx + 1)
                     if img_text:
                         embedded_image_texts.append(img_text)
@@ -486,12 +533,14 @@ class PdfParser(BaseParser):
                 cache[digest] = text
             logger.info("ingestion.pdf.embedded_image_vision",
                         page=page_num, w=w, h=h, chars=len(text))
+            self._vision_succeeded()
             return text
         except Exception as e:
             if self.cfg.vision_on_error == "raise":
                 raise
             logger.warning("ingestion.pdf.embedded_image_vision_failed",
                            page=page_num, error=str(e))
+            self._vision_failed(page_num)
             return ""
 
     # ── Whole-page vision (Case 1 — scanned) ─────────────────────────────────
@@ -533,11 +582,13 @@ class PdfParser(BaseParser):
                             page=page_num, preview=text.strip()[:80])
                 return ""
             logger.info("ingestion.pdf.scanned_page_vision", page=page_num, chars=len(text))
+            self._vision_succeeded()
             return text
         except Exception as e:
             if self.cfg.vision_on_error == "raise":
                 raise
             logger.warning("ingestion.pdf.vision_failed", page=page_num, error=str(e))
+            self._vision_failed(page_num)
             return ""
 
     # ── Table detection (layout-aware, primary) ──────────────────────────────

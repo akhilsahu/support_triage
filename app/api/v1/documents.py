@@ -235,29 +235,21 @@ async def rag_upload(
     x_kb_expiry: Optional[str] = Header(default=None, alias="X-KB-Expiry"),
     x_kb_id: Optional[str] = Header(default=None, alias="X-KB-Id"),
     x_item_title: Optional[str] = Header(default=None, alias="X-Item-Title"),
+    x_topic: Optional[str] = Header(default=None, alias="X-Topic"),
+    x_doc_label: Optional[str] = Header(default=None, alias="X-Doc-Label"),
+    x_contextual_enrichment: Optional[str] = Header(default=None, alias="X-Contextual-Enrichment"),
     org=Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Accept a document for ingestion. JWT required.
-
-    Returns 202 immediately with a job id: parsing an image-heavy PDF runs
-    vision over every embedded image and takes minutes, so holding the request
-    open guaranteed a client timeout. Validation that can fail fast (file type,
-    size, emptiness) still happens here so the user gets those errors inline;
-    everything slow moves to a background job. Poll
-    /documents/ingestion-jobs/{job_id} for progress.
-
-    client_id is the org's UUID (immutable) — not slug, not from headers.
-    """
-    from app.models.ingestion_job import IngestionJob
-    from app.orchestra.ai.ingestion.jobs import get_job_runner
-
     session_id  = x_session_id or str(uuid.uuid4())
     doc_type    = x_doc_type if x_doc_type in VALID_DOC_TYPES else "general"
     kb_name     = x_kb_name or ""
     description = x_kb_description or ""
     expiry_date = x_kb_expiry or ""
+    enable_enrichment: bool = True
+    if x_contextual_enrichment is not None:
+        enable_enrichment = x_contextual_enrichment.strip().lower() in ("true", "1", "yes", "on")
+
 
     # When the upload belongs to a knowledge base, the KB item can only be
     # created once ingestion yields a doc_id -- so the job carries the linkage
@@ -288,8 +280,8 @@ async def rag_upload(
 
     # Hand the bytes to the worker via disk rather than memory: the payload has
     # to survive this request, and under the Celery backend it crosses a process
-    # boundary. The task deletes it when it finishes, success or failure.
-    tmp_dir = Path(tempfile.gettempdir()) / "support247_uploads"
+    # boundary. The task no longer deletes it when it finishes.
+    tmp_dir = Path("uploads").absolute()
     tmp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = tmp_dir / f"{uuid.uuid4().hex}_{Path(filename).name}"
     temp_path.write_bytes(raw)
@@ -308,8 +300,11 @@ async def rag_upload(
     await db.commit()
     await db.refresh(job_row)
 
-    get_job_runner().enqueue(
-        "ingest_document",
+    # The exact ingest_document args, replayed verbatim by the retry endpoint
+    # if this job fails or dies in a restart. The temp file survives the crash
+    # (the task only deletes it in its own `finally`), so a restart-interrupted
+    # job can resume with the same bytes.
+    task_kwargs = dict(
         job_id=str(job_row.id),
         space_id=str(org.id),
         temp_path=str(temp_path),
@@ -322,7 +317,14 @@ async def rag_upload(
         org_name=org.display_name or "",
         kb_id=str(kb_uuid) if kb_uuid else "",
         item_title=x_item_title or filename,
+        topic=x_topic or "",
+        doc_label=x_doc_label or "",
+        enable_enrichment=enable_enrichment,
     )
+    job_row.retry_payload = {"task": task_kwargs}
+    await db.commit()
+
+    get_job_runner().enqueue("ingest_document", **task_kwargs)
 
     logger.info("ingestion.job.queued", job_id=str(job_row.id),
                 filename=filename, space_id=str(org.id))
@@ -373,6 +375,122 @@ async def get_ingestion_job(
     return row.to_dict()
 
 
+@router.post("/ingestion-jobs/{job_id}/retry", response_model=RagUploadAcceptedResponse, status_code=202)
+async def retry_ingestion_job(
+    job_id: str,
+    org=Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Re-queue a failed ingestion job from the payload stored at enqueue time.
+
+    A failure — including a job killed by a server restart, which previously
+    forced the user to upload the document again — can be resumed instead.
+    File uploads replay the original temp bytes (which survive a crash); URL
+    jobs re-fetch the page when those bytes are gone.
+    """
+    from app.models.ingestion_job import IngestionJob
+    from app.orchestra.ai.ingestion.jobs import get_job_runner
+
+    try:
+        row = await db.get(IngestionJob, uuid.UUID(job_id))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid job id.")
+    if row is None or row.space_id != org.id:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    if row.status != "failed":
+        raise HTTPException(status_code=409, detail="Only failed jobs can be retried.")
+
+    payload = row.retry_payload or {}
+    task_kwargs = dict(payload.get("task") or {})
+    if not task_kwargs:
+        raise HTTPException(
+            status_code=409,
+            detail="This job has no replayable payload; upload the document again.",
+        )
+
+    refetched = False
+    temp_path = Path(task_kwargs.get("temp_path") or "")
+    # The task deletes the temp bytes on a genuine failure, so they may be gone.
+    # URL jobs can fall back to re-fetching the page; file uploads cannot.
+    if not temp_path.is_file():
+        url = (payload.get("url") or "").strip()
+        if not url:
+            raise HTTPException(
+                status_code=409,
+                detail="The source file is no longer available; upload the document again.",
+            )
+        from app.orchestra.ai.ingestion.scraper import fetch_url, ScrapeError
+        try:
+            page = await fetch_url(url)
+        except ScrapeError as e:
+            raise HTTPException(status_code=e.status_hint, detail=str(e))
+        tmp_dir = Path("uploads").absolute()
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        temp_path = tmp_dir / f"{uuid.uuid4().hex}_{page.filename}"
+        temp_path.write_bytes(page.raw)
+        task_kwargs["temp_path"] = str(temp_path)
+        task_kwargs["filename"] = page.filename   # parser selection follows the re-fetched bytes
+        task_kwargs["source_url"] = page.final_url
+        refetched = True
+
+    # Reset to queued so the UI picks this up as an in-flight job again. The row
+    # keeps its id — the KB screen polls by kb_id and swaps done rows for the
+    # finished document, so the same progress UI tracks both attempts.
+    row.status = "queued"
+    row.progress = 0
+    row.stage_detail = "Waiting to start"
+    row.error = None
+    row.doc_id = None
+    row.pages = None
+    row.chunks = None
+    await db.commit()
+
+    get_job_runner().enqueue("ingest_document", **task_kwargs)
+    logger.info("ingestion.job.retried", job_id=str(row.id), source=row.source,
+                refetched=refetched, space_id=str(org.id))
+
+    return RagUploadAcceptedResponse(
+        job_id=str(row.id),
+        filename=row.filename,
+        status="queued",
+        message=f"Retrying '{row.filename}' — processing in the background.",
+    )
+
+
+@router.delete("/ingestion-jobs/{job_id}", status_code=204)
+async def dismiss_ingestion_job(
+    job_id: str,
+    org=Depends(current_space),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Remove a finished job row from the listing.
+
+    Failed jobs are kept visible on purpose — an upload that silently vanished
+    would be worse. But without a way to clear one, a single old failure stays
+    pinned to the knowledge base forever and reappears on every visit long
+    after it stopped being actionable. This is the other half of that: the user
+    acknowledges it and it goes.
+
+    Only terminal jobs can be dismissed; deleting a running one would orphan
+    the worker's progress writes and make the upload look like it disappeared.
+    """
+    from app.models.ingestion_job import IngestionJob
+    try:
+        row = await db.get(IngestionJob, uuid.UUID(job_id))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid job id.")
+    if row is None or row.space_id != org.id:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    if not row.is_terminal:
+        raise HTTPException(status_code=409, detail="Job is still running.")
+
+    await db.delete(row)
+    await db.commit()
+    logger.info("ingestion.job.dismissed", job_id=job_id, space_id=str(org.id))
+
+
 # ── Chat ──────────────────────────────────────────────────────────────────────
 
 @router.post("/rag/chat", response_model=RagChatResponse)
@@ -402,12 +520,15 @@ async def rag_chat(req: RagChatRequest):
             sources=[],
         )
 
-    context = "\n\n".join(
-        f"[Page {h['metadata'].get('page','?')}"
-        + (f" · {h['metadata']['section']}" if h["metadata"].get("section") else "")
-        + f"]\n{h['document']}"
-        for h in hits
-    )
+    context_parts = []
+    for h in hits:
+        fname = h["metadata"].get("filename") or h["metadata"].get("doc_name") or meta.get("filename") or "document"
+        sec = h["metadata"].get("section") or ""
+        pg = h["metadata"].get("page", "?")
+        header = f"[DOCUMENT BREADCRUMB: {fname} > {sec} (Page {pg})]" if sec else f"[DOCUMENT BREADCRUMB: {fname} (Page {pg})]"
+        context_parts.append(f"{header}\n{h['document']}")
+    context = "\n\n".join(context_parts)
+
 
     system = (
         f"You are a helpful assistant answering questions about: \"{meta['filename']}\".\n"
@@ -631,17 +752,21 @@ async def rag_ingest_text(req: IngestTextRequest, org=Depends(current_space),
 
 class IngestUrlRequest(BaseModel):
     url: str
+    title: Optional[str] = ""
     doc_type: Optional[str] = "general"
     kb_name: Optional[str] = ""
     # See IngestTextRequest.kb_id — without it the scraped page is indexed but
     # unreachable by every custom agent.
     kb_id: Optional[str] = None
     description: Optional[str] = ""
+    topic: Optional[str] = ""
+    doc_label: Optional[str] = ""
     # From /rag/preview-url. Reuses the exact bytes the user reviewed instead
     # of re-fetching, so the page can't change between preview and confirm.
     # Optional: without one this endpoint fetches fresh, keeping it usable
     # directly from the API.
     preview_token: Optional[str] = None
+
 
 
 class PreviewUrlRequest(BaseModel):
@@ -729,8 +854,11 @@ async def rag_preview_url(req: PreviewUrlRequest, org=Depends(current_space)):
 
 
 @router.post("/rag/ingest-url", response_model=RagUploadAcceptedResponse, status_code=202)
-async def rag_ingest_url(req: IngestUrlRequest, org=Depends(current_space),
+async def rag_ingest_url(req: IngestUrlRequest,
+                         x_contextual_enrichment: Optional[str] = Header(default=None, alias="X-Contextual-Enrichment"),
+                         org=Depends(current_space),
                          db: AsyncSession = Depends(get_db)):
+
     """
     Scrape a URL and ingest the page into the org's knowledge base.
     Works best with static pages. JS-rendered SPAs may return limited content.
@@ -776,14 +904,15 @@ async def rag_ingest_url(req: IngestUrlRequest, org=Depends(current_space),
     # "page.pdf" would be meaningless to a customer reading a citation. A
     # scraper-recovered title (e.g. a flipbook's bookTitle) is a real name,
     # so keep it over the URL; a bare hostname is not.
+    user_title = (req.title or "").strip()
     display_name = (
-        page.title if filename == "page.html" or " " in page.title else page.final_url
+        user_title or (page.title if filename == "page.html" or " " in page.title else page.final_url)
     )[:200]
 
     # Same disk hand-off as file uploads: the payload must survive this request
-    # and, under the Celery backend, cross a process boundary. The task deletes
-    # it when it finishes, success or failure.
-    tmp_dir = Path(tempfile.gettempdir()) / "support247_uploads"
+    # and, under the Celery backend, cross a process boundary. The task no
+    # longer deletes it when it finishes.
+    tmp_dir = Path("uploads").absolute()
     tmp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = tmp_dir / f"{uuid.uuid4().hex}_{filename}"
     temp_path.write_bytes(raw_bytes)
@@ -794,6 +923,7 @@ async def rag_ingest_url(req: IngestUrlRequest, org=Depends(current_space),
         filename=display_name,
         doc_type=doc_type,
         kb_name=req.kb_name or None,
+        source="url",          # progress belongs under the KB's URLs tab
         status="queued",
         progress=0,
         stage_detail="Waiting to start",
@@ -802,8 +932,16 @@ async def rag_ingest_url(req: IngestUrlRequest, org=Depends(current_space),
     await db.commit()
     await db.refresh(job_row)
 
-    get_job_runner().enqueue(
-        "ingest_document",
+    # Replayable task args (see rag_upload). `url` sits alongside the task
+    # kwargs, not inside them: on retry, if the temp bytes are gone (the task
+    # deletes them on a genuine failure), the URL job can re-fetch rather than
+    # making the user start over — file uploads have no such escape hatch.
+    enable_enrichment: bool = True
+    if x_contextual_enrichment is not None:
+        enable_enrichment = x_contextual_enrichment.strip().lower() in ("true", "1", "yes", "on")
+
+
+    task_kwargs = dict(
         job_id=str(job_row.id),
         space_id=str(org.id),
         temp_path=str(temp_path),
@@ -816,12 +954,22 @@ async def rag_ingest_url(req: IngestUrlRequest, org=Depends(current_space),
         expiry_date="",
         org_name=org.display_name or "",
         kb_id=kb_id or "",
-        item_title=display_name,
+        item_title=user_title or display_name,
+
         # Listed under the KB's "URL" tab rather than "Documents", and the
         # source URL is kept so the row can link back to the live page.
         item_type="url",
         source_url=page.final_url,
+        topic=req.topic or "",
+        doc_label=req.doc_label or "",
+        enable_enrichment=enable_enrichment,
     )
+
+    job_row.retry_payload = {"task": task_kwargs, "url": url}
+    await db.commit()
+    await db.refresh(job_row)
+
+    get_job_runner().enqueue("ingest_document", **task_kwargs)
 
     logger.info("ingestion.job.queued", job_id=str(job_row.id), source="url",
                 url=url, kb_id=kb_id, space_id=str(org.id))

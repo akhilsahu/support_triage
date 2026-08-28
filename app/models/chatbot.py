@@ -56,7 +56,7 @@ class Chatbot(Base):
     # behavior unchanged. Gates whether the tool is attached at all; whether a
     # given agent actually gets it also depends on it having 2+ products — see
     # AgentFactory._build_tools and docs/ambiguous-question-clarification-plan.md.
-    clarify_enabled = Column(Boolean, default=False, nullable=False)
+    clarify_enabled = Column(Boolean, default=True, nullable=False)
 
     # Admin override for the AI-recommended homepage empty-state sections.
     # NULL = defer to the renderengine's AI recommendation. JSON shape:
@@ -92,6 +92,14 @@ class Chatbot(Base):
     # their own table (chatbot_stat_metrics) -- one row per {value,label}. No
     # rows = the section falls back to the AI/web generator. See stat_metrics
     # relationship below and app/renderengine/stat_band.py.
+
+    # Per-chatbot LLM override: which model answers this bot's customers, and
+    # whether it reasons out loud first (chain-of-thought). NULL = inherit the
+    # env-configured default (AgnoConfig.llm_model / reasoning_effort). This is
+    # the chatbot-level default every agent falls back to unless it sets its
+    # own llm_model/reasoning_effort (see ResolvedAgent + LLMFactory.build).
+    llm_model         = Column(String(120), nullable=True)
+    reasoning_effort  = Column(String(20), nullable=True)
 
     created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -138,6 +146,8 @@ class Chatbot(Base):
             "login_after_messages":       self.login_after_messages,
             "quick_topics":               self.quick_topics,
             "trust_badges":               self.trust_badges,
+            "llm_model":                  self.llm_model,
+            "reasoning_effort":           self.reasoning_effort,
             "created_at":              self.created_at.isoformat() if self.created_at else None,
         }
 

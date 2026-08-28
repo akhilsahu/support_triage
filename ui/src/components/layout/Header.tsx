@@ -36,7 +36,7 @@ export function Header({ title, subtitle }: HeaderProps) {
   const active = THEMES.find(t => t.key === dashboardTheme) ?? THEMES[0]
 
   return (
-    <header className="relative z-10 flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-3 sm:py-4 bg-white dark:bg-white/10 dark:backdrop-blur-md border-b border-gray-200 dark:border-white/10 flex-shrink-0">
+    <header className="relative z-40 flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-3 sm:py-4 bg-white dark:bg-white/10 dark:backdrop-blur-md border-b border-gray-200 dark:border-white/10 flex-shrink-0">
       <button
         onClick={toggleSidebar}
         aria-label="Toggle navigation menu"
@@ -52,7 +52,7 @@ export function Header({ title, subtitle }: HeaderProps) {
         <button
           onClick={() => navigate('/app/onboarding?quick=true')}
           aria-label="Quick Create"
-          className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold ${dt.quickCreate} text-white rounded-full min-h-[44px] active:scale-[0.98] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}
+          className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold ${dt.quickCreate} text-white rounded-full min-h-[44px] active:scale-[0.98] transition-[transform,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}
         >
           <Plus className="w-4 h-4" />
           <span className="hidden xs:inline">Quick Create</span>
@@ -71,7 +71,7 @@ export function Header({ title, subtitle }: HeaderProps) {
           </button>
 
           {openDT && (
-            <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-black/10 z-50 p-2 animate-fadeIn">
+            <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-black/10 z-50 p-2 origin-top-right animate-fadeIn">
               <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 px-3 py-1.5 block">Dashboard Theme</span>
               {THEMES.map(t => (
                 <button
@@ -100,13 +100,13 @@ export function Header({ title, subtitle }: HeaderProps) {
             title="Appearance"
             className="min-w-[44px] min-h-[44px] rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-slate-300 transition-colors flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
-            {themeMode === 'dark' ? <Moon className="w-4 h-4" /> : themeMode === 'beige' ? <Coffee className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+            {themeMode === 'dark' ? <Moon className="w-4 h-4" /> : themeMode === 'beige' ? <Coffee className="w-4 h-4" /> : themeMode === 'dark-beige' ? <Coffee className="w-4 h-4 opacity-70" /> : <Sun className="w-4 h-4" />}
           </button>
           
           {openTM && (
-            <div className="absolute right-0 top-full mt-2 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-black/10 z-50 p-2 animate-fadeIn">
+            <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-black/10 z-50 p-2 origin-top-right animate-fadeIn">
               <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 px-3 py-1.5 block">Appearance</span>
-              {(['light', 'dark', 'beige'] as const).map(m => (
+              {(['light', 'dark', 'beige', 'dark-beige'] as const).map(m => (
                 <button
                   key={m}
                   onClick={() => { setThemeMode(m); setOpenTM(false) }}
@@ -116,8 +116,8 @@ export function Header({ title, subtitle }: HeaderProps) {
                       : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                   }`}
                 >
-                  {m === 'dark' ? <Moon className="w-4 h-4" /> : m === 'beige' ? <Coffee className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                  <span className="capitalize">{m}</span>
+                  {m === 'dark' ? <Moon className="w-4 h-4" /> : m === 'beige' ? <Coffee className="w-4 h-4" /> : m === 'dark-beige' ? <Coffee className="w-4 h-4 opacity-70" /> : <Sun className="w-4 h-4" />}
+                  <span className="capitalize">{m === 'dark-beige' ? 'Dark Beige' : m}</span>
                   {themeMode === m && <span className={`ml-auto text-[10px] font-bold ${dt.textAccent}`}>✓</span>}
                 </button>
               ))}

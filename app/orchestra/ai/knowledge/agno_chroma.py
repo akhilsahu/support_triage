@@ -25,54 +25,90 @@ logger = structlog.get_logger()
 
 
 def _make_filters(
-    space_id:  str,
-    doc_ids:   Optional[List[str]],
-    doc_types: Optional[List[str]],
+    space_id:         str,
+    doc_ids:          Optional[List[str]],
+    doc_types:        Optional[List[str]],
+    topics:           Optional[List[str]] = None,
+    specific_doc_ids: Optional[List[str]] = None,
+    kb_assignments:  Optional[List[dict]] = None,
 ) -> Any:
     """
     Build a ChromaDB-native where filter scoped to this agent.
 
     Layers (all ANDed):
       - client_id == space_id          → hard space/tenant isolation (always applied)
-      - kb_id     $in doc_ids          → custom agents: only their linked KnowledgeBases
+      - kb_assignments                 → custom agents: per-KB link conditions (full KB vs doc-level)
+      - kb_id     $in doc_ids          → custom agents legacy fallback: linked KnowledgeBases
+      - doc_id    $in specific_doc_ids → custom agents legacy fallback: specific documents inside KBs
       - doc_type  $in doc_types        → builtin agents: only their configured categories
-
-    Shape rules (dictated by agno's ChromaDb._convert_filters, verified against the
-    installed version):
-      - A single condition is returned as a FLAT {key: value} dict; _convert_filters
-        wraps it into {"$eq": ...} / {"$in": ...}. Returning a pre-wrapped single
-        condition would be double-wrapped ({"$eq": {"$eq": ...}}) and break.
-      - Multiple conditions are returned as an explicit top-level {"$and": [...]} with
-        fully-formed operator sub-dicts. A key starting with "$" makes _convert_filters
-        pass the dict through untouched, so the sub-conditions must already be wrapped.
+      - topic     $in topics           → agents narrowed to specific topics
     """
     conds: List[Any] = [{"client_id": {"$eq": space_id}}]
 
-    if doc_ids:
-        # `doc_ids` carries KnowledgeBase ids (from resolved.kb_ids), which match the
-        # `kb_id` chunk-metadata field written at ingestion — NOT the `doc_id` field.
-        conds.append({"kb_id": {"$in": list(doc_ids)}})
+    if kb_assignments:
+        kb_conds: List[Any] = []
+        for asgn in kb_assignments:
+            k_id = asgn.get("kb_id")
+            d_ids = asgn.get("doc_ids") or []
+            if not k_id:
+                continue
+            if d_ids:
+                if len(d_ids) == 1:
+                    kb_conds.append({"$and": [{"kb_id": {"$eq": k_id}}, {"doc_id": {"$eq": d_ids[0]}}]})
+                else:
+                    kb_conds.append({"$and": [{"kb_id": {"$eq": k_id}}, {"doc_id": {"$in": list(d_ids)}}]})
+            else:
+                kb_conds.append({"kb_id": {"$eq": k_id}})
+
+        if len(kb_conds) == 1:
+            conds.append(kb_conds[0])
+        elif len(kb_conds) > 1:
+            conds.append({"$or": kb_conds})
+    else:
+        if doc_ids:
+            conds.append({"kb_id": {"$in": list(doc_ids)}})
+
+        if specific_doc_ids:
+            conds.append({"doc_id": {"$in": list(specific_doc_ids)}})
 
     if doc_types:
         conds.append({"doc_type": {"$in": list(doc_types)}})
 
+    if topics:
+        conds.append({"topic": {"$in": list(topics)}})
+
     if len(conds) == 1:
-        # Single condition → flat form so _convert_filters wraps it correctly.
         return {"client_id": space_id}
 
     return {"$and": conds}
 
 
 def scoped_to_doc(filters: Any, doc_id: str) -> Any:
-    """
-    Narrow an agent's filters to a single indexed document.
+    """Narrow an agent's filters to a single indexed document."""
+    return _scoped(filters, {"doc_id": {"$eq": doc_id}})
 
-    Used by per-product retrieval to run one search per document. Lives here
-    because it has to obey the same shape rules as _make_filters: a flat
-    single-condition dict has to be re-wrapped once it gains a second condition.
-    """
-    cond = {"doc_id": {"$eq": doc_id}}
 
+def scoped_to_docs(filters: Any, doc_ids: List[str]) -> Any:
+    """
+    Narrow an agent's filters to every document describing one product.
+
+    A product usually spans several documents (brochure + T&C + a shared fee
+    schedule), so per-product retrieval searches them together as one budget
+    slot rather than giving a product extra slots for having more files.
+    """
+    if len(doc_ids) == 1:
+        return scoped_to_doc(filters, doc_ids[0])
+    return _scoped(filters, {"doc_id": {"$in": list(doc_ids)}})
+
+
+def _scoped(filters: Any, cond: dict) -> Any:
+    """
+    AND one more condition onto an agent's filters.
+
+    Lives here because it has to obey the same shape rules as _make_filters: a
+    flat single-condition dict has to be re-wrapped once it gains a second
+    condition, or agno's _convert_filters double-wraps it.
+    """
     if isinstance(filters, dict) and "$and" in filters:
         return {"$and": [*filters["$and"], cond]}
 
@@ -149,28 +185,32 @@ class AgnoChromaKnowledgeBackend(BaseKnowledgeBackend):
 
     def for_agent(
         self,
-        space_id:  str,
-        doc_ids:   Optional[List[str]] = None,
-        doc_types: Optional[List[str]] = None,
+        space_id:         str,
+        doc_ids:          Optional[List[str]] = None,
+        doc_types:        Optional[List[str]] = None,
+        topics:           Optional[List[str]] = None,
+        specific_doc_ids: Optional[List[str]] = None,
+        kb_assignments:  Optional[List[dict]] = None,
     ) -> KnowledgeBundle:
         knowledge = self._get_knowledge()
         if not knowledge:
             return KnowledgeBundle.empty()
 
-        # An agent MUST bring its own scoping — linked KB(s) (doc_ids) or, for
-        # builtins, categories (doc_types). With neither, we return NO knowledge
-        # rather than falling back to a space-wide search: an unscoped agent must
-        # not be able to read every document in the space.
-        if not doc_ids and not doc_types:
+        # An agent MUST bring its own scoping — linked KB(s) (doc_ids/specific_doc_ids/kb_assignments)
+        # or, for builtins, categories (doc_types). With neither, we return NO knowledge.
+        if not doc_ids and not doc_types and not specific_doc_ids and not kb_assignments:
             logger.info("knowledge.agno_chroma.no_scope", space_id=space_id)
             return KnowledgeBundle.empty()
 
-        filters = _make_filters(space_id, doc_ids, doc_types)
+        filters = _make_filters(space_id, doc_ids, doc_types, topics, specific_doc_ids, kb_assignments)
         logger.debug(
             "knowledge.agno_chroma.bundle",
             space_id=space_id,
             doc_ids=doc_ids,
+            specific_doc_ids=specific_doc_ids,
+            kb_assignments=kb_assignments,
             doc_types=doc_types,
+            topics=topics,
         )
         return KnowledgeBundle(knowledge=knowledge, filters=filters)
 
