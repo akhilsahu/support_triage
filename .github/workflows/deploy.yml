@@ -42,8 +42,8 @@ jobs:
             cd /var/www/support247
 
             # Discard any local changes and pull latest code
-            git reset --hard HEAD
-            git pull origin main
+            git fetch origin
+            git reset --hard origin/main
 
             # Write .env from GitHub secrets — no manual SSH needed
             printf '%s\n' \
