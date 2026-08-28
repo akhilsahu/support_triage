@@ -1,7 +1,7 @@
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 
-interface LayoutProps { children: React.ReactNode; title: string; subtitle?: string }
+interface LayoutProps { children: React.ReactNode; title?: string; subtitle?: string }
 
 export function Layout({ children, title, subtitle }: LayoutProps) {
   return (

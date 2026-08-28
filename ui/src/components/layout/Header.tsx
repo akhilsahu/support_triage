@@ -13,7 +13,7 @@ const THEMES: { key: DashboardTheme; label: string; swatch: string }[] = [
   { key: 'forest', label: 'Forest',  swatch: 'bg-gradient-to-br from-emerald-500 to-teal-400'  },
 ]
 
-interface HeaderProps { title: string; subtitle?: string }
+interface HeaderProps { title?: string; subtitle?: string }
 
 export function Header({ title, subtitle }: HeaderProps) {
   const { themeMode, setThemeMode, toggleSidebar, dashboardTheme, setDashboardTheme } = useAppStore()
