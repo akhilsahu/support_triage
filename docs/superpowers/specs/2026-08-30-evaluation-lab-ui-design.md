@@ -151,8 +151,9 @@ Each component receives data and callbacks. Only the page calls API methods.
 - Add the navigation identifier to Super Admin's visibility labels.
 - Add the icon to the Sidebar icon registry.
 - Make the new navigation item force-visible for spaces whose older saved
-  navigation configuration predates the feature. Owners can later save a new
-  configuration that explicitly includes or excludes it.
+  navigation configuration predates the feature. It remains force-visible in
+  this release; removing that compatibility override requires a later nav
+  configuration migration.
 
 ## States and error handling
 
