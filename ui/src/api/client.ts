@@ -79,6 +79,96 @@ export interface HomepageSnapshot {
   published_at: string | null
 }
 
+// Tenant-scoped Evaluation Lab contracts. These intentionally omit model
+// reasoning and raw tool payloads: the backend never exposes either field.
+export interface EvaluationExpectation {
+  expected_agent: string | null
+  required_terms: string[]
+  forbidden_terms: string[]
+  expected_source_ids: string[]
+  expected_rag_hit: boolean | null
+  expected_escalation: boolean | null
+  max_response_ms: number | null
+}
+
+export interface EvaluationCheck {
+  name: string
+  status: 'passed' | 'failed' | 'skipped'
+  detail: string
+}
+
+export interface EvaluationSuite {
+  id: string
+  chatbot_id: string | null
+  name: string
+  description: string | null
+  critical: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface EvaluationMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface EvaluationCase {
+  id: string
+  suite_id: string
+  name: string
+  question: string
+  history: EvaluationMessage[]
+  customer_context: Record<string, string | number | boolean | null>
+  expectation: EvaluationExpectation
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface EvaluationRun {
+  id: string
+  suite_id: string
+  target: 'draft' | 'published'
+  status: 'running' | 'completed' | 'failed'
+  total_cases: number
+  passed_cases: number
+  failed_cases: number
+  started_at: string
+  completed_at: string | null
+}
+
+export interface EvaluationResult {
+  id: string
+  run_id: string
+  case_id: string
+  passed: boolean
+  checks: EvaluationCheck[]
+  failures: string[]
+  actual_response: string
+  actual_agent: string | null
+  actual_source_ids: string[]
+  actual_rag_hit: boolean
+  actual_escalated: boolean
+  response_ms: number | null
+  created_at: string
+}
+
+export interface EvaluationSuiteCreate {
+  name: string
+  description?: string | null
+  chatbot_id: string
+  critical: boolean
+}
+
+export interface EvaluationCaseCreate {
+  name: string
+  question: string
+  history: EvaluationMessage[]
+  customer_context: Record<string, string | number | boolean | null>
+  expectation: EvaluationExpectation
+  enabled: boolean
+}
+
 const http = axios.create({
   baseURL: API_CONFIG.baseURL,
   timeout: API_CONFIG.timeout,
@@ -396,6 +486,33 @@ export const apiClient = {
     http.get('/api/v1/dashboard/analytics', {
       params: { days, ...(chatbotId ? { chatbot_id: chatbotId } : {}) },
     }).then(r => r.data),
+
+  // Evaluation Lab — deterministic suites against the current published runtime.
+  listEvaluationSuites: (chatbotId?: string): Promise<EvaluationSuite[]> =>
+    http.get('/api/v1/evaluations/suites', {
+      params: chatbotId ? { chatbot_id: chatbotId } : {},
+    }).then(r => r.data),
+  createEvaluationSuite: (payload: EvaluationSuiteCreate): Promise<EvaluationSuite> =>
+    http.post('/api/v1/evaluations/suites', payload).then(r => r.data),
+  listEvaluationCases: (suiteId: string): Promise<EvaluationCase[]> =>
+    http.get(`/api/v1/evaluations/suites/${suiteId}/cases`).then(r => r.data),
+  createEvaluationCase: (suiteId: string, payload: EvaluationCaseCreate): Promise<EvaluationCase> =>
+    http.post(`/api/v1/evaluations/suites/${suiteId}/cases`, payload).then(r => r.data),
+  listEvaluationRuns: (suiteId?: string): Promise<EvaluationRun[]> =>
+    http.get('/api/v1/evaluations/runs', {
+      params: { limit: 100, ...(suiteId ? { suite_id: suiteId } : {}) },
+    }).then(r => r.data),
+  runEvaluationSuite: (suiteId: string): Promise<EvaluationRun> =>
+    // The backend currently executes up to 50 five-minute cases sequentially.
+    // Override the normal request timeout so the browser does not abandon a
+    // still-valid synchronous run before the server returns its aggregate.
+    http.post(
+      `/api/v1/evaluations/suites/${suiteId}/runs`,
+      { target: 'published' },
+      { timeout: 15_300_000 },
+    ).then(r => r.data),
+  listEvaluationResults: (runId: string): Promise<EvaluationResult[]> =>
+    http.get(`/api/v1/evaluations/runs/${runId}/results`).then(r => r.data),
 
   // Chatbot settings
   getChatbots: () =>

@@ -220,6 +220,42 @@ Once the application is running, access the interactive API documentation:
 - **ReDoc**: http://localhost:8000/redoc
 - **OpenAPI JSON**: http://localhost:8000/openapi.json
 
+### Chat API boundaries
+
+- `/api/chat/{space_slug}` and `/api/chat/{space_slug}/stream` are the production
+  customer-chat APIs. They resolve a chatbot-scoped agent fleet and execute it
+  through the shared production runtime in `app/orchestra/ai/`.
+- `/api/v1/chat` is the legacy/demo e-commerce chat API. It uses mock customer
+  and order data and must not be used as the production customer-chat path.
+- Production chat lifecycle analytics are stored as redacted, append-only
+  `conversation_events`; message content and model reasoning remain in their
+  existing tenant-scoped message tables rather than being copied into events.
+
+### Evaluation API and headless runner
+
+Authenticated space owners can create deterministic chatbot evaluation suites
+under `/api/v1/evaluations`. The backend stores suites and cases, grades
+normalized results for expected agents, terms, sources, RAG, escalation, and
+latency, and records run history.
+
+`POST /api/v1/evaluations/suites/{suite_id}/runs` executes up to 50 enabled
+cases sequentially against the suite's active chatbot and therefore incurs
+normal model/retrieval cost. It calls the canonical executor directly rather
+than the public chat API: each case uses a unique evaluation session, external
+actions and clarification are unavailable, escalation intent is observed but
+not performed, and no customer sessions, conversation events, inbox transfers,
+reasoning, or tool payloads are persisted. Only the current published runtime
+is supported until versioned draft configuration exists. Results are available
+from `GET /api/v1/evaluations/runs/{run_id}/results`.
+
+Authenticated owners can operate this workflow from `/app/evaluations`. The
+Evaluation Lab creates chatbot-bound suites and deterministic cases, confirms
+real provider cost before execution, and displays run history, actual answers,
+sources, latency, escalation intent, and every pass/fail check. It supports the
+current customer-serving runtime only. Editing/deleting cases, structured
+conversation context, draft comparison, CSV import, background progress, and
+publish gating remain future work.
+
 ## 🏗️ Project Structure
 
 ```

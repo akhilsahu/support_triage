@@ -495,7 +495,7 @@ class AgentMetaSuggestion(Base):
 # All available nav item IDs — used as the master list for system-wide defaults.
 ALL_NAV_ITEMS = [
     "dashboard", "chat", "agents", "knowledge-base",
-    "analytics", "inbox", "chatbot-profile", "data-sources", "settings",
+    "analytics", "inbox", "chatbot-profile", "data-sources", "integrations", "settings",
 ]
 
 class PlatformSettings(Base):

@@ -129,8 +129,9 @@ ui/build/
 # ui/src/assets/videos/*.mp4
 # ui/src/assets/videos/*.webm
 # ui/src/assets/videos/*.mov
-# ui/src/assets/images/**/*.psd
-# ui/src/assets/images/**/*.ai
+ui/src/assets/images/**/*.psd
+ui/src/assets/images/**/*.ai
+ui/src/assets/images/**/*.eps
 # ui/src/assets/fonts/*.ttf
 # ui/src/assets/fonts/*.otf
 # But keep .gitkeep files
@@ -141,8 +142,9 @@ ui/build/
 # *.mp4
 # *.avi
 # *.webm
-# *.psd
-# *.ai
+*.psd
+*.ai
+*.eps
 # *.sketch
 
 # Session / scratch data
@@ -170,7 +172,7 @@ Thumbs.db
 thingstodo/
 
 # Expendable files
-expendable/test/
+expendable/
 test/
 tests/
 test_*

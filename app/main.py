@@ -15,7 +15,7 @@ from app.config import settings
 from app.core.database import init_db, close_db, check_db_connection
 from app.core.redis import redis_client
 from app.api.v1 import agents, workflows, tasks, documents, admin, datasources, mock_orders, suggestions
-from app.api.v1 import space_agents, chat_sessions, chatbots, training
+from app.api.v1 import space_agents, chat_sessions, chatbots, training, evaluations
 from app.api.v1.space_agents import kb_router
 from app.api.v1 import knowledge_base
 from app.api.v1 import facts as kb_facts
@@ -25,6 +25,13 @@ from app.api.v1 import dashboard, superadmin
 from app.api.v1.inbox import staff_auth, sessions, escalation, stream
 from app.api.v1 import widget as widget_api
 from app.api.v1.copilotkit import setup_copilotkit
+
+# Pluggable modular integrations
+from app.integrations.shopify import router as shopify_router
+from app.integrations.whatsapp import router as whatsapp_router
+from app.integrations.slack import router as slack_router
+from app.integrations.stripe import router as stripe_router
+
 
 logger = structlog.get_logger()
 
@@ -393,10 +400,17 @@ app.include_router(suggestions.router, prefix="/api/v1", tags=["Suggestions"])
 app.include_router(chat_sessions.router, prefix="/api/v1", tags=["Chat Sessions"])
 app.include_router(chatbots.router,      prefix="/api/v1", tags=["Chatbots"])
 app.include_router(training.router,      prefix="/api/v1")
+app.include_router(evaluations.router,   prefix="/api/v1")
 app.include_router(space.router, prefix="/api/v1")
 app.include_router(customer.router)
 app.include_router(chatbot_user.router)
 app.include_router(widget_api.router)   # public — no prefix, CORS * on responses
+
+# Pluggable modular integration routes
+app.include_router(shopify_router, prefix="/api/v1/integrations")
+app.include_router(whatsapp_router, prefix="/api/v1/integrations")
+app.include_router(slack_router, prefix="/api/v1/integrations")
+app.include_router(stripe_router, prefix="/api/v1/integrations")
 
 # Inbox — human transfer
 app.include_router(staff_auth.router, prefix="/api/v1", tags=["Inbox — Staff"])

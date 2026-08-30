@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, MessageSquare, Bot, Database, BarChart3, Settings, ChevronLeft, ChevronDown, LogOut, Plug, Code2, Inbox, Image, LayoutTemplate } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Bot, Database, BarChart3, Settings, ChevronLeft, ChevronDown, LogOut, Plug, Code2, Inbox, Image, LayoutTemplate, ClipboardCheck } from 'lucide-react'
 import { IMAGES } from '../../config/images.config'
 import { cn } from '../ui/cn'
 import { StatusDot } from '../ui/StatusDot'
@@ -12,12 +12,12 @@ import { useInboxStream } from '../../lib/useInboxStream'
 import { useDashboardTheme } from '../../config/dashboardTheme'
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  LayoutDashboard, MessageSquare, Bot, Database, BarChart3, Settings, Plug, Code2, Inbox, Image, LayoutTemplate,
+  LayoutDashboard, MessageSquare, Bot, Database, BarChart3, Settings, Plug, Code2, Inbox, Image, LayoutTemplate, ClipboardCheck,
 }
 
 // Nav items introduced after a space's stored nav-config was last saved default
 // to visible (opt-out), so a new feature isn't hidden by an older saved config.
-const FORCE_VISIBLE_NAV = ['chatbot-ui']
+const FORCE_VISIBLE_NAV = ['chatbot-ui', 'evaluations']
 
 interface ChatbotOption {
   id: string

@@ -529,9 +529,11 @@ const ALL_NAV_LABELS: Record<string, string> = {
   'agents':          'Agents',
   'knowledge-base':  'Knowledge Base',
   'analytics':       'Analytics',
+  'evaluations':     'Evaluations',
   'inbox':           'Inbox',
   'chatbot-profile': 'Chatbot Profile',
   'data-sources':    'Data Sources',
+  'integrations':    'Integrations',
   'settings':        'Settings',
 }
 const ALL_NAV_IDS = Object.keys(ALL_NAV_LABELS)

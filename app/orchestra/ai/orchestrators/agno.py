@@ -431,6 +431,7 @@ class AgnoOrchestrator:
         clarify_enabled: bool                         = False,  # Chatbot.clarify_enabled
         llm_model:        Optional[str]               = None,   # Chatbot-level model override
         reasoning_effort: Optional[str]               = None,   # Chatbot-level effort override
+        runtime_namespace: str                        = "production",
     ):
         self.leader        = leader
         self.clarify_enabled = clarify_enabled
@@ -442,6 +443,9 @@ class AgnoOrchestrator:
         self._cfg_override = cfg
         self._chatbot_llm_model        = llm_model
         self._chatbot_reasoning_effort = reasoning_effort
+        # Evaluation runners must not share a cached Team with customer chat:
+        # tool/clarification configuration is fixed when the Team is built.
+        self.runtime_namespace = runtime_namespace
         self.mcp_server    = mcp_server
         self.skills_map    = skills_map or {}
         # Structured result of the last stream() — agent/rag_hit/citations that
@@ -642,6 +646,22 @@ class AgnoOrchestrator:
                     else cfg.reasoning_effort
                 ),
             )
+        if self.runtime_namespace != "production":
+            from dataclasses import replace
+            # A headless evaluation brings its complete context in one prompt.
+            # Disabling session and memory features prevents synthetic users,
+            # summaries, or traces from entering the production Agno store.
+            cfg = replace(
+                cfg,
+                session_store="none",
+                session_db_url="",
+                history_enabled=False,
+                user_memories_enabled=False,
+                session_summaries_enabled=False,
+                memory_enabled=False,
+                tools_enabled=False,
+                mcp_enabled=False,
+            )
         return cfg
 
     def _reasoning_effort_for(self, agent_slug: str) -> str:
@@ -671,8 +691,14 @@ class AgnoOrchestrator:
         level is applied later in AgentFactory.build via
         ResolvedAgent.llm_model/reasoning_effort.
         """
+        production_key = f"{self.space_id}:{self.chatbot_id or 'default'}:team"
+        pool_key = (
+            production_key
+            if self.runtime_namespace == "production"
+            else f"{self.space_id}:{self.chatbot_id or 'default'}:{self.runtime_namespace}:team"
+        )
         return await _pool.get_or_init(
-            session_id=f"{self.space_id}:{self.chatbot_id or 'default'}:team",
+            session_id=pool_key,
             active_agents=self.active_agents,
             space_id=self.space_id,
             org_name=self.org_name,

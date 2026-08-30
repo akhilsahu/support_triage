@@ -9,7 +9,9 @@ import { Chat } from './screens/Chat'
 import { Agents } from './screens/Agents'
 import { KnowledgeBase } from './screens/KnowledgeBase'
 import { Analytics } from './screens/Analytics'
+import { Evaluations } from './screens/Evaluations'
 import { Settings } from './screens/Settings'
+import { Integrations } from './screens/Integrations'
 import { NotFound } from './screens/NotFound'
 import { SuperAdmin } from './screens/SuperAdmin'
 import { DataSourceSetup } from './screens/DataSourceSetup'
@@ -131,6 +133,8 @@ export default function App() {
           <Route path="/app/inbox" element={<PrivateRoute><Layout><Inbox /></Layout></PrivateRoute>} />
           <Route path="/app/knowledge-base" element={<PrivateRoute><Layout><KnowledgeBase /></Layout></PrivateRoute>} />
           <Route path="/app/analytics" element={<PrivateRoute><Layout><Analytics /></Layout></PrivateRoute>} />
+          <Route path="/app/evaluations" element={<PrivateRoute><Layout><Evaluations /></Layout></PrivateRoute>} />
+          <Route path="/app/integrations" element={<PrivateRoute><Layout><Integrations /></Layout></PrivateRoute>} />
           <Route path="/app/settings" element={<PrivateRoute><Layout><Settings /></Layout></PrivateRoute>} />
           <Route path="/app/embed-widget" element={<PrivateRoute><Layout><EmbedWidget /></Layout></PrivateRoute>} />
           <Route path="/app/chatbot-ui" element={<PrivateRoute><Layout><ChatbotProfile view="ui" /></Layout></PrivateRoute>} />

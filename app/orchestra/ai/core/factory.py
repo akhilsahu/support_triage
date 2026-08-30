@@ -24,6 +24,7 @@ def build_executor(
     clarify_enabled: bool = False,
     llm_model: str | None = None,
     reasoning_effort: str | None = None,
+    runtime_namespace: str = "production",
 ) -> Any:
     """
     Return the configured executor.
@@ -60,6 +61,7 @@ def build_executor(
             clarify_enabled=clarify_enabled,
             llm_model=llm_model,
             reasoning_effort=reasoning_effort,
+            runtime_namespace=runtime_namespace,
         )
 
     # Default: DynamicAgentExecutor — thin adapter normalises the run() signature.

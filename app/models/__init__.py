@@ -13,6 +13,8 @@ from app.models.workflow import Workflow, ExecutionType, WorkflowStatus
 from app.models.task import Task, TaskStatus
 from app.models.execution import Execution, ExecutionStatus
 from app.models.conversation import Conversation, Message
+from app.models.conversation_event import ConversationEvent
+from app.models.evaluation import EvaluationSuite, EvaluationCase, EvaluationRun, EvaluationResult
 from app.models.inbox import SessionWaitingQueue, SessionAssignmentHistory, SpaceAssignmentRule
 from app.models.staff import StaffMember
 from app.models.training_feedback import TrainingFeedback
@@ -30,7 +32,8 @@ __all__ = [
     "Workflow", "ExecutionType", "WorkflowStatus",
     "Task", "TaskStatus",
     "Execution", "ExecutionStatus",
-    "Conversation", "Message",
+    "Conversation", "Message", "ConversationEvent",
+    "EvaluationSuite", "EvaluationCase", "EvaluationRun", "EvaluationResult",
     "SessionWaitingQueue", "SessionAssignmentHistory", "SpaceAssignmentRule",
     "StaffMember",
     "TrainingFeedback",

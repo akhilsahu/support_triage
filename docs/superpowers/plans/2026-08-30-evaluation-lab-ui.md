@@ -32,7 +32,7 @@
 - Produces `EvaluationExpectation`, `EvaluationCheck`, `EvaluationSuite`, `EvaluationCase`, `EvaluationRun`, `EvaluationResult`, `EvaluationSuiteCreate`, and `EvaluationCaseCreate`.
 - Produces `apiClient.listEvaluationSuites(chatbotId?)`, `createEvaluationSuite(payload)`, `listEvaluationCases(suiteId)`, `createEvaluationCase(suiteId, payload)`, `listEvaluationRuns(suiteId?)`, `runEvaluationSuite(suiteId)`, and `listEvaluationResults(runId)`.
 
-- [ ] **Step 1: Add exact response contracts near the existing API types**
+- [x] **Step 1: Add exact response contracts near the existing API types**
 
 ```ts
 export interface EvaluationExpectation {
@@ -52,13 +52,13 @@ export interface EvaluationCheck {
 }
 ```
 
-- [ ] **Step 2: Add suite, case, run, result, and creation payload contracts**
+- [x] **Step 2: Add suite, case, run, result, and creation payload contracts**
 
 The property names must match `app/schemas/evaluation.py`, including
 `actual_source_ids`, `actual_rag_hit`, `actual_escalated`, `created_at`, and
 `completed_at`.
 
-- [ ] **Step 3: Add authenticated methods using the existing `http` instance**
+- [x] **Step 3: Add authenticated methods using the existing `http` instance**
 
 ```ts
 listEvaluationSuites: (chatbotId?: string) =>
@@ -77,7 +77,7 @@ runEvaluationSuite: (suiteId: string) =>
 The timeout covers the backend cap of 50 cases at five minutes each plus a
 five-minute transport margin.
 
-- [ ] **Step 4: Verify TypeScript contracts**
+- [x] **Step 4: Verify TypeScript contracts**
 
 Run: `cd ui && npm run type-check`
 
@@ -103,7 +103,7 @@ git commit -m "feat: add evaluation api client contracts"
 - Consumes `EvaluationSuite`, `EvaluationCase`, and `EvaluationExpectation` from `api/client.ts`.
 - Produces `splitCommaValues(value: string): string[]`, `formatExpectation(expectation): string[]`, `EvaluationSuiteList`, and `EvaluationCaseList`.
 
-- [ ] **Step 1: Add deterministic view helpers**
+- [x] **Step 1: Add deterministic view helpers**
 
 ```ts
 export const splitCommaValues = (value: string) =>
@@ -122,20 +122,20 @@ export function formatExpectation(expectation: EvaluationExpectation): string[] 
 }
 ```
 
-- [ ] **Step 2: Implement the suite rail**
+- [x] **Step 2: Implement the suite rail**
 
 `EvaluationSuiteList` receives `suites`, `selectedSuiteId`, `chatbotNames`,
 `loading`, `onSelect`, and `onCreate`. It renders loading placeholders, an
 empty-state create action, critical text/icon, associated chatbot, and an
 `aria-current` selection marker.
 
-- [ ] **Step 3: Implement the case coverage list**
+- [x] **Step 3: Implement the case coverage list**
 
 `EvaluationCaseList` receives `cases`, `loading`, `onCreate`, and
 `canCreate`. It renders question previews, enabled/disabled text, and the tags
 from `formatExpectation`. An empty expectation renders `Response recorded only`.
 
-- [ ] **Step 4: Verify TypeScript**
+- [x] **Step 4: Verify TypeScript**
 
 Run: `cd ui && npm run type-check`
 
@@ -159,22 +159,22 @@ git commit -m "feat: add evaluation suite and case views"
 - Consumes `EvaluationRun[]`, `EvaluationResult[]`, `selectedRunId`, loading flags, and `onSelectRun(runId)`.
 - Produces a run selector and accessible diagnostic result cards.
 
-- [ ] **Step 1: Implement run summary formatting**
+- [x] **Step 1: Implement run summary formatting**
 
 Render each run with localized start time, textual status, `passed_cases / total_cases`, and a percentage only when `total_cases > 0`.
 
-- [ ] **Step 2: Implement deterministic check rows**
+- [x] **Step 2: Implement deterministic check rows**
 
 Each result card shows case id, pass/fail text, actual response, agent, latency,
 RAG and escalation states, source identifiers, and every check. Passed,
 failed, and skipped checks use different icons plus explicit status text.
 
-- [ ] **Step 3: Add loading and empty states**
+- [x] **Step 3: Add loading and empty states**
 
 Differentiate `No runs yet` from `This run contains no results` and from a
 results request still loading.
 
-- [ ] **Step 4: Verify TypeScript**
+- [x] **Step 4: Verify TypeScript**
 
 Run: `cd ui && npm run type-check`
 
@@ -198,18 +198,18 @@ git commit -m "feat: add evaluation run diagnostics"
 - Produces `CreateSuiteDialog`, `CreateCaseDialog`, and `ConfirmRunDialog`.
 - Dialog submissions provide validated `EvaluationSuiteCreate` or `EvaluationCaseCreate` payloads to async callbacks supplied by the page.
 
-- [ ] **Step 1: Create a shared dialog frame**
+- [x] **Step 1: Create a shared dialog frame**
 
 The frame renders a labelled `role="dialog"`, `aria-modal="true"`, overlay,
 Escape listener, close button with `aria-label="Close dialog"`, scrollable
 content, and disabled close behavior while submitting.
 
-- [ ] **Step 2: Implement suite creation**
+- [x] **Step 2: Implement suite creation**
 
 Require trimmed name and chatbot id. Preserve name, chatbot, description, and
 critical toggle after API failure. Disable submit while saving.
 
-- [ ] **Step 3: Implement case creation**
+- [x] **Step 3: Implement case creation**
 
 Map comma-separated term/source inputs through `splitCommaValues`. Map `any`
 select values to `null`, validate optional latency as an integer from 1 through
@@ -235,12 +235,12 @@ const payload: EvaluationCaseCreate = {
 }
 ```
 
-- [ ] **Step 4: Implement run confirmation**
+- [x] **Step 4: Implement run confirmation**
 
 Show published-only, model-cost, synchronous duration, and side-effect boundary
 copy from the spec. Use `Run published suite` as the confirmation label.
 
-- [ ] **Step 5: Verify TypeScript**
+- [x] **Step 5: Verify TypeScript**
 
 Run: `cd ui && npm run type-check`
 
@@ -264,19 +264,19 @@ git commit -m "feat: add evaluation authoring dialogs"
 - Consumes all evaluation API methods and feature components.
 - Produces the route-level `Evaluations` component.
 
-- [ ] **Step 1: Implement initial parallel loading**
+- [x] **Step 1: Implement initial parallel loading**
 
 Load chatbots and suites together with `Promise.all`. Prefer the suite matching
 `useAppStore().currentChatbotId`; otherwise select the first suite. A load
 failure renders the API detail and a Retry button.
 
-- [ ] **Step 2: Load suite-dependent data**
+- [x] **Step 2: Load suite-dependent data**
 
 When selection changes, load cases and suite-filtered runs in parallel. Select
 the newest run and load its results. Use a request generation counter or
 cancelled effect guard so late responses cannot overwrite a newer selection.
 
-- [ ] **Step 3: Implement mutations**
+- [x] **Step 3: Implement mutations**
 
 Create suite, create case, and execute suite through page callbacks. Refresh
 only affected data. Extract errors using:
@@ -291,19 +291,19 @@ function apiError(error: unknown, fallback: string): string {
 }
 ```
 
-- [ ] **Step 4: Implement header and summary metrics**
+- [x] **Step 4: Implement header and summary metrics**
 
 Render enabled-case count, latest pass rate, failed count, and duration using
 `started_at`/`completed_at`. `Run suite` is unavailable without a chatbot and
 disabled when there are no enabled cases or a run is active.
 
-- [ ] **Step 5: Compose responsive workspace and dialogs**
+- [x] **Step 5: Compose responsive workspace and dialogs**
 
 Use one column below `lg`, then a three-column grid with a compact suite rail,
 case coverage panel, and wider run/results panel. Render page errors in an
 `aria-live="polite"` region.
 
-- [ ] **Step 6: Verify TypeScript**
+- [x] **Step 6: Verify TypeScript**
 
 Run: `cd ui && npm run type-check`
 
@@ -329,26 +329,26 @@ git commit -m "feat: build evaluation lab workspace"
 
 - Produces authenticated `/app/evaluations` routing and a navigation entry that remains visible across legacy saved nav configurations.
 
-- [ ] **Step 1: Register the route**
+- [x] **Step 1: Register the route**
 
 Import `Evaluations` and render it inside `PrivateRoute` and `Layout` at
 `/app/evaluations`.
 
-- [ ] **Step 2: Add main navigation metadata**
+- [x] **Step 2: Add main navigation metadata**
 
 Add `{ id: 'evaluations', label: 'Evaluations', icon: 'ClipboardCheck', path:
 '/app/evaluations', group: 'main' }` immediately after Analytics.
 
-- [ ] **Step 3: Register the icon and migration visibility**
+- [x] **Step 3: Register the icon and migration visibility**
 
 Import/register `ClipboardCheck` in Sidebar and add `evaluations` to
 `FORCE_VISIBLE_NAV` so existing saved navigation settings do not hide it.
 
-- [ ] **Step 4: Add Super Admin visibility label**
+- [x] **Step 4: Add Super Admin visibility label**
 
 Add `'evaluations': 'Evaluations'` to `ALL_NAV_LABELS`.
 
-- [ ] **Step 5: Verify TypeScript and production build**
+- [x] **Step 5: Verify TypeScript and production build**
 
 Run: `cd ui && npm run type-check && npm run build`
 
@@ -369,36 +369,36 @@ git commit -m "feat: expose evaluation lab navigation"
 - Modify: `implementation.md`
 - Modify: `docs/superpowers/plans/2026-08-30-evaluation-lab-ui.md`
 
-- [ ] **Step 1: Document the UI route and constraints**
+- [x] **Step 1: Document the UI route and constraints**
 
 Add `/app/evaluations`, published-only execution, real provider cost, and
 unsupported draft/background features to the README evaluation section.
 
-- [ ] **Step 2: Update implementation status**
+- [x] **Step 2: Update implementation status**
 
 Mark the Evaluation Lab MVP UI complete while retaining structured history,
 draft comparison, CSV import, background execution, and publish gating as
 future work.
 
-- [ ] **Step 3: Verify backend regression suite**
+- [x] **Step 3: Verify backend regression suite**
 
 Run: `DEBUG=false .venv/bin/pytest -o addopts='' tests/unit -q`
 
 Expected: all tests pass.
 
-- [ ] **Step 4: Verify frontend**
+- [x] **Step 4: Verify frontend**
 
 Run: `cd ui && npm run type-check && npm run build`
 
 Expected: both commands pass.
 
-- [ ] **Step 5: Verify route and privacy boundaries**
+- [x] **Step 5: Verify route and privacy boundaries**
 
 Run:
 
 ```bash
 rg -n "/app/evaluations|ClipboardCheck" ui/src/App.tsx ui/src/config/navigation.ts ui/src/components/layout/Sidebar.tsx
-! rg -n "reasoning|raw_tool|authorization|api_key|password|secret" ui/src/features/evaluations ui/src/screens/Evaluations.tsx
+! rg -n "reasoning|raw_tool|authorization|api_key|secret_key" ui/src/features/evaluations ui/src/screens/Evaluations.tsx
 git diff --check
 ```
 

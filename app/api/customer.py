@@ -31,6 +31,13 @@ from app.models.space import (
 from app.models.knowledge_base import AgentKnowledgeBase, KnowledgeBase
 from app.models.chat import MessageThought
 from app.models.chatbot import Chatbot
+from app.orchestra.ai.contracts import (
+    ConversationEventData,
+    ConversationEventType,
+    ConversationExecutionContext,
+)
+from app.orchestra.ai.customer_runtime import build_customer_executor
+from app.services.conversation_events import record_conversation_event
 
 logger = structlog.get_logger()
 router = APIRouter(tags=["Customer"])
@@ -372,8 +379,29 @@ async def _maybe_escalate(
         ))
         result["reply"] = chatbot.human_transfer_message or "Connecting you with a human agent."
         result["agent"] = "human"
+        event_context = ConversationExecutionContext(
+            space_id=org.id,
+            chatbot_id=chatbot.id,
+            session_id=session_id,
+            conversation_id=session_id,
+        )
+        await record_conversation_event(
+            context=event_context,
+            event_type=ConversationEventType.ESCALATION_STARTED,
+            data=ConversationEventData(
+                agent="human",
+                metadata={"reason": "agent_requested" if explicit else "auto_heuristic"},
+            ),
+        )
     except Exception:
-        pass  # never break the chat for a failed escalation
+        # Escalation is a safety fallback, but an inbox outage must not make the
+        # customer-facing chat endpoint fail with an unrelated server error.
+        logger.exception(
+            "customer_chat.escalation_failed",
+            space_id=str(org.id),
+            chatbot_id=str(chatbot.id),
+            session_id=session_id,
+        )
 
 
 async def _persist_turn(
@@ -627,13 +655,32 @@ def _canonical_session_id(incoming: Optional[str]) -> str:
     return str(uuid.uuid4())
 
 
+def _answer_event_data(result: dict, elapsed_ms: int, *, transport: str) -> ConversationEventData:
+    """Map an executor result to redacted analytics fields.
+
+    Reply text, reasoning, citations, and structured blocks are deliberately
+    excluded. Their detailed records already live in tenant-scoped message and
+    thought tables; duplicating them into analytics would increase PII exposure.
+    """
+
+    return ConversationEventData(
+        agent=result.get("agent"),
+        intent=result.get("intent"),
+        rag_hit=result.get("rag_hit", False),
+        response_ms=elapsed_ms,
+        model=result.get("model"),
+        reasoning_effort=result.get("reasoning_effort"),
+        source_count=len(result.get("citations") or []),
+        metadata={"transport": transport},
+    )
+
+
 # ── Customer chat API ─────────────────────────────────────────────────────────
 
 @router.post("/api/chat/{slug}", response_model=CustomerChatResponse)
 async def customer_chat(slug: str, req: CustomerChatRequest,
                         chatbot_slug: Optional[str] = Query(None, alias="chatbot"),
                         authorization: Optional[str] = Header(None)):
-    from app.orchestra.ai.core.factory import build_executor
     from app.core.chatbot_auth import resolve_customer, login_gate_blocks
 
     try:
@@ -672,16 +719,26 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
         # Resolve the canonical session id BEFORE the run so session_id + user_id
         # thread into the orchestrator's memory from the very first turn.
         session_id = _canonical_session_id(req.session_id)
+        execution_context = ConversationExecutionContext(
+            space_id=org.id,
+            chatbot_id=chatbot.id,
+            session_id=session_id,
+            conversation_id=req.conversation_id or session_id,
+            customer_id=customer.id if customer else None,
+        )
+        await record_conversation_event(
+            context=execution_context,
+            event_type=ConversationEventType.MESSAGE_RECEIVED,
+            data=ConversationEventData(metadata={"transport": "json"}),
+        )
         # If the agent paused on ask_user last turn, this message is the
         # customer's answer, not a new question — resume that run instead of
         # starting a fresh one. See docs/structured-response-rendering-plan.md.
         pending = await _get_pending_clarify(db, session_id, org.id)
-        executor = build_executor(
-            org=org,
+        executor = build_customer_executor(
+            context=execution_context,
+            space=org,
             active_agents=active_agents,
-            session_id=session_id,
-            conversation_id=req.conversation_id or session_id,
-            chatbot_id=str(chatbot.id),
             leader=await _get_triage_agent_cached(db, chatbot.id, str(org.id)),
             clarify_enabled=chatbot.clarify_enabled,
             llm_model=chatbot.llm_model,
@@ -701,6 +758,16 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
         elapsed_ms = int((time.time() - t0) * 1000)
         session_id, message_id = await _persist_turn(db, org, chatbot, session_id, result, elapsed_ms, req.message, customer)
         await _persist_thoughts(db, org, chatbot, session_id, message_id, result)
+        try:
+            assistant_message_id = uuid.UUID(message_id)
+        except (ValueError, TypeError):
+            assistant_message_id = None
+        await record_conversation_event(
+            context=execution_context,
+            event_type=ConversationEventType.ANSWER_COMPLETED,
+            data=_answer_event_data(result, elapsed_ms, transport="json"),
+            message_id=assistant_message_id,
+        )
 
         # Carry the pause forward (or clear it) now that the session row is
         # guaranteed to exist — _persist_turn creates it lazily on turn 1.
@@ -757,8 +824,6 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
       event: done  data: <JSON>   — {session_id, agent, rag_hit, message_id, reasoning} — stream complete
       event: error data: <msg>    — on failure
     """
-    from app.orchestra.ai.core.factory import build_executor
-
     try:
         org, chatbot, db = await _get_brand(slug, chatbot_slug)
     except HTTPException as e:
@@ -781,11 +846,21 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
 
     # Canonical session id before the stream opens → history threads from turn 1.
     session_id = _canonical_session_id(req.session_id)
-    executor = build_executor(
-        org=org,
-        active_agents=active_agents,
+    execution_context = ConversationExecutionContext(
+        space_id=org.id,
+        chatbot_id=chatbot.id,
         session_id=session_id,
-        chatbot_id=str(chatbot.id),
+        conversation_id=req.conversation_id or session_id,
+    )
+    await record_conversation_event(
+        context=execution_context,
+        event_type=ConversationEventType.MESSAGE_RECEIVED,
+        data=ConversationEventData(metadata={"transport": "sse"}),
+    )
+    executor = build_customer_executor(
+        context=execution_context,
+        space=org,
+        active_agents=active_agents,
         leader=await _get_triage_agent_cached(db, chatbot.id, str(org.id)),
         clarify_enabled=chatbot.clarify_enabled,
         llm_model=chatbot.llm_model,
@@ -851,6 +926,16 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
             # actually streamed live (reasoning_chunks non-empty).
             segments = [{"seq": i, "content": c} for i, c in enumerate(reasoning_chunks)] or None
             await _persist_thoughts(db, org, chatbot, session_id, message_id, result, segments)
+            try:
+                assistant_message_id = uuid.UUID(message_id)
+            except (ValueError, TypeError):
+                assistant_message_id = None
+            await record_conversation_event(
+                context=execution_context,
+                event_type=ConversationEventType.ANSWER_COMPLETED,
+                data=_answer_event_data(result, elapsed_ms, transport="sse"),
+                message_id=assistant_message_id,
+            )
             yield {
                 "event": "done",
                 "data":  json.dumps({
@@ -966,6 +1051,29 @@ async def submit_feedback(slug: str, req: FeedbackRequest,
 
         row.feedback = rating
         await db.commit()
+        try:
+            event_context = ConversationExecutionContext(
+                space_id=org.id,
+                chatbot_id=chatbot.id,
+                session_id=row.session_id,
+                conversation_id=row.session_id,
+            )
+            await record_conversation_event(
+                context=event_context,
+                event_type=ConversationEventType.FEEDBACK_RECEIVED,
+                data=ConversationEventData(metadata={"rating": rating}),
+                message_id=row.id,
+            )
+        except (ValueError, TypeError):
+            # Historical rows may contain a non-UUID session id. Feedback is
+            # already saved, so skip optional analytics rather than reject it.
+            logger.warning(
+                "customer_feedback.event_skipped",
+                space_id=str(org.id),
+                chatbot_id=str(chatbot.id),
+                message_id=str(row.id),
+                reason="invalid_session_id",
+            )
         return JSONResponse({}, status_code=204, headers=_CORS)
     finally:
         await db.close()
@@ -983,8 +1091,6 @@ async def init_chat_session(slug: str,
     no-op for Dynamic) so the first message has no cold-start delay.
     Returns a session_id the frontend uses for the entire chat session.
     """
-    from app.orchestra.ai.core.factory import build_executor
-
     try:
         org, chatbot, db = await _get_brand(slug, chatbot_slug)
     except HTTPException as e:
@@ -1000,11 +1106,16 @@ async def init_chat_session(slug: str,
             )
 
         session_id = str(uuid.uuid4())
-        executor = build_executor(
-            org=org,
-            active_agents=active_agents,
+        execution_context = ConversationExecutionContext(
+            space_id=org.id,
+            chatbot_id=chatbot.id,
             session_id=session_id,
-            chatbot_id=str(chatbot.id),
+            conversation_id=session_id,
+        )
+        executor = build_customer_executor(
+            context=execution_context,
+            space=org,
+            active_agents=active_agents,
             leader=await _get_triage_agent_cached(db, chatbot.id, str(org.id)),
             clarify_enabled=chatbot.clarify_enabled,
             llm_model=chatbot.llm_model,
