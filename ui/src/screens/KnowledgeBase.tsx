@@ -166,6 +166,7 @@ function KBModal({
   const [previewing, setPreviewing]   = useState(false)
   const [previewProgress, setPreviewProgress] = useState(0)
   const [previewStage, setPreviewStage]       = useState('Connecting to web server…')
+  const [previewError, setPreviewError]       = useState('')
 
   const [description, setDescription] = useState('')
   const [topic, setTopic]             = useState('')
@@ -185,6 +186,7 @@ function KBModal({
 
   const handlePreview = async () => {
     setError('')
+    setPreviewError('')
     if (!isValidUrl(url)) { setError('Enter a full URL starting with http:// or https://'); return }
     setPreviewing(true)
     setPreviewProgress(15)
@@ -203,7 +205,7 @@ function KBModal({
       }
     } catch (e: any) {
       setPreview(null)
-      setError(e?.response?.data?.detail || 'Could not fetch that URL.')
+      setPreviewError(e?.response?.data?.detail || 'Could not fetch that URL.')
     } finally {
       clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
       setPreviewing(false)
@@ -402,7 +404,7 @@ function KBModal({
               <div className="flex gap-3 items-end">
                 <div className="flex-1">
                   <Input label="Website URL" type="url" value={url}
-                    onChange={e => { setUrl(e.target.value); setPreview(null) }}
+                    onChange={e => { setUrl(e.target.value); setPreview(null); setPreviewError('') }}
                     placeholder="https://example.com/help/faq" autoFocus />
                 </div>
                 <button type="button" onClick={handlePreview} disabled={previewing || !url.trim()}
@@ -411,6 +413,114 @@ function KBModal({
                   {previewing ? 'Fetching…' : 'Preview'}
                 </button>
               </div>
+
+              {/* URL Preview Box Area (styled, bold, violet/indigo theme) */}
+              {previewing && (
+                <div className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-gradient-to-r from-indigo-50/40 via-white to-violet-50/40 dark:from-indigo-950/20 dark:via-gray-900/60 dark:to-violet-950/20 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <Loader2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 animate-spin" />
+                      <span className="text-xs font-bold text-gray-850 dark:text-gray-255">
+                        Fetching Web Page Preview
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                      {previewProgress}%
+                    </span>
+                  </div>
+
+                  <div className="w-full h-2 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-500 rounded-full transition-all duration-500 ease-out"
+                      style={{ width: `${previewProgress}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-gray-600 dark:text-gray-400">
+                    <span className="flex items-center gap-1.5 truncate max-w-[70%] font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse flex-shrink-0" />
+                      {previewStage}
+                    </span>
+                    <span className="font-mono text-[10px] truncate max-w-[28%] text-gray-400">
+                      {url.trim().replace(/^https?:\/\//, '').slice(0, 28)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {preview && (
+                <div className="rounded-2xl border-2 border-violet-500/40 dark:border-violet-400/40 bg-violet-500/[0.04] dark:bg-violet-500/[0.06] overflow-hidden shadow-md transition-all">
+                  <div className="px-5 py-4 border-b border-violet-200/50 dark:border-violet-900/60 bg-violet-500/[0.06] dark:bg-violet-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <p className="text-base font-extrabold text-gray-900 dark:text-white truncate">
+                        {preview.title || '(no title)'}
+                      </p>
+                      {preview.final_url !== url.trim() && (
+                        <p className="text-xs font-bold text-violet-600 dark:text-violet-400 mt-1 break-all">
+                          Redirected to: {preview.final_url}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 bg-white dark:bg-gray-950 px-3 py-1.5 rounded-xl border border-violet-200/50 dark:border-violet-900/60 shadow-2xs text-[11px] font-bold text-violet-700 dark:text-violet-300">
+                      <span>{preview.page_count} page{preview.page_count === 1 ? '' : 's'}</span>
+                      <span className="text-violet-200 dark:text-violet-850">•</span>
+                      <span>{preview.char_count.toLocaleString()} chars</span>
+                      <span className="text-violet-200 dark:text-violet-850">•</span>
+                      <span>{(preview.size_bytes / 1024).toFixed(0)} KB</span>
+                    </div>
+                  </div>
+
+                  {preview.char_count < 200 && (
+                    <div className="flex items-start gap-2.5 px-5 py-3.5 bg-amber-500/10 border-b border-amber-500/20">
+                      <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                      <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 leading-normal">
+                        Warning: Very little text extracted. This page may render content dynamically with JavaScript.
+                      </span>
+                    </div>
+                  )}
+
+                  {preview.vision_skipped && (
+                    <div className="px-5 py-3.5 bg-blue-500/10 border-b border-blue-500/20">
+                      <span className="text-xs font-semibold text-blue-700 dark:text-blue-400">
+                        PDF Mode: scanned pages will be analyzed during background ingestion.
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="p-5">
+                    <p className="text-xs font-black uppercase tracking-wider text-violet-750 dark:text-violet-400 mb-2.5">Extracted Content Snippet</p>
+                    <pre className="p-4 text-xs font-semibold leading-relaxed text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-950 border border-violet-100 dark:border-violet-900/60 rounded-xl whitespace-pre-wrap font-mono max-h-72 overflow-y-auto shadow-2xs">
+                      {preview.extract || '(no text extracted)'}
+                      {preview.truncated && (
+                        <span className="text-violet-600 dark:text-violet-400 font-extrabold block mt-3.5">
+                          {'\n\n[Content truncated — the full page will be fully indexed during ingestion.]'}
+                        </span>
+                      )}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {previewError && (
+                <div className="p-5 rounded-2xl border-2 border-red-500/20 bg-red-500/5 dark:bg-red-500/5 shadow-xs flex items-start gap-3.5">
+                  <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-bold text-red-900 dark:text-red-100">Failed to generate preview</h4>
+                    <p className="text-xs text-red-700 dark:text-red-400 mt-1.5 leading-relaxed font-semibold">
+                      {previewError}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {!preview && !previewing && !previewError && (
+                <div className="p-4.5 rounded-2xl border border-gray-200 dark:border-gray-800/80 bg-gray-50/30 dark:bg-gray-800/5 flex items-start gap-3">
+                  <Globe className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 leading-normal">
+                    <strong>Preview first</strong> to verify what content the crawler will extract. Works best on static pages; JavaScript-rendered or protected pages may yield empty content.
+                  </p>
+                </div>
+              )}
 
               <Input
                 label="Page Title (optional)"
@@ -427,93 +537,6 @@ function KBModal({
                 <option value="manual">Manual</option>
                 <option value="product">Product</option>
               </Select>
-
-              {previewing && (
-                <div className="p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-800/70 bg-gradient-to-r from-indigo-50/60 via-white to-violet-50/60 dark:from-indigo-950/40 dark:via-gray-900 dark:to-violet-950/40 shadow-xs space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 animate-spin" />
-                      <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
-                        Fetching Web Page Preview
-                      </span>
-                    </div>
-                    <span className="text-[11px] font-mono font-medium text-indigo-600 dark:text-indigo-400">
-                      {previewProgress}%
-                    </span>
-                  </div>
-
-                  <div className="w-full h-2 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-500 rounded-full transition-all duration-500 ease-out"
-                      style={{ width: `${previewProgress}%` }}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-gray-600 dark:text-gray-400 flex items-center gap-1.5 truncate max-w-[70%]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse flex-shrink-0" />
-                      {previewStage}
-                    </span>
-                    <span className="text-gray-400 font-mono text-[10px] truncate max-w-[28%]">
-                      {url.trim().replace(/^https?:\/\//, '').slice(0, 24)}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {!preview && !previewing && (
-                <p className="text-xs text-gray-400">
-                  Preview first to check what actually gets extracted. Works best on
-                  static pages; JavaScript-rendered sites may yield little text.
-                </p>
-              )}
-
-
-              {preview && (
-                <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 overflow-hidden shadow-sm">
-                  <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-                    <p className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
-                      {preview.title || '(no title)'}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1 font-medium">
-                      {preview.page_count} page{preview.page_count === 1 ? '' : 's'} ·{' '}
-                      {preview.char_count.toLocaleString()} chars ·{' '}
-                      {(preview.size_bytes / 1024).toFixed(0)} KB
-                    </p>
-                    {preview.final_url !== url.trim() && (
-                      <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1.5 break-all font-medium">
-                        Redirected to {preview.final_url}
-                      </p>
-                    )}
-                  </div>
-
-                  {preview.char_count < 200 && (
-                    <div className="flex items-start gap-2 px-5 py-3 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-200 dark:border-indigo-800">
-                      <AlertCircle className="w-4 h-4 text-indigo-500 flex-shrink-0 mt-0.5" />
-                      <span className="text-xs font-medium text-indigo-700 dark:text-indigo-400">
-                        Very little text extracted. This page may render its content with
-                        JavaScript, which isn't executed — adding it may add nothing useful.
-                      </span>
-                    </div>
-                  )}
-
-                  {preview.vision_skipped && (
-                    <div className="px-5 py-3 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-200 dark:border-indigo-800">
-                      <span className="text-xs font-medium text-indigo-700 dark:text-indigo-400">
-                        PDF — images and scanned pages aren't shown here, but they are read
-                        during indexing.
-                      </span>
-                    </div>
-                  )}
-
-                  <pre className="px-5 py-4 text-xs leading-relaxed text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono max-h-64 overflow-y-auto">
-                    {preview.extract || '(no text extracted)'}
-                    {preview.truncated && (
-                      <span className="text-gray-400 block mt-2">{'\n\n…truncated — the full page will be indexed.'}</span>
-                    )}
-                  </pre>
-                </div>
-              )}
             </div>
           )}
 
