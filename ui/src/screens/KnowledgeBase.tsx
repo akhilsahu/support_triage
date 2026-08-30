@@ -682,8 +682,7 @@ export function KBModal({
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                       <div className="md:col-span-5">
                         <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">Question *</label>
-                        <input
-                          type="text"
+                        <textarea
                           value={qna.question}
                           onChange={e => {
                             const newQnas = [...qnas]
@@ -691,7 +690,7 @@ export function KBModal({
                             setQnas(newQnas)
                           }}
                           placeholder="e.g. What is the annual interest rate?"
-                          className="w-full px-4 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-850 dark:text-gray-150 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                          className="w-full px-4 py-2 text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-850 dark:text-gray-150 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 leading-relaxed h-[42px] min-h-[42px] resize-none"
                           autoFocus={index === qnas.length - 1}
                         />
                       </div>
@@ -705,8 +704,7 @@ export function KBModal({
                             setQnas(newQnas)
                           }}
                           placeholder="Type or paste the answer..."
-                          rows={4}
-                          className="w-full px-4 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-850 dark:text-gray-150 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 leading-relaxed h-[42px] min-h-[42px] md:h-full md:min-h-[80px]"
+                          className="w-full px-4 py-2 text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-850 dark:text-gray-150 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 leading-relaxed h-[42px] min-h-[42px] resize-none"
                         />
                       </div>
                     </div>
