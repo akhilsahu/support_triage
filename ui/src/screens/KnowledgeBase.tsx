@@ -740,7 +740,7 @@ export function KBModal({
                   <option value="manual">Manual</option>
                   <option value="product">Product</option>
                 </Select>
-              </div>>
+              </div>
             </div>
           )}
 
