@@ -235,9 +235,11 @@ export const apiClient = {
   // RAG
   // Returns 202 with a job to poll -- ingestion runs in the background, so this
   // resolves in milliseconds even for documents that take minutes to process.
-  uploadDoc: (file: File, clientId?: string, docType?: string, kbName?: string, kbDescription?: string, expiryDate?: string, kbId?: string, itemTitle?: string, topic?: string, docLabel?: string): Promise<IngestionJobAccepted> => {
+  uploadDoc: (file: File | null, clientId?: string, docType?: string, kbName?: string, kbDescription?: string, expiryDate?: string, kbId?: string, itemTitle?: string, topic?: string, docLabel?: string, previewToken?: string): Promise<IngestionJobAccepted> => {
     const form = new FormData()
-    form.append('file', file)
+    if (file) {
+      form.append('file', file)
+    }
     return http.post(API_CONFIG.endpoints.ragUpload, form, {
       headers: {
         'Content-Type': undefined,   // let axios set multipart boundary automatically
@@ -250,6 +252,17 @@ export const apiClient = {
         ...(itemTitle     ? { 'X-Item-Title':      itemTitle     } : {}),
         ...(topic         ? { 'X-Topic':           topic         } : {}),
         ...(docLabel      ? { 'X-Doc-Label':       docLabel      } : {}),
+        ...(previewToken  ? { 'X-Preview-Token':   previewToken  } : {}),
+      },
+    }).then(r => r.data)
+  },
+
+  previewDoc: (file: File): Promise<UrlPreview> => {
+    const form = new FormData()
+    form.append('file', file)
+    return http.post(API_CONFIG.endpoints.ragPreviewDoc, form, {
+      headers: {
+        'Content-Type': undefined,
       },
     }).then(r => r.data)
   },

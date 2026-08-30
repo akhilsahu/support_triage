@@ -227,7 +227,8 @@ async def rag_ui_chat_client(client_id: str):
 
 @router.post("/rag/upload", response_model=RagUploadAcceptedResponse, status_code=202)
 async def rag_upload(
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
+    x_preview_token: Optional[str] = Header(default=None, alias="X-Preview-Token"),
     x_session_id: Optional[str] = Header(default=None, alias="X-Session-Id"),
     x_doc_type: Optional[str] = Header(default=None, alias="X-Doc-Type"),
     x_kb_name: Optional[str] = Header(default=None, alias="X-KB-Name"),
@@ -250,6 +251,20 @@ async def rag_upload(
     if x_contextual_enrichment is not None:
         enable_enrichment = x_contextual_enrichment.strip().lower() in ("true", "1", "yes", "on")
 
+    # Resolve filename and raw bytes (either from preview token or fresh file upload)
+    if x_preview_token:
+        from app.orchestra.ai.ingestion.scraper import load_preview, discard_preview
+        page = load_preview(x_preview_token, str(org.id))
+        if page is None:
+            raise HTTPException(status_code=400, detail="Preview expired or invalid. Please upload the file again.")
+        raw = page.raw
+        filename = page.filename
+        discard_preview(x_preview_token)
+    else:
+        if not file:
+            raise HTTPException(status_code=400, detail="Either a file upload or a valid X-Preview-Token header is required.")
+        filename = file.filename or "upload"
+        raw = await file.read()
 
     # When the upload belongs to a knowledge base, the KB item can only be
     # created once ingestion yields a doc_id -- so the job carries the linkage
@@ -263,7 +278,6 @@ async def rag_upload(
     resolved_kb = await _resolve_kb_id(x_kb_id, org, db)
     kb_uuid = uuid.UUID(resolved_kb) if resolved_kb else None
 
-    filename = file.filename or "upload"
     svc      = get_ingestion_service()
 
     if not svc.is_supported(filename):
@@ -272,7 +286,6 @@ async def rag_upload(
             detail=f"Unsupported file type. Supported: {', '.join(sorted(svc.supported_extensions()))}",
         )
 
-    raw = await file.read()
     if len(raw) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=400, detail=f"File too large (max {MAX_UPLOAD_BYTES // 1024 // 1024} MB).")
     if not raw:
@@ -880,6 +893,88 @@ async def rag_preview_url(req: PreviewUrlRequest, org=Depends(current_space)):
         page_count=parsed.page_count,
         char_count=len(text),
         # Do not truncate preview extract to allow the frontend to scroll and view the complete page content
+        extract=text,
+        truncated=False,
+        vision_skipped=is_pdf,
+    )
+
+
+class PreviewDocResponse(BaseModel):
+    preview_token: str
+    mode: Literal["quick", "deep"]
+    provider: str
+    quality: PreviewQuality
+    title: str
+    content_type: str
+    size_bytes: int
+    page_count: int
+    char_count: int
+    extract: str            # parsed document text
+    truncated: bool
+    vision_skipped: bool
+
+
+@router.post("/rag/preview-doc", response_model=PreviewDocResponse)
+async def rag_preview_doc(
+    file: UploadFile = File(...),
+    org=Depends(current_space),
+):
+    """
+    Parse an uploaded document and return its extracted text preview without indexing.
+    Caches the file under a preview token for later redemption via /rag/upload.
+    OCR/Vision is disabled for previews to keep it fast and responsive.
+    """
+    from dataclasses import replace as _replace
+    from app.orchestra.ai.ingestion.config import build_ingestion_config
+    from app.orchestra.ai.ingestion.ingestion import IngestionService
+    from app.orchestra.ai.ingestion.scraper import FetchedPage, store_preview
+    from app.orchestra.ai.ingestion.scraper.quality import assess_extraction
+
+    content = await file.read()
+    filename = file.filename or "document.txt"
+
+    cfg = build_ingestion_config()
+    is_pdf = filename.lower().endswith(".pdf")
+    if is_pdf:
+        # Skip OCR during preview to keep it synchronous and fast
+        cfg = _replace(cfg, vision_enabled=False)
+
+    try:
+        parsed = await anyio.to_thread.run_sync(
+            IngestionService(cfg).parse, content, filename
+        )
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not read document content: {e}")
+
+    text = (parsed.full_text or "").strip()
+    quality = assess_extraction(text)
+
+    page = FetchedPage(
+        raw=content,
+        filename=filename,
+        content_type=file.content_type or "application/octet-stream",
+        final_url=filename,
+        title=filename,
+        status_code=200,
+        provider="upload",
+        mode="quick",
+    )
+    token = store_preview(str(org.id), page)
+
+    return PreviewDocResponse(
+        preview_token=token,
+        mode="quick",
+        provider="upload",
+        quality=PreviewQuality(
+            rating=quality.rating,
+            score=quality.score,
+            reasons=list(quality.reasons),
+        ),
+        title=filename,
+        content_type=file.content_type or "application/octet-stream",
+        size_bytes=len(content),
+        page_count=parsed.page_count,
+        char_count=len(text),
         extract=text,
         truncated=False,
         vision_skipped=is_pdf,

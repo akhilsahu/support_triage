@@ -182,6 +182,33 @@ export function KBModal({
     setVisibleChars(10000)
   }, [selectedPreview])
 
+  const [docPreview, setDocPreview] = useState<UrlPreview | null>(null)
+  const [docPreviewing, setDocPreviewing] = useState(false)
+  const [docPreviewError, setDocPreviewError] = useState('')
+  const [docVisibleChars, setDocVisibleChars] = useState(10000)
+
+  useEffect(() => {
+    setDocVisibleChars(10000)
+  }, [docPreview])
+
+  useEffect(() => {
+    setDocPreview(null)
+    setDocPreviewError('')
+  }, [file])
+
+  const handleDocPreview = async (selectedFile: File) => {
+    setDocPreviewing(true)
+    setDocPreviewError('')
+    try {
+      const result = await apiClient.previewDoc(selectedFile)
+      setDocPreview(result)
+    } catch (e: any) {
+      setDocPreviewError(e?.response?.data?.detail || 'Failed to extract document content for preview.')
+    } finally {
+      setDocPreviewing(false)
+    }
+  }
+
   const [description, setDescription] = useState('')
   const [topic, setTopic]             = useState('')
   const [docLabels, setDocLabels]     = useState<string[]>([])
@@ -299,7 +326,10 @@ export function KBModal({
 
   const handleSubmit = async () => {
     setError('')
-    if (tab === 'doc' && !file) { setError('Please select a file to upload.'); return }
+    if (tab === 'doc') {
+      if (!file) { setError('Please select a file to upload.'); return }
+      if (!docPreview) { setError('Please wait for the document preview to load.'); return }
+    }
     if (tab === 'text' && !content.trim()) { setError('Content is required.'); return }
     if (tab === 'qna') {
       const validQnas = qnas.filter(q => q.question.trim() && q.answer.trim())
@@ -347,9 +377,9 @@ export function KBModal({
         // document is actually indexed; until then it shows as "processing" in
         // the listing, driven by the ingestion job.
         await apiClient.uploadDoc(
-          file, undefined, docType, kbName || title || file.name,
+          docPreview ? null : file, undefined, docType, kbName || title || file.name,
           description || undefined, expiryDate || undefined, resolvedKbId, title || file.name,
-          topic || undefined, formattedLabel || undefined,
+          topic || undefined, formattedLabel || undefined, docPreview?.preview_token
         )
       } else if (tab === 'url') {
         // Returns 202 + a job id, same as file upload: only the fetch is
@@ -441,7 +471,13 @@ export function KBModal({
           {tab === 'doc' && (
             <div className="space-y-6">
               <input ref={fileInputRef} type="file" accept=".pdf,.txt,.md,.docx" className="hidden"
-                onChange={e => setFile(e.target.files?.[0] || null)} />
+                onChange={e => {
+                  const selectedFile = e.target.files?.[0] || null
+                  setFile(selectedFile)
+                  if (selectedFile) {
+                    handleDocPreview(selectedFile)
+                  }
+                }} />
               <div onClick={() => fileInputRef.current?.click()}
                 className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-500/50 rounded-2xl p-10 text-center cursor-pointer transition-colors bg-gray-50/50 dark:bg-gray-800/30 group">
                 {file
@@ -456,6 +492,72 @@ export function KBModal({
                     </>
                 }
               </div>
+
+              {/* Document Preview Box Area */}
+              {docPreviewing && (
+                <div className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-gradient-to-r from-indigo-50/40 via-white to-violet-50/40 dark:from-indigo-950/20 dark:via-gray-900/60 dark:to-violet-950/20 shadow-xs flex items-center gap-2.5">
+                  <Loader2 className="w-4.5 h-4.5 text-indigo-600 dark:text-indigo-400 animate-spin" />
+                  <span className="text-xs font-bold text-gray-850 dark:text-gray-200 animate-pulse">
+                    Extracting document text preview...
+                  </span>
+                </div>
+              )}
+
+              {docPreviewError && (
+                <div className="p-5 rounded-2xl border-2 border-red-500/20 bg-red-500/5 dark:bg-red-500/5 shadow-xs flex items-start gap-3.5">
+                  <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-bold text-red-900 dark:text-red-100">Failed to generate preview</h4>
+                    <p className="text-xs text-red-700 dark:text-red-400 mt-1.5 leading-relaxed font-semibold">
+                      {docPreviewError}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {docPreview && (
+                <div className="relative rounded-2xl border-2 border-indigo-500/30 dark:border-indigo-500/20 bg-indigo-500/[0.03] dark:bg-indigo-500/[0.05] overflow-hidden shadow-[0_0_22px_rgba(99,102,241,0.08)] dark:shadow-[0_0_22px_rgba(99,102,241,0.05)] transition-all">
+                  {/* Floating stats badge */}
+                  <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-indigo-150 dark:border-indigo-900/60 bg-white/90 dark:bg-gray-900/90 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 shadow-2xs">
+                    <span>{docPreview.page_count} page{docPreview.page_count === 1 ? '' : 's'}</span>
+                    <span className="text-indigo-250 dark:text-indigo-850">•</span>
+                    <span>{docPreview.char_count.toLocaleString()} chars</span>
+                    <span className="text-indigo-250 dark:text-indigo-850">•</span>
+                    <span>{(docPreview.size_bytes / 1024).toFixed(0)} KB</span>
+                  </div>
+
+                  <pre
+                    onScroll={e => {
+                      const target = e.currentTarget
+                      if (target.scrollHeight - target.scrollTop <= target.clientHeight + 80) {
+                        setDocVisibleChars(prev => Math.min(prev + 15000, docPreview.extract.length))
+                      }
+                    }}
+                    className="p-5 pr-44 text-sm font-semibold leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono max-h-[550px] overflow-y-auto w-full relative"
+                  >
+                    {docPreview.extract.slice(0, docVisibleChars) || '(no text extracted)'}
+                    {docVisibleChars < docPreview.extract.length && (
+                      <span className="text-indigo-500 font-extrabold block text-center py-4 animate-pulse select-none">
+                        {'\n\n[Scroll down to load more content...]'}
+                      </span>
+                    )}
+                  </pre>
+                </div>
+              )}
+
+              {/* ETA notice for PDF or large document ingestion */}
+              {docPreview && (docPreview.content_type.includes('pdf') || docPreview.char_count > 15000) && (
+                <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-150 dark:border-amber-950/60 bg-amber-500/[0.03] dark:bg-amber-500/[0.05] shadow-2xs">
+                  <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-gray-650 dark:text-gray-400 leading-relaxed font-semibold">
+                    <span className="font-bold text-amber-700 dark:text-amber-400">⚡ Ingestion runs in the background (ETA: ~2-3 mins)</span>
+                    <br />
+                    Since this is a PDF or a large document, layout parsing and indexing runs as a background task. 
+                    You can confirm the upload and continue working; we'll process it and notify you once it's fully complete.
+                  </div>
+                </div>
+              )}
+
               <Input label="Document Name (optional)" value={title} onChange={e => setTitle(e.target.value)}
                 placeholder="Custom display name" />
               <Select label="Document Type" value={docType} onChange={e => setDocType(e.target.value)}>
@@ -582,6 +684,19 @@ export function KBModal({
                       [Content truncated — the full page will be fully indexed during ingestion.]
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* ETA notice for PDF URL or large webpage ingestion */}
+              {selectedPreview && (selectedPreview.content_type.includes('pdf') || selectedPreview.char_count > 15000) && (
+                <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-150 dark:border-amber-950/60 bg-amber-500/[0.03] dark:bg-amber-500/[0.05] shadow-2xs">
+                  <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-gray-650 dark:text-gray-400 leading-relaxed font-semibold">
+                    <span className="font-bold text-amber-700 dark:text-amber-400">⚡ Ingestion runs in the background (ETA: ~2-3 mins)</span>
+                    <br />
+                    Since this target page is large or a PDF document, layout indexing runs as a background task. 
+                    You can confirm and continue working; we'll process it and notify you once it's fully complete.
+                  </div>
                 </div>
               )}
 

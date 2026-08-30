@@ -10,6 +10,7 @@ export const API_CONFIG = {
     sentiment:  '/api/v1/empathy/analyze',
     // RAG
     ragUpload:  '/api/v1/documents/rag/upload',
+    ragPreviewDoc: '/api/v1/documents/rag/preview-doc',
     ragChat:    '/api/v1/documents/rag/chat',
     ragList:    '/api/v1/documents/rag/list',
     ragDelete:  (id: string) => `/api/v1/documents/rag/${id}`,
