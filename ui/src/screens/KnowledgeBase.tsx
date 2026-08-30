@@ -550,24 +550,25 @@ export function KBModal({
                 <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-150 dark:border-amber-950/60 bg-amber-500/[0.03] dark:bg-amber-500/[0.05] shadow-2xs">
                   <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
                   <div className="text-xs text-gray-650 dark:text-gray-400 leading-relaxed font-semibold">
-                    <span className="font-bold text-amber-700 dark:text-amber-400">⚡ Ingestion runs in the background (ETA: ~2-3 mins)</span>
+                    <span className="font-bold text-amber-700 dark:text-amber-400">⚡ Note: Full ingestion runs in the background (ETA: ~2-3 mins)</span>
                     <br />
-                    Since this is a PDF or a large document, layout parsing and indexing runs as a background task. 
-                    You can confirm the upload and continue working; we'll process it and notify you once it's fully complete.
+                    Since this is a PDF or large document, full layout parsing and indexing will happen in the background <span className="font-bold underline">after</span> you confirm the upload. You won't have to wait for it to finish!
                   </div>
                 </div>
               )}
 
               <Input label="Document Name (optional)" value={title} onChange={e => setTitle(e.target.value)}
                 placeholder="Custom display name" />
-              <Select label="Document Type" value={docType} onChange={e => setDocType(e.target.value)}>
-                <option value="general">General</option>
-                <option value="faq">FAQ</option>
-                <option value="policy">Policy</option>
-                <option value="manual">Manual</option>
-                <option value="product">Product</option>
-              </Select>
-              <Input label="Expiry Date (optional)" type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
+              <div className="grid grid-cols-2 gap-4">
+                <Select label="Document Type" value={docType} onChange={e => setDocType(e.target.value)}>
+                  <option value="general">General</option>
+                  <option value="faq">FAQ</option>
+                  <option value="policy">Policy</option>
+                  <option value="manual">Manual</option>
+                  <option value="product">Product</option>
+                </Select>
+                <Input label="Expiry Date (optional)" type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
+              </div>
             </div>
           )}
 
@@ -692,10 +693,9 @@ export function KBModal({
                 <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-150 dark:border-amber-950/60 bg-amber-500/[0.03] dark:bg-amber-500/[0.05] shadow-2xs">
                   <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
                   <div className="text-xs text-gray-650 dark:text-gray-400 leading-relaxed font-semibold">
-                    <span className="font-bold text-amber-700 dark:text-amber-400">⚡ Ingestion runs in the background (ETA: ~2-3 mins)</span>
+                    <span className="font-bold text-amber-700 dark:text-amber-400">⚡ Note: Full ingestion runs in the background (ETA: ~2-3 mins)</span>
                     <br />
-                    Since this target page is large or a PDF document, layout indexing runs as a background task. 
-                    You can confirm and continue working; we'll process it and notify you once it's fully complete.
+                    Since this target page is large or a PDF document, full layout indexing will happen in the background <span className="font-bold underline">after</span> you confirm the upload. You won't have to wait!
                   </div>
                 </div>
               )}
@@ -729,13 +729,15 @@ export function KBModal({
                 placeholder={selectedPreview?.title || "e.g., Return Policy & Refund FAQ"}
               />
 
-              <Select label="Document Type" value={docType} onChange={e => setDocType(e.target.value)}>
-                <option value="general">General</option>
-                <option value="faq">FAQ</option>
-                <option value="policy">Policy</option>
-                <option value="manual">Manual</option>
-                <option value="product">Product</option>
-              </Select>
+              <div className="grid grid-cols-2 gap-4">
+                <Select label="Document Type" value={docType} onChange={e => setDocType(e.target.value)}>
+                  <option value="general">General</option>
+                  <option value="faq">FAQ</option>
+                  <option value="policy">Policy</option>
+                  <option value="manual">Manual</option>
+                  <option value="product">Product</option>
+                </Select>
+              </div>>
             </div>
           )}
 
@@ -853,21 +855,22 @@ export function KBModal({
               <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
                 Common Chunk Metadata (Optional)
               </h3>
-              <button
-                type="button"
-                onClick={handleGenerateMeta}
-                disabled={generatingMeta || (!file && !url.trim() && !content.trim() && !title.trim() && !question.trim())}
-                className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-xl border border-indigo-200 dark:border-indigo-800/50 disabled:opacity-50 transition-colors shadow-2xs"
-                title="Generate Description and Topic Tag using AI"
-              >
-                {generatingMeta ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
-                ) : (
-                  <Sparkles className="w-4 h-4 text-indigo-500" />
-                )}
-                <span>{generatingMeta ? 'Suggesting…' : '✨ Auto-suggest'}</span>
-              </button>
             </div>
+
+            <button
+              type="button"
+              onClick={handleGenerateMeta}
+              disabled={generatingMeta || (!file && !url.trim() && !content.trim() && !title.trim() && !question.trim())}
+              className="flex items-center justify-center w-full gap-2 px-4 py-3 text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 hover:bg-indigo-100/70 dark:hover:bg-indigo-900/50 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-800/60 disabled:opacity-50 transition-colors shadow-2xs"
+              title="Generate Description and Topic Tag using AI"
+            >
+              {generatingMeta ? (
+                <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
+              ) : (
+                <Sparkles className="w-5 h-5 text-indigo-500" />
+              )}
+              <span>{generatingMeta ? 'Suggesting Metadata…' : '✨ Auto-suggest Metadata Below'}</span>
+            </button>
 
             <Input
               label="Topic / Category Tag"
@@ -921,6 +924,7 @@ export function KBModal({
 
 function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => void; onDone: () => void }) {
   const [text, setText]       = useState('')
+  const [title, setTitle]             = useState('')
   const [description, setDescription] = useState('')
   const [topic, setTopic]             = useState('')
   const [generatingMeta, setGeneratingMeta] = useState(false)
@@ -975,6 +979,7 @@ function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => 
           item_type: 'qna',
           question: pair.q,
           content: pair.a,
+          title: title.trim() || undefined,
           description: description || undefined,
           topic: topic || undefined,
         })
@@ -1049,21 +1054,29 @@ function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => 
               <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
                 Common Chunk Metadata (Optional)
               </h3>
-              <button
-                type="button"
-                onClick={handleGenerateMeta}
-                disabled={generatingMeta || !text.trim()}
-                className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-xl border border-indigo-200 dark:border-indigo-800/50 disabled:opacity-50 transition-colors shadow-2xs"
-                title="Generate Description and Topic Tag using AI"
-              >
-                {generatingMeta ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
-                ) : (
-                  <Sparkles className="w-4 h-4 text-indigo-500" />
-                )}
-                <span>{generatingMeta ? 'Suggesting…' : '✨ Auto-suggest'}</span>
-              </button>
             </div>
+
+            <button
+              type="button"
+              onClick={handleGenerateMeta}
+              disabled={generatingMeta || !text.trim()}
+              className="flex items-center justify-center w-full gap-2 px-4 py-3 text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 hover:bg-indigo-100/70 dark:hover:bg-indigo-900/50 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-800/60 disabled:opacity-50 transition-colors shadow-2xs"
+              title="Generate Description and Topic Tag using AI"
+            >
+              {generatingMeta ? (
+                <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
+              ) : (
+                <Sparkles className="w-5 h-5 text-indigo-500" />
+              )}
+              <span>{generatingMeta ? 'Suggesting Metadata…' : '✨ Auto-suggest Metadata Below'}</span>
+            </button>
+
+            <Input
+              label="Title for this Q&A Set (optional)"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="e.g. 2026 Return Policy FAQs"
+            />
 
             <Input
               label="Topic / Category Tag"
