@@ -516,58 +516,25 @@ export function KBModal({
               )}
 
               {selectedPreview && (
-                <div className="rounded-2xl border-2 border-violet-500/40 dark:border-violet-400/40 bg-violet-500/[0.04] dark:bg-violet-500/[0.06] overflow-hidden shadow-md transition-all">
-                  <div className="px-5 py-4 border-b border-violet-200/50 dark:border-violet-900/60 bg-violet-500/[0.06] dark:bg-violet-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <p className="text-base font-extrabold text-gray-900 dark:text-white truncate">
-                        {selectedPreview.title || '(no title)'}
-                      </p>
-                      {selectedPreview.final_url !== url.trim() && (
-                        <p className="text-xs font-bold text-violet-600 dark:text-violet-400 mt-1 break-all">
-                          Redirected to: {selectedPreview.final_url}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0 bg-white dark:bg-gray-950 px-3 py-1.5 rounded-xl border border-violet-200/50 dark:border-violet-900/60 shadow-2xs text-[11px] font-bold text-violet-700 dark:text-violet-300">
-                      <span>{selectedPreview.page_count} page{selectedPreview.page_count === 1 ? '' : 's'}</span>
-                      <span className="text-violet-200 dark:text-violet-850">•</span>
-                      <span>{selectedPreview.char_count.toLocaleString()} chars</span>
-                      <span className="text-violet-200 dark:text-violet-850">•</span>
-                      <span>{(selectedPreview.size_bytes / 1024).toFixed(0)} KB</span>
-                    </div>
+                <div className="relative rounded-2xl border-2 border-violet-500/40 dark:border-violet-400/40 bg-white dark:bg-gray-950 overflow-hidden shadow-md">
+                  {/* Floating stats badge (theme-adaptive: adapts to dashboard theme bg-white dark:bg-gray-900 border/text colors) */}
+                  <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-violet-100 dark:border-violet-900/60 bg-white/90 dark:bg-gray-900/90 text-[10px] font-bold text-violet-750 dark:text-violet-300 shadow-2xs">
+                    <span>{selectedPreview.page_count} page{selectedPreview.page_count === 1 ? '' : 's'}</span>
+                    <span className="text-violet-250 dark:text-violet-850">•</span>
+                    <span>{selectedPreview.char_count.toLocaleString()} chars</span>
+                    <span className="text-violet-250 dark:text-violet-850">•</span>
+                    <span>{(selectedPreview.size_bytes / 1024).toFixed(0)} KB</span>
                   </div>
 
-                  {(selectedPreview.quality.rating !== 'good' || selectedPreview.char_count < 200) && (
-                    <div className={`flex items-start gap-2.5 px-5 py-3.5 border-b ${selectedPreview.quality.rating === 'poor' ? 'bg-red-500/10 border-red-500/20' : 'bg-amber-500/10 border-amber-500/20'}`}>
-                      <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                      <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 leading-normal">
-                        <strong>{selectedPreview.quality.rating === 'poor' ? 'Poor extraction quality' : 'Extraction may be incomplete'}</strong>
-                        <span> ({selectedPreview.quality.score}/100).</span>
-                        {selectedPreview.quality.reasons.length > 0 && <span> {selectedPreview.quality.reasons.map(reason => reason.replace(/_/g, ' ')).join(', ')}.</span>}
-                        {selectedPreviewMode === 'quick' && <span> Try Deep Preview for dynamic page content.</span>}
-                      </div>
+                  <pre className="p-5 pr-44 text-sm font-semibold leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono max-h-[350px] overflow-y-auto w-full">
+                    {selectedPreview.extract || '(no text extracted)'}
+                  </pre>
+                  
+                  {selectedPreview.truncated && (
+                    <div className="px-5 py-3 border-t border-violet-100 dark:border-violet-900/40 bg-violet-500/[0.04] dark:bg-violet-500/[0.06] text-xs font-extrabold text-violet-650 dark:text-violet-400 text-center w-full">
+                      [Content truncated — the full page will be fully indexed during ingestion.]
                     </div>
                   )}
-
-                  {selectedPreview.vision_skipped && (
-                    <div className="px-5 py-3.5 bg-blue-500/10 border-b border-blue-500/20">
-                      <span className="text-xs font-semibold text-blue-700 dark:text-blue-400">
-                        PDF Mode: scanned pages will be analyzed during background ingestion.
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="p-5">
-                    <p className="text-xs font-black uppercase tracking-wider text-violet-750 dark:text-violet-400 mb-2.5">Extracted Content Snippet</p>
-                    <pre className="p-4 text-xs font-semibold leading-relaxed text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-950 border border-violet-100 dark:border-violet-900/60 rounded-xl whitespace-pre-wrap font-mono max-h-72 overflow-y-auto shadow-2xs">
-                      {selectedPreview.extract || '(no text extracted)'}
-                      {selectedPreview.truncated && (
-                        <span className="text-violet-600 dark:text-violet-400 font-extrabold block mt-3.5">
-                          {'\n\n[Content truncated — the full page will be fully indexed during ingestion.]'}
-                        </span>
-                      )}
-                    </pre>
-                  </div>
                 </div>
               )}
 
