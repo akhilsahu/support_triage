@@ -38,6 +38,7 @@ from app.orchestra.ai.ingestion.scraper.cache import (
 )
 # Import built-in providers so they self-register on package import.
 from app.orchestra.ai.ingestion.scraper import providers  # noqa: F401
+from app.orchestra.ai.ingestion.scraper import firecrawl  # noqa: F401
 
 __all__ = [
     "FetchedPage",
