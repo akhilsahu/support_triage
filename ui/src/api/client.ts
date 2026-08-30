@@ -239,6 +239,11 @@ export const apiClient = {
     const form = new FormData()
     if (file) {
       form.append('file', file)
+    } else {
+      // Axios may omit the multipart boundary if the FormData is completely empty,
+      // which causes FastAPI to fail with a 400 Missing Boundary error.
+      // Appending a dummy field ensures a valid multipart payload.
+      form.append('__empty_multipart_dummy', '1')
     }
     return http.post(API_CONFIG.endpoints.ragUpload, form, {
       headers: {
