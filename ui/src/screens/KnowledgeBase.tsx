@@ -371,6 +371,7 @@ export function KBModal({
             item_type: 'qna',
             question: item.question.trim(),
             content: item.answer.trim(),
+            title: title.trim() || undefined,
             description: description || undefined,
             topic: topic || undefined,
             doc_label: formattedLabel
@@ -653,6 +654,13 @@ export function KBModal({
                   </div>
                 </div>
               )}
+
+              <Input
+                label="Title (optional)"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="e.g. Return & Refund FAQs"
+              />
 
               {/* Dynamic Q&A list */}
               <div className="space-y-6 max-h-[450px] overflow-y-auto pr-2 -mr-2">
