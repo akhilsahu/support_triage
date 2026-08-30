@@ -173,6 +173,11 @@ export function KBModal({
   const [previewStage, setPreviewStage]       = useState('Connecting to web server…')
   const [previewError, setPreviewError]       = useState('')
   const [deepPreviewError, setDeepPreviewError] = useState('')
+  const [visibleChars, setVisibleChars]       = useState(10000)
+
+  useEffect(() => {
+    setVisibleChars(10000)
+  }, [selectedPreview])
 
   const [description, setDescription] = useState('')
   const [topic, setTopic]             = useState('')
@@ -240,6 +245,15 @@ export function KBModal({
       setDeepPreviewError(e?.response?.data?.detail || e?.message || 'Could not generate a deep preview.')
     } finally {
       setDeepPreviewing(false)
+    }
+  }
+
+  const handleScroll = (e: React.UIEvent<HTMLPreElement>) => {
+    const target = e.currentTarget
+    if (target.scrollHeight - target.scrollTop - target.clientHeight < 100) {
+      if (selectedPreview && visibleChars < selectedPreview.extract.length) {
+        setVisibleChars(prev => Math.min(prev + 15000, selectedPreview.extract.length))
+      }
     }
   }
 
@@ -526,8 +540,16 @@ export function KBModal({
                     <span>{(selectedPreview.size_bytes / 1024).toFixed(0)} KB</span>
                   </div>
 
-                  <pre className="p-5 pr-44 text-sm font-semibold leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono max-h-[550px] overflow-y-auto w-full">
-                    {selectedPreview.extract || '(no text extracted)'}
+                  <pre
+                    onScroll={handleScroll}
+                    className="p-5 pr-44 text-sm font-semibold leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono max-h-[550px] overflow-y-auto w-full relative"
+                  >
+                    {selectedPreview.extract.slice(0, visibleChars) || '(no text extracted)'}
+                    {visibleChars < selectedPreview.extract.length && (
+                      <span className="text-indigo-500 font-extrabold block text-center py-4 animate-pulse select-none">
+                        {'\n\n[Scroll down to load more content...]'}
+                      </span>
+                    )}
                   </pre>
                   
                   {selectedPreview.truncated && (
