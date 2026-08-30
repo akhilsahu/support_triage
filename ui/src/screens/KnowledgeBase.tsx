@@ -679,8 +679,8 @@ export function KBModal({
                       )}
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                      <div className="md:col-span-5">
                         <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">Question *</label>
                         <input
                           type="text"
@@ -695,7 +695,7 @@ export function KBModal({
                           autoFocus={index === qnas.length - 1}
                         />
                       </div>
-                      <div>
+                      <div className="md:col-span-7">
                         <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">Answer *</label>
                         <textarea
                           value={qna.answer}
