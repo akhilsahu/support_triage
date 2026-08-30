@@ -180,10 +180,18 @@ class Settings(BaseSettings):
     # SCRAPER_PROVIDER selects the fetch strategy; "httpx" is a plain HTTP GET
     # and does not run JavaScript, so client-rendered SPAs yield little text.
     SCRAPER_PROVIDER: str = "httpx"
+    # Role-specific providers keep the legacy setting backward compatible while
+    # allowing an explicitly requested Deep Preview to use a separate backend.
+    SCRAPER_QUICK_PROVIDER: str = ""
+    SCRAPER_DEEP_PROVIDER: str = "firecrawl"
     SCRAPER_TIMEOUT_S: int = 15
+    SCRAPER_DEEP_TIMEOUT_S: int = 15
     SCRAPER_MAX_BYTES: int = 30 * 1024 * 1024      # 30 MB, matches MAX_UPLOAD_BYTES
     SCRAPER_MAX_REDIRECTS: int = 5
     SCRAPER_USER_AGENT: str = "SupportBot/1.0 (KB Indexer)"
+    FIRECRAWL_API_KEY: str = ""
+    FIRECRAWL_BASE_URL: str = "https://api.firecrawl.dev"
+    FIRECRAWL_MAX_REQUESTS_PER_SPACE_PER_DAY: int = 50
     # SSRF guard. Leave False unless you deliberately index an internal wiki:
     # True lets a customer-supplied URL reach cloud metadata endpoints and
     # anything else private the server can route to.

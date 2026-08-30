@@ -10,7 +10,10 @@ lets this package be reused from a job, a CLI, or a test.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
+
+
+ScrapeMode = Literal["quick", "deep"]
 
 
 @dataclass(frozen=True)
@@ -25,6 +28,8 @@ class FetchedPage:
     filename:     str
     title:        str    # <title>, or the hostname when there isn't one
     status_code:  int
+    provider:     str = ""
+    mode:         ScrapeMode = "quick"
 
     @property
     def size_bytes(self) -> int:
@@ -60,11 +65,24 @@ class ScraperConfig:
     allow_private_hosts:  bool
 
 
-def get_scraper_config() -> ScraperConfig:
+def get_scraper_config(mode: ScrapeMode = "quick") -> ScraperConfig:
     from app.config import settings
+
+    if mode == "deep":
+        provider = (settings.SCRAPER_DEEP_PROVIDER or "").strip().lower()
+        timeout_s = settings.SCRAPER_DEEP_TIMEOUT_S
+    else:
+        provider = (
+            settings.SCRAPER_QUICK_PROVIDER
+            or settings.SCRAPER_PROVIDER
+            or "httpx"
+        ).strip().lower()
+
+        timeout_s = settings.SCRAPER_TIMEOUT_S
+
     return ScraperConfig(
-        provider=(settings.SCRAPER_PROVIDER or "httpx").strip().lower(),
-        timeout_s=settings.SCRAPER_TIMEOUT_S,
+        provider=provider,
+        timeout_s=timeout_s,
         max_bytes=settings.SCRAPER_MAX_BYTES,
         user_agent=settings.SCRAPER_USER_AGENT,
         max_redirects=settings.SCRAPER_MAX_REDIRECTS,

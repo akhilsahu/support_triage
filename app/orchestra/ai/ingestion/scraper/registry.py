@@ -25,12 +25,14 @@ than being swallowed into None.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Awaitable, Callable, Dict, List, Optional
 
 import structlog
 
 from app.orchestra.ai.ingestion.scraper.base import (
     FetchedPage,
+    ScrapeMode,
     ScrapeError,
     ScraperConfig,
     get_scraper_config,
@@ -58,7 +60,12 @@ def available_providers() -> List[str]:
     return sorted(_REGISTRY)
 
 
-async def fetch_url(url: str, cfg: Optional[ScraperConfig] = None) -> FetchedPage:
+async def fetch_url(
+    url: str,
+    cfg: Optional[ScraperConfig] = None,
+    *,
+    mode: ScrapeMode = "quick",
+) -> FetchedPage:
     """
     Fetch `url` with the configured provider.
 
@@ -66,7 +73,18 @@ async def fetch_url(url: str, cfg: Optional[ScraperConfig] = None) -> FetchedPag
     HTTP error, oversized body. The caller maps it (the API layer uses
     ScrapeError.status_hint).
     """
-    cfg = cfg or get_scraper_config()
+    cfg = cfg or get_scraper_config(mode)
+
+    if not cfg.provider:
+        raise ScrapeError(
+            "Deep Preview is not configured."
+            if mode == "deep"
+            else "Scraper is not configured.",
+            reason="deep_provider_unconfigured"
+            if mode == "deep"
+            else "unknown_provider",
+            status_hint=503,
+        )
 
     fetcher = _REGISTRY.get(cfg.provider)
     if fetcher is None:
@@ -76,7 +94,8 @@ async def fetch_url(url: str, cfg: Optional[ScraperConfig] = None) -> FetchedPag
         )
 
     page = await fetcher(url.strip(), cfg)
-    logger.info("scraper.fetched", provider=cfg.provider, url=url,
+    page = replace(page, provider=cfg.provider, mode=mode)
+    logger.info("scraper.fetched", provider=cfg.provider, mode=mode, url=url,
                 final_url=page.final_url, status=page.status_code,
                 bytes=page.size_bytes, content_type=page.content_type)
     return page
