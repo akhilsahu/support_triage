@@ -1,6 +1,6 @@
 """Add missing columns to ingestion_jobs table
 
-Revision ID: 0045_ingestion_jobs_eta_and_costs
+Revision ID: 0045_job_eta_costs
 Revises: 0044_evaluation_harness
 Create Date: 2026-08-30
 
@@ -8,7 +8,7 @@ Create Date: 2026-08-30
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0045_ingestion_jobs_eta_and_costs"
+revision = "0045_job_eta_costs"
 down_revision = "0044_evaluation_harness"
 branch_labels = None
 depends_on = None
