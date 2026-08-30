@@ -82,7 +82,8 @@ async def generate_doc_metadata_suggestion(
             except Exception as err:
                 logger.warning("doc_meta_suggestion.fetch_chunks_failed", doc_id=target_doc_id, error=str(err))
 
-    snippet = snippet[:60000]
+    # Cap snippet context at 15k characters (~4k tokens) to prevent context limit errors (e.g. 8k tokens on Modal)
+    snippet = snippet[:15000]
 
     if not (snippet or file_title or source_url):
         return {"description": "", "topic": "", "scope": ""}
