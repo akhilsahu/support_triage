@@ -45,6 +45,11 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
+            # Apply any updated Nginx config files and reload
+            cp deploy/nginx/api.support247.chat.conf /etc/nginx/sites-available/
+            cp deploy/nginx/support247.chat.conf     /etc/nginx/sites-available/
+            nginx -t && systemctl reload nginx || echo "Nginx reload skipped (no config change)"
+
             # Write .env from GitHub secrets — no manual SSH needed
             printf '%s\n' \
               "ENVIRONMENT=production" \
