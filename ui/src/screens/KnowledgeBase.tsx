@@ -479,17 +479,20 @@ export function KBModal({
                   }
                 }} />
               <div onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-500/50 rounded-2xl p-10 text-center cursor-pointer transition-colors bg-gray-50/50 dark:bg-gray-800/30 group">
+                className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-500/50 rounded-xl p-4 text-center cursor-pointer transition-colors bg-gray-50/50 dark:bg-gray-800/30 group">
                 {file
-                  ? <div className="flex flex-col items-center justify-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 font-medium">
-                      <FileText className="w-8 h-8 opacity-80" />
+                  ? <div className="flex items-center justify-center gap-3 text-sm text-indigo-600 dark:text-indigo-400 font-medium">
+                      <FileText className="w-5 h-5 opacity-80" />
                       {file.name}
+                      <span className="text-xs text-indigo-400/60 font-normal ml-2">(Click to change)</span>
                     </div>
-                  : <>
-                      <Upload className="w-8 h-8 text-gray-400 dark:text-gray-500 mx-auto mb-3 group-hover:text-indigo-500 transition-colors" />
-                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Click to select file</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">PDF · TXT · MD · DOCX</p>
-                    </>
+                  : <div className="flex items-center justify-center gap-3">
+                      <Upload className="w-5 h-5 text-gray-400 dark:text-gray-500 group-hover:text-indigo-500 transition-colors" />
+                      <div className="text-left">
+                        <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Click to select file</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">PDF, TXT, MD, DOCX (up to 200MB)</p>
+                      </div>
+                    </div>
                 }
               </div>
 
