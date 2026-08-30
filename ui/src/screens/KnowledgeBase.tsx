@@ -142,11 +142,13 @@ export function KBModal({
   onClose,
   onDone,
   defaultTab,
+  onSwitchToBulk,
 }: {
   kbId?: string | null
   onClose: () => void
   onDone: (kb: KB) => void
   defaultTab?: ItemTab
+  onSwitchToBulk?: () => void
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [tab, setTab]           = useState<ItemTab>(defaultTab || 'doc')
@@ -156,6 +158,7 @@ export function KBModal({
   const [expiryDate, setExpiryDate] = useState('')
   const [question, setQuestion] = useState('')
   const [content, setContent]   = useState('')
+  const [qnas, setQnas]         = useState<Array<{ question: string; answer: string }>>([{ question: '', answer: '' }])
   const [url, setUrl]           = useState('')
   const currentUrlRef = useRef('')
   const [file, setFile]         = useState<File | null>(null)
@@ -298,7 +301,18 @@ export function KBModal({
     setError('')
     if (tab === 'doc' && !file) { setError('Please select a file to upload.'); return }
     if (tab === 'text' && !content.trim()) { setError('Content is required.'); return }
-    if (tab === 'qna' && (!question.trim() || !content.trim())) { setError('Question and answer are required.'); return }
+    if (tab === 'qna') {
+      const validQnas = qnas.filter(q => q.question.trim() && q.answer.trim())
+      if (validQnas.length === 0) {
+        setError('At least one complete Question and Answer is required.');
+        return
+      }
+      const incomplete = qnas.some(q => (q.question.trim() && !q.answer.trim()) || (!q.question.trim() && q.answer.trim()))
+      if (incomplete) {
+        setError('Please complete all Q&A pairs that have been started.');
+        return
+      }
+    }
     if (tab === 'url') {
       const u = url.trim()
       if (!u) { setError('URL is required.'); return }
@@ -317,7 +331,7 @@ export function KBModal({
         const autoName = kbName.trim()
           || title.trim()
           || (file ? file.name.replace(/\.[^.]+$/, '') : '')
-          || (tab === 'qna' ? question.slice(0, 40) : '')
+          || (tab === 'qna' ? (qnas[0]?.question || '').slice(0, 40) : '')
           || (tab === 'url' ? (() => { try { return new URL(url.trim()).hostname } catch { return '' } })() : '')
           || 'Knowledge Base'
         const newKb = await apiClient.createKB({ name: autoName, default_topic: topic || undefined })
@@ -351,7 +365,17 @@ export function KBModal({
       } else if (tab === 'text') {
         await apiClient.addKBItem(resolvedKbId, { item_type: 'text', title: title || undefined, content: content.trim(), description: description || undefined, topic: topic || undefined, doc_label: formattedLabel })
       } else if (tab === 'qna') {
-        await apiClient.addKBItem(resolvedKbId, { item_type: 'qna', question: question.trim(), content: content.trim(), description: description || undefined, topic: topic || undefined, doc_label: formattedLabel })
+        const validQnas = qnas.filter(q => q.question.trim() && q.answer.trim())
+        for (const item of validQnas) {
+          await apiClient.addKBItem(resolvedKbId, {
+            item_type: 'qna',
+            question: item.question.trim(),
+            content: item.answer.trim(),
+            description: description || undefined,
+            topic: topic || undefined,
+            doc_label: formattedLabel
+          })
+        }
       }
 
       onDone(kb || { id: resolvedKbId, name: '', description: '', active: true, item_count: 1 })
@@ -611,8 +635,94 @@ export function KBModal({
 
           {tab === 'qna' && (
             <div className="space-y-6">
-              <Input label="Question *" value={question} onChange={e => setQuestion(e.target.value)} autoFocus />
-              <Textarea label="Answer *" value={content} onChange={e => setContent(e.target.value)} rows={8} />
+              {/* Optional tip banner for switching to bulk import */}
+              {kbId && onSwitchToBulk && (
+                <div className="flex items-start gap-3 p-4 rounded-xl border border-indigo-150 dark:border-indigo-950/60 bg-indigo-500/[0.03] dark:bg-indigo-500/[0.05] shadow-2xs">
+                  <Sparkles className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-gray-650 dark:text-gray-400 leading-relaxed font-semibold">
+                    <span className="font-bold text-indigo-750 dark:text-indigo-400">💡 Tip: Importing many Q&As?</span>{' '}
+                    You can switch to the{' '}
+                    <button
+                      type="button"
+                      onClick={onSwitchToBulk}
+                      className="text-indigo-650 dark:text-indigo-400 underline font-extrabold hover:text-indigo-850 transition-colors"
+                    >
+                      Bulk Q&A Import
+                    </button>{' '}
+                    tool to paste copy-pasted questions and answers in raw text format.
+                  </div>
+                </div>
+              )}
+
+              {/* Dynamic Q&A list */}
+              <div className="space-y-6 max-h-[450px] overflow-y-auto pr-2 -mr-2">
+                {qnas.map((qna, index) => (
+                  <div
+                    key={index}
+                    className="p-5 rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/20 dark:bg-gray-800/5 shadow-2xs space-y-4 relative group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                        Q&A Pair #{index + 1}
+                      </span>
+                      {qnas.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQnas(qnas.filter((_, i) => i !== index))
+                          }}
+                          className="text-xs font-bold text-red-500 hover:text-red-750 flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Remove
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">Question *</label>
+                        <input
+                          type="text"
+                          value={qna.question}
+                          onChange={e => {
+                            const newQnas = [...qnas]
+                            newQnas[index].question = e.target.value
+                            setQnas(newQnas)
+                          }}
+                          placeholder="e.g. What is the annual interest rate?"
+                          className="w-full px-4 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-850 dark:text-gray-150 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                          autoFocus={index === qnas.length - 1}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">Answer *</label>
+                        <textarea
+                          value={qna.answer}
+                          onChange={e => {
+                            const newQnas = [...qnas]
+                            newQnas[index].answer = e.target.value
+                            setQnas(newQnas)
+                          }}
+                          placeholder="Type or paste the answer..."
+                          rows={4}
+                          className="w-full px-4 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-850 dark:text-gray-150 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 leading-relaxed"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add another button */}
+              <button
+                type="button"
+                onClick={() => setQnas([...qnas, { question: '', answer: '' }])}
+                className="flex items-center justify-center gap-2 w-full py-3 text-xs font-extrabold rounded-xl border border-dashed border-indigo-200 dark:border-indigo-800/80 text-indigo-600 dark:text-indigo-400 bg-indigo-50/20 dark:bg-indigo-950/10 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-all shadow-2xs"
+              >
+                <Plus className="w-4 h-4" />
+                Add Another Q&A Pair
+              </button>
             </div>
           )}
 
@@ -1619,6 +1729,10 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
           kbId={kb.id}
           defaultTab={tabToItemTab[activeTab]}
           onClose={() => setAddOpen(false)}
+          onSwitchToBulk={() => {
+            setAddOpen(false)
+            setBulkOpen(true)
+          }}
           onDone={() => {
             queryClient.invalidateQueries({ queryKey: ['kb-items', kb.id] })
             // A document upload only returns a job id -- refetch the job list so
