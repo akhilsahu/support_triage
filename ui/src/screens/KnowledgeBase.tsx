@@ -363,7 +363,7 @@ export function KBModal({
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 40, opacity: 0, scale: 0.98 }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        className="w-full h-full max-w-4xl mx-auto flex flex-col overflow-hidden shadow-2xl bg-white dark:bg-gray-900 sm:border-x border-gray-200 dark:border-gray-800"
+        className="w-full h-full max-w-[96%] lg:max-w-7xl mx-auto flex flex-col overflow-hidden shadow-2xl bg-white dark:bg-gray-900 sm:border-x border-gray-200 dark:border-gray-800"
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800 shrink-0 bg-white dark:bg-gray-900">
           <div className="flex items-center gap-3">
@@ -494,14 +494,14 @@ export function KBModal({
                       {(['quick', 'deep'] as PreviewMode[]).map(mode => (
                         <button key={mode} type="button" onClick={() => setSelectedPreviewMode(mode)}
                           aria-pressed={selectedPreviewMode === mode}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize ${selectedPreviewMode === mode ? 'bg-violet-600 text-white' : 'text-gray-600 dark:text-gray-300'}`}>
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize ${selectedPreviewMode === mode ? 'bg-indigo-600 text-white shadow-2xs' : 'text-gray-600 dark:text-gray-300'}`}>
                           {mode} Preview
                         </button>
                       ))}
                     </div>
                   )}
                   <button type="button" onClick={handleDeepPreview} disabled={deepPreviewing}
-                    className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/20 transition-all">
                     {deepPreviewing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     {deepPreviewing ? 'Generating Deep Preview…' : deepPreview ? 'Regenerate Deep Preview' : 'Generate Deep Preview'}
                   </button>
@@ -516,13 +516,13 @@ export function KBModal({
               )}
 
               {selectedPreview && (
-                <div className="relative rounded-2xl border-2 border-violet-500/40 dark:border-violet-400/40 bg-white dark:bg-gray-950 overflow-hidden shadow-md">
+                <div className="relative rounded-2xl border-2 border-indigo-500/30 dark:border-indigo-500/20 bg-indigo-500/[0.03] dark:bg-indigo-500/[0.05] overflow-hidden shadow-[0_0_22px_rgba(99,102,241,0.08)] dark:shadow-[0_0_22px_rgba(99,102,241,0.05)] transition-all">
                   {/* Floating stats badge (theme-adaptive: adapts to dashboard theme bg-white dark:bg-gray-900 border/text colors) */}
-                  <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-violet-100 dark:border-violet-900/60 bg-white/90 dark:bg-gray-900/90 text-[10px] font-bold text-violet-750 dark:text-violet-300 shadow-2xs">
+                  <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-indigo-150 dark:border-indigo-900/60 bg-white/90 dark:bg-gray-900/90 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 shadow-2xs">
                     <span>{selectedPreview.page_count} page{selectedPreview.page_count === 1 ? '' : 's'}</span>
-                    <span className="text-violet-250 dark:text-violet-850">•</span>
+                    <span className="text-indigo-250 dark:text-indigo-850">•</span>
                     <span>{selectedPreview.char_count.toLocaleString()} chars</span>
-                    <span className="text-violet-250 dark:text-violet-850">•</span>
+                    <span className="text-indigo-250 dark:text-indigo-850">•</span>
                     <span>{(selectedPreview.size_bytes / 1024).toFixed(0)} KB</span>
                   </div>
 
@@ -531,7 +531,7 @@ export function KBModal({
                   </pre>
                   
                   {selectedPreview.truncated && (
-                    <div className="px-5 py-3 border-t border-violet-100 dark:border-violet-900/40 bg-violet-500/[0.04] dark:bg-violet-500/[0.06] text-xs font-extrabold text-violet-650 dark:text-violet-400 text-center w-full">
+                    <div className="px-5 py-3 border-t border-indigo-100 dark:border-indigo-900/40 bg-indigo-500/[0.04] dark:bg-indigo-500/[0.06] text-xs font-extrabold text-indigo-650 dark:text-indigo-400 text-center w-full">
                       [Content truncated — the full page will be fully indexed during ingestion.]
                     </div>
                   )}
