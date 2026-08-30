@@ -62,9 +62,9 @@ const labelCls = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-
 interface Chunk { chunk_index: number; page: number; section: string; text: string }
 
 function ChunksModal({ docId, docName, onClose }: { docId: string; docName: string; onClose: () => void }) {
-  const [chunks, setChunks]     = useState<Chunk[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState('')
+  const [chunks, setChunks] = useState<Chunk[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [expanded, setExpanded] = useState<number | null>(null)
 
   useState(() => {
@@ -151,32 +151,32 @@ export function KBModal({
   onSwitchToBulk?: () => void
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [tab, setTab]           = useState<ItemTab>(defaultTab || 'doc')
-  const [kbName, setKbName]     = useState('')
-  const [title, setTitle]       = useState('')
-  const [docType, setDocType]   = useState('general')
+  const [tab, setTab] = useState<ItemTab>(defaultTab || 'doc')
+  const [kbName, setKbName] = useState('')
+  const [title, setTitle] = useState('')
+  const [docType, setDocType] = useState('general')
   const [expiryDate, setExpiryDate] = useState('')
   const [question, setQuestion] = useState('')
-  const [content, setContent]   = useState('')
-  const [qnas, setQnas]         = useState<Array<{ question: string; answer: string }>>([{ question: '', answer: '' }])
-  const [url, setUrl]           = useState('')
+  const [content, setContent] = useState('')
+  const [qnas, setQnas] = useState<Array<{ question: string; answer: string }>>([{ question: '', answer: '' }])
+  const [url, setUrl] = useState('')
   const currentUrlRef = useRef('')
-  const [file, setFile]         = useState<File | null>(null)
-  const [saving, setSaving]     = useState(false)
-  const [error, setError]       = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   // URL tab: fetched-but-not-yet-indexed page. Null until the user previews;
   // cleared whenever the URL changes so a stale preview can't be confirmed.
   const [quickPreview, setQuickPreview] = useState<UrlPreview | null>(null)
   const [deepPreview, setDeepPreview] = useState<UrlPreview | null>(null)
   const [selectedPreviewMode, setSelectedPreviewMode] = useState<PreviewMode>('quick')
   const selectedPreview = selectedPreviewMode === 'deep' ? deepPreview : quickPreview
-  const [previewing, setPreviewing]   = useState(false)
+  const [previewing, setPreviewing] = useState(false)
   const [deepPreviewing, setDeepPreviewing] = useState(false)
   const [previewProgress, setPreviewProgress] = useState(0)
-  const [previewStage, setPreviewStage]       = useState('Connecting to web server…')
-  const [previewError, setPreviewError]       = useState('')
+  const [previewStage, setPreviewStage] = useState('Connecting to web server…')
+  const [previewError, setPreviewError] = useState('')
   const [deepPreviewError, setDeepPreviewError] = useState('')
-  const [visibleChars, setVisibleChars]       = useState(10000)
+  const [visibleChars, setVisibleChars] = useState(10000)
 
   useEffect(() => {
     setVisibleChars(10000)
@@ -210,17 +210,17 @@ export function KBModal({
   }
 
   const [description, setDescription] = useState('')
-  const [topic, setTopic]             = useState('')
-  const [docLabels, setDocLabels]     = useState<string[]>([])
+  const [topic, setTopic] = useState('')
+  const [docLabels, setDocLabels] = useState<string[]>([])
   const [generatingMeta, setGeneratingMeta] = useState(false)
 
   const isNew = !kbId
 
   const tabs: { id: ItemTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'doc',  label: 'Document', icon: <FileText className="w-3.5 h-3.5" /> },
-    { id: 'url',  label: 'URL',      icon: <Globe className="w-3.5 h-3.5" /> },
-    { id: 'text', label: 'Text',     icon: <Type className="w-3.5 h-3.5" /> },
-    { id: 'qna',  label: 'Q & A',    icon: <MessageSquare className="w-3.5 h-3.5" /> },
+    { id: 'doc', label: 'Document', icon: <FileText className="w-3.5 h-3.5" /> },
+    { id: 'url', label: 'URL', icon: <Globe className="w-3.5 h-3.5" /> },
+    { id: 'text', label: 'Text', icon: <Type className="w-3.5 h-3.5" /> },
+    { id: 'qna', label: 'Q & A', icon: <MessageSquare className="w-3.5 h-3.5" /> },
   ]
 
   const isValidUrl = (u: string) => /^https?:\/\/\S+\.\S+/i.test(u.trim())
@@ -452,9 +452,8 @@ export function KBModal({
         <div className="flex gap-1 px-6 pt-6 shrink-0">
           {tabs.map(t => (
             <button key={t.id} onClick={() => { setTab(t.id); setError('') }}
-              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-xl transition-all ${
-                tab === t.id ? 'bg-indigo-600 text-white shadow-xs' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}>
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-xl transition-all ${tab === t.id ? 'bg-indigo-600 text-white shadow-xs' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}>
               {t.icon}{t.label}
             </button>
           ))}
@@ -482,17 +481,17 @@ export function KBModal({
                 className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-500/50 rounded-xl p-4 text-center cursor-pointer transition-colors bg-gray-50/50 dark:bg-gray-800/30 group">
                 {file
                   ? <div className="flex items-center justify-center gap-3 text-sm text-indigo-600 dark:text-indigo-400 font-medium">
-                      <FileText className="w-5 h-5 opacity-80" />
-                      {file.name}
-                      <span className="text-xs text-indigo-400/60 font-normal ml-2">(Click to change)</span>
-                    </div>
+                    <FileText className="w-5 h-5 opacity-80" />
+                    {file.name}
+                    <span className="text-xs text-indigo-400/60 font-normal ml-2">(Click to change)</span>
+                  </div>
                   : <div className="flex items-center justify-center gap-3">
-                      <Upload className="w-5 h-5 text-gray-400 dark:text-gray-500 group-hover:text-indigo-500 transition-colors" />
-                      <div className="text-left">
-                        <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Click to select file</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">PDF, TXT, MD, DOCX (up to 200MB)</p>
-                      </div>
+                    <Upload className="w-5 h-5 text-gray-400 dark:text-gray-500 group-hover:text-indigo-500 transition-colors" />
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Click to select file</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">PDF, TXT, MD, DOCX (up to 200MB)</p>
                     </div>
+                  </div>
                 }
               </div>
 
@@ -682,7 +681,7 @@ export function KBModal({
                       </span>
                     )}
                   </pre>
-                  
+
                   {selectedPreview.truncated && (
                     <div className="px-5 py-3 border-t border-indigo-100 dark:border-indigo-900/40 bg-indigo-500/[0.04] dark:bg-indigo-500/[0.06] text-xs font-extrabold text-indigo-650 dark:text-indigo-400 text-center w-full">
                       [Content truncated — the full page will be fully indexed during ingestion.]
@@ -856,24 +855,23 @@ export function KBModal({
           <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-800 space-y-6 bg-gray-50/30 dark:bg-gray-800/10 -mx-6 px-6 pb-6 rounded-b-3xl">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                Common Chunk Metadata (Optional)
+                Common Chunk Metadata
               </h3>
+              <button
+                type="button"
+                onClick={handleGenerateMeta}
+                disabled={generatingMeta || (!file && !url.trim() && !content.trim() && !title.trim() && !question.trim())}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm disabled:opacity-50 transition-colors"
+                title="Generate Description and Topic Tag using AI"
+              >
+                {generatingMeta ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-500" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                )}
+                <span>{generatingMeta ? 'Suggesting…' : 'Auto-suggest'}</span>
+              </button>
             </div>
-
-            <button
-              type="button"
-              onClick={handleGenerateMeta}
-              disabled={generatingMeta || (!file && !url.trim() && !content.trim() && !title.trim() && !question.trim())}
-              className="flex items-center justify-center w-full gap-2 px-4 py-3 text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 hover:bg-indigo-100/70 dark:hover:bg-indigo-900/50 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-800/60 disabled:opacity-50 transition-colors shadow-2xs"
-              title="Generate Description and Topic Tag using AI"
-            >
-              {generatingMeta ? (
-                <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
-              ) : (
-                <Sparkles className="w-5 h-5 text-indigo-500" />
-              )}
-              <span>{generatingMeta ? 'Suggesting Metadata…' : '✨ Auto-suggest Metadata Below'}</span>
-            </button>
 
             <Input
               label="Topic / Category Tag"
@@ -926,13 +924,13 @@ export function KBModal({
 // ── Bulk Q&A Import Modal ─────────────────────────────────────────────────────
 
 function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => void; onDone: () => void }) {
-  const [text, setText]       = useState('')
-  const [title, setTitle]             = useState('')
+  const [text, setText] = useState('')
+  const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [topic, setTopic]             = useState('')
+  const [topic, setTopic] = useState('')
   const [generatingMeta, setGeneratingMeta] = useState(false)
-  const [saving, setSaving]   = useState(false)
-  const [error, setError]     = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   const [preview, setPreview] = useState<{ q: string; a: string }[]>([])
 
   const parse = (raw: string) => {
@@ -1055,24 +1053,23 @@ function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => 
           <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-800 space-y-6 bg-gray-50/30 dark:bg-gray-800/10 -mx-6 px-6 pb-6 rounded-b-3xl">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                Common Chunk Metadata (Optional)
+                Common Chunk Metadata
               </h3>
+              <button
+                type="button"
+                onClick={handleGenerateMeta}
+                disabled={generatingMeta || !text.trim()}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm disabled:opacity-50 transition-colors"
+                title="Generate Description and Topic Tag using AI"
+              >
+                {generatingMeta ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-500" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                )}
+                <span>{generatingMeta ? 'Suggesting…' : 'Auto-suggest'}</span>
+              </button>
             </div>
-
-            <button
-              type="button"
-              onClick={handleGenerateMeta}
-              disabled={generatingMeta || !text.trim()}
-              className="flex items-center justify-center w-full gap-2 px-4 py-3 text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 hover:bg-indigo-100/70 dark:hover:bg-indigo-900/50 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-800/60 disabled:opacity-50 transition-colors shadow-2xs"
-              title="Generate Description and Topic Tag using AI"
-            >
-              {generatingMeta ? (
-                <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
-              ) : (
-                <Sparkles className="w-5 h-5 text-indigo-500" />
-              )}
-              <span>{generatingMeta ? 'Suggesting Metadata…' : '✨ Auto-suggest Metadata Below'}</span>
-            </button>
 
             <Input
               label="Title for this Q&A Set (optional)"
@@ -1109,16 +1106,16 @@ function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => 
           <button onClick={onClose} className="px-5 py-2.5 text-sm font-semibold rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">Cancel</button>
           {preview.length === 0
             ? <button onClick={handlePreview} disabled={!text.trim()}
-                className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100 disabled:opacity-50 transition-all shadow-xs">
-                <Eye className="w-4 h-4" /> Preview
-              </button>
+              className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100 disabled:opacity-50 transition-all shadow-xs">
+              <Eye className="w-4 h-4" /> Preview
+            </button>
             : <>
-                <button onClick={() => setPreview([])} className="px-5 py-2.5 text-sm font-semibold rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">Back</button>
-                <button onClick={handleImport} disabled={saving}
-                  className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 transition-all shadow-xs">
-                  {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing…</> : <><Check className="w-4 h-4" /> Import {preview.length} pairs</>}
-                </button>
-              </>
+              <button onClick={() => setPreview([])} className="px-5 py-2.5 text-sm font-semibold rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">Back</button>
+              <button onClick={handleImport} disabled={saving}
+                className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 transition-all shadow-xs">
+                {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing…</> : <><Check className="w-4 h-4" /> Import {preview.length} pairs</>}
+              </button>
+            </>
           }
         </div>
       </motion.div>
@@ -1141,17 +1138,17 @@ function EditKBItemModal({
   onClose: () => void
   onDone: () => void
 }) {
-  const [title, setTitle]             = useState(item.title || '')
+  const [title, setTitle] = useState(item.title || '')
   const [description, setDescription] = useState(item.description || '')
-  const [topic, setTopic]             = useState(item.topic || '')
-  const [docLabels, setDocLabels]     = useState<string[]>(
+  const [topic, setTopic] = useState(item.topic || '')
+  const [docLabels, setDocLabels] = useState<string[]>(
     (item.doc_label || '').split(',').map(t => t.trim()).filter(Boolean)
   )
-  const [question, setQuestion]       = useState(item.question || '')
-  const [content, setContent]         = useState(item.content || '')
-  const [saving, setSaving]           = useState(false)
+  const [question, setQuestion] = useState(item.question || '')
+  const [content, setContent] = useState(item.content || '')
+  const [saving, setSaving] = useState(false)
   const [generatingMeta, setGeneratingMeta] = useState(false)
-  const [error, setError]             = useState('')
+  const [error, setError] = useState('')
 
   const handleGenerateMeta = async () => {
     setError('')
@@ -1346,10 +1343,10 @@ function EditKBItemModal({
 
 function QnaItem({ item, kbId, onDelete, onEdit }: { item: KBItem; kbId: string; onDelete: () => void; onEdit?: () => void }) {
   const [question, setQuestion] = useState(item.question || '')
-  const [answer, setAnswer]     = useState(item.content  || '')
-  const [dirty, setDirty]       = useState(false)
-  const [saving, setSaving]     = useState(false)
-  const [saved, setSaved]       = useState(false)
+  const [answer, setAnswer] = useState(item.content || '')
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
 
   const save = async () => {
     if (!dirty) return
@@ -1389,7 +1386,7 @@ function QnaItem({ item, kbId, onDelete, onEdit }: { item: KBItem; kbId: string;
       <div className="flex items-center justify-between pt-1">
         <div className="flex items-center gap-1.5 text-xs">
           {saving && <><Loader2 className="w-3 h-3 animate-spin text-gray-400" /><span className="text-gray-400">Saving…</span></>}
-          {saved  && <><Check className="w-3 h-3 text-indigo-500" /><span className="text-indigo-600">Saved</span></>}
+          {saved && <><Check className="w-3 h-3 text-indigo-500" /><span className="text-indigo-600">Saved</span></>}
           {dirty && !saving && !saved && <span className="text-indigo-500">Unsaved</span>}
         </div>
         <div className="flex items-center gap-1">
@@ -1415,14 +1412,14 @@ type DetailTab = 'docs' | 'url' | 'text' | 'qna' | 'facts'
 
 function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab]       = useState<DetailTab>('docs')
-  const [addOpen, setAddOpen]           = useState(false)
-  const [bulkOpen, setBulkOpen]         = useState(false)
-  const [agentModal, setAgentModal]     = useState(false)
-  const [editingItem, setEditingItem]   = useState<KBItem | null>(null)
-  const [viewChunks, setViewChunks]     = useState<{ docId: string; name: string } | null>(null)
+  const [activeTab, setActiveTab] = useState<DetailTab>('docs')
+  const [addOpen, setAddOpen] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [agentModal, setAgentModal] = useState(false)
+  const [editingItem, setEditingItem] = useState<KBItem | null>(null)
+  const [viewChunks, setViewChunks] = useState<{ docId: string; name: string } | null>(null)
   const [extractingDoc, setExtractingDoc] = useState<{ docId: string; name: string } | null>(null)
-  const [jobError, setJobError]         = useState('')
+  const [jobError, setJobError] = useState('')
 
   const { data: items, isLoading } = useQuery<KBItem[]>({
     queryKey: ['kb-items', kb.id],
@@ -1448,9 +1445,9 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
   // Split by source so a URL scrape reports progress under URLs and a file
   // upload under Documents — a job showing on the tab you aren't looking at
   // reads as "nothing happened", and one showing on both reads as two uploads.
-  const kbJobs   = (jobsData?.jobs ?? []).filter(j => j.kb_id === kb.id && j.status !== 'done')
+  const kbJobs = (jobsData?.jobs ?? []).filter(j => j.kb_id === kb.id && j.status !== 'done')
   const fileJobs = kbJobs.filter(j => j.source !== 'url')
-  const urlJobs  = kbJobs.filter(j => j.source === 'url')
+  const urlJobs = kbJobs.filter(j => j.source === 'url')
 
   // Pull in the real document as soon as its job finishes.
   const doneCount = (jobsData?.jobs ?? []).filter(j => j.kb_id === kb.id && j.status === 'done').length
@@ -1518,19 +1515,19 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
   })
   const factCount = (factList || []).length
 
-  const docs  = items?.filter(i => i.item_type === 'doc')  || []
-  const urls  = items?.filter(i => i.item_type === 'url')  || []
+  const docs = items?.filter(i => i.item_type === 'doc') || []
+  const urls = items?.filter(i => i.item_type === 'url') || []
   const texts = items?.filter(i => i.item_type === 'text') || []
-  const qnas  = items?.filter(i => i.item_type === 'qna')  || []
+  const qnas = items?.filter(i => i.item_type === 'qna') || []
 
   const tabs: { id: DetailTab; label: string; count: number }[] = [
     { id: 'docs', label: 'Documents', count: docs.length },
-    { id: 'url',  label: 'URLs',      count: urls.length },
-    { id: 'text', label: 'Text',      count: texts.length },
-    { id: 'qna',  label: 'Q & A',     count: qnas.length },
+    { id: 'url', label: 'URLs', count: urls.length },
+    { id: 'text', label: 'Text', count: texts.length },
+    { id: 'qna', label: 'Q & A', count: qnas.length },
     // Facts sit last: they are derived from the documents above, so they only
     // make sense once something has been uploaded.
-    { id: 'facts', label: 'Facts',    count: factCount },
+    { id: 'facts', label: 'Facts', count: factCount },
   ]
 
   // Which "Add" form the toolbar button opens for each tab. Facts maps to 'doc'
@@ -1586,15 +1583,13 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
         {tabs.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
-              activeTab === t.id
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${activeTab === t.id
                 ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-            }`}>
+              }`}>
             {t.label}
-            {!isLoading && <span className={`text-xs px-1.5 py-0.5 rounded-full font-mono ${
-              activeTab === t.id ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
-            }`}>{t.count}</span>}
+            {!isLoading && <span className={`text-xs px-1.5 py-0.5 rounded-full font-mono ${activeTab === t.id ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+              }`}>{t.count}</span>}
           </button>
         ))}
       </div>
@@ -1610,7 +1605,7 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
 
       {/* Tab content */}
       {isLoading && (
-        <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}</div>
+        <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full" />)}</div>
       )}
 
       {/* Docs tab */}
@@ -1629,71 +1624,71 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
           {docs.length === 0 && fileJobs.length === 0
             ? <EmptyState label="No documents yet" cta="Upload" onCta={() => setAddOpen(true)} />
             : <div className="space-y-2">
-                {docs.map(item => (
-                  <Card key={item.id} className="p-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <FileText className="w-4 h-4 text-indigo-500" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{item.title || item.doc_id}</p>
-                        <p className="text-xs text-gray-400 font-mono truncate">doc_id: {item.doc_id}</p>
-                        {item.description && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">{item.description}</p>
-                        )}
-                        {item.doc_label && (
-                          <div className="flex flex-wrap items-center gap-1 mt-1">
-                            {item.doc_label.split(',').map(t => t.trim()).filter(Boolean).map((t, idx) => (
-                              <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 rounded-full shadow-2xs">
-                                <Tag className="w-2.5 h-2.5 text-indigo-500 opacity-70" />
-                                {t}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        <div className="flex flex-wrap items-center gap-2 mt-1">
-                          <TopicPicker
-                            value={item.topic}
-                            known={knownTopics}
-                            agentCount={readersOf(item.topic)}
-                            onSave={topic => setTopic.mutateAsync({ itemId: item.id, topic })}
-                          />
-                          {item.context_enriched && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 rounded-md">
-                              <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
-                              Enriched {item.ai_cost_usd ? `· $${item.ai_cost_usd.toFixed(4)}` : ''}
-                            </span>
-                          )}
-                          {item.created_at && <span className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</span>}
-                        </div>
-
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => setEditingItem(item)}
-                          className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View & Edit Details">
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        {item.doc_id && (
-                          <button onClick={() => setViewChunks({ docId: item.doc_id!, name: item.title || item.doc_id! })}
-                            className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View chunks">
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {item.doc_id && (
-                          <button onClick={() => setExtractingDoc({ docId: item.doc_id!, name: item.title || item.doc_id! })}
-                            className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors" title="Extract Facts (V2)">
-                            <Sparkles className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        <button onClick={() => deleteMutation.mutate(item.id)} disabled={deleteMutation.isPending}
-                          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+              {docs.map(item => (
+                <Card key={item.id} className="p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-4 h-4 text-indigo-500" />
                     </div>
-                  </Card>
-                ))}
-              </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{item.title || item.doc_id}</p>
+                      <p className="text-xs text-gray-400 font-mono truncate">doc_id: {item.doc_id}</p>
+                      {item.description && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">{item.description}</p>
+                      )}
+                      {item.doc_label && (
+                        <div className="flex flex-wrap items-center gap-1 mt-1">
+                          {item.doc_label.split(',').map(t => t.trim()).filter(Boolean).map((t, idx) => (
+                            <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 rounded-full shadow-2xs">
+                              <Tag className="w-2.5 h-2.5 text-indigo-500 opacity-70" />
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <TopicPicker
+                          value={item.topic}
+                          known={knownTopics}
+                          agentCount={readersOf(item.topic)}
+                          onSave={topic => setTopic.mutateAsync({ itemId: item.id, topic })}
+                        />
+                        {item.context_enriched && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 rounded-md">
+                            <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
+                            Enriched {item.ai_cost_usd ? `· $${item.ai_cost_usd.toFixed(4)}` : ''}
+                          </span>
+                        )}
+                        {item.created_at && <span className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</span>}
+                      </div>
+
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setEditingItem(item)}
+                        className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View & Edit Details">
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      {item.doc_id && (
+                        <button onClick={() => setViewChunks({ docId: item.doc_id!, name: item.title || item.doc_id! })}
+                          className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View chunks">
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {item.doc_id && (
+                        <button onClick={() => setExtractingDoc({ docId: item.doc_id!, name: item.title || item.doc_id! })}
+                          className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors" title="Extract Facts (V2)">
+                          <Sparkles className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button onClick={() => deleteMutation.mutate(item.id)} disabled={deleteMutation.isPending}
+                        className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
           }
         </>
       )}
@@ -1714,79 +1709,79 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
           {urls.length === 0 && urlJobs.length === 0
             ? <EmptyState label="No web pages yet" cta="Add URL" onCta={() => setAddOpen(true)} />
             : <div className="space-y-2">
-                {urls.map(item => (
-                  <Card key={item.id} className="p-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Globe className="w-4 h-4 text-indigo-500" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{item.title || item.doc_id}</p>
-                        {/* content holds the source URL for url items — link
-                            back so the original page is one click away. */}
-                        {item.content && (
-                          <a href={item.content} target="_blank" rel="noopener noreferrer"
-                            onClick={e => e.stopPropagation()}
-                            className="text-xs text-indigo-500 hover:text-indigo-400 hover:underline truncate block">
-                            {item.content}
-                          </a>
-                        )}
-                        {item.description && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">{item.description}</p>
-                        )}
-                        {item.doc_label && (
-                          <div className="flex flex-wrap items-center gap-1 mt-1">
-                            {item.doc_label.split(',').map(t => t.trim()).filter(Boolean).map((t, idx) => (
-                              <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 rounded-full shadow-2xs">
-                                <Tag className="w-2.5 h-2.5 text-indigo-500 opacity-70" />
-                                {t}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        <div className="flex flex-wrap items-center gap-2 mt-1">
-                          <TopicPicker
-                            value={item.topic}
-                            known={knownTopics}
-                            agentCount={readersOf(item.topic)}
-                            onSave={topic => setTopic.mutateAsync({ itemId: item.id, topic })}
-                          />
-                          {item.context_enriched && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 rounded-md">
-                              <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
-                              Enriched {item.ai_cost_usd ? `· $${item.ai_cost_usd.toFixed(4)}` : ''}
-                            </span>
-                          )}
-                          {item.created_at && <span className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</span>}
-                        </div>
-
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => setEditingItem(item)}
-                          className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View & Edit Details">
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        {item.doc_id && (
-                          <button onClick={() => setViewChunks({ docId: item.doc_id!, name: item.title || item.doc_id! })}
-                            className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View chunks">
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {item.doc_id && (
-                          <button onClick={() => setExtractingDoc({ docId: item.doc_id!, name: item.title || item.doc_id! })}
-                            className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors" title="Extract Facts (V2)">
-                            <Sparkles className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        <button onClick={() => deleteMutation.mutate(item.id)} disabled={deleteMutation.isPending}
-                          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+              {urls.map(item => (
+                <Card key={item.id} className="p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Globe className="w-4 h-4 text-indigo-500" />
                     </div>
-                  </Card>
-                ))}
-              </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{item.title || item.doc_id}</p>
+                      {/* content holds the source URL for url items — link
+                            back so the original page is one click away. */}
+                      {item.content && (
+                        <a href={item.content} target="_blank" rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="text-xs text-indigo-500 hover:text-indigo-400 hover:underline truncate block">
+                          {item.content}
+                        </a>
+                      )}
+                      {item.description && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">{item.description}</p>
+                      )}
+                      {item.doc_label && (
+                        <div className="flex flex-wrap items-center gap-1 mt-1">
+                          {item.doc_label.split(',').map(t => t.trim()).filter(Boolean).map((t, idx) => (
+                            <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 rounded-full shadow-2xs">
+                              <Tag className="w-2.5 h-2.5 text-indigo-500 opacity-70" />
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <TopicPicker
+                          value={item.topic}
+                          known={knownTopics}
+                          agentCount={readersOf(item.topic)}
+                          onSave={topic => setTopic.mutateAsync({ itemId: item.id, topic })}
+                        />
+                        {item.context_enriched && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 rounded-md">
+                            <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
+                            Enriched {item.ai_cost_usd ? `· $${item.ai_cost_usd.toFixed(4)}` : ''}
+                          </span>
+                        )}
+                        {item.created_at && <span className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</span>}
+                      </div>
+
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setEditingItem(item)}
+                        className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View & Edit Details">
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      {item.doc_id && (
+                        <button onClick={() => setViewChunks({ docId: item.doc_id!, name: item.title || item.doc_id! })}
+                          className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View chunks">
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {item.doc_id && (
+                        <button onClick={() => setExtractingDoc({ docId: item.doc_id!, name: item.title || item.doc_id! })}
+                          className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors" title="Extract Facts (V2)">
+                          <Sparkles className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button onClick={() => deleteMutation.mutate(item.id)} disabled={deleteMutation.isPending}
+                        className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
           }
         </>
       )}
@@ -1797,44 +1792,44 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
           {texts.length === 0
             ? <EmptyState label="No text entries yet" cta="Add Text" onCta={() => setAddOpen(true)} />
             : <div className="space-y-2">
-                {texts.map(item => (
-                  <Card key={item.id} className="p-3">
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Type className="w-4 h-4 text-indigo-500" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        {item.title && <p className="text-sm font-medium text-gray-900 dark:text-white mb-0.5">{item.title}</p>}
-                        {item.description && (
-                          <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400 mb-1 leading-relaxed">{item.description}</p>
-                        )}
-                        {item.doc_label && (
-                          <div className="flex flex-wrap items-center gap-1 mb-1.5">
-                            {item.doc_label.split(',').map(t => t.trim()).filter(Boolean).map((t, idx) => (
-                              <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 rounded-full shadow-2xs">
-                                <Tag className="w-2.5 h-2.5 text-indigo-500 opacity-70" />
-                                {t}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-3 leading-relaxed">{item.content}</p>
-                        {item.created_at && <p className="text-xs text-gray-400 mt-1">{new Date(item.created_at).toLocaleDateString()}</p>}
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <button onClick={() => setEditingItem(item)}
-                          className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View & Edit Details">
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => deleteMutation.mutate(item.id)} disabled={deleteMutation.isPending}
-                          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+              {texts.map(item => (
+                <Card key={item.id} className="p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Type className="w-4 h-4 text-indigo-500" />
                     </div>
-                  </Card>
-                ))}
-              </div>
+                    <div className="flex-1 min-w-0">
+                      {item.title && <p className="text-sm font-medium text-gray-900 dark:text-white mb-0.5">{item.title}</p>}
+                      {item.description && (
+                        <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400 mb-1 leading-relaxed">{item.description}</p>
+                      )}
+                      {item.doc_label && (
+                        <div className="flex flex-wrap items-center gap-1 mb-1.5">
+                          {item.doc_label.split(',').map(t => t.trim()).filter(Boolean).map((t, idx) => (
+                            <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 rounded-full shadow-2xs">
+                              <Tag className="w-2.5 h-2.5 text-indigo-500 opacity-70" />
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-3 leading-relaxed">{item.content}</p>
+                      {item.created_at && <p className="text-xs text-gray-400 mt-1">{new Date(item.created_at).toLocaleDateString()}</p>}
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button onClick={() => setEditingItem(item)}
+                        className="p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-400 hover:text-indigo-500 transition-colors" title="View & Edit Details">
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => deleteMutation.mutate(item.id)} disabled={deleteMutation.isPending}
+                        className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
           }
         </>
       )}
@@ -1845,12 +1840,12 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
           {qnas.length === 0
             ? <EmptyState label="No Q&A pairs yet" cta="Add Q&A" onCta={() => setAddOpen(true)} />
             : <div className="space-y-3">
-                {qnas.map(item => (
-                  <QnaItem key={item.id} item={item} kbId={kb.id}
-                    onEdit={() => setEditingItem(item)}
-                    onDelete={() => deleteMutation.mutate(item.id)} />
-                ))}
-              </div>
+              {qnas.map(item => (
+                <QnaItem key={item.id} item={item} kbId={kb.id}
+                  onEdit={() => setEditingItem(item)}
+                  onDelete={() => deleteMutation.mutate(item.id)} />
+              ))}
+            </div>
           }
         </>
       )}
@@ -1951,13 +1946,13 @@ function EmptyState({ label, cta, onCta }: { label: string; cta: string; onCta: 
 
 export function KnowledgeBase() {
   const queryClient = useQueryClient()
-  const [selectedKB, setSelectedKB]     = useState<KB | null>(null)
-  const [createOpen, setCreateOpen]     = useState(false)
+  const [selectedKB, setSelectedKB] = useState<KB | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
   const [agentModalKb, setAgentModalKb] = useState<KB | null>(null)
   // Adding a URL used to mean Open → Upload → URL tab: two clicks behind two
   // buttons that both read as something else ("Open", "Upload"). Surfaced on
   // the row so the action is visible where the KB is.
-  const [addUrlKb, setAddUrlKb]         = useState<KB | null>(null)
+  const [addUrlKb, setAddUrlKb] = useState<KB | null>(null)
 
   const { data: kbs, isLoading, isError, refetch } = useQuery<KB[]>({
     queryKey: ['knowledge-bases'],
@@ -1974,174 +1969,174 @@ export function KnowledgeBase() {
       {selectedKB ? (
         <KBDetail key="detail" kb={selectedKB} onBack={() => setSelectedKB(null)} />
       ) : (
-    <motion.div
-      key="list"
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className="p-6 space-y-4"
-    >
-      {/* Toolbar */}
-      <div className="flex items-center justify-end gap-2">
-        <Button variant="ghost" onClick={() => refetch()} title="Refresh" className="p-2 w-auto px-2">
-          <RefreshCw className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => setAgentModalKb({ id: '', name: '', description: '', active: true, item_count: 0 })}
+        <motion.div
+          key="list"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          className="p-6 space-y-4"
         >
-          <Plus className="w-4 h-4" /> Create Agent
-        </Button>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="w-4 h-4" /> New Knowledge Base
-        </Button>
-      </div>
-
-      {/* Loading */}
-      {isLoading && (
-        <div className="space-y-2">
-          {[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
-        </div>
-      )}
-
-      {/* Error */}
-      {isError && (
-        <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-          <p className="text-sm text-red-600 dark:text-red-400">Could not load knowledge bases.</p>
-        </div>
-      )}
-
-      {/* Empty */}
-      {!isLoading && !isError && (!kbs || kbs.length === 0) && (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
-            <Database className="w-6 h-6 text-gray-400" />
-          </div>
-          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">No knowledge bases yet</p>
-          <p className="text-xs text-gray-400 mb-5">Create one and add documents, text, or Q&A pairs</p>
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="w-4 h-4" /> New Knowledge Base
-          </Button>
-        </div>
-      )}
-
-      {/* Table */}
-      {kbs && kbs.length > 0 && (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-          {/* Table header */}
-          <div className="grid grid-cols-[1fr_80px_120px_210px] gap-4 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700">
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Name</span>
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Items</span>
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Created</span>
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide text-right">Actions</span>
-          </div>
-
-          {/* Rows */}
-          {kbs.map((kb, i) => (
-            <Card
-              key={kb.id}
-              layoutId={kb.id}
-              interactive
-              delayClass={`animate-stagger-${(i % 4) + 1}`}
-              onClick={() => setSelectedKB(kb)}
-              className="group grid grid-cols-[1fr_80px_120px_210px] gap-4 px-4 py-3 items-center cursor-pointer border-b-0 rounded-none first:rounded-t-lg last:rounded-b-lg border-b border-gray-200 dark:border-gray-700/60 last:border-0"
+          {/* Toolbar */}
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="ghost" onClick={() => refetch()} title="Refresh" className="p-2 w-auto px-2">
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setAgentModalKb({ id: '', name: '', description: '', active: true, item_count: 0 })}
             >
-              {/* Name */}
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center flex-shrink-0">
-                  <Database className="w-3.5 h-3.5 text-indigo-500" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-900 dark:text-white truncate">{kb.name}</span>
-                    {!kb.active && <Badge variant="danger">inactive</Badge>}
-                  </div>
-                  {kb.description && (
-                    <p className="text-xs text-gray-400 truncate">{kb.description}</p>
-                  )}
-                </div>
+              <Plus className="w-4 h-4" /> Create Agent
+            </Button>
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="w-4 h-4" /> New Knowledge Base
+            </Button>
+          </div>
+
+          {/* Loading */}
+          {isLoading && (
+            <div className="space-y-2">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
+            </div>
+          )}
+
+          {/* Error */}
+          {isError && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+              <p className="text-sm text-red-600 dark:text-red-400">Could not load knowledge bases.</p>
+            </div>
+          )}
+
+          {/* Empty */}
+          {!isLoading && !isError && (!kbs || kbs.length === 0) && (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
+                <Database className="w-6 h-6 text-gray-400" />
+              </div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">No knowledge bases yet</p>
+              <p className="text-xs text-gray-400 mb-5">Create one and add documents, text, or Q&A pairs</p>
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="w-4 h-4" /> New Knowledge Base
+              </Button>
+            </div>
+          )}
+
+          {/* Table */}
+          {kbs && kbs.length > 0 && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+              {/* Table header */}
+              <div className="grid grid-cols-[1fr_80px_120px_210px] gap-4 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700">
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Name</span>
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Items</span>
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Created</span>
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide text-right">Actions</span>
               </div>
 
-              {/* Items */}
-              <span className="text-sm text-gray-600 dark:text-gray-400">
-                {kb.item_count} <span className="text-xs text-gray-400">item{kb.item_count !== 1 ? 's' : ''}</span>
-              </span>
+              {/* Rows */}
+              {kbs.map((kb, i) => (
+                <Card
+                  key={kb.id}
+                  layoutId={kb.id}
+                  interactive
+                  delayClass={`animate-stagger-${(i % 4) + 1}`}
+                  onClick={() => setSelectedKB(kb)}
+                  className="group grid grid-cols-[1fr_80px_120px_210px] gap-4 px-4 py-3 items-center cursor-pointer border-b-0 rounded-none first:rounded-t-lg last:rounded-b-lg border-b border-gray-200 dark:border-gray-700/60 last:border-0"
+                >
+                  {/* Name */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center flex-shrink-0">
+                      <Database className="w-3.5 h-3.5 text-indigo-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900 dark:text-white truncate">{kb.name}</span>
+                        {!kb.active && <Badge variant="danger">inactive</Badge>}
+                      </div>
+                      {kb.description && (
+                        <p className="text-xs text-gray-400 truncate">{kb.description}</p>
+                      )}
+                    </div>
+                  </div>
 
-              {/* Created */}
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                {kb.created_at ? new Date(kb.created_at).toLocaleDateString() : '—'}
-              </span>
+                  {/* Items */}
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {kb.item_count} <span className="text-xs text-gray-400">item{kb.item_count !== 1 ? 's' : ''}</span>
+                  </span>
 
-              {/* Actions */}
-              <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
-                {/* Always visible, unlike the hover-only actions beside it:
+                  {/* Created */}
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    {kb.created_at ? new Date(kb.created_at).toLocaleDateString() : '—'}
+                  </span>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                    {/* Always visible, unlike the hover-only actions beside it:
                     hiding this until hover is what made URL ingestion
                     undiscoverable in the first place, and hover doesn't exist
                     on touch at all. */}
-                <button
-                  onClick={() => setAddUrlKb(kb)}
-                  title="Add a web page to this knowledge base"
-                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors">
-                  <Globe className="w-3.5 h-3.5" /> URL
-                </button>
-                <button
-                  onClick={() => setAgentModalKb(kb)}
-                  className="px-2.5 py-1.5 text-xs font-medium rounded-md text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors opacity-0 group-hover:opacity-100">
-                  + Agent
-                </button>
-                <button
-                  onClick={() => { if (confirm(`Delete "${kb.name}"?`)) deleteMutation.mutate(kb.id) }}
-                  className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-                <Button
-                  size="sm"
-                  onClick={() => setSelectedKB(kb)}
-                >
-                  Open
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
+                    <button
+                      onClick={() => setAddUrlKb(kb)}
+                      title="Add a web page to this knowledge base"
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors">
+                      <Globe className="w-3.5 h-3.5" /> URL
+                    </button>
+                    <button
+                      onClick={() => setAgentModalKb(kb)}
+                      className="px-2.5 py-1.5 text-xs font-medium rounded-md text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors opacity-0 group-hover:opacity-100">
+                      + Agent
+                    </button>
+                    <button
+                      onClick={() => { if (confirm(`Delete "${kb.name}"?`)) deleteMutation.mutate(kb.id) }}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                    <Button
+                      size="sm"
+                      onClick={() => setSelectedKB(kb)}
+                    >
+                      Open
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
 
-      {createOpen && (
-        <KBModal
-          kbId={null}
-          onClose={() => setCreateOpen(false)}
-          onDone={kb => {
-            queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] })
-            setCreateOpen(false)
-            setSelectedKB(kb)
-            setAgentModalKb(kb)   // auto-show agent creation with this KB pre-selected
-          }}
-        />
-      )}
+          {createOpen && (
+            <KBModal
+              kbId={null}
+              onClose={() => setCreateOpen(false)}
+              onDone={kb => {
+                queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] })
+                setCreateOpen(false)
+                setSelectedKB(kb)
+                setAgentModalKb(kb)   // auto-show agent creation with this KB pre-selected
+              }}
+            />
+          )}
 
-      {/* Same modal the Upload button opens, just pre-selected to the URL tab
+          {/* Same modal the Upload button opens, just pre-selected to the URL tab
           and bound to this row's KB — no separate flow to keep in sync. */}
-      {addUrlKb !== null && (
-        <KBModal
-          kbId={addUrlKb.id}
-          defaultTab="url"
-          onClose={() => setAddUrlKb(null)}
-          onDone={() => {
-            queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] })
-            setAddUrlKb(null)
-          }}
-        />
-      )}
+          {addUrlKb !== null && (
+            <KBModal
+              kbId={addUrlKb.id}
+              defaultTab="url"
+              onClose={() => setAddUrlKb(null)}
+              onDone={() => {
+                queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] })
+                setAddUrlKb(null)
+              }}
+            />
+          )}
 
-      {agentModalKb !== null && (
-        <CreateAgentModal
-          onClose={() => setAgentModalKb(null)}
-          onCreated={() => setAgentModalKb(null)}
-          prefill={agentModalKb.id ? { kb_ids: [agentModalKb.id] } : undefined}
-        />
-      )}
-    </motion.div>
+          {agentModalKb !== null && (
+            <CreateAgentModal
+              onClose={() => setAgentModalKb(null)}
+              onCreated={() => setAgentModalKb(null)}
+              prefill={agentModalKb.id ? { kb_ids: [agentModalKb.id] } : undefined}
+            />
+          )}
+        </motion.div>
       )}
     </AnimatePresence>
   )
