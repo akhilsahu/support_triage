@@ -24,7 +24,8 @@ from app.api import chat, auth, customer, space, chatbot_user
 from app.api.v1 import dashboard, superadmin
 from app.api.v1.inbox import staff_auth, sessions, escalation, stream
 from app.api.v1 import widget as widget_api
-from app.api.v1.copilotkit import setup_copilotkit
+# CopilotKit setup removed (unused dependency)
+
 
 # Pluggable modular integrations
 from app.integrations.shopify import router as shopify_router
@@ -423,8 +424,9 @@ _UPLOADS_DIR = Path(settings.CHATBOT_LOGO_DIR).parent
 _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(_UPLOADS_DIR)), name="uploads")
 
-# CopilotKit Runtime
-setup_copilotkit(app)
+# CopilotKit Runtime was removed as the frontend dashboard no longer uses CopilotKit.
+# All related imports and endpoints have been cleaned up.
+
 
 
 if __name__ == "__main__":
