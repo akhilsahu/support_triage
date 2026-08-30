@@ -10,7 +10,7 @@ import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Skeleton } from '../components/ui/SkeletonLoader'
 import { ExtractedFactsModal } from '../components/kb/ExtractedFactsModal'
-import { apiClient, INGESTION_TERMINAL, type IngestionJob, type UrlPreview } from '../api/client'
+import { apiClient, INGESTION_TERMINAL, type IngestionJob, type PreviewMode, type UrlPreview } from '../api/client'
 import { IngestionJobRow } from '../components/kb/IngestionJobRow'
 import { TopicPicker } from '../components/kb/TopicPicker'
 import { FactsTab } from '../components/kb/FactsTab'
@@ -137,7 +137,7 @@ function ChunksModal({ docId, docName, onClose }: { docId: string; docName: stri
 
 type ItemTab = 'doc' | 'text' | 'qna' | 'url'
 
-function KBModal({
+export function KBModal({
   kbId,
   onClose,
   onDone,
@@ -157,16 +157,22 @@ function KBModal({
   const [question, setQuestion] = useState('')
   const [content, setContent]   = useState('')
   const [url, setUrl]           = useState('')
+  const currentUrlRef = useRef('')
   const [file, setFile]         = useState<File | null>(null)
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState('')
   // URL tab: fetched-but-not-yet-indexed page. Null until the user previews;
   // cleared whenever the URL changes so a stale preview can't be confirmed.
-  const [preview, setPreview]         = useState<UrlPreview | null>(null)
+  const [quickPreview, setQuickPreview] = useState<UrlPreview | null>(null)
+  const [deepPreview, setDeepPreview] = useState<UrlPreview | null>(null)
+  const [selectedPreviewMode, setSelectedPreviewMode] = useState<PreviewMode>('quick')
+  const selectedPreview = selectedPreviewMode === 'deep' ? deepPreview : quickPreview
   const [previewing, setPreviewing]   = useState(false)
+  const [deepPreviewing, setDeepPreviewing] = useState(false)
   const [previewProgress, setPreviewProgress] = useState(0)
   const [previewStage, setPreviewStage]       = useState('Connecting to web server…')
   const [previewError, setPreviewError]       = useState('')
+  const [deepPreviewError, setDeepPreviewError] = useState('')
 
   const [description, setDescription] = useState('')
   const [topic, setTopic]             = useState('')
@@ -187,7 +193,13 @@ function KBModal({
   const handlePreview = async () => {
     setError('')
     setPreviewError('')
+    setDeepPreviewError('')
+    setQuickPreview(null)
+    setDeepPreview(null)
+    setSelectedPreviewMode('quick')
     if (!isValidUrl(url)) { setError('Enter a full URL starting with http:// or https://'); return }
+    const requestedUrl = url.trim()
+    currentUrlRef.current = requestedUrl
     setPreviewing(true)
     setPreviewProgress(15)
     setPreviewStage('Connecting to target web server…')
@@ -197,18 +209,37 @@ function KBModal({
     const t3 = setTimeout(() => { setPreviewProgress(90); setPreviewStage('Generating preview snippet & metadata…') }, 4200)
 
     try {
-      const res = await apiClient.previewUrl(url.trim())
+      const res = await apiClient.previewUrl(requestedUrl, 'quick')
+      if (currentUrlRef.current !== requestedUrl) return
       setPreviewProgress(100)
-      setPreview(res)
+      setQuickPreview(res)
       if (res.title && !title.trim()) {
         setTitle(res.title)
       }
     } catch (e: any) {
-      setPreview(null)
-      setPreviewError(e?.response?.data?.detail || 'Could not fetch that URL.')
+      if (currentUrlRef.current !== requestedUrl) return
+      setPreviewError(e?.response?.data?.detail || e?.message || 'Could not fetch that URL.')
     } finally {
       clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
       setPreviewing(false)
+    }
+  }
+
+  const handleDeepPreview = async () => {
+    const requestedUrl = url.trim()
+    currentUrlRef.current = requestedUrl
+    setDeepPreviewError('')
+    setDeepPreviewing(true)
+    try {
+      const res = await apiClient.previewUrl(requestedUrl, 'deep')
+      if (currentUrlRef.current !== requestedUrl) return
+      setDeepPreview(res)
+      setSelectedPreviewMode('deep')
+    } catch (e: any) {
+      if (currentUrlRef.current !== requestedUrl) return
+      setDeepPreviewError(e?.response?.data?.detail || e?.message || 'Could not generate a deep preview.')
+    } finally {
+      setDeepPreviewing(false)
     }
   }
 
@@ -235,7 +266,7 @@ function KBModal({
       if (title.trim()) payload.title = title.trim()
       if (url.trim()) payload.url = url.trim()
 
-      const snippet = content.trim() || fileSnippet || preview?.extract || question.trim()
+      const snippet = content.trim() || fileSnippet || selectedPreview?.extract || question.trim()
       if (snippet) payload.content = snippet
 
       const res = await apiClient.suggestDocMetadata(payload)
@@ -260,7 +291,7 @@ function KBModal({
       // Fail here rather than at the API: the backend rejects non-http(s)
       // schemes anyway, and a local check gives an instant, clearer message.
       if (!isValidUrl(u)) { setError('Enter a full URL starting with http:// or https://'); return }
-      if (!preview) { setError('Please preview the URL first to verify content extraction.'); return }
+      if (!selectedPreview) { setError('Please preview the URL first to verify content extraction.'); return }
     }
 
     setSaving(true)
@@ -300,8 +331,8 @@ function KBModal({
         // Passing the preview token indexes the exact bytes the user just
         // reviewed instead of re-fetching a page that may have changed.
         await apiClient.scrapeUrl(
-          url.trim(), title.trim() || preview?.title || undefined, undefined, docType, kbName || title || '', description || undefined, resolvedKbId,
-          preview?.preview_token, topic || undefined, formattedLabel || undefined,
+          url.trim(), title.trim() || selectedPreview?.title || undefined, undefined, docType, kbName || title || '', description || undefined, resolvedKbId,
+          selectedPreview?.preview_token, topic || undefined, formattedLabel || undefined, selectedPreviewMode,
         )
       } else if (tab === 'text') {
         await apiClient.addKBItem(resolvedKbId, { item_type: 'text', title: title || undefined, content: content.trim(), description: description || undefined, topic: topic || undefined, doc_label: formattedLabel })
@@ -404,7 +435,15 @@ function KBModal({
               <div className="flex gap-3 items-end">
                 <div className="flex-1">
                   <Input label="Website URL" type="url" value={url}
-                    onChange={e => { setUrl(e.target.value); setPreview(null); setPreviewError('') }}
+                    onChange={e => {
+                      setUrl(e.target.value)
+                      currentUrlRef.current = e.target.value.trim()
+                      setQuickPreview(null)
+                      setDeepPreview(null)
+                      setSelectedPreviewMode('quick')
+                      setPreviewError('')
+                      setDeepPreviewError('')
+                    }}
                     placeholder="https://example.com/help/faq" autoFocus />
                 </div>
                 <button type="button" onClick={handlePreview} disabled={previewing || !url.trim()}
@@ -448,38 +487,69 @@ function KBModal({
                 </div>
               )}
 
-              {preview && (
+              {quickPreview && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {deepPreview && (
+                    <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-700 p-1" aria-label="Choose preview">
+                      {(['quick', 'deep'] as PreviewMode[]).map(mode => (
+                        <button key={mode} type="button" onClick={() => setSelectedPreviewMode(mode)}
+                          aria-pressed={selectedPreviewMode === mode}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize ${selectedPreviewMode === mode ? 'bg-violet-600 text-white' : 'text-gray-600 dark:text-gray-300'}`}>
+                          {mode} Preview
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button type="button" onClick={handleDeepPreview} disabled={deepPreviewing}
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">
+                    {deepPreviewing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {deepPreviewing ? 'Generating Deep Preview…' : deepPreview ? 'Regenerate Deep Preview' : 'Generate Deep Preview'}
+                  </button>
+                  <span className="text-[11px] text-gray-500">Deep Preview can take a little longer and works better for dynamic pages.</span>
+                </div>
+              )}
+
+              {deepPreviewError && (
+                <div role="alert" className="p-4 rounded-2xl border-2 border-red-500/20 bg-red-500/5 text-xs font-semibold text-red-700 dark:text-red-400">
+                  Deep Preview failed: {deepPreviewError}. Your Quick Preview is still available.
+                </div>
+              )}
+
+              {selectedPreview && (
                 <div className="rounded-2xl border-2 border-violet-500/40 dark:border-violet-400/40 bg-violet-500/[0.04] dark:bg-violet-500/[0.06] overflow-hidden shadow-md transition-all">
                   <div className="px-5 py-4 border-b border-violet-200/50 dark:border-violet-900/60 bg-violet-500/[0.06] dark:bg-violet-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                       <p className="text-base font-extrabold text-gray-900 dark:text-white truncate">
-                        {preview.title || '(no title)'}
+                        {selectedPreview.title || '(no title)'}
                       </p>
-                      {preview.final_url !== url.trim() && (
+                      {selectedPreview.final_url !== url.trim() && (
                         <p className="text-xs font-bold text-violet-600 dark:text-violet-400 mt-1 break-all">
-                          Redirected to: {preview.final_url}
+                          Redirected to: {selectedPreview.final_url}
                         </p>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0 bg-white dark:bg-gray-950 px-3 py-1.5 rounded-xl border border-violet-200/50 dark:border-violet-900/60 shadow-2xs text-[11px] font-bold text-violet-700 dark:text-violet-300">
-                      <span>{preview.page_count} page{preview.page_count === 1 ? '' : 's'}</span>
+                      <span>{selectedPreview.page_count} page{selectedPreview.page_count === 1 ? '' : 's'}</span>
                       <span className="text-violet-200 dark:text-violet-850">•</span>
-                      <span>{preview.char_count.toLocaleString()} chars</span>
+                      <span>{selectedPreview.char_count.toLocaleString()} chars</span>
                       <span className="text-violet-200 dark:text-violet-850">•</span>
-                      <span>{(preview.size_bytes / 1024).toFixed(0)} KB</span>
+                      <span>{(selectedPreview.size_bytes / 1024).toFixed(0)} KB</span>
                     </div>
                   </div>
 
-                  {preview.char_count < 200 && (
-                    <div className="flex items-start gap-2.5 px-5 py-3.5 bg-amber-500/10 border-b border-amber-500/20">
+                  {(selectedPreview.quality.rating !== 'good' || selectedPreview.char_count < 200) && (
+                    <div className={`flex items-start gap-2.5 px-5 py-3.5 border-b ${selectedPreview.quality.rating === 'poor' ? 'bg-red-500/10 border-red-500/20' : 'bg-amber-500/10 border-amber-500/20'}`}>
                       <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                      <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 leading-normal">
-                        Warning: Very little text extracted. This page may render content dynamically with JavaScript.
-                      </span>
+                      <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 leading-normal">
+                        <strong>{selectedPreview.quality.rating === 'poor' ? 'Poor extraction quality' : 'Extraction may be incomplete'}</strong>
+                        <span> ({selectedPreview.quality.score}/100).</span>
+                        {selectedPreview.quality.reasons.length > 0 && <span> {selectedPreview.quality.reasons.map(reason => reason.replace(/_/g, ' ')).join(', ')}.</span>}
+                        {selectedPreviewMode === 'quick' && <span> Try Deep Preview for dynamic page content.</span>}
+                      </div>
                     </div>
                   )}
 
-                  {preview.vision_skipped && (
+                  {selectedPreview.vision_skipped && (
                     <div className="px-5 py-3.5 bg-blue-500/10 border-b border-blue-500/20">
                       <span className="text-xs font-semibold text-blue-700 dark:text-blue-400">
                         PDF Mode: scanned pages will be analyzed during background ingestion.
@@ -490,8 +560,8 @@ function KBModal({
                   <div className="p-5">
                     <p className="text-xs font-black uppercase tracking-wider text-violet-750 dark:text-violet-400 mb-2.5">Extracted Content Snippet</p>
                     <pre className="p-4 text-xs font-semibold leading-relaxed text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-950 border border-violet-100 dark:border-violet-900/60 rounded-xl whitespace-pre-wrap font-mono max-h-72 overflow-y-auto shadow-2xs">
-                      {preview.extract || '(no text extracted)'}
-                      {preview.truncated && (
+                      {selectedPreview.extract || '(no text extracted)'}
+                      {selectedPreview.truncated && (
                         <span className="text-violet-600 dark:text-violet-400 font-extrabold block mt-3.5">
                           {'\n\n[Content truncated — the full page will be fully indexed during ingestion.]'}
                         </span>
@@ -513,7 +583,7 @@ function KBModal({
                 </div>
               )}
 
-              {!preview && !previewing && !previewError && (
+              {!quickPreview && !previewing && !previewError && (
                 <div className="p-4.5 rounded-2xl border border-gray-200 dark:border-gray-800/80 bg-gray-50/30 dark:bg-gray-800/5 flex items-start gap-3">
                   <Globe className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
                   <p className="text-xs text-gray-500 dark:text-gray-400 leading-normal">
@@ -527,7 +597,7 @@ function KBModal({
                 type="text"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                placeholder={preview?.title || "e.g., Return Policy & Refund FAQ"}
+                placeholder={selectedPreview?.title || "e.g., Return Policy & Refund FAQ"}
               />
 
               <Select label="Document Type" value={docType} onChange={e => setDocType(e.target.value)}>
@@ -614,7 +684,7 @@ function KBModal({
 
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/80 shrink-0">
           <button onClick={onClose} className="px-5 py-2.5 text-sm font-semibold rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">Cancel</button>
-          <button onClick={handleSubmit} disabled={saving || (tab === 'url' && !preview)}
+          <button onClick={handleSubmit} disabled={saving || (tab === 'url' && !selectedPreview)}
             className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 transition-all shadow-xs">
             {saving
               ? <><Loader2 className="w-4 h-4 animate-spin" /> {isNew ? 'Creating…' : 'Adding…'}</>

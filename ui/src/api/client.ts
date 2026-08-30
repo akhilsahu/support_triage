@@ -58,6 +58,14 @@ export const INGESTION_TERMINAL: IngestionStatus[] = ['done', 'failed']
 
 // What /rag/preview-url returns: the extracted text plus the facts that reveal
 // a wrong scrape (a redirect landing elsewhere, an empty JS-rendered shell).
+export type PreviewMode = 'quick' | 'deep'
+
+export type PreviewQuality = {
+  rating: 'good' | 'questionable' | 'poor'
+  score: number
+  reasons: string[]
+}
+
 export interface UrlPreview {
   preview_token: string
   title: string
@@ -69,6 +77,9 @@ export interface UrlPreview {
   extract: string
   truncated: boolean
   vision_skipped: boolean   // PDF: images are read at index time, not in this extract
+  mode: PreviewMode
+  provider: string
+  quality: PreviewQuality
 }
 
 export interface HomepageSnapshot {
@@ -287,13 +298,13 @@ export const apiClient = {
   // Fetch + parse a URL and return what was extracted, WITHOUT indexing it.
   // The returned preview_token holds the exact bytes; passing it to scrapeUrl
   // ingests precisely what was shown, with no second fetch.
-  previewUrl: (url: string): Promise<UrlPreview> =>
-    http.post('/api/v1/documents/rag/preview-url', { url }).then(r => r.data),
+  previewUrl: (url: string, mode: PreviewMode = 'quick'): Promise<UrlPreview> =>
+    http.post('/api/v1/documents/rag/preview-url', { url, mode }).then(r => r.data),
 
   // kbId is required for the scraped page to be reachable: custom agents scope
   // retrieval by kb_id, so omitting it indexes content no agent can ever find.
-  scrapeUrl: (url: string, title?: string, _clientId?: string, docType?: string, kbName?: string, description?: string, kbId?: string, previewToken?: string, topic?: string, docLabel?: string) =>
-    http.post('/api/v1/documents/rag/ingest-url', { url, title: title ?? '', doc_type: docType ?? 'general', kb_name: kbName ?? '', kb_id: kbId ?? null, description: description ?? '', preview_token: previewToken ?? null, topic: topic ?? '', doc_label: docLabel ?? '' }).then(r => r.data),
+  scrapeUrl: (url: string, title?: string, _clientId?: string, docType?: string, kbName?: string, description?: string, kbId?: string, previewToken?: string, topic?: string, docLabel?: string, previewMode: PreviewMode = 'quick') =>
+    http.post('/api/v1/documents/rag/ingest-url', { url, title: title ?? '', doc_type: docType ?? 'general', kb_name: kbName ?? '', kb_id: kbId ?? null, description: description ?? '', preview_token: previewToken ?? null, topic: topic ?? '', doc_label: docLabel ?? '', preview_mode: previewMode }).then(r => r.data),
 
 
   chatWithDoc: (docId: string, question: string, topK = 5) =>
