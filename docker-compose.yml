@@ -58,6 +58,13 @@ services:
       # A worker runs in this stack, so hand ingestion to it rather than
       # processing in-process. Local dev without compose stays on "inprocess".
       JOB_BACKEND: celery
+      SCRAPER_QUICK_PROVIDER: ${SCRAPER_QUICK_PROVIDER:-httpx}
+      SCRAPER_DEEP_PROVIDER: ${SCRAPER_DEEP_PROVIDER:-firecrawl}
+      SCRAPER_DEEP_TIMEOUT_S: ${SCRAPER_DEEP_TIMEOUT_S:-15}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+      FIRECRAWL_BASE_URL: ${FIRECRAWL_BASE_URL:-https://api.firecrawl.dev}
+      FIRECRAWL_MAX_REQUESTS_PER_SPACE_PER_DAY: ${FIRECRAWL_MAX_REQUESTS_PER_SPACE_PER_DAY:-50}
+      FIRECRAWL_MAX_CONCURRENT_REQUESTS: ${FIRECRAWL_MAX_CONCURRENT_REQUESTS:-2}
     ports:
       - "8000:8000"
     volumes:
@@ -96,6 +103,13 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       JOB_BACKEND: celery
+      SCRAPER_QUICK_PROVIDER: ${SCRAPER_QUICK_PROVIDER:-httpx}
+      SCRAPER_DEEP_PROVIDER: ${SCRAPER_DEEP_PROVIDER:-firecrawl}
+      SCRAPER_DEEP_TIMEOUT_S: ${SCRAPER_DEEP_TIMEOUT_S:-15}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+      FIRECRAWL_BASE_URL: ${FIRECRAWL_BASE_URL:-https://api.firecrawl.dev}
+      FIRECRAWL_MAX_REQUESTS_PER_SPACE_PER_DAY: ${FIRECRAWL_MAX_REQUESTS_PER_SPACE_PER_DAY:-50}
+      FIRECRAWL_MAX_CONCURRENT_REQUESTS: ${FIRECRAWL_MAX_CONCURRENT_REQUESTS:-2}
     volumes:
       - ./app:/app/app
       - ./logs:/app/logs
