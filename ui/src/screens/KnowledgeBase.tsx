@@ -526,7 +526,7 @@ export function KBModal({
                     <span>{(selectedPreview.size_bytes / 1024).toFixed(0)} KB</span>
                   </div>
 
-                  <pre className="p-5 pr-44 text-sm font-semibold leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono max-h-[350px] overflow-y-auto w-full">
+                  <pre className="p-5 pr-44 text-sm font-semibold leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono max-h-[550px] overflow-y-auto w-full">
                     {selectedPreview.extract || '(no text extracted)'}
                   </pre>
                   

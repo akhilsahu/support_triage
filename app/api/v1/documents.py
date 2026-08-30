@@ -879,8 +879,9 @@ async def rag_preview_url(req: PreviewUrlRequest, org=Depends(current_space)):
         size_bytes=page.size_bytes,
         page_count=parsed.page_count,
         char_count=len(text),
-        extract=text[:_PREVIEW_EXTRACT_CHARS],
-        truncated=len(text) > _PREVIEW_EXTRACT_CHARS,
+        # Do not truncate preview extract to allow the frontend to scroll and view the complete page content
+        extract=text,
+        truncated=False,
         vision_skipped=is_pdf,
     )
 
