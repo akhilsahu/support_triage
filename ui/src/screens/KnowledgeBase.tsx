@@ -258,6 +258,7 @@ function KBModal({
       // Fail here rather than at the API: the backend rejects non-http(s)
       // schemes anyway, and a local check gives an instant, clearer message.
       if (!isValidUrl(u)) { setError('Enter a full URL starting with http:// or https://'); return }
+      if (!preview) { setError('Please preview the URL first to verify content extraction.'); return }
     }
 
     setSaving(true)
@@ -590,7 +591,7 @@ function KBModal({
 
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/80 shrink-0">
           <button onClick={onClose} className="px-5 py-2.5 text-sm font-semibold rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">Cancel</button>
-          <button onClick={handleSubmit} disabled={saving}
+          <button onClick={handleSubmit} disabled={saving || (tab === 'url' && !preview)}
             className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 transition-all shadow-xs">
             {saving
               ? <><Loader2 className="w-4 h-4 animate-spin" /> {isNew ? 'Creating…' : 'Adding…'}</>
