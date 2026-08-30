@@ -192,6 +192,7 @@ class Settings(BaseSettings):
     FIRECRAWL_API_KEY: str = ""
     FIRECRAWL_BASE_URL: str = "https://api.firecrawl.dev"
     FIRECRAWL_MAX_REQUESTS_PER_SPACE_PER_DAY: int = 50
+    FIRECRAWL_MAX_CONCURRENT_REQUESTS: int = 2
     # SSRF guard. Leave False unless you deliberately index an internal wiki:
     # True lets a customer-supplied URL reach cloud metadata endpoints and
     # anything else private the server can route to.

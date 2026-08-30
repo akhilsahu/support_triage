@@ -16,13 +16,13 @@ from __future__ import annotations
 import tempfile
 import uuid
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import anyio
 import structlog
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -766,15 +766,26 @@ class IngestUrlRequest(BaseModel):
     # Optional: without one this endpoint fetches fresh, keeping it usable
     # directly from the API.
     preview_token: Optional[str] = None
+    preview_mode: Literal["quick", "deep"] = "quick"
 
 
 
 class PreviewUrlRequest(BaseModel):
     url: str
+    mode: Literal["quick", "deep"] = "quick"
+
+
+class PreviewQuality(BaseModel):
+    rating: Literal["good", "questionable", "poor"]
+    score: int = Field(ge=0, le=100)
+    reasons: list[str]
 
 
 class PreviewUrlResponse(BaseModel):
     preview_token: str
+    mode: Literal["quick", "deep"]
+    provider: str
+    quality: PreviewQuality
     title: str
     final_url: str          # after redirects — differs from the input surprisingly often
     content_type: str
@@ -810,10 +821,22 @@ async def rag_preview_url(req: PreviewUrlRequest, org=Depends(current_space)):
     from dataclasses import replace as _replace
     from app.orchestra.ai.ingestion.config import build_ingestion_config
     from app.orchestra.ai.ingestion.ingestion import IngestionService
-    from app.orchestra.ai.ingestion.scraper import fetch_url, store_preview, ScrapeError
+    from app.orchestra.ai.ingestion.scraper import (
+        DeepPreviewLease,
+        ScrapeError,
+        fetch_url,
+        store_preview,
+    )
+    from app.orchestra.ai.ingestion.scraper.quality import assess_extraction
 
     try:
-        page = await fetch_url(req.url.strip())
+        if req.mode == "deep":
+            # Authentication currently identifies a single owner principal per
+            # space, so the space id is also the in-flight principal id.
+            async with DeepPreviewLease(space_id=str(org.id), user_id=str(org.id)):
+                page = await fetch_url(req.url.strip(), mode=req.mode)
+        else:
+            page = await fetch_url(req.url.strip(), mode=req.mode)
     except ScrapeError as e:
         raise HTTPException(status_code=e.status_hint, detail=str(e))
 
@@ -834,13 +857,22 @@ async def rag_preview_url(req: PreviewUrlRequest, org=Depends(current_space)):
         raise HTTPException(status_code=422, detail=f"Could not read page content: {e}")
 
     text = (parsed.full_text or "").strip()
+    quality = assess_extraction(text)
     token = store_preview(str(org.id), page)
 
     logger.info("scraper.preview", space_id=str(org.id), url=req.url,
-                final_url=page.final_url, chars=len(text), pages=parsed.page_count)
+                final_url=page.final_url, chars=len(text), pages=parsed.page_count,
+                provider=page.provider, mode=page.mode, quality=quality.rating)
 
     return PreviewUrlResponse(
         preview_token=token,
+        mode=page.mode,
+        provider=page.provider,
+        quality=PreviewQuality(
+            rating=quality.rating,
+            score=quality.score,
+            reasons=list(quality.reasons),
+        ),
         title=page.title,
         final_url=page.final_url,
         content_type=page.content_type,
@@ -877,7 +909,7 @@ async def rag_ingest_url(req: IngestUrlRequest,
     from app.models.ingestion_job import IngestionJob
     from app.orchestra.ai.ingestion.jobs import get_job_runner
     from app.orchestra.ai.ingestion.scraper import (
-        fetch_url, load_preview, discard_preview, ScrapeError,
+        discard_preview, fetch_url, load_preview, preview_token_mode, ScrapeError,
     )
 
     kb_id = await _resolve_kb_id(req.kb_id, org, db)
@@ -885,15 +917,21 @@ async def rag_ingest_url(req: IngestUrlRequest,
 
     # Prefer the previewed bytes when the caller has a token: guarantees the
     # indexed content is exactly what they approved, and skips a second fetch.
-    # A stale/foreign/expired token falls through to a fresh fetch rather than
-    # erroring — the URL is still in the request, so re-fetching is strictly
-    # better than making the user start over.
+    # A stale/foreign/expired Quick token falls through to a fresh fetch for
+    # backward compatibility. Deep mode must fail instead: a quick re-fetch
+    # could differ materially from the rendered content the user approved.
     page = load_preview(req.preview_token or "", str(org.id))
     if page is not None:
         discard_preview(req.preview_token or "")
     else:
+        token_mode = preview_token_mode(req.preview_token or "")
+        if token_mode == "deep" or req.preview_mode == "deep":
+            raise HTTPException(
+                status_code=409,
+                detail="Deep Preview expired. Generate it again before adding.",
+            )
         try:
-            page = await fetch_url(url)
+            page = await fetch_url(url, mode="quick")
         except ScrapeError as e:
             raise HTTPException(status_code=e.status_hint, detail=str(e))
 

@@ -25,7 +25,7 @@ from typing import Optional
 
 import structlog
 
-from app.orchestra.ai.ingestion.scraper.base import FetchedPage
+from app.orchestra.ai.ingestion.scraper.base import FetchedPage, ScrapeMode
 
 logger = structlog.get_logger()
 
@@ -36,15 +36,17 @@ PREVIEW_TTL_SECONDS = 30 * 60
 
 
 def _paths(token: str) -> tuple[Path, Path]:
-    # Tokens are generated here (uuid4 hex), never taken from the client, so a
-    # traversal payload can't reach this. Still validated on load.
+    # Tokens are generated here (mode prefix + uuid4 hex), never derived from
+    # client input. They are still validated on load before becoming paths.
     return PREVIEW_DIR / f"{token}.bin", PREVIEW_DIR / f"{token}.json"
 
 
 def store_preview(space_id: str, page: FetchedPage) -> str:
     """Persist a fetched page and return its redemption token."""
     PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
-    token = uuid.uuid4().hex
+    # The mode prefix survives expiry, unlike the cached metadata. This lets
+    # ingestion refuse to replace an expired Deep Preview with a Quick fetch.
+    token = ("d" if page.mode == "deep" else "q") + uuid.uuid4().hex
     bin_path, meta_path = _paths(token)
 
     bin_path.write_bytes(page.raw)
@@ -55,9 +57,24 @@ def store_preview(space_id: str, page: FetchedPage) -> str:
         "filename":     page.filename,
         "title":        page.title,
         "status_code":  page.status_code,
+        "provider":     page.provider,
+        "mode":         page.mode,
         "created_at":   time.time(),
     }))
     return token
+
+
+def preview_token_mode(token: str) -> ScrapeMode:
+    """Infer provenance without reading cache metadata.
+
+    New tokens are a one-character prefix plus a 32-character UUID hex value.
+    Older unprefixed UUID tokens remain Quick Preview tokens for compatibility.
+    Invalid/missing tokens are also treated as quick; callers still validate
+    them through ``load_preview`` before redemption.
+    """
+    if len(token) == 33 and token[0] in {"d", "q"} and token[1:].isalnum():
+        return "deep" if token[0] == "d" else "quick"
+    return "quick"
 
 
 def load_preview(token: str, space_id: str) -> Optional[FetchedPage]:
@@ -97,6 +114,8 @@ def load_preview(token: str, space_id: str) -> Optional[FetchedPage]:
         filename=meta.get("filename", "page.html"),
         title=meta.get("title", ""),
         status_code=int(meta.get("status_code", 200)),
+        provider=meta.get("provider", ""),
+        mode=meta.get("mode", "quick"),
     )
 
 

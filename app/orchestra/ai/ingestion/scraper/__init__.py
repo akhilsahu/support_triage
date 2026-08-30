@@ -35,6 +35,11 @@ from app.orchestra.ai.ingestion.scraper.cache import (
     discard_preview,
     sweep_previews,
     PREVIEW_TTL_SECONDS,
+    preview_token_mode,
+)
+from app.orchestra.ai.ingestion.scraper.limits import (
+    DeepPreviewLease,
+    DeepPreviewLimitError,
 )
 # Import built-in providers so they self-register on package import.
 from app.orchestra.ai.ingestion.scraper import providers  # noqa: F401
@@ -54,4 +59,7 @@ __all__ = [
     "discard_preview",
     "sweep_previews",
     "PREVIEW_TTL_SECONDS",
+    "preview_token_mode",
+    "DeepPreviewLease",
+    "DeepPreviewLimitError",
 ]
