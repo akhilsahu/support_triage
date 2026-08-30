@@ -665,7 +665,7 @@ export function KBModal({
                       <span className="text-xs font-black uppercase tracking-wider text-gray-400 dark:text-gray-500">
                         Q&A Pair #{index + 1}
                       </span>
-                      {qnas.length > 1 && (
+                      {index > 0 && (
                         <button
                           type="button"
                           onClick={() => {
@@ -679,7 +679,7 @@ export function KBModal({
                       )}
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">Question *</label>
                         <input
@@ -706,7 +706,7 @@ export function KBModal({
                           }}
                           placeholder="Type or paste the answer..."
                           rows={4}
-                          className="w-full px-4 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-850 dark:text-gray-150 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 leading-relaxed"
+                          className="w-full px-4 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-850 dark:text-gray-150 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 leading-relaxed h-[42px] min-h-[42px] md:h-full md:min-h-[80px]"
                         />
                       </div>
                     </div>
@@ -1747,7 +1747,10 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
       {bulkOpen && (
         <BulkQnaModal
           kbId={kb.id}
-          onClose={() => setBulkOpen(false)}
+          onClose={() => {
+            setBulkOpen(false)
+            setAddOpen(true)
+          }}
           onDone={() => {
             queryClient.invalidateQueries({ queryKey: ['kb-items', kb.id] })
             setBulkOpen(false)
