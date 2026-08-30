@@ -4,7 +4,8 @@ app/integrations/shopify/service.py — Shopify integration business logic
 This module processes verified Shopify webhook payloads and performs sync operations.
 """
 
-from typing import Dict, Any
+# Import Dict, Any, and Optional for strict type hints in function signatures
+from typing import Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
