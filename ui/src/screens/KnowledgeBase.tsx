@@ -547,17 +547,7 @@ export function KBModal({
                 </div>
               )}
 
-              {/* ETA notice for PDF or large document ingestion */}
-              {docPreview && (docPreview.content_type.includes('pdf') || docPreview.char_count > 15000) && (
-                <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-150 dark:border-amber-950/60 bg-amber-500/[0.03] dark:bg-amber-500/[0.05] shadow-2xs">
-                  <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                  <div className="text-xs text-gray-650 dark:text-gray-400 leading-relaxed font-semibold">
-                    <span className="font-bold text-amber-700 dark:text-amber-400">⚡ Note: Full ingestion runs in the background (ETA: ~2-3 mins)</span>
-                    <br />
-                    Since this is a PDF or large document, full layout parsing and indexing will happen in the background <span className="font-bold underline">after</span> you confirm the upload. You won't have to wait for it to finish!
-                  </div>
-                </div>
-              )}
+
 
               <Input label="Document Name (optional)" value={title} onChange={e => setTitle(e.target.value)}
                 placeholder="Custom display name" />
@@ -690,17 +680,7 @@ export function KBModal({
                 </div>
               )}
 
-              {/* ETA notice for PDF URL or large webpage ingestion */}
-              {selectedPreview && (selectedPreview.content_type.includes('pdf') || selectedPreview.char_count > 15000) && (
-                <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-150 dark:border-amber-950/60 bg-amber-500/[0.03] dark:bg-amber-500/[0.05] shadow-2xs">
-                  <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                  <div className="text-xs text-gray-650 dark:text-gray-400 leading-relaxed font-semibold">
-                    <span className="font-bold text-amber-700 dark:text-amber-400">⚡ Note: Full ingestion runs in the background (ETA: ~2-3 mins)</span>
-                    <br />
-                    Since this target page is large or a PDF document, full layout indexing will happen in the background <span className="font-bold underline">after</span> you confirm the upload. You won't have to wait!
-                  </div>
-                </div>
-              )}
+
 
               {previewError && (
                 <div className="p-5 rounded-2xl border-2 border-red-500/20 bg-red-500/5 dark:bg-red-500/5 shadow-xs flex items-start gap-3.5">
