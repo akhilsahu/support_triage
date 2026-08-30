@@ -299,7 +299,7 @@ export const apiClient = {
   // The returned preview_token holds the exact bytes; passing it to scrapeUrl
   // ingests precisely what was shown, with no second fetch.
   previewUrl: (url: string, mode: PreviewMode = 'quick'): Promise<UrlPreview> =>
-    http.post('/api/v1/documents/rag/preview-url', { url, mode }).then(r => r.data),
+    http.post('/api/v1/documents/rag/preview-url', { url, mode }, { timeout: 120000 }).then(r => r.data),
 
   // kbId is required for the scraped page to be reachable: custom agents scope
   // retrieval by kb_id, so omitting it indexes content no agent can ever find.
