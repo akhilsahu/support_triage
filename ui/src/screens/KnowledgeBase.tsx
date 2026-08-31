@@ -429,8 +429,21 @@ export function KBModal({
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 40, opacity: 0, scale: 0.98 }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        className="w-full h-full max-w-[96%] lg:max-w-7xl mx-auto flex flex-col overflow-hidden shadow-2xl bg-white dark:bg-gray-900 sm:border-x border-gray-200 dark:border-gray-800"
+        className="relative w-full h-full max-w-[96%] lg:max-w-7xl mx-auto flex flex-col overflow-hidden shadow-2xl bg-white dark:bg-gray-900 sm:border-x border-gray-200 dark:border-gray-800"
       >
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.9 }}
+              className="absolute top-4 right-16 z-50 flex items-center gap-2 max-w-sm px-4 py-3 bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-sm font-semibold rounded-xl shadow-lg backdrop-blur-md"
+            >
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <span className="whitespace-pre-line">{error}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800 shrink-0 bg-white dark:bg-gray-900">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/80 rounded-2xl flex items-center justify-center text-xl shadow-2xs">
@@ -855,12 +868,7 @@ export function KBModal({
             </div>
           )}
 
-          {error && (
-            <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
-              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-              <span className="text-sm font-semibold text-red-600 dark:text-red-400">{error}</span>
-            </div>
-          )}
+
         </div>
 
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/80 shrink-0">
@@ -963,8 +971,21 @@ function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => 
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 40, opacity: 0, scale: 0.98 }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        className="w-full h-full max-w-4xl mx-auto flex flex-col overflow-hidden shadow-2xl bg-white dark:bg-gray-900 sm:border-x border-gray-200 dark:border-gray-800"
+        className="relative w-full h-full max-w-4xl mx-auto flex flex-col overflow-hidden shadow-2xl bg-white dark:bg-gray-900 sm:border-x border-gray-200 dark:border-gray-800"
       >
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.9 }}
+              className="absolute top-4 right-16 z-50 flex items-center gap-2 max-w-sm px-4 py-3 bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-sm font-semibold rounded-xl shadow-lg backdrop-blur-md"
+            >
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <span className="whitespace-pre-line">{error}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="flex items-center justify-between px-6 py-4.5 border-b border-gray-100 dark:border-gray-800 shrink-0 bg-white dark:bg-gray-900">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/80 rounded-2xl flex items-center justify-center text-xl shadow-2xs">
@@ -1052,12 +1073,7 @@ function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => 
             />
           </div>
 
-          {error && (
-            <div className="flex items-start gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-              <span className="text-xs text-red-600 dark:text-red-400 whitespace-pre-line">{error}</span>
-            </div>
-          )}
+
         </div>
 
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/80 shrink-0">
@@ -1169,8 +1185,21 @@ function EditKBItemModal({
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 40, opacity: 0, scale: 0.98 }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        className="w-full h-full max-w-4xl mx-auto flex flex-col overflow-hidden shadow-2xl bg-white dark:bg-gray-900 sm:border-x border-gray-200 dark:border-gray-800"
+        className="relative w-full h-full max-w-4xl mx-auto flex flex-col overflow-hidden shadow-2xl bg-white dark:bg-gray-900 sm:border-x border-gray-200 dark:border-gray-800"
       >
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.9 }}
+              className="absolute top-4 right-16 z-50 flex items-center gap-2 max-w-sm px-4 py-3 bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-sm font-semibold rounded-xl shadow-lg backdrop-blur-md"
+            >
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <span className="whitespace-pre-line">{error}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="flex items-center justify-between px-6 py-4.5 border-b border-gray-100 dark:border-gray-800 shrink-0 bg-white dark:bg-gray-900">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/80 rounded-2xl flex items-center justify-center text-xl shadow-2xs">
@@ -1273,12 +1302,7 @@ function EditKBItemModal({
             />
           </div>
 
-          {error && (
-            <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
-              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-              <span className="text-sm font-semibold text-red-600 dark:text-red-400">{error}</span>
-            </div>
-          )}
+
         </div>
 
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/80 shrink-0">
