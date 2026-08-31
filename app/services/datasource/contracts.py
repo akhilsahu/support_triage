@@ -24,6 +24,7 @@ class ToolConfig:
     base_url: str = ""
     default_headers: dict[str, str] = field(default_factory=dict)
     auth_type: str = "none"
+    auth_header: str | None = None
     encrypted_secret: str | None = None
 
 
