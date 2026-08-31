@@ -292,25 +292,18 @@ export function KBModal({
     setError('')
     setGeneratingMeta(true)
     try {
-      let fileSnippet = ''
+      const payload: { doc_id?: string; item_id?: string; filename?: string; title?: string; url?: string; content?: string } = {}
       if (tab === 'doc' && file) {
-        try {
-          const raw = await file.slice(0, 4000).text()
-          fileSnippet = raw.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ').slice(0, 2000)
-        } catch (err) {
-          console.warn('Could not read file snippet for metadata generation:', err)
-        }
-      }
-
-      const payload: { doc_id?: string; item_id?: string; filename?: string; title?: string; url?: string; content?: string; file?: File } = {}
-      if (tab === 'doc' && file) {
-        payload.file = file
         payload.filename = file.name
       }
       if (title.trim()) payload.title = title.trim()
       if (url.trim()) payload.url = url.trim()
 
-      const snippet = content.trim() || fileSnippet || selectedPreview?.extract || question.trim()
+      let previewExtract = ''
+      if (tab === 'doc') previewExtract = docPreview?.extract || ''
+      if (tab === 'url') previewExtract = selectedPreview?.extract || ''
+
+      const snippet = content.trim() || previewExtract || question.trim()
       if (snippet) payload.content = snippet
 
       const res = await apiClient.suggestDocMetadata(payload)
