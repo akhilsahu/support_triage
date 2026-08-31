@@ -115,6 +115,9 @@ class DataSourceExecutor:
             try:
                 validate_tool_config(config)
                 Draft202012Validator.check_schema(config.input_schema)
+            except UnsafeDestinationError:
+                # Header policy violations retain their stable security category.
+                raise
             except (ToolValidationError, SchemaError, TypeError, ValueError):
                 return _failure(INVALID_CONFIGURATION, "Data source configuration is invalid")
 

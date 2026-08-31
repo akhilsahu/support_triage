@@ -61,6 +61,7 @@ FORBIDDEN_REQUEST_HEADERS = frozenset(
         "x-forwarded-proto",
     }
 )
+SAFE_STATIC_REQUEST_HEADERS = frozenset({"accept", "content-type", "accept-language"})
 
 _HEADER_NAME = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
 
@@ -72,6 +73,13 @@ def validate_headers(headers: dict[str, str]) -> None:
         _validate_header_syntax(name, value)
         if name.strip().lower() in FORBIDDEN_REQUEST_HEADERS:
             raise UnsafeDestinationError("Forbidden outbound request header")
+
+
+def validate_static_headers(headers: dict[str, str]) -> None:
+    """Allow only non-credential static headers exposed by Phase 1 forms."""
+    validate_headers(headers)
+    if any(name.strip().lower() not in SAFE_STATIC_REQUEST_HEADERS for name in headers):
+        raise UnsafeDestinationError("Only safe static request headers are allowed")
 
 
 def validate_auth_header(name: str, value: str) -> None:

@@ -34,6 +34,35 @@ def test_validator_rejects_write_method():
         validate_tool_config(tool_config(method="DELETE"))
 
 
+def test_validator_rejects_malformed_nested_json_schema():
+    with pytest.raises(ToolValidationError, match="valid JSON Schema"):
+        validate_tool_config(tool_config(input_schema={
+            "type": "object", "properties": {"id": {"type": "not-a-real-type"}}
+        }))
+
+
+def test_validator_rejects_arbitrary_static_connection_header():
+    with pytest.raises(ToolValidationError, match="safe static"):
+        validate_tool_config(tool_config(default_headers={"X-Tenant": "acme"}))
+
+
+def test_validator_allows_custom_header_made_only_of_declared_placeholder():
+    validate_tool_config(tool_config(
+        path="/orders",
+        input_schema={"type": "object", "properties": {"region": {"type": "string"}}},
+        request_template={"headers": {"X-Region": "{region}"}},
+    ))
+
+
+def test_validator_rejects_custom_header_with_static_prefix():
+    with pytest.raises(ToolValidationError, match="only declared placeholders"):
+        validate_tool_config(tool_config(
+            path="/orders",
+            input_schema={"type": "object", "properties": {"region": {"type": "string"}}},
+            request_template={"headers": {"X-Region": "region-{region}"}},
+        ))
+
+
 def test_validator_allows_explicitly_safe_post():
     validate_tool_config(tool_config(method="POST", risk_classification="read"))
 

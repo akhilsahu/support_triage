@@ -14,7 +14,7 @@ import structlog
 from app.config import settings
 from app.core.database import init_db, close_db, check_db_connection
 from app.core.redis import redis_client
-from app.api.v1 import agents, workflows, tasks, documents, admin, datasources, mock_orders, suggestions
+from app.api.v1 import agents, workflows, tasks, documents, admin, datasources, datasource_tools, mock_orders, suggestions
 from app.api.v1 import space_agents, chat_sessions, chatbots, training, evaluations
 from app.api.v1.space_agents import kb_router
 from app.api.v1 import knowledge_base
@@ -391,6 +391,7 @@ app.include_router(admin.router,      prefix="/api/v1", tags=["Admin"])
 app.include_router(dashboard.router,   prefix="/api/v1", tags=["Dashboard"])
 app.include_router(superadmin.router,   prefix="/api/v1", tags=["Super Admin"])
 app.include_router(datasources.router,   prefix="/api/v1", tags=["Data Sources"])
+app.include_router(datasource_tools.router, prefix="/api/v1", tags=["Data Sources"])
 app.include_router(mock_orders.router,   prefix="/api/v1", tags=["Mock API"])
 app.include_router(space_agents.router,  prefix="/api/v1", tags=["Space Agents"])
 app.include_router(kb_router,              prefix="/api/v1", tags=["Space Knowledge Base"])

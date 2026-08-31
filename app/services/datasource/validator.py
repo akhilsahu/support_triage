@@ -6,10 +6,18 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import SchemaError
+
 from app.services.datasource.contracts import ToolConfig
+from app.services.datasource.security import (
+    SAFE_STATIC_REQUEST_HEADERS,
+    validate_headers,
+)
 
 _TOOL_NAME = re.compile(r"^[a-z][a-z0-9_]{2,63}$")
 _PLACEHOLDER = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+_PLACEHOLDER_ONLY = re.compile(r"(?:\{[a-zA-Z_][a-zA-Z0-9_]*\})+")
 
 
 class ToolValidationError(ValueError):
@@ -57,6 +65,10 @@ def validate_tool_config(config: ToolConfig) -> None:
     schema = config.input_schema
     if not isinstance(schema, dict) or schema.get("type") != "object":
         raise ToolValidationError("Input schema root must be a JSON Schema object")
+    try:
+        Draft202012Validator.check_schema(schema)
+    except SchemaError as exc:
+        raise ToolValidationError("Input schema is not valid JSON Schema") from exc
 
     properties = schema.get("properties", {})
     if not isinstance(properties, dict):
@@ -79,6 +91,20 @@ def validate_tool_config(config: ToolConfig) -> None:
         raise ToolValidationError(
             f"Template placeholders are not declared in input properties: {', '.join(unbound)}"
         )
+
+    validate_headers(config.default_headers)
+    if any(name.strip().lower() not in SAFE_STATIC_REQUEST_HEADERS for name in config.default_headers):
+        raise ToolValidationError("Only safe static request headers are allowed")
+    template_headers = config.request_template.get("headers", {})
+    if not isinstance(template_headers, dict):
+        raise ToolValidationError("Request template headers must be an object")
+    validate_headers(template_headers)
+    for name, value in template_headers.items():
+        if name.strip().lower() not in SAFE_STATIC_REQUEST_HEADERS:
+            if not isinstance(value, str) or not _PLACEHOLDER_ONLY.fullmatch(value):
+                raise ToolValidationError(
+                    "Custom request header values must contain only declared placeholders"
+                )
 
     if isinstance(config.max_records, bool) or not 1 <= config.max_records <= 100:
         raise ToolValidationError("max_records must be between 1 and 100")
