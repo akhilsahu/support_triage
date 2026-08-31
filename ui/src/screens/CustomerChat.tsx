@@ -79,7 +79,7 @@ const THEMES: Record<ThemeKey, ThemeTokens> = {
     textMuted:       'text-indigo-300/35',
     userBubbleCls:   'text-white rounded-2xl rounded-br-sm shadow-lg',
     userBubbleBg:    'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',  // blue — no purple, pops on the navy bg
-    aiBubbleCls:     'bg-white/[0.06] backdrop-blur-sm border border-white/[0.09] text-[#dde0ff] rounded-2xl rounded-bl-sm shadow-sm',
+    aiBubbleCls:     'text-[#dde0ff]',
     aiAccentBar:     'from-indigo-500 via-violet-500 to-fuchsia-500',
     inputWrapCls:    'bg-white/[0.06] backdrop-blur-sm border border-white/[0.09] focus-within:border-indigo-400/50 focus-within:ring-2 focus-within:ring-indigo-500/15',
     inputFieldCls:   'text-[#e8e8ff] placeholder-indigo-300/30',
@@ -104,7 +104,7 @@ const THEMES: Record<ThemeKey, ThemeTokens> = {
     textMuted:       'text-[#555]',
     userBubbleCls:   'text-white rounded-2xl rounded-br-sm shadow-md',
     userBubbleBg:    'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',  // ocean blue — high contrast on near-black
-    aiBubbleCls:     'bg-[#1e1e1e] border border-[#303030] text-[#e0e0e0] rounded-2xl rounded-bl-sm',
+    aiBubbleCls:     'text-[#e0e0e0]',
     aiAccentBar:     'from-violet-500 via-purple-500 to-fuchsia-400',
     inputWrapCls:    'bg-[#1e1e1e] border border-[#303030] focus-within:border-[#555] focus-within:ring-2 focus-within:ring-white/5',
     inputFieldCls:   'text-[#e0e0e0] placeholder-[#444]',
@@ -129,7 +129,7 @@ const THEMES: Record<ThemeKey, ThemeTokens> = {
     textMuted:       'text-[#94a3b8]',
     userBubbleCls:   'text-white rounded-2xl rounded-br-sm shadow-md shadow-indigo-200/50',
     userBubbleBg:    'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',  // blue — no purple, strong on light bg
-    aiBubbleCls:     'bg-white border border-[#e2e8f0] text-[#1e293b] rounded-2xl rounded-bl-sm shadow-sm',
+    aiBubbleCls:     'text-[#1e293b]',
     aiAccentBar:     'from-indigo-500 via-violet-500 to-purple-500',
     inputWrapCls:    'bg-white border border-[#e2e8f0] focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-500/10',
     inputFieldCls:   'text-[#0f172a] placeholder-[#94a3b8]',
@@ -981,7 +981,7 @@ export function CustomerChat() {
                   </div>
 
                   {/* Bubble column */}
-                  <div className={`flex flex-col gap-1 min-w-0 ${isUser ? 'items-end max-w-[82%]' : 'items-start max-w-[86%]'}`}>
+                  <div className={`flex flex-col gap-1 min-w-0 ${isUser ? 'items-end max-w-[82%]' : 'items-start w-full'}`}>
 
                     {/* Agent badge — shown once at top of AI group */}
                     {!isUser && showAvatar && msg.agent && (
@@ -998,9 +998,9 @@ export function CustomerChat() {
                         <p className="text-[14.5px] leading-[1.75] whitespace-pre-wrap">{msg.text}</p>
                       </div>
                     ) : (
-                      /* ── AI bubble — glassmorphism card ── */
-                      <div className={`overflow-hidden ${t.aiBubbleCls}`}>
-                        <div className="px-4 py-3.5">
+                      /* ── AI bubble — document style ── */
+                      <div className={`w-full ${t.aiBubbleCls}`}>
+                        <div className="py-1">
                           {/* Live placeholder dots before any reasoning/reply arrives */}
                           {msg.thinking && !msg.reasoning && !msg.text && (
                             <div className="flex items-center gap-2 py-1">
@@ -1082,8 +1082,8 @@ export function CustomerChat() {
                     <Bot className="w-4 h-4" />
                   </div>
                 )}
-                <div className={`overflow-hidden ${t.aiBubbleCls}`}>
-                  <div className="px-4 py-4 flex items-center gap-2">
+                <div className={`w-full ${t.aiBubbleCls}`}>
+                  <div className="py-2 flex items-center gap-2">
                     <div className="flex gap-1.5">
                       {[0, 160, 320].map(d => (
                         <span key={d} className={`w-2 h-2 rounded-full animate-bounce ${t.typingDotCls}`}
