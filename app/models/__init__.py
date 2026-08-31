@@ -5,6 +5,9 @@ from app.models.chat import ChatSession, MessageThought
 from app.models.chatbot import Chatbot
 from app.models.chatbot_user import ChatbotUser, ChatbotUserIdentity
 from app.models.datasource import SpaceDataSource
+from app.models.datasource_connection import DataSourceConnection
+from app.models.datasource_tool import DataSourceTool
+from app.models.agent_tool_assignment import AgentToolAssignment, DataSourceTestRun
 from app.models.ingestion_job import IngestionJob
 from app.models.knowledge_base import KnowledgeBase, KnowledgeBaseItem, AgentKnowledgeBase
 from app.models.kb_fact import KBFact
@@ -24,7 +27,8 @@ __all__ = [
     "ChatSession", "MessageThought",
     "Chatbot",
     "ChatbotUser", "ChatbotUserIdentity",
-    "SpaceDataSource",
+    "SpaceDataSource", "DataSourceConnection", "DataSourceTool",
+    "AgentToolAssignment", "DataSourceTestRun",
     "IngestionJob",
     "KnowledgeBase", "KnowledgeBaseItem", "AgentKnowledgeBase", "KBFact",
 

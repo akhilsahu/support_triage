@@ -84,6 +84,14 @@ class Space(Base):
                                           cascade="all, delete-orphan")
     data_sources           = relationship("SpaceDataSource", back_populates="space",
                                           cascade="all, delete-orphan")
+    datasource_connections = relationship("DataSourceConnection", back_populates="space",
+                                          cascade="all, delete-orphan")
+    datasource_tools       = relationship("DataSourceTool", back_populates="space",
+                                          cascade="all, delete-orphan")
+    agent_tool_assignments = relationship("AgentToolAssignment", back_populates="space",
+                                          cascade="all, delete-orphan")
+    datasource_test_runs   = relationship("DataSourceTestRun", back_populates="space",
+                                          cascade="all, delete-orphan")
     knowledge_bases        = relationship("KnowledgeBase", back_populates="space",
                                           cascade="all, delete-orphan")
 
