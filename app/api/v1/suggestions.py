@@ -101,6 +101,7 @@ async def suggest_doc_metadata(
         content=content,
     )
     return SuggestMetadataResponse(
+        title=result.get("title"),
         doc_type=result.get("doc_type", ""),
         scope=result.get("scope", ""),
         description=result.get("description", ""),
