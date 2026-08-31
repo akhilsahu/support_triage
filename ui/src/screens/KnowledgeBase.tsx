@@ -146,7 +146,7 @@ export function KBModal({
 }: {
   kbId?: string | null
   onClose: () => void
-  onDone: (kb: KB) => void
+  onDone: (kb: KB, prefill?: any) => void
   defaultTab?: ItemTab
   onSwitchToBulk?: () => void
 }) {
@@ -406,7 +406,11 @@ export function KBModal({
         }
       }
 
-      onDone(kb || { id: resolvedKbId, name: '', description: '', active: true, item_count: 1 })
+      onDone(kb || { id: resolvedKbId, name: '', description: '', active: true, item_count: 1 }, {
+        name: kbName.trim() || title.trim() || (file ? file.name.replace(/\.[^.]+$/, '') : '') || url || '',
+        description: description || '',
+        topic: topic || ''
+      })
     } catch (e: any) {
       // Surface the server's reason when it gave one -- URL ingestion fails in
       // specific, actionable ways (404, timeout, no extractable text) that a
@@ -437,7 +441,7 @@ export function KBModal({
               initial={{ opacity: 0, y: -20, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -20, scale: 0.9 }}
-              className="absolute top-4 right-16 z-50 flex items-center gap-2 max-w-sm px-4 py-3 bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-sm font-semibold rounded-xl shadow-lg backdrop-blur-md"
+              className="fixed top-20 right-8 z-[100] flex items-center gap-3 max-w-sm px-5 py-4 bg-red-50 dark:bg-red-950/90 border border-red-200 dark:border-red-900/80 text-red-700 dark:text-red-400 text-sm font-bold rounded-2xl shadow-2xl backdrop-blur-xl"
             >
               <AlertCircle className="w-5 h-5 shrink-0" />
               <span className="whitespace-pre-line">{error}</span>
@@ -979,7 +983,7 @@ function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => 
               initial={{ opacity: 0, y: -20, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -20, scale: 0.9 }}
-              className="absolute top-4 right-16 z-50 flex items-center gap-2 max-w-sm px-4 py-3 bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-sm font-semibold rounded-xl shadow-lg backdrop-blur-md"
+              className="fixed top-20 right-8 z-[100] flex items-center gap-3 max-w-sm px-5 py-4 bg-red-50 dark:bg-red-950/90 border border-red-200 dark:border-red-900/80 text-red-700 dark:text-red-400 text-sm font-bold rounded-2xl shadow-2xl backdrop-blur-xl"
             >
               <AlertCircle className="w-5 h-5 shrink-0" />
               <span className="whitespace-pre-line">{error}</span>
@@ -1193,7 +1197,7 @@ function EditKBItemModal({
               initial={{ opacity: 0, y: -20, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -20, scale: 0.9 }}
-              className="absolute top-4 right-16 z-50 flex items-center gap-2 max-w-sm px-4 py-3 bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-sm font-semibold rounded-xl shadow-lg backdrop-blur-md"
+              className="fixed top-20 right-8 z-[100] flex items-center gap-3 max-w-sm px-5 py-4 bg-red-50 dark:bg-red-950/90 border border-red-200 dark:border-red-900/80 text-red-700 dark:text-red-400 text-sm font-bold rounded-2xl shadow-2xl backdrop-blur-xl"
             >
               <AlertCircle className="w-5 h-5 shrink-0" />
               <span className="whitespace-pre-line">{error}</span>
@@ -1393,7 +1397,7 @@ function QnaItem({ item, kbId, onDelete, onEdit }: { item: KBItem; kbId: string;
 
 type DetailTab = 'docs' | 'url' | 'text' | 'qna' | 'facts'
 
-function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
+function KBDetail({ kb, onBack, onAddSuccess }: { kb: KB; onBack: () => void; onAddSuccess?: (kb: KB, prefill?: any) => void }) {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<DetailTab>('docs')
   const [addOpen, setAddOpen] = useState(false)
@@ -1848,13 +1852,14 @@ function KBDetail({ kb, onBack }: { kb: KB; onBack: () => void }) {
             setAddOpen(false)
             setBulkOpen(true)
           }}
-          onDone={() => {
+          onDone={(kb, prefill) => {
             queryClient.invalidateQueries({ queryKey: ['kb-items', kb.id] })
             // A document upload only returns a job id -- refetch the job list so
             // the new "processing" row appears and polling restarts (it's idle
             // whenever nothing is in flight).
             queryClient.invalidateQueries({ queryKey: ['ingestion-jobs', kb.id] })
             setAddOpen(false)
+            onAddSuccess?.(kb, prefill)
           }}
         />
       )}
@@ -1932,6 +1937,8 @@ export function KnowledgeBase() {
   const [selectedKB, setSelectedKB] = useState<KB | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [agentModalKb, setAgentModalKb] = useState<KB | null>(null)
+  const [agentModalPrefill, setAgentModalPrefill] = useState<any>(null)
+  const [successPrompt, setSuccessPrompt] = useState<{ kb: KB; prefill?: any } | null>(null)
   // Adding a URL used to mean Open → Upload → URL tab: two clicks behind two
   // buttons that both read as something else ("Open", "Upload"). Surfaced on
   // the row so the action is visible where the KB is.
@@ -1948,9 +1955,19 @@ export function KnowledgeBase() {
   })
 
   return (
-    <AnimatePresence mode="wait">
-      {selectedKB ? (
-        <KBDetail key="detail" kb={selectedKB} onBack={() => setSelectedKB(null)} />
+    <>
+      <SuccessPromptToast 
+        prompt={successPrompt} 
+        onClose={() => setSuccessPrompt(null)} 
+        onCreateAgent={() => {
+          setAgentModalPrefill(successPrompt?.prefill)
+          setAgentModalKb(successPrompt!.kb)
+          setSuccessPrompt(null)
+        }} 
+      />
+      <AnimatePresence mode="wait">
+        {selectedKB ? (
+          <KBDetail key="detail" kb={selectedKB} onBack={() => setSelectedKB(null)} onAddSuccess={(kb, prefill) => setSuccessPrompt({ kb, prefill })} />
       ) : (
         <motion.div
           key="list"
@@ -2089,11 +2106,11 @@ export function KnowledgeBase() {
             <KBModal
               kbId={null}
               onClose={() => setCreateOpen(false)}
-              onDone={kb => {
+              onDone={(kb, prefill) => {
                 queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] })
                 setCreateOpen(false)
                 setSelectedKB(kb)
-                setAgentModalKb(kb)   // auto-show agent creation with this KB pre-selected
+                setSuccessPrompt({ kb, prefill })
               }}
             />
           )}
@@ -2105,20 +2122,59 @@ export function KnowledgeBase() {
               kbId={addUrlKb.id}
               defaultTab="url"
               onClose={() => setAddUrlKb(null)}
-              onDone={() => {
+              onDone={(kb, prefill) => {
                 queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] })
                 setAddUrlKb(null)
+                setSuccessPrompt({ kb, prefill })
               }}
             />
           )}
 
           {agentModalKb !== null && (
             <CreateAgentModal
-              onClose={() => setAgentModalKb(null)}
-              onCreated={() => setAgentModalKb(null)}
-              prefill={agentModalKb.id ? { kb_ids: [agentModalKb.id] } : undefined}
+              onClose={() => { setAgentModalKb(null); setAgentModalPrefill(null) }}
+              onCreated={() => { setAgentModalKb(null); setAgentModalPrefill(null) }}
+              prefill={{ ...(agentModalKb.id ? { kb_ids: [agentModalKb.id] } : {}), ...agentModalPrefill }}
             />
           )}
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </>
+  )
+}
+
+function SuccessPromptToast({ 
+  prompt, 
+  onClose, 
+  onCreateAgent 
+}: { 
+  prompt: { kb: KB; prefill?: any } | null, 
+  onClose: () => void, 
+  onCreateAgent: () => void 
+}) {
+  return (
+    <AnimatePresence>
+      {prompt && (
+        <motion.div
+          initial={{ opacity: 0, y: -20, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -20, scale: 0.9 }}
+          className="fixed top-20 right-8 z-[100] flex flex-col gap-3 max-w-sm px-5 py-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl rounded-2xl"
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center shrink-0">
+              <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
+            </div>
+            <div className="flex flex-col">
+              <h4 className="text-sm font-bold text-gray-900 dark:text-white">Knowledge Added</h4>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">Would you like to create an AI agent using this knowledge base now?</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 mt-1">
+            <Button variant="ghost" size="sm" onClick={onClose} className="text-xs">Maybe Later</Button>
+            <Button size="sm" onClick={onCreateAgent} className="text-xs bg-indigo-600 text-white hover:bg-indigo-700">Create Agent</Button>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

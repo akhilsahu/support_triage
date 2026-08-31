@@ -698,12 +698,12 @@ function PromptModal({ agent, docTypes, chatbotSlug, onClose, onSaved }: {
 export function CreateAgentModal({ onClose, onCreated, prefill }: {
   onClose: () => void
   onCreated: (agent?: OrgAgent) => void
-  prefill?: { name?: string; docType?: string; docId?: string; kb_ids?: string[] }
+  prefill?: { name?: string; description?: string; docType?: string; docId?: string; kb_ids?: string[] }
 }) {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState(prefill?.name || '')
   const [slug, setSlug] = useState('')
-  const [description, setDescription] = useState('')
+  const [description, setDescription] = useState(prefill?.description || '')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [temperature, setTemperature] = useState(0.4)
   const [maxTokens, setMaxTokens] = useState(500)
