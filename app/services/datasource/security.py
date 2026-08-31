@@ -9,6 +9,15 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
 
+DNS_REBINDING_DEPLOYMENT_GUARD = """\
+Application validation and the HTTP connection use separate DNS resolutions because
+httpx 0.28 does not expose a supported per-request resolver or resolved-IP pinning
+hook. Production must enforce an outbound proxy/firewall policy that blocks private,
+loopback, link-local, and metadata ranges. A custom AsyncBaseTransport may additionally
+pin validated addresses while preserving the original hostname for Host and TLS SNI.
+"""
+
+
 class UnsafeDestinationError(ValueError):
     """Raised when an outbound URL can reach a non-public destination."""
 

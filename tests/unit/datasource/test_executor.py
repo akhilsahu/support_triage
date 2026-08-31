@@ -1,5 +1,6 @@
 import json
 import socket
+import asyncio
 
 import httpx
 import pytest
@@ -107,6 +108,78 @@ async def test_execute_rejects_unsafe_custom_api_key_header(context):
     assert called is False
 
 
+@pytest.mark.parametrize("path", ["https://evil.example/orders", "//evil.example/orders"])
+@pytest.mark.asyncio
+async def test_execute_rejects_path_that_can_override_configured_origin(path, context):
+    called = False
+
+    def handler(_request):
+        nonlocal called
+        called = True
+        return httpx.Response(200, json={})
+
+    result = await DataSourceExecutor(
+        transport=httpx.MockTransport(handler), decrypt_secret=lambda _value: "plain-secret"
+    ).execute(
+        config(path=path, auth_type="bearer", encrypted_secret="cipher"), {}, context
+    )
+
+    assert result.failure.code == "invalid_configuration"
+    assert called is False
+
+
+@pytest.mark.asyncio
+async def test_execute_rejects_arguments_that_violate_full_json_schema(context):
+    schema = {
+        "type": "object",
+        "properties": {
+            "order_id": {"type": "string", "pattern": "^[A-Z][0-9]+$"},
+            "count": {"type": "integer", "minimum": 1},
+        },
+        "required": ["order_id", "count"],
+        "additionalProperties": False,
+    }
+    result = await DataSourceExecutor(transport=httpx.MockTransport(lambda _request: None)).execute(
+        config(input_schema=schema), {"order_id": "bad", "count": 0}, context
+    )
+    assert result.failure.code == "invalid_arguments"
+
+
+@pytest.mark.asyncio
+async def test_execute_rejects_invalid_json_schema_as_configuration_error(context):
+    result = await DataSourceExecutor(transport=httpx.MockTransport(lambda _request: None)).execute(
+        config(input_schema={"type": "object", "properties": {"order_id": {"type": "unknown"}}}),
+        {"order_id": "A1"},
+        context,
+    )
+    assert result.failure.code == "invalid_configuration"
+
+
+@pytest.mark.parametrize("auth_type", ["digest", "oauth", "Bearer "])
+@pytest.mark.asyncio
+async def test_execute_rejects_unknown_auth_type_before_network(auth_type, context):
+    called = False
+
+    def handler(_request):
+        nonlocal called
+        called = True
+
+    result = await DataSourceExecutor(transport=httpx.MockTransport(handler)).execute(
+        config(auth_type=auth_type, encrypted_secret="cipher"), {"order_id": "A1"}, context
+    )
+    assert result.failure.code == "invalid_configuration"
+    assert called is False
+
+
+@pytest.mark.parametrize("auth_type", ["bearer", "api_key", "api-key", "basic", "basic_auth"])
+@pytest.mark.asyncio
+async def test_execute_requires_secret_for_authenticated_modes(auth_type, context):
+    result = await DataSourceExecutor(transport=httpx.MockTransport(lambda _request: None)).execute(
+        config(auth_type=auth_type, encrypted_secret=None), {"order_id": "A1"}, context
+    )
+    assert result.failure.code == "invalid_configuration"
+
+
 @pytest.mark.asyncio
 async def test_execute_rejects_forbidden_configured_headers_without_calling(context):
     called = False
@@ -134,6 +207,28 @@ async def test_execute_enforces_streamed_response_byte_limit(context):
 
 
 @pytest.mark.asyncio
+async def test_execute_rejects_oversized_declared_content_length(context):
+    transport = httpx.MockTransport(
+        lambda _request: httpx.Response(200, headers={"Content-Length": "999"}, content=b"{}")
+    )
+    result = await DataSourceExecutor(transport=transport).execute(
+        config(max_response_bytes=10), {"order_id": "A1"}, context
+    )
+    assert result.failure.code == "response_too_large"
+
+
+@pytest.mark.asyncio
+async def test_execute_rejects_malformed_content_length(context):
+    transport = httpx.MockTransport(
+        lambda _request: httpx.Response(200, headers={"Content-Length": "not-a-number"}, content=b"{}")
+    )
+    result = await DataSourceExecutor(transport=transport).execute(
+        config(), {"order_id": "A1"}, context
+    )
+    assert result.failure.code == "invalid_response"
+
+
+@pytest.mark.asyncio
 async def test_execute_categorizes_timeout(context):
     def handler(request):
         raise httpx.ReadTimeout("secret-token", request=request)
@@ -143,6 +238,18 @@ async def test_execute_categorizes_timeout(context):
     )
     assert result.failure.code == "upstream_timeout"
     assert "secret-token" not in result.failure.message
+
+
+@pytest.mark.asyncio
+async def test_execute_enforces_total_deadline(context):
+    async def handler(_request):
+        await asyncio.sleep(0.05)
+        return httpx.Response(200, json={"data": {"orders": []}})
+
+    result = await DataSourceExecutor(
+        transport=httpx.MockTransport(handler), execution_timeout_seconds=0.01
+    ).execute(config(), {"order_id": "A1"}, context)
+    assert result.failure.code == "upstream_timeout"
 
 
 @pytest.mark.asyncio
@@ -162,7 +269,7 @@ async def test_execute_revalidates_redirect_destination(context, monkeypatch):
         config(), {"order_id": "A1"}, context
     )
     assert result.failure.code == "unsafe_destination"
-    assert calls == ["api.example.com", "private.example"]
+    assert calls == ["api.example.com", "api.example.com", "private.example"]
 
 
 @pytest.mark.asyncio
@@ -187,7 +294,7 @@ async def test_dns_is_checked_immediately_for_initial_request_and_every_redirect
     )
 
     assert result.succeeded
-    assert dns_calls == ["api.example.com", "api.example.com"]
+    assert dns_calls == ["api.example.com", "api.example.com", "api.example.com"]
     # DNS validation closes application-level mixed/private and redirect paths;
     # production egress controls remain defense-in-depth for DNS rebinding races.
 
@@ -232,3 +339,19 @@ async def test_execute_maps_authentication_and_upstream_statuses(context):
     assert auth_result.failure.status_code == 401
     assert error_result.failure.code == "upstream_error"
     assert error_result.failure.retryable is True
+
+
+@pytest.mark.asyncio
+async def test_execute_caps_redirect_chain(context):
+    calls = 0
+
+    def handler(_request):
+        nonlocal calls
+        calls += 1
+        return httpx.Response(302, headers={"Location": f"/redirect-{calls}"})
+
+    result = await DataSourceExecutor(transport=httpx.MockTransport(handler)).execute(
+        config(), {"order_id": "A1"}, context
+    )
+    assert result.failure.code == "upstream_error"
+    assert calls == 4

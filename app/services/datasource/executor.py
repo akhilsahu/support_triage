@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -10,6 +11,8 @@ from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 import structlog
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import SchemaError
 
 from app.core.encryption import decrypt
 from app.services.datasource.contracts import (
@@ -37,6 +40,8 @@ UPSTREAM_TIMEOUT = "upstream_timeout"
 UPSTREAM_ERROR = "upstream_error"
 RESPONSE_TOO_LARGE = "response_too_large"
 INVALID_RESPONSE = "invalid_response"
+INVALID_ARGUMENTS = "invalid_arguments"
+INVALID_CONFIGURATION = "invalid_configuration"
 
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 _MAX_REDIRECTS = 3
@@ -64,7 +69,13 @@ def _render(value: Any, arguments: Mapping[str, Any], *, path: bool = False) -> 
 
 
 class DataSourceExecutor:
-    """Execute one configured call while keeping secrets out of returned results."""
+    """Execute one configured call while keeping secrets out of returned results.
+
+    Destination checks reject unsafe DNS answers, but the stock httpx transport does
+    not provide a supported resolved-IP pinning hook. Deployments must enforce the
+    egress guard documented in ``security.DNS_REBINDING_DEPLOYMENT_GUARD``. Callers may
+    inject a hardened custom transport without changing this execution policy.
+    """
 
     def __init__(
         self,
@@ -72,10 +83,12 @@ class DataSourceExecutor:
         transport: httpx.AsyncBaseTransport | None = None,
         decrypt_secret: Callable[[str], str] = decrypt,
         timeout: httpx.Timeout | None = None,
+        execution_timeout_seconds: float = 30.0,
     ) -> None:
         self._transport = transport
         self._decrypt_secret = decrypt_secret
         self._timeout = timeout or httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=5.0)
+        self._execution_timeout_seconds = execution_timeout_seconds
 
     async def execute(
         self,
@@ -83,19 +96,57 @@ class DataSourceExecutor:
         arguments: dict[str, Any],
         context: ExecutionContext,
     ) -> ExecutionResult:
+        try:
+            # The deadline includes validation, DNS, redirects, and reading the
+            # complete bounded body rather than resetting for each HTTP attempt.
+            async with asyncio.timeout(self._execution_timeout_seconds):
+                return await self._execute(config, arguments, context)
+        except TimeoutError:
+            return _failure(UPSTREAM_TIMEOUT, "Upstream request timed out", retryable=True)
+
+    async def _execute(
+        self,
+        config: ToolConfig,
+        arguments: dict[str, Any],
+        context: ExecutionContext,
+    ) -> ExecutionResult:
         started = time.monotonic()
         try:
-            validate_tool_config(config)
-            properties = config.input_schema.get("properties", {})
-            if set(arguments) - set(properties):
-                return _failure(INVALID_RESPONSE, "Tool arguments contain undeclared fields")
-            missing = set(config.input_schema.get("required", [])) - set(arguments)
-            if missing:
-                return _failure(INVALID_RESPONSE, "Required tool arguments are missing")
+            try:
+                validate_tool_config(config)
+                Draft202012Validator.check_schema(config.input_schema)
+            except (ToolValidationError, SchemaError, TypeError, ValueError):
+                return _failure(INVALID_CONFIGURATION, "Data source configuration is invalid")
 
+            if not isinstance(config.auth_type, str):
+                return _failure(INVALID_CONFIGURATION, "Data source authentication is invalid")
+            auth_type = config.auth_type.lower()
+            allowed_auth_types = {"none", "bearer", "api_key", "api-key", "basic", "basic_auth"}
+            if config.auth_type != config.auth_type.strip() or auth_type not in allowed_auth_types:
+                return _failure(INVALID_CONFIGURATION, "Data source authentication is invalid")
+            if auth_type != "none" and not config.encrypted_secret:
+                return _failure(INVALID_CONFIGURATION, "Data source authentication is incomplete")
+
+            parsed_path = urlsplit(config.path)
+            if parsed_path.scheme or parsed_path.netloc:
+                return _failure(INVALID_CONFIGURATION, "Data source path must be relative")
+
+            try:
+                validator = Draft202012Validator(config.input_schema)
+                if next(validator.iter_errors(arguments), None) is not None:
+                    return _failure(INVALID_ARGUMENTS, "Tool arguments do not match the input schema")
+            except (TypeError, ValueError):
+                return _failure(INVALID_ARGUMENTS, "Tool arguments are invalid")
+
+            # DNS resolution runs in a worker so the outer total deadline can
+            # interrupt a stalled resolver as well as redirects and body streaming.
+            base_destination = await asyncio.to_thread(validate_destination, config.base_url)
             path = _render(config.path, arguments, path=True)
-            url = urljoin(config.base_url.rstrip("/") + "/", path.lstrip("/"))
-            validate_destination(url)
+            url = urljoin(base_destination.url.rstrip("/") + "/", path.lstrip("/"))
+            destination = await asyncio.to_thread(validate_destination, url)
+            if self._origin(base_destination.url) != self._origin(destination.url):
+                return _failure(INVALID_CONFIGURATION, "Data source path changed the configured origin")
+            url = destination.url
 
             template = _render(config.request_template, arguments)
             headers = {str(k): str(_render(v, arguments)) for k, v in config.default_headers.items()}
@@ -126,7 +177,7 @@ class DataSourceExecutor:
                     if not location:
                         return _failure(UPSTREAM_ERROR, "Upstream redirect omitted its destination")
                     redirected_url = urljoin(str(response.url), location)
-                    validate_destination(redirected_url)
+                    await asyncio.to_thread(validate_destination, redirected_url)
                     if self._origin(url) != self._origin(redirected_url):
                         # Authentication belongs to the configured origin. Refusing an
                         # origin change prevents a public redirector from exfiltrating it.
@@ -172,17 +223,20 @@ class DataSourceExecutor:
             return _failure(UPSTREAM_TIMEOUT, "Upstream request timed out", retryable=True)
         except _ResponseTooLarge:
             return _failure(RESPONSE_TOO_LARGE, "Upstream response exceeded the configured limit")
+        except _MalformedResponse:
+            return _failure(INVALID_RESPONSE, "Upstream returned an invalid response")
         except httpx.RequestError:
             return _failure(UPSTREAM_ERROR, "Upstream request failed", retryable=True)
-        except (ToolValidationError, KeyError, TypeError, ValueError):
-            return _failure(INVALID_RESPONSE, "Data source configuration or arguments are invalid")
+        except (KeyError, TypeError, ValueError):
+            return _failure(INVALID_CONFIGURATION, "Data source configuration is invalid")
         except Exception:
             # Decryption errors and other unexpected failures remain deliberately
             # generic so ciphertext, keys, or provider details never reach the model.
-            logger.exception(
+            logger.error(
                 "datasource_tool_execution_failed",
                 tool=config.name,
                 request_id=context.request_id,
+                error_category="unexpected",
             )
             return _failure(UPSTREAM_ERROR, "Data source execution failed")
 
@@ -195,7 +249,7 @@ class DataSourceExecutor:
             header_name, header_value = "Authorization", f"Bearer {secret}"
         elif auth_type in {"api_key", "api-key"}:
             header_name, header_value = config.auth_header or "X-API-Key", secret
-        elif auth_type == "basic":
+        elif auth_type in {"basic", "basic_auth"}:
             header_name, header_value = "Authorization", f"Basic {secret}"
         else:
             raise ValueError("Unsupported authentication type")
@@ -221,8 +275,11 @@ class DataSourceExecutor:
         content = bytearray()
         async with client.stream(method, url, headers=headers, params=params, json=body) as response:
             declared = response.headers.get("content-length")
-            if declared and declared.isdigit() and int(declared) > limit:
-                raise _ResponseTooLarge
+            if declared:
+                if not declared.isdigit():
+                    raise _MalformedResponse
+                if int(declared) > limit:
+                    raise _ResponseTooLarge
             async for chunk in response.aiter_bytes():
                 if len(content) + len(chunk) > limit:
                     raise _ResponseTooLarge
@@ -231,4 +288,8 @@ class DataSourceExecutor:
 
 
 class _ResponseTooLarge(Exception):
+    pass
+
+
+class _MalformedResponse(Exception):
     pass
