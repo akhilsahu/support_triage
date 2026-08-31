@@ -31,6 +31,7 @@ from app.core.database import get_db
 from app.rag.document_parser import ParsedDocument
 from app.orchestra.ai.chunking import chunk as chunk_document, get_config as get_chunk_config
 from app.orchestra.ai.ingestion import get_ingestion_service
+from app.orchestra.ai.ingestion.jobs import get_job_runner
 from app.rag.vector_store import (
     COLLECTION_CLIENT,
     VALID_DOC_TYPES,
