@@ -37,6 +37,7 @@ from app.rag.vector_store import (
     get_vector_store,
 )
 from app.services.llm_service import llm_service
+from app.models.ingestion_job import IngestionJob
 
 logger = structlog.get_logger()
 
