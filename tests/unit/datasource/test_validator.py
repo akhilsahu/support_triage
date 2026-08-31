@@ -38,6 +38,15 @@ def test_validator_allows_explicitly_safe_post():
     validate_tool_config(tool_config(method="POST", risk_classification="read"))
 
 
+@pytest.mark.parametrize("method", ["GET", "POST"])
+@pytest.mark.parametrize("classification", ["write", "unknown", "READ", ""])
+def test_validator_rejects_every_non_read_risk_classification(method, classification):
+    with pytest.raises(ToolValidationError, match="classified as read-only"):
+        validate_tool_config(
+            tool_config(method=method, risk_classification=classification),
+        )
+
+
 @pytest.mark.parametrize("name", ["UPPER_case", "ab", "1lookup", "contains-dash"])
 def test_validator_rejects_invalid_tool_names(name):
     with pytest.raises(ToolValidationError, match="name"):

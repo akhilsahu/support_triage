@@ -11,7 +11,6 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
-
 CANONICAL_ORDER_FIELDS = [
     "order_id", "status", "placed_at", "customer_name",
     "item", "total", "tracking", "carrier",
@@ -114,7 +113,11 @@ class SpaceDataSource(Base):
             "auth_type":      self.auth_type,
             "auth_header":    self.auth_header,
             "field_mapping":  self.field_mapping,
-            "request_headers": self.request_headers,
+            # Header names are useful for review, but any header may carry a
+            # credential, including provider-specific names we cannot classify.
+            "request_headers": {
+                key: "[REDACTED]" for key in self.request_headers
+            },
             "request_params":  self.request_params,
             "request_body":    self.request_body,
             "active":          self.active,

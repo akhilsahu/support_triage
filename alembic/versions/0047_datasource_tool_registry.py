@@ -42,6 +42,27 @@ def _machine_name(name, row_id):
     return f"{stem[:54]}_{str(row_id).replace('-', '')[:8]}"[:64]
 
 
+def _connection_name(name, row_id, *, duplicate=False):
+    """Fit legacy connection names within the new 200-character column."""
+    raw_name = name or "Data source"
+    if not duplicate:
+        return raw_name[:200]
+    suffix = f" ({str(row_id).replace('-', '')[:8]})"
+    return f"{raw_name[:200 - len(suffix)]}{suffix}"
+
+
+def _without_auth_headers(headers, auth_header):
+    """Avoid copying legacy credentials into non-secret default headers."""
+    sensitive = {"authorization", "x-api-key"}
+    if auth_header:
+        sensitive.add(str(auth_header).strip().lower())
+    return {
+        key: value
+        for key, value in headers.items()
+        if str(key).strip().lower() not in sensitive
+    }
+
+
 def _split_endpoint(api_url):
     parsed = urlsplit(api_url or "")
     if parsed.scheme and parsed.netloc:
@@ -92,11 +113,12 @@ def _migrate_legacy_rows():
         connection_id = uuid.uuid4()
         tool_id = uuid.uuid4()
         headers = _json_object(row["request_headers_json"])
+        default_headers = _without_auth_headers(headers, row["auth_header"])
         params = _json_object(row["request_params_json"])
         body = _json_object(row["request_body_json"])
         output_mapping = _json_object(row["field_mapping_json"])
         base_url, path = _split_endpoint(row["api_url"])
-        template = {"query": params, "headers": headers, "body": body}
+        template = {"query": params, "headers": default_headers, "body": body}
         placeholders = _placeholders({"path": path, **template})
         input_schema = {
             "type": "object",
@@ -108,10 +130,10 @@ def _migrate_legacy_rows():
             "Review the configuration, run a successful test, and assign a chatbot agent."
         )
 
-        connection_name = row["name"]
+        connection_name = _connection_name(row["name"], row["id"])
         name_key = (row["space_id"], connection_name)
         if name_key in used_connection_names:
-            connection_name = f"{connection_name} ({str(row['id'])[:8]})"
+            connection_name = _connection_name(row["name"], row["id"], duplicate=True)
             name_key = (row["space_id"], connection_name)
         used_connection_names.add(name_key)
 
@@ -127,7 +149,7 @@ def _migrate_legacy_rows():
             auth_header=row["auth_header"] or "Authorization",
             encrypted_secret=row["auth_value"] or None,
             auth_metadata_json="{}",
-            default_headers_json=json.dumps(headers),
+            default_headers_json=json.dumps(default_headers),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         ))

@@ -32,6 +32,13 @@ def _normalize_key(key: object) -> str:
     return str(key).strip().lower().replace("_", "-")
 
 
+def _is_sensitive_key(key: object, sensitive_keys: Collection[str]) -> bool:
+    normalized = _normalize_key(key)
+    return normalized in sensitive_keys or normalized.endswith(
+        ("-token", "-secret", "-auth")
+    )
+
+
 def sanitize_mapping(
     value: Any,
     sensitive_keys: Collection[str] = DEFAULT_SENSITIVE_KEYS,
@@ -44,7 +51,7 @@ def sanitize_mapping(
     def sanitize(current: Any) -> Any:
         if isinstance(current, Mapping):
             return {
-                key: REDACTED if _normalize_key(key) in normalized_keys else sanitize(child)
+                key: REDACTED if _is_sensitive_key(key, normalized_keys) else sanitize(child)
                 for key, child in current.items()
             }
         if isinstance(current, list):

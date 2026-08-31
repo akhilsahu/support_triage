@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.services.datasource.sanitizer import sanitize_mapping
 
 
 class DataSourceConnection(Base):
@@ -81,8 +82,12 @@ class DataSourceConnection(Base):
             "base_url": self.base_url,
             "auth_type": self.auth_type,
             "auth_header": self.auth_header,
-            "auth_metadata": self.auth_metadata,
-            "default_headers": self.default_headers,
+            "auth_metadata": sanitize_mapping(self.auth_metadata),
+            # Preserve configured names for the editor without ever returning
+            # header values; arbitrary provider headers can contain secrets.
+            "default_headers": {
+                key: "[REDACTED]" for key in self.default_headers
+            },
             "credential_configured": bool(self.encrypted_secret),
             "last_health_status": self.last_health_status,
             "last_health_message": self.last_health_message,

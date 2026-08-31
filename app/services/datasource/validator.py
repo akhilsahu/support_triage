@@ -51,8 +51,8 @@ def validate_tool_config(config: ToolConfig) -> None:
         raise ToolValidationError(
             "Data source tools are read-only; only GET and safe POST are allowed"
         )
-    if method == "POST" and config.risk_classification != "read":
-        raise ToolValidationError("POST tools must be explicitly classified as read-only")
+    if config.risk_classification != "read":
+        raise ToolValidationError("Data source tools must be explicitly classified as read-only")
 
     schema = config.input_schema
     if not isinstance(schema, dict) or schema.get("type") != "object":

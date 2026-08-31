@@ -6,9 +6,10 @@ from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 
 from app.core.database import Base
+from app.services.datasource.sanitizer import sanitize_mapping
 
 
 class AgentToolAssignment(Base):
@@ -43,6 +44,27 @@ class AgentToolAssignment(Base):
             name="uq_agent_tool_assignment_target",
         ),
     )
+
+    @staticmethod
+    def _assert_same_space(owner_space_id, related, relationship_name: str) -> None:
+        related_space_id = getattr(related, "space_id", None) if related is not None else None
+        if (
+            owner_space_id is not None
+            and related_space_id is not None
+            and owner_space_id != related_space_id
+        ):
+            raise ValueError(f"Assignment and {relationship_name} must belong to the same space")
+
+    @validates("tool", "chatbot")
+    def _validate_related_tenant(self, key, related):
+        self._assert_same_space(self.space_id, related, key)
+        return related
+
+    @validates("space_id")
+    def _validate_space_id(self, _key, space_id):
+        self._assert_same_space(space_id, self.tool, "tool")
+        self._assert_same_space(space_id, self.chatbot, "chatbot")
+        return space_id
 
     def to_dict(self) -> dict:
         return {
@@ -88,6 +110,16 @@ class DataSourceTestRun(Base):
     connection = relationship("DataSourceConnection", back_populates="test_runs")
     tool = relationship("DataSourceTool", back_populates="test_runs")
 
+    @validates("diagnostics_json")
+    def _sanitize_diagnostics_json(self, _key, raw):
+        try:
+            value = json.loads(raw or "{}")
+        except (TypeError, ValueError):
+            value = {}
+        if not isinstance(value, dict):
+            value = {}
+        return json.dumps(sanitize_mapping(value))
+
     @property
     def diagnostics(self) -> dict:
         try:
@@ -98,7 +130,7 @@ class DataSourceTestRun(Base):
 
     @diagnostics.setter
     def diagnostics(self, value: dict) -> None:
-        self.diagnostics_json = json.dumps(value or {})
+        self.diagnostics_json = json.dumps(sanitize_mapping(value or {}))
 
     def to_dict(self) -> dict:
         return {
@@ -111,6 +143,8 @@ class DataSourceTestRun(Base):
             "message": self.message,
             "latency_ms": self.latency_ms,
             "status_code": self.status_code,
-            "diagnostics": self.diagnostics,
+            # Sanitize again for rows written before persistence-boundary
+            # redaction was introduced.
+            "diagnostics": sanitize_mapping(self.diagnostics),
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

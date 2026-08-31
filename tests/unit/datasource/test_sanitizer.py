@@ -38,3 +38,21 @@ def test_sanitizer_accepts_additional_sensitive_keys_without_mutating_input():
     assert sanitized["customer_number"] == "[REDACTED]"
     assert sanitized["Authorization"] == "[REDACTED]"
     assert value["customer_number"] == "42"
+
+
+def test_sanitizer_redacts_credential_suffixes_and_preserves_safe_diagnostics():
+    value = {
+        "shopify_access_token": "shopify-secret",
+        "provider-secret": "provider-secret",
+        "custom_auth": "custom-secret",
+        "status": "timed_out",
+        "latency_ms": 42,
+    }
+
+    assert sanitize_mapping(value) == {
+        "shopify_access_token": "[REDACTED]",
+        "provider-secret": "[REDACTED]",
+        "custom_auth": "[REDACTED]",
+        "status": "timed_out",
+        "latency_ms": 42,
+    }
