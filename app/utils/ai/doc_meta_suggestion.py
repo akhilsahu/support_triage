@@ -104,8 +104,8 @@ async def generate_doc_metadata_suggestion(
         f"Filename/Title: {file_title}\n"
         f"URL: {source_url}\n"
         f"Content Excerpt (Full Context):\n{snippet}\n\n"
-        "Return ONLY a raw JSON object with keys:\n"
-        "  - 'title': string\n"
+        "Return ONLY a raw JSON object with EXACTLY these keys (do not omit any):\n"
+        "  - 'title': string (MUST NOT BE NULL OR EMPTY)\n"
         "  - 'doc_type': classification string ('general' | 'faq' | 'policy' | 'manual' | 'product')\n"
         "  - 'scope': explicit coverage scope string\n"
         "  - 'description': comprehensive, scope-accurate summary statement\n"
@@ -157,11 +157,15 @@ async def generate_doc_metadata_suggestion(
             if doc_type and doc_type not in tags_list:
                 tags_list.insert(0, doc_type)
 
-            scope = str(data.get("scope", "")).strip()
+            title_out = data.get("title")
+            if not title_out or str(title_out).strip() == "":
+                # Fallback to the original filename/title if the AI model drops the field
+                title_out = file_title or "Untitled Document"
 
             return {
-                "doc_type": doc_type,
-                "scope": scope,
+                "title": str(title_out).strip(),
+                "doc_type": data.get("doc_type") or "",
+                "scope": str(data.get("scope", "")).strip(),
                 "description": str(data.get("description", "")),
                 "topic": str(data.get("topic", "")),
                 "tags": tags_list,
