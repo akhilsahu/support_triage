@@ -112,7 +112,7 @@ run records.
 app/
 ├── api/v1/
 │   └── datasource_tools.py
-├── utils/datasource/
+├── services/datasource/
 │   ├── __init__.py
 │   ├── contracts.py
 │   ├── importer.py
@@ -132,9 +132,9 @@ app/
 ```
 
 The API module handles authentication, HTTP contracts, transactions, and
-status codes. `app/utils/datasource` contains framework-independent domain
+status codes. `app/services/datasource` contains framework-independent domain
 logic. Pydantic request/response types live in `schemas`; persistence stays in
-`models`. Utilities do not import FastAPI request objects.
+`models`. Service modules do not import FastAPI request objects.
 
 ### Utility responsibilities
 
