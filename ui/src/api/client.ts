@@ -272,7 +272,7 @@ export const apiClient = {
     }).then(r => r.data)
   },
 
-  suggestDocMetadata: (payload: { doc_id?: string; item_id?: string; filename?: string; title?: string; url?: string; content?: string; file?: File }): Promise<{ doc_type?: string; scope?: string; description: string; topic: string; tags?: string[] }> => {
+  suggestDocMetadata: (payload: { doc_id?: string; item_id?: string; filename?: string; title?: string; url?: string; content?: string; file?: File }): Promise<{ title?: string; doc_type?: string; scope?: string; description: string; topic: string; tags?: string[] }> => {
     if (payload.file) {
       const formData = new FormData()
       formData.append('file', payload.file)

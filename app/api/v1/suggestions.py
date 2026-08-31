@@ -27,6 +27,7 @@ class SuggestMetadataRequest(BaseModel):
 class SuggestMetadataResponse(BaseModel):
     doc_type: Optional[str] = None
     scope: Optional[str] = None
+    title: Optional[str] = None
     description: str
     topic: str
     tags: List[str] = []

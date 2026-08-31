@@ -314,6 +314,10 @@ export function KBModal({
       if (snippet) payload.content = snippet
 
       const res = await apiClient.suggestDocMetadata(payload)
+      if (res.title) setTitle(res.title)
+      if (res.doc_type && ['general', 'faq', 'policy', 'manual', 'product'].includes(res.doc_type)) {
+        setDocType(res.doc_type)
+      }
       if (res.description) setDescription(res.description)
       if (res.topic) setTopic(res.topic)
       if (res.tags && res.tags.length > 0) setDocLabels(res.tags)
@@ -923,6 +927,7 @@ function BulkQnaModal({ kbId, onClose, onDone }: { kbId: string; onClose: () => 
         title: 'Bulk Q&A Import',
         content: text.trim().slice(0, 1500),
       })
+      if (res.title) setTitle(res.title)
       if (res.description) setDescription(res.description)
       if (res.topic) setTopic(res.topic)
     } catch (e: any) {
@@ -1128,6 +1133,7 @@ function EditKBItemModal({
       if (snippet) payload.content = snippet
 
       const res = await apiClient.suggestDocMetadata(payload)
+      if (res.title) setTitle(res.title)
       if (res.description) setDescription(res.description)
       if (res.topic) setTopic(res.topic)
       if (res.tags && res.tags.length > 0) setDocLabels(res.tags)
