@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import List, Optional
+from typing import List, Optional, Any
 import structlog
 
 from app.rag.document_parser import Chunk

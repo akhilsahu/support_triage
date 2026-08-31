@@ -674,6 +674,7 @@ async def delete_org_agent(
         raise HTTPException(404, "Custom agent not found.")
     await db.delete(agent)
     await db.commit()
+    from app.orchestra.ai.session.pool import pool as _pool
     _pool.invalidate_bot_agents(str(org.id))
     logger.info("custom_agent.deleted", space_id=str(org.id), agent_id=str(agent_id))
 
