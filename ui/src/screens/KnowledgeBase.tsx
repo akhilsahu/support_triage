@@ -548,19 +548,6 @@ export function KBModal({
               )}
 
 
-
-              <Input label="Document Name (optional)" value={title} onChange={e => setTitle(e.target.value)}
-                placeholder="Custom display name" />
-              <div className="grid grid-cols-2 gap-4">
-                <Select label="Document Type" value={docType} onChange={e => setDocType(e.target.value)}>
-                  <option value="general">General</option>
-                  <option value="faq">FAQ</option>
-                  <option value="policy">Policy</option>
-                  <option value="manual">Manual</option>
-                  <option value="product">Product</option>
-                </Select>
-                <Input label="Expiry Date (optional)" type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
-              </div>
             </div>
           )}
 
@@ -703,29 +690,11 @@ export function KBModal({
                 </div>
               )}
 
-              <Input
-                label="Page Title (optional)"
-                type="text"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder={selectedPreview?.title || "e.g., Return Policy & Refund FAQ"}
-              />
-
-              <div className="grid grid-cols-2 gap-4">
-                <Select label="Document Type" value={docType} onChange={e => setDocType(e.target.value)}>
-                  <option value="general">General</option>
-                  <option value="faq">FAQ</option>
-                  <option value="policy">Policy</option>
-                  <option value="manual">Manual</option>
-                  <option value="product">Product</option>
-                </Select>
-              </div>
             </div>
           )}
 
           {tab === 'text' && (
             <div className="space-y-6">
-              <Input label="Title (optional)" value={title} onChange={e => setTitle(e.target.value)} />
               <Textarea label="Content" value={content} onChange={e => setContent(e.target.value)}
                 placeholder="Paste plain text or Markdown…" rows={12}
                 className="font-mono text-sm leading-relaxed"
@@ -753,13 +722,6 @@ export function KBModal({
                   </div>
                 </div>
               )}
-
-              <Input
-                label="Title (optional)"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="e.g. Return & Refund FAQs"
-              />
 
               {/* Dynamic Q&A list */}
               <div className="space-y-6 max-h-[450px] overflow-y-auto pr-2 -mr-2">
@@ -831,52 +793,70 @@ export function KBModal({
             </div>
           )}
 
-          {/* Common Chunk Metadata */}
-          <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-800 space-y-6 bg-gray-50/30 dark:bg-gray-800/10 -mx-6 px-6 pb-6 rounded-b-3xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                Common Chunk Metadata
-              </h3>
+          {/* Metadata Section */}
+          {((tab === 'doc' && !!docPreview) || (tab === 'url' && !!selectedPreview) || tab === 'text' || tab === 'qna') && (
+            <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-800 space-y-6 bg-gray-50/30 dark:bg-gray-800/10 -mx-6 px-6 pb-6 rounded-b-3xl">
               <button
                 type="button"
                 onClick={handleGenerateMeta}
                 disabled={generatingMeta || (!file && !url.trim() && !content.trim() && !title.trim() && !question.trim())}
-                className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm disabled:opacity-50 transition-colors"
-                title="Generate Description and Topic Tag using AI"
+                className="flex items-center justify-center gap-2 w-full py-3 mb-4 text-sm font-extrabold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 shadow-md transition-colors"
+                title="Generate fields using AI"
               >
                 {generatingMeta ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-500" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                  <Sparkles className="w-4 h-4" />
                 )}
-                <span>{generatingMeta ? 'Suggesting…' : 'Auto-suggest'}</span>
+                <span>{generatingMeta ? 'Auto-filling fields…' : 'Auto fill following fields'}</span>
               </button>
-            </div>
 
-            <Input
-              label="Topic / Category Tag"
-              value={topic}
-              onChange={e => setTopic(e.target.value)}
-              placeholder="e.g. SBI Credit Card, Refund Policy"
-            />
+              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                Item Metadata
+              </h3>
 
-            <div className="space-y-1.5">
-              <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">Doc Labels (Citation Tags)</label>
-              <TagInput
-                tags={docLabels}
-                onChange={setDocLabels}
-                placeholder="Add Citation Tags (press Enter or comma…)"
+              <Input label="Title / Name (optional)" value={title} onChange={e => setTitle(e.target.value)} placeholder={tab === 'url' && selectedPreview?.title ? selectedPreview.title : "Custom display name"} />
+
+              {(tab === 'doc' || tab === 'url') && (
+                <div className="grid grid-cols-2 gap-4">
+                  <Select label="Document Type" value={docType} onChange={e => setDocType(e.target.value)}>
+                    <option value="general">General</option>
+                    <option value="faq">FAQ</option>
+                    <option value="policy">Policy</option>
+                    <option value="manual">Manual</option>
+                    <option value="product">Product</option>
+                  </Select>
+                  {tab === 'doc' && (
+                    <Input label="Expiry Date (optional)" type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
+                  )}
+                </div>
+              )}
+
+              <Input
+                label="Topic / Category Tag"
+                value={topic}
+                onChange={e => setTopic(e.target.value)}
+                placeholder="e.g. SBI Credit Card, Refund Policy"
+              />
+
+              <div className="space-y-1.5">
+                <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">Doc Labels (Citation Tags)</label>
+                <TagInput
+                  tags={docLabels}
+                  onChange={setDocLabels}
+                  placeholder="Add Citation Tags (press Enter or comma…)"
+                />
+              </div>
+
+              <Textarea
+                label="Document Description"
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                placeholder="Summary applied as context to all chunks"
+                rows={3}
               />
             </div>
-
-            <Textarea
-              label="Document Description"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="Summary applied as context to all chunks"
-              rows={3}
-            />
-          </div>
+          )}
 
           {error && (
             <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
