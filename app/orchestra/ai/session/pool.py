@@ -43,6 +43,7 @@ class SessionPool:
         org_name:          str                        = "Support",
         cfg:               Optional[AgnoConfig]       = None,
         mcp_server:        Optional[Any]              = None,
+        datasource_runtime: Optional[Any]             = None,
         skills_map:        Optional[Dict[str, List[Any]]] = None,
         knowledge_backend: Optional[Any]              = None,
         leader:            Optional[ResolvedAgent]    = None,  # triage → Team config
@@ -74,6 +75,7 @@ class SessionPool:
                     active_agents=active_agents,
                     org_name=org_name,
                     mcp_server=mcp_server,
+                    datasource_runtime=datasource_runtime,
                     skills_map=skills_map,
                     leader=leader,
                     clarify_enabled=clarify_enabled,
@@ -113,8 +115,31 @@ class SessionPool:
         logger.info("pool.invalidated", space_id=space_id, evicted=len(stale))
         return len(stale)
 
+    def invalidate_datasource_runners(self, space_id: str, chatbot_ids: List[str]) -> int:
+        """Evict only production runners whose cached tool set may be stale."""
+        targets = {
+            f"{space_id}:{chatbot_id or 'default'}:team"
+            for chatbot_id in chatbot_ids
+        }
+        if not targets:
+            return 0
+        stale = [key for key in list(self._runners) if key in targets]
+        for key in stale:
+            self.destroy(key)
+        logger.info(
+            "pool.datasource_invalidated",
+            space_id=space_id,
+            chatbot_ids=sorted(chatbot_ids),
+            evicted=len(stale),
+        )
+        return len(stale)
+
     def size(self) -> int:
         return len(self._runners)
+
+    def contains(self, session_id: str) -> bool:
+        """Return whether a runner is already cached without exposing it."""
+        return session_id in self._runners
 
     async def sweep_expired(self) -> int:
         """Evict entries idle longer than ttl_seconds. Called by background task."""

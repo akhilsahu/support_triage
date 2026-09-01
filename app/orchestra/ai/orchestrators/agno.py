@@ -447,6 +447,7 @@ class AgnoOrchestrator:
         # tool/clarification configuration is fixed when the Team is built.
         self.runtime_namespace = runtime_namespace
         self.mcp_server    = mcp_server
+        self.datasource_runtime = None
         self.skills_map    = skills_map or {}
         # Structured result of the last stream() — agent/rag_hit/citations that
         # the text-only SSE stream can't return inline. Read after the generator
@@ -697,13 +698,25 @@ class AgnoOrchestrator:
             if self.runtime_namespace == "production"
             else f"{self.space_id}:{self.chatbot_id or 'default'}:{self.runtime_namespace}:team"
         )
+        datasource_runtime = None
+        effective_cfg = self._effective_cfg()
+        if (
+            self.runtime_namespace == "production"
+            and effective_cfg.tools_enabled
+            and not _pool.contains(pool_key)
+        ):
+            from app.services.datasource.runtime import DataSourceRuntime
+            datasource_runtime = DataSourceRuntime(self.space_id, self.chatbot_id)
+            await datasource_runtime.preload(self.active_agents)
+            self.datasource_runtime = datasource_runtime
         return await _pool.get_or_init(
             session_id=pool_key,
             active_agents=self.active_agents,
             space_id=self.space_id,
             org_name=self.org_name,
-            cfg=self._effective_cfg(),
+            cfg=effective_cfg,
             mcp_server=self.mcp_server,
+            datasource_runtime=datasource_runtime,
             skills_map=self.skills_map,
             knowledge_backend=_get_knowledge_backend(),
             leader=self.leader,

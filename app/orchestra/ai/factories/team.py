@@ -60,6 +60,7 @@ class TeamFactory:
         active_agents:     List[ResolvedAgent],
         org_name:          str,
         mcp_server:        Optional[Any] = None,
+        datasource_runtime: Optional[Any] = None,
         skills_map:        Optional[dict] = None,
         leader:            Optional[ResolvedAgent] = None,
         clarify_enabled:   bool = False,
@@ -77,6 +78,18 @@ class TeamFactory:
                 tools = ToolFactory(cfg).build_from_mcp_server(mcp_server)
             except Exception:
                 logger.exception("team_factory.tools_failed", space_id=space_id)
+
+        tools_by_agent: dict[str, List[Any]] = {}
+        if cfg.tools_enabled and datasource_runtime:
+            try:
+                from app.orchestra.ai.factories.tools import ToolFactory
+                factory = ToolFactory(cfg)
+                tools_by_agent = {
+                    agent.slug: factory.build_for_agent(datasource_runtime, agent)
+                    for agent in active_agents if agent.slug != "triage"
+                }
+            except Exception:
+                logger.exception("team_factory.datasource_tools_failed", space_id=space_id)
 
         memory = None
         if cfg.user_memories_enabled:
@@ -98,6 +111,7 @@ class TeamFactory:
             active_agents=active_agents,
             org_name=org_name,
             tools=tools,
+            tools_by_agent=tools_by_agent,
             memory=memory,
             skills_map=skills_map or {},
             db=db,
@@ -110,6 +124,7 @@ class TeamFactory:
         active_agents: List[ResolvedAgent],
         org_name:      str                = "Support",
         tools:         Optional[List[Any]] = None,
+        tools_by_agent: Optional[dict[str, List[Any]]] = None,
         memory:        Optional[Any]       = None,
         skills_map:    Optional[dict]      = None,  # {slug: [PromptSkill, ...]}
         db:            Optional[Any]       = None,  # Agno session db (leader/standalone)
@@ -155,7 +170,7 @@ class TeamFactory:
         if len(specialists) == 1:
             agent = self.agent_factory.build(
                 specialists[0],
-                tools=tools,
+                tools=(tools_by_agent or {}).get(specialists[0].slug, tools),
                 memory=memory,
                 skills=(skills_map or {}).get(specialists[0].slug, []),
                 db=db,
@@ -170,6 +185,7 @@ class TeamFactory:
         agno_agents = self.agent_factory.build_all(
             specialists,
             tools=tools,
+            tools_by_agent=tools_by_agent,
             memory=None,
             skills_map=skills_map or {},
             clarify_enabled=clarify_enabled,

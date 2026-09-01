@@ -31,10 +31,11 @@ class DynamicAgentExecutor:
     """Executes a brand-specific agent pipeline at runtime."""
 
     def __init__(self, brand: Space = None, active_agents: list[ResolvedAgent] = None,
-                 org: Space = None, mcp_server=None):
+                 org: Space = None, mcp_server=None, datasource_runtime=None):
         self.org = org or brand
         self.active_agents = {a.slug: a for a in (active_agents or [])}
         self.mcp_server = mcp_server   # DataSourceMCPServer, loaded per org per request
+        self.datasource_runtime = datasource_runtime
 
     # ── Public entry point ────────────────────────────────────────────────────
 
@@ -129,7 +130,9 @@ class DynamicAgentExecutor:
 
         # 4. MCP tool call if data sources configured
         mcp_context = ""
-        if self.mcp_server:
+        if self.datasource_runtime and agent:
+            mcp_context = await self._run_datasource_tools(message, agent)
+        elif self.mcp_server:
             mcp_context = await self._run_mcp_tools(message, target_slug)
 
         # 5. Call LLM
@@ -173,6 +176,50 @@ class DynamicAgentExecutor:
             "rag_hit": rag_hit,
             "citations": citations,
         }
+
+    async def _run_datasource_tools(self, message: str, agent: ResolvedAgent) -> str:
+        """Select and execute one tool from the target agent's authorized set."""
+        from app.services.llm_service import llm_service as llm
+
+        definitions = await self.datasource_runtime.refresh_for(agent)
+        if not definitions:
+            return ""
+        names = [definition.name for definition in definitions]
+        decision_result = await llm.generate_with_fallback(
+            messages=[{"role": "user", "content": message}],
+            system_prompt=(
+                "Select a data tool only when live external data is required. "
+                "Return JSON only as {\"call\":\"tool_name\",\"args\":{...}} or "
+                "{\"call\":null}. Available tool schemas: "
+                + json.dumps([definition.as_openai_tool()["function"] for definition in definitions])
+            ),
+            temperature=0.0,
+            max_tokens=250,
+        )
+        if not decision_result:
+            return ""
+        try:
+            raw = decision_result["content"].strip()
+            if raw.startswith("```"):
+                raw = raw.split("```", 2)[1].removeprefix("json").strip()
+            decision = json.loads(raw)
+            requested = decision.get("call")
+            if not requested:
+                return ""
+            definition = next((item for item in definitions if item.name == requested), None)
+            if definition is None:
+                logger.warning("datasource.dynamic_unknown_tool", agent=agent.slug)
+                return ""
+            result = await self.datasource_runtime.execute(
+                agent, definition, decision.get("args") or {},
+            )
+            parsed = json.loads(result)
+            if parsed.get("error"):
+                return "Live data lookup was unavailable. Do not invent or confirm live values."
+            return json.dumps(parsed.get("records", []), separators=(",", ":"))
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            logger.warning("datasource.dynamic_decision_invalid", agent=agent.slug)
+            return ""
 
     async def _run_mcp_tools(self, message: str, agent_slug: str) -> str:
         """

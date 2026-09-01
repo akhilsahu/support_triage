@@ -66,7 +66,16 @@ def build_executor(
 
     # Default: DynamicAgentExecutor — thin adapter normalises the run() signature.
     from app.agents.dynamic_executor import DynamicAgentExecutor
-    _exec = DynamicAgentExecutor(org=org, active_agents=active_agents, mcp_server=None)
+    datasource_runtime = None
+    if runtime_namespace == "production" and chatbot_id:
+        from app.services.datasource.runtime import DataSourceRuntime
+        datasource_runtime = DataSourceRuntime(str(org.id), chatbot_id)
+    _exec = DynamicAgentExecutor(
+        org=org,
+        active_agents=active_agents,
+        mcp_server=None,
+        datasource_runtime=datasource_runtime,
+    )
     _sid  = session_id
     _cid  = conversation_id
 

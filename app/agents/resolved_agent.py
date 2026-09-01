@@ -199,6 +199,10 @@ class ResolvedAgent:
     # "" = off, low/medium/high = on. Applied in LLMFactory.build.
     llm_model:          Optional[str] = None
     reasoning_effort:   Optional[str] = None
+    # Stable persistence identity used for agent-scoped tool authorization.
+    # Kept optional so standalone/demo agents that do not originate in the DB
+    # remain valid but simply receive no data-source tools.
+    source_id:           Optional[str] = None
 
     @property
     def topic_names(self) -> List[str]:
@@ -234,6 +238,7 @@ class ResolvedAgent:
             kb_assignments=[],
             llm_model=config.llm_model,
             reasoning_effort=config.reasoning_effort,
+            source_id=str(config.id),
         )
 
     @classmethod
@@ -273,5 +278,5 @@ class ResolvedAgent:
             fact_sheet=_fact_sheet(agent),
             llm_model=agent.llm_model,
             reasoning_effort=agent.reasoning_effort,
+            source_id=str(agent.id),
         )
-

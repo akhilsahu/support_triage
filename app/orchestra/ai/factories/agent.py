@@ -226,6 +226,7 @@ class AgentFactory:
         self,
         agents: List[ResolvedAgent],
         tools:  Optional[List[Any]] = None,
+        tools_by_agent: Optional[dict[str, List[Any]]] = None,
         memory: Optional[Any]       = None,
         skills_map: Optional[dict]  = None,   # {agent_slug: [PromptSkill, ...]}
         clarify_enabled: bool       = False,
@@ -241,9 +242,10 @@ class AgentFactory:
             clarify_enabled: forwarded to build() — see its docstring
         """
         skills_map = skills_map or {}
+        tools_by_agent = tools_by_agent or {}
         return [
             a for a in (
-                self.build(r, tools=tools, memory=memory, skills=skills_map.get(r.slug, []),
+                self.build(r, tools=tools_by_agent.get(r.slug, tools), memory=memory, skills=skills_map.get(r.slug, []),
                           clarify_enabled=clarify_enabled)
                 for r in agents
             )

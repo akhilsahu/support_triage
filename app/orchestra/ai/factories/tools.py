@@ -60,6 +60,36 @@ class ToolFactory:
         """Use Agno's native MCPTools when server speaks MCP protocol (stdio/SSE)."""
         if not mcp_server or not self.cfg.tools_enabled:
             return []
+
+    def build_for_agent(self, runtime: Any, agent: Any) -> List[Any]:
+        """Convert preloaded, agent-scoped registry definitions to Agno tools."""
+        if not runtime or not self.cfg.tools_enabled:
+            return []
+        try:
+            from agno.tools import Function
+        except ImportError:
+            logger.warning("agno not installed — data source tools unavailable")
+            return []
+
+        tools = []
+        for definition in runtime.definitions_for(agent):
+            def make_tool_fn(current_definition):
+                async def tool_fn(**kwargs):
+                    return await runtime.execute(agent, current_definition, kwargs)
+                return tool_fn
+
+            tool_fn = make_tool_fn(definition)
+
+            tool_fn.__name__ = definition.name
+            tool_fn.__doc__ = definition.description
+            tools.append(Function(
+                name=definition.name,
+                description=definition.description,
+                parameters=definition.input_schema,
+                entrypoint=tool_fn,
+            ))
+        logger.info("tool_factory.agent_tools_built", agent=agent.slug, count=len(tools))
+        return tools
         try:
             from agno.tools.mcp import MCPTools
             return [MCPTools(server=mcp_server)]

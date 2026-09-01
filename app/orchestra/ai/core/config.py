@@ -220,7 +220,7 @@ def build_config(
         mem0_collection     = get("MEM0_COLLECTION") or "agent_memory",
 
         team_mode           = get("TEAM_MODE") or "route",
-        tools_enabled       = False,
+        tools_enabled       = False if standalone else _flag(get("AGNO_TOOLS_ENABLED"), True),
         mcp_enabled         = False,
         session_ttl_seconds = 1800,
         reasoning_effort    = (get("REASONING_EFFORT") or "").strip().lower(),
