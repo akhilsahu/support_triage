@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, Check, ChevronLeft, ChevronRight, FileCode2, Link2, Sparkles, Wand2, X } from 'lucide-react'
+import { AlertCircle, Check, ChevronLeft, ChevronRight, Copy, FileCode2, Link2, Sparkles, Wand2, X } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
@@ -9,6 +9,15 @@ import type { DataSourceDraft, FleetAgent } from './types'
 import { InfoHint, SectionTitle } from './InfoHint'
 
 const STEPS = ['Import', 'Connection', 'Review tool', 'Assign agents', 'Test & activate']
+const CURL_EXAMPLES = {
+  get: `curl --request GET 'https://api.example.com/v1/orders/{order_id}?include=tracking' \\
+  --header 'Accept: application/json' \\
+  --header 'X-API-Key: YOUR_API_KEY'`,
+  post: `curl --request POST 'https://api.example.com/v1/customers/search' \\
+  --header 'Authorization: Bearer YOUR_ACCESS_TOKEN' \\
+  --header 'Content-Type: application/json' \\
+  --data-raw '{"customer_id":"{customer_id}","include_orders":true}'`,
+}
 
 const blankDraft = (): DataSourceDraft => ({
   source_type: 'manual', warnings: [],
@@ -29,6 +38,8 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
   const [step, setStep] = useState(0)
   const [mode, setMode] = useState<'ai' | 'url' | 'advanced'>('ai')
   const [advancedMode, setAdvancedMode] = useState<'openapi' | 'curl' | 'manual'>('openapi')
+  const [curlExample, setCurlExample] = useState<'get' | 'post'>('get')
+  const [copiedExample, setCopiedExample] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [endpointUrl, setEndpointUrl] = useState('')
   const [definition, setDefinition] = useState('')
@@ -174,18 +185,19 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
 
     <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-7">
       {step === 0 && <>
-        <SectionTitle title="What would you like to connect?" help="Start in plain language, paste a complete API URL, or open advanced options when you already have technical API documentation." description="Choose the easiest option for you. Every generated setting is reviewed before anything is saved." />
-        <div className="grid gap-3 md:grid-cols-3">
+        <SectionTitle title="Choose one of the following ways" help="Start in plain language, paste a complete API URL, or open advanced options when you already have technical API documentation." description="Pick the option that matches what you have. You can review every setting before anything is saved." />
+        <div className="grid gap-5 md:grid-cols-[230px_minmax(0,1fr)]">
+        <div role="tablist" aria-label="Data source setup method" className="flex gap-2 overflow-x-auto md:flex-col md:overflow-visible">
           {[
             { value: 'ai', title: 'Describe what you need', text: 'Tell us the outcome in everyday language.', icon: Wand2, badge: 'Recommended' },
             { value: 'url', title: 'Enter API URL', text: 'Paste the complete web address for the data.', icon: Link2 },
             { value: 'advanced', title: 'Advanced import', text: 'Use OpenAPI, cURL, or manual setup.', icon: FileCode2 },
-          ].map(option => <button key={option.value} type="button" onClick={() => { setMode(option.value as typeof mode); setError('') }} className={`relative rounded-2xl border p-4 text-left transition ${mode === option.value ? 'border-indigo-500 bg-indigo-50/70 shadow-sm ring-1 ring-indigo-500 dark:bg-indigo-950/25' : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800/40'}`}>
+          ].map(option => <button key={option.value} role="tab" aria-selected={mode === option.value} type="button" onClick={() => { setMode(option.value as typeof mode); setError('') }} className={`relative min-w-[190px] rounded-xl border p-3 text-left transition md:min-w-0 ${mode === option.value ? 'border-indigo-500 bg-indigo-50/70 shadow-sm ring-1 ring-indigo-500 dark:bg-indigo-950/25' : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800/40'}`}>
             {'badge' in option && <span className="absolute right-3 top-3 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200">{option.badge}</span>}
-            <option.icon className={`mb-3 h-5 w-5 ${mode === option.value ? 'text-indigo-600' : 'text-gray-400'}`} /><span className="block text-sm font-semibold text-gray-900 dark:text-white">{option.title}</span><span className="mt-1 block text-xs leading-relaxed text-gray-500">{option.text}</span>
+            <div className="flex items-start gap-3"><option.icon className={`mt-0.5 h-4 w-4 shrink-0 ${mode === option.value ? 'text-indigo-600' : 'text-gray-400'}`} /><div><span className="block pr-8 text-xs font-semibold text-gray-900 dark:text-white">{option.title}</span><span className="mt-1 block text-[11px] leading-relaxed text-gray-500">{option.text}</span></div></div>
           </button>)}
         </div>
-
+        <div className="min-w-0">
         {mode === 'ai' && <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50 p-5 dark:border-violet-900 dark:from-violet-950/30 dark:to-indigo-950/20">
           <div className="mb-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="rounded-lg bg-white p-2 text-violet-600 shadow-sm dark:bg-gray-900"><Sparkles className="h-4 w-4" /></span><div><h3 className="text-sm font-semibold text-gray-900 dark:text-white">Tell AI what you want to do</h3><p className="text-xs text-gray-500">No technical terms needed. Do not include passwords or API keys.</p></div></div><span className="rounded-full border border-violet-200 bg-white/70 px-2 py-1 text-[10px] font-bold text-violet-700 dark:border-violet-800 dark:bg-gray-900">UI PREVIEW</span></div>
           <textarea aria-label="Describe the data source you need" value={aiPrompt} onChange={event => setAiPrompt(event.target.value)} rows={6} className="w-full rounded-xl border border-violet-200 bg-white p-4 text-sm leading-relaxed text-gray-900 shadow-inner placeholder:text-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-violet-800 dark:bg-gray-900 dark:text-white" placeholder="Example: Connect our order system so the support agent can check delivery status using an order ID." />
@@ -194,7 +206,11 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
 
         {mode === 'url' && <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-950/30"><div className="mb-4 flex items-center gap-1"><h3 className="text-sm font-semibold">Paste the complete API URL</h3><InfoHint label="API URL">Include the full address beginning with https://. Put variable values such as order_id inside braces in the URL.</InfoHint></div><Input label="Full API URL" required value={endpointUrl} onChange={event => setEndpointUrl(event.target.value)} placeholder="https://api.example.com/v1/orders/{order_id}" /><p className="mt-2 text-[11px] leading-relaxed text-gray-500">We will separate the service address and endpoint path for you. You can add authentication on the next screen.</p></div>}
 
-        {mode === 'advanced' && <div className="rounded-2xl border border-gray-200 p-5 dark:border-gray-700"><div className="mb-4"><h3 className="text-sm font-semibold">Advanced setup</h3><p className="mt-1 text-xs text-gray-500">For developers or users with API documentation.</p></div><div className="mb-4 flex flex-wrap gap-2">{(['openapi','curl','manual'] as const).map(value => <button type="button" key={value} onClick={() => setAdvancedMode(value)} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${advancedMode === value ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-200 dark:border-gray-700'}`}>{value === 'openapi' ? 'OpenAPI file' : value === 'curl' ? 'cURL command' : 'Set up manually'}</button>)}</div>{advancedMode !== 'manual' && <textarea aria-label="API definition" value={definition} onChange={e => setDefinition(e.target.value)} rows={8} className="w-full rounded-xl border border-gray-200 bg-transparent p-3 font-mono text-xs dark:border-gray-700" placeholder={advancedMode === 'curl' ? "curl 'https://api.example.com/orders/{order_id}'" : 'Paste OpenAPI 3 JSON or YAML'} />}</div>}
+        {mode === 'advanced' && <div className="rounded-2xl border border-gray-200 p-5 dark:border-gray-700"><div className="mb-4"><h3 className="text-sm font-semibold">Advanced setup</h3><p className="mt-1 text-xs text-gray-500">For developers or users with API documentation.</p></div><div className="mb-4 flex flex-wrap gap-2">{(['openapi','curl','manual'] as const).map(value => <button type="button" key={value} onClick={() => setAdvancedMode(value)} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${advancedMode === value ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-200 dark:border-gray-700'}`}>{value === 'openapi' ? 'OpenAPI file' : value === 'curl' ? 'cURL command' : 'Set up manually'}</button>)}</div>
+          {advancedMode === 'curl' && <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-900 dark:bg-blue-950/20"><div className="flex items-center justify-between gap-3"><div><h4 className="text-xs font-semibold text-gray-900 dark:text-white">Choose an example</h4><p className="mt-1 text-[11px] text-gray-500">Replace the example address and placeholder names with values from your API documentation.</p></div><div role="tablist" className="flex rounded-lg border border-blue-200 bg-white p-1 dark:border-blue-800 dark:bg-gray-900">{(['get','post'] as const).map(value => <button role="tab" aria-selected={curlExample === value} type="button" key={value} onClick={() => { setCurlExample(value); setCopiedExample(false) }} className={`rounded-md px-3 py-1.5 text-[11px] font-bold ${curlExample === value ? 'bg-blue-600 text-white' : 'text-gray-500'}`}>{value.toUpperCase()}</button>)}</div></div><pre className="mt-3 overflow-x-auto rounded-lg bg-gray-950 p-3 text-[11px] leading-relaxed text-blue-100"><code>{CURL_EXAMPLES[curlExample]}</code></pre><div className="mt-3 flex flex-wrap items-center gap-2"><Button size="sm" variant="secondary" onClick={() => setDefinition(CURL_EXAMPLES[curlExample])}>Use this example</Button><button type="button" onClick={async () => { await navigator.clipboard.writeText(CURL_EXAMPLES[curlExample]); setCopiedExample(true) }} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 dark:text-blue-300"><Copy className="h-3.5 w-3.5" />{copiedExample ? 'Copied' : 'Copy'}</button></div><div className="mt-3 grid gap-2 text-[11px] leading-relaxed text-gray-600 sm:grid-cols-2 dark:text-gray-300"><p><strong>GET:</strong> Uses <code>{'{order_id}'}</code> in the path, a tracking query parameter, and an API-key header.</p><p><strong>POST:</strong> Sends <code>{'{customer_id}'}</code> in JSON with a bearer token and Content-Type header.</p></div><p className="mt-3 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-700 dark:bg-amber-950/20 dark:text-amber-300">API keys and tokens are removed during import. Enter the real credential securely on the next screen.</p></div>}
+          {advancedMode !== 'manual' && <><label className="mb-2 block text-xs font-semibold">{advancedMode === 'curl' ? 'Your cURL command' : 'Your OpenAPI definition'}</label><textarea aria-label="API definition" value={definition} onChange={e => setDefinition(e.target.value)} rows={8} className="w-full rounded-xl border border-gray-200 bg-transparent p-3 font-mono text-xs dark:border-gray-700" placeholder={advancedMode === 'curl' ? "Paste your GET or POST cURL command here" : 'Paste OpenAPI 3 JSON or YAML'} /></>}</div>}
+        </div>
+        </div>
       </>}
 
       {step === 1 && <>
