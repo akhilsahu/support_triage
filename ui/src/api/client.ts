@@ -352,6 +352,28 @@ export const apiClient = {
   deleteDataSource: (id: string) =>
     http.delete(`/api/v1/datasources/${id}`).then(r => r.data),
 
+  // Data Source Tool Registry (v2)
+  listDataSourceConnections: () =>
+    http.get('/api/v1/data-sources/connections').then(r => r.data),
+  createDataSourceConnection: (payload: object) =>
+    http.post('/api/v1/data-sources/connections', payload).then(r => r.data),
+  updateDataSourceConnection: (id: string, payload: object) =>
+    http.patch(`/api/v1/data-sources/connections/${id}`, payload).then(r => r.data),
+  deleteDataSourceConnection: (id: string) =>
+    http.delete(`/api/v1/data-sources/connections/${id}`).then(r => r.data),
+  listDataSourceTools: (connectionId?: string) =>
+    http.get('/api/v1/data-sources/tools', { params: connectionId ? { connection_id: connectionId } : {} }).then(r => r.data),
+  createDataSourceTool: (payload: object) =>
+    http.post('/api/v1/data-sources/tools', payload).then(r => r.data),
+  updateDataSourceTool: (id: string, payload: object) =>
+    http.patch(`/api/v1/data-sources/tools/${id}`, payload).then(r => r.data),
+  deleteDataSourceTool: (id: string) =>
+    http.delete(`/api/v1/data-sources/tools/${id}`).then(r => r.data),
+  replaceDataSourceAssignments: (toolId: string, payload: object) =>
+    http.put(`/api/v1/data-sources/tools/${toolId}/assignments`, payload).then(r => r.data),
+  testDataSourceTool: (toolId: string, payload: object) =>
+    http.post(`/api/v1/data-sources/tools/${toolId}/execute-test`, payload).then(r => r.data),
+
   // Org Knowledge Base (legacy chunks viewer)
   getDocChunks: (docId: string) =>
     http.get(`/api/v1/org/kb/${docId}/chunks`).then(r => r.data),

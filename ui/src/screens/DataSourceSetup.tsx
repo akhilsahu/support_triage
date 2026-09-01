@@ -6,6 +6,7 @@ import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { apiClient } from '../api/client'
 import { BUILTIN_AGENTS } from '../config/agents'
+import { useAppStore } from '../store/useAppStore'
 
 
 const CANONICAL_FIELDS = [
@@ -27,6 +28,15 @@ interface DataSource {
   method: string
   active: boolean
   created_at: string
+  connection_id?: string
+}
+
+interface OrgAgent {
+  id: string
+  slug: string
+  name: string
+  active: boolean
+  is_builtin: boolean
 }
 
 const DYNAMIC_RE = /\{[^}]+\}/
@@ -87,6 +97,7 @@ export function DataSourceSetup() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const defaultAgent = params.get('agent') || ''
+  const currentChatbotId = useAppStore(s => s.currentChatbotId)
 
   // Form state
   const [name,        setName]       = useState('')
@@ -111,6 +122,7 @@ export function DataSourceSetup() {
 
   // Data Sources listing state
   const [dataSources, setDataSources] = useState<DataSource[]>([])
+  const [availableAgents, setAvailableAgents] = useState<OrgAgent[]>([])
   const [loadingSources, setLoadingSources] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
 
@@ -118,8 +130,31 @@ export function DataSourceSetup() {
     const load = async () => {
       setLoadingSources(true)
       try {
-        const list = await apiClient.listDataSources()
-        setDataSources(list)
+        const [connections, tools, agents] = await Promise.all([
+          apiClient.listDataSourceConnections(),
+          apiClient.listDataSourceTools(),
+          apiClient.listOrgAgents(currentChatbotId),
+        ])
+        setAvailableAgents(agents)
+        const byConnection = new Map(connections.map((item: any) => [item.id, item]))
+        setDataSources(tools.map((tool: any) => {
+          const connection: any = byConnection.get(tool.connection_id) || {}
+          return {
+            id: tool.id,
+            connection_id: tool.connection_id,
+            name: tool.display_name || tool.name,
+            agent_type: 'Assigned agent',
+            api_url: `${connection.base_url || ''}${tool.path || ''}`,
+            auth_type: connection.auth_type || 'none',
+            method: tool.method,
+            active: tool.status === 'active',
+            created_at: tool.created_at,
+          }
+        }))
+        if (defaultAgent && !agentType) {
+          const match = agents.find((agent: OrgAgent) => agent.slug === defaultAgent && agent.active)
+          if (match) setAgentType(match.id)
+        }
         if (defaultAgent) {
           setIsAdding(true)
         }
@@ -130,7 +165,7 @@ export function DataSourceSetup() {
       }
     }
     load()
-  }, [defaultAgent])
+  }, [defaultAgent, currentChatbotId])
 
   const toObj = (rows: KV[]) => Object.fromEntries(rows.filter(r => r.key).map(r => [r.key, r.value]))
 
@@ -206,19 +241,81 @@ export function DataSourceSetup() {
         try { parsedBody = JSON.parse(reqBody) }
         catch { throw new Error('Request body is not valid JSON.') }
       }
-      await apiClient.createDataSource({
+      if (!currentChatbotId) throw new Error('Select a chatbot before assigning a data source.')
+      const selectedAgent = availableAgents.find(agent => agent.id === agentType && agent.active)
+      if (!selectedAgent) throw new Error('Select an active target agent.')
+      const endpoint = new URL(apiUrl)
+      const safeDefaultHeaders = Object.fromEntries(
+        headers.filter(row => ['accept','content-type','accept-language'].includes(row.key.toLowerCase()))
+          .map(row => [row.key, row.value]),
+      )
+      const dynamicHeaders = Object.fromEntries(
+        headers.filter(row => !['accept','content-type','accept-language'].includes(row.key.toLowerCase()))
+          .map(row => [row.key, row.value]),
+      )
+      const connection = await apiClient.createDataSourceConnection({
         name,
-        agent_type:      agentType,
-        api_url:         apiUrl,
-        method,
-        auth_type:       authType,
-        auth_value:      authValue,
-        auth_header:     authHeader,
-        request_headers: toObj(headers),
-        request_params:  toObj(reqParams),
-        request_body:    parsedBody,
-        field_mapping:   fieldMapping,
+        base_url: endpoint.origin,
+        auth_type: authType,
+        auth_header: authHeader,
+        secret: authValue || null,
+        default_headers: safeDefaultHeaders,
       })
+      const requestTemplate = {
+        query: toObj(reqParams),
+        headers: dynamicHeaders,
+        body: parsedBody || {},
+      }
+      const templateText = JSON.stringify({ path: endpoint.pathname, ...requestTemplate })
+      const placeholders = Array.from(new Set(Array.from(templateText.matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g), match => match[1])))
+      const toolStem = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'lookup'
+      const toolName = `${toolStem.slice(0, 48)}_${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`
+      const tool = await apiClient.createDataSourceTool({
+        connection_id: connection.id,
+        name: toolName,
+        display_name: name,
+        description: `Retrieve live data from ${name}`,
+        method,
+        path: endpoint.pathname || '/',
+        risk_classification: 'read',
+        input_schema: {
+          type: 'object',
+          properties: Object.fromEntries(placeholders.map(key => [key, { type: 'string' }])),
+          required: placeholders,
+          additionalProperties: false,
+        },
+        request_template: requestTemplate,
+        output_mapping: fieldMapping,
+        record_path: '',
+        max_records: 25,
+      })
+      await apiClient.replaceDataSourceAssignments(tool.id, {
+        chatbot_id: currentChatbotId,
+        assignments: [{
+          agent_kind: selectedAgent.is_builtin ? 'builtin' : 'custom',
+          agent_id: selectedAgent.id,
+          enabled: true,
+        }],
+      })
+      const testArguments = Object.fromEntries(placeholders.map(key => [key, `{${key}}`]))
+      const test = await apiClient.testDataSourceTool(tool.id, {
+        chatbot_id: currentChatbotId,
+        arguments: testArguments,
+      })
+      if (test.outcome === 'success') {
+        await apiClient.updateDataSourceTool(tool.id, { status: 'active' })
+      }
+      setDataSources(current => [{
+        id: tool.id,
+        connection_id: connection.id,
+        name,
+        agent_type: selectedAgent.id,
+        api_url: apiUrl,
+        auth_type: authType,
+        method,
+        active: test.outcome === 'success',
+        created_at: new Date().toISOString(),
+      }, ...current])
       const isStandalone = window.location.pathname.startsWith('/app/agents/datasource')
       if (isStandalone) {
         navigate('/app/agents')
@@ -245,18 +342,17 @@ export function DataSourceSetup() {
   }
 
   const handleDeleteDs = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this data source?')) return
+    if (!confirm('Disable this data source tool? Existing test history will be preserved.')) return
     try {
-      await apiClient.deleteDataSource(id)
-      const fresh = await apiClient.listDataSources()
-      setDataSources(fresh)
+      await apiClient.updateDataSourceTool(id, { status: 'disabled' })
+      setDataSources(current => current.map(item => item.id === id ? { ...item, active: false } : item))
     } catch (e) {
-      alert('Failed to delete data source.')
+      alert('Failed to disable data source.')
     }
   }
 
   const agentNameOf = (type: string) => {
-    const found = BUILTIN_AGENTS.find(a => a.type === type)
+    const found = availableAgents.find(a => a.id === type) || BUILTIN_AGENTS.find(a => a.type === type)
     return found ? found.name : type
   }
 
@@ -333,7 +429,7 @@ export function DataSourceSetup() {
                     Auth: <span className="font-semibold text-gray-500 dark:text-gray-300 font-mono">{(ds.auth_type || 'none').toUpperCase()}</span>
                   </span>
                   <button onClick={() => handleDeleteDs(ds.id)} className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-600 font-medium transition-colors cursor-pointer">
-                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                    <Trash2 className="w-3.5 h-3.5" /> Disable
                   </button>
                 </div>
               </div>
@@ -384,8 +480,8 @@ export function DataSourceSetup() {
               onChange={e => setAgentType(e.target.value)}
             >
               <option value="">Select agent…</option>
-              {BUILTIN_AGENTS.filter(a => a.slug !== 'triage').map(a => (
-                <option key={a.slug} value={a.type}>{a.name}</option>
+              {availableAgents.filter(a => a.active && a.slug !== 'triage').map(a => (
+                <option key={a.id} value={a.id}>{a.name}{a.is_builtin ? '' : ' (Custom)'}</option>
               ))}
             </Select>
           </div>
