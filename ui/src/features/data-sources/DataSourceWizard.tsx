@@ -8,7 +8,7 @@ import { dataSourceOnboardingApi } from './api'
 import type { DataSourceDraft, FleetAgent } from './types'
 import { InfoHint, SectionTitle } from './InfoHint'
 
-const STEPS = ['Import', 'Connection', 'Review tool', 'Assign agents', 'Test & activate']
+const STEPS = ['Import', 'Connection', 'Review & save', 'Assign agent']
 const CURL_EXAMPLES = {
   get: `curl --request GET 'https://api.example.com/v1/orders/{order_id}?include=tracking' \\
   --header 'Accept: application/json' \\
@@ -50,21 +50,19 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
   const [credential, setCredential] = useState('')
   const [agentId, setAgentId] = useState('')
   const [sampleText, setSampleText] = useState('')
-  const [testArgs, setTestArgs] = useState('{}')
   const [aiApplied, setAiApplied] = useState(false)
   const [pendingAnalysis, setPendingAnalysis] = useState<any>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [testResult, setTestResult] = useState<any>(null)
   const [connectionArgs, setConnectionArgs] = useState<Record<string, string>>({})
   const [connectionTest, setConnectionTest] = useState<any>(null)
   const [sampleSource, setSampleSource] = useState<'validated' | 'manual' | null>(null)
   const [observedFields, setObservedFields] = useState<string[]>([])
+  const [savedToolId, setSavedToolId] = useState('')
+  const [savedStatus, setSavedStatus] = useState<'draft' | 'active' | null>(null)
 
   const selectableAgents = agents.filter(agent => agent.active && agent.slug !== 'triage')
-  const fingerprint = useMemo(() => JSON.stringify({ draft, credential, agentId, testArgs }), [draft, credential, agentId, testArgs])
-  useEffect(() => setTestResult(null), [fingerprint])
   const inputNames = Object.keys((draft.tool.input_schema?.properties || {}) as Record<string, unknown>)
   const queryInputNames = new Set(Object.values(draft.tool.request_template.query || {}).flatMap(value => {
     const match = String(value).match(/^\{([A-Za-z_][A-Za-z0-9_]*)\}$/)
@@ -88,8 +86,9 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
     if (step !== 1) return
     setConnectionArgs(current => Object.fromEntries(inputNames.map(name => [name, current[name] || ''])))
   }, [step, JSON.stringify(inputNames)])
-  const hasChanges = step > 0 || Boolean(aiPrompt.trim() || endpointUrl.trim() || definition.trim() || credential || agentId || sampleText.trim())
+  const hasChanges = !savedToolId && (step > 0 || Boolean(aiPrompt.trim() || endpointUrl.trim() || definition.trim() || credential || agentId || sampleText.trim()))
   const requestClose = () => {
+    if (savedToolId) { onComplete(); return }
     if (!hasChanges || window.confirm('Discard this data source draft? Your entries will be lost.')) onCancel()
   }
   useEffect(() => {
@@ -98,7 +97,7 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
     document.body.style.overflow = 'hidden'
     window.addEventListener('keydown', closeOnEscape)
     return () => { window.removeEventListener('keydown', closeOnEscape); document.body.style.overflow = previousOverflow }
-  }, [hasChanges, busy])
+  }, [hasChanges, busy, savedToolId])
 
   const updateConnection = (field: string, value: unknown) => setDraft(current => ({
     ...current, connection: { ...current.connection, [field]: value },
@@ -227,18 +226,7 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
     } catch (e) { setError(messageOf(e)) } finally { setBusy(false) }
   }
 
-  const runTest = async () => {
-    if (!chatbotId) { setError('Select a chatbot before testing.'); return }
-    setError(''); setBusy(true)
-    try {
-      const args = JSON.parse(testArgs)
-      const result = await dataSourceOnboardingApi.test(draft, chatbotId, credential, args)
-      setTestResult({ ...result, fingerprint })
-    } catch (e) { setError(messageOf(e)) } finally { setBusy(false) }
-  }
-
-  const activate = async () => {
-    if (!chatbotId || !agentId || testResult?.failure || testResult?.fingerprint !== fingerprint) return
+  const saveSource = async () => {
     setError(''); setBusy(true)
     try {
       const connection = await apiClient.createDataSourceConnection({
@@ -249,18 +237,38 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
       const tool = await apiClient.createDataSourceTool({
         connection_id: connection.id, ...draft.tool, risk_classification: 'read', max_records: 25,
       })
-      const agent = selectableAgents.find(value => value.id === agentId)!
-      await apiClient.replaceDataSourceAssignments(tool.id, { chatbot_id: chatbotId, assignments: [{ agent_kind: agent.is_builtin ? 'builtin' : 'custom', agent_id: agent.id, enabled: true }] })
-      const persistedTest = await apiClient.testDataSourceTool(tool.id, { chatbot_id: chatbotId, arguments: JSON.parse(testArgs) })
-      if (persistedTest.outcome !== 'success') throw new Error(persistedTest.failure?.message || 'Final test failed; the tool remains a draft.')
-      await apiClient.updateDataSourceTool(tool.id, { status: 'active' })
+      let status: 'draft' | 'active' = 'draft'
+      const validationIsCurrent = !connectionTest?.failure && connectionTest?.fingerprint === connectionFingerprint
+      if (chatbotId && validationIsCurrent) {
+        const persistedTest = await apiClient.testDataSourceTool(tool.id, { chatbot_id: chatbotId, arguments: connectionArgs })
+        if (persistedTest.outcome === 'success') {
+          await apiClient.updateDataSourceConnection(connection.id, { status: 'active' })
+          await apiClient.updateDataSourceTool(tool.id, { status: 'active' })
+          status = 'active'
+        } else {
+          setError(persistedTest.failure?.message || 'The source was saved as a draft because its final validation failed.')
+        }
+      }
+      setSavedToolId(tool.id)
+      setSavedStatus(status)
+      setStep(3)
+    } catch (e) { setError(messageOf(e)) } finally { setBusy(false) }
+  }
+
+  const assignAgent = async () => {
+    if (!savedToolId || !chatbotId || !agentId) return
+    const agent = selectableAgents.find(value => value.id === agentId)
+    if (!agent) return
+    setError(''); setBusy(true)
+    try {
+      await apiClient.replaceDataSourceAssignments(savedToolId, { chatbot_id: chatbotId, assignments: [{ agent_kind: agent.is_builtin ? 'builtin' : 'custom', agent_id: agent.id, enabled: true }] })
       onComplete()
     } catch (e) { setError(messageOf(e)) } finally { setBusy(false) }
   }
 
   const canContinue = step === 1
     ? Boolean(draft.connection.name && draft.connection.base_url && (!draft.connection.credential_required || credential))
-    : step === 2 ? Boolean(draft.tool.name && draft.tool.path) : step === 3 ? Boolean(agentId && chatbotId) : true
+    : step === 2 ? Boolean(draft.tool.name && draft.tool.path) : true
 
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/55 p-3 backdrop-blur-sm sm:p-6" onMouseDown={event => { if (event.target === event.currentTarget && !busy) requestClose() }}>
     <div role="dialog" aria-modal="true" aria-labelledby="datasource-wizard-title" className="flex h-[92vh] w-[min(1240px,96vw)] flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
@@ -268,7 +276,7 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
         <div><div className="flex items-center gap-2"><span className="rounded-lg bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-950/40"><Sparkles className="h-4 w-4" /></span><div><h1 id="datasource-wizard-title" className="text-base font-semibold text-gray-950 dark:text-white">Add data source</h1><p className="text-xs text-gray-500">Connect an API and make it available to a fleet agent</p></div></div></div>
         <button aria-label="Close data source setup" onClick={requestClose} disabled={busy} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-gray-200"><X className="h-5 w-5" /></button>
       </header>
-      <ol aria-label="Data source setup progress" className="grid shrink-0 grid-cols-5 gap-1 border-b border-gray-100 px-4 py-3 lg:hidden dark:border-gray-800">
+      <ol aria-label="Data source setup progress" className="grid shrink-0 grid-cols-4 gap-1 border-b border-gray-100 px-4 py-3 lg:hidden dark:border-gray-800">
         {STEPS.map((label, index) => <li key={label} className={`rounded-xl border p-3 text-xs ${index === step ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30' : index < step ? 'border-emerald-200 text-emerald-700' : 'border-gray-200 text-gray-400'}`}>
           <span className="block font-bold">{index < step ? <Check className="w-3 h-3 inline" /> : index + 1}</span><span className="hidden sm:block mt-1">{label}</span>
         </li>)}
@@ -276,7 +284,7 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-60 shrink-0 border-r border-gray-200 bg-gray-50/70 p-5 lg:block dark:border-gray-800 dark:bg-gray-950/30">
           <ol className="space-y-2">{STEPS.map((label, index) => <li key={label} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-xs font-medium ${index === step ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-gray-800' : index < step ? 'text-emerald-700' : 'text-gray-400'}`}><span className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold ${index === step ? 'bg-indigo-600 text-white' : index < step ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500 dark:bg-gray-800'}`}>{index < step ? <Check className="h-3.5 w-3.5" /> : index + 1}</span>{label}</li>)}</ol>
-          <div className="mt-8 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3 text-[11px] leading-relaxed text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-300">Draft settings stay in this modal until the final activation step.</div>
+          <div className="mt-8 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3 text-[11px] leading-relaxed text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-300">The source is saved after review. Assigning it to an agent is optional.</div>
         </aside>
         <main className="min-w-0 flex-1 overflow-y-auto bg-gray-50/40 px-5 py-6 dark:bg-gray-950/10 sm:px-8 lg:px-10">
           <div className="mx-auto w-full max-w-4xl space-y-4">
@@ -356,16 +364,14 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
                 {showAdvanced && <div className="grid md:grid-cols-2 gap-4"><label className="text-xs font-semibold">Input schema<textarea value={JSON.stringify(draft.tool.input_schema, null, 2)} onChange={e => { try { updateTool('input_schema', JSON.parse(e.target.value)) } catch { } }} rows={9} className="mt-2 w-full rounded-xl border p-3 font-mono font-normal" /></label><label className="text-xs font-semibold">Request template<textarea value={JSON.stringify(draft.tool.request_template, null, 2)} onChange={e => { try { updateTool('request_template', JSON.parse(e.target.value)) } catch { } }} rows={9} className="mt-2 w-full rounded-xl border p-3 font-mono font-normal" /></label></div>}
               </>}
 
-              {step === 3 && <><SectionTitle title="Agent assignment" help="Only the selected active agent receives this tool. Triage and inactive agents are intentionally excluded." description="Choose who can use this data source during customer conversations." /><div className="max-w-xl"><Select label="Target Fleet Agent" required value={agentId} onChange={e => setAgentId(e.target.value)}><option value="">Select agent…</option>{selectableAgents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}{agent.is_builtin ? '' : ' (Custom)'}</option>)}</Select></div></>}
-
-              {step === 4 && <><SectionTitle title="Test and activate" help="The temporary test does not save registry rows. After it succeeds, Save and activate performs one final persisted test before activation." description="Provide realistic arguments and verify the upstream response before saving." /><label className="block text-xs font-semibold">Test arguments (JSON)<textarea value={testArgs} onChange={e => setTestArgs(e.target.value)} rows={6} className="mt-2 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-transparent p-3 font-mono font-normal" /></label>{testResult && <div className={`rounded-xl p-4 text-xs ${testResult.failure ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{testResult.failure ? testResult.failure.message : `Success — ${testResult.records?.length || 0} record(s) returned.`}</div>}</>}
+              {step === 3 && <><div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-100"><div className="flex items-center gap-2 text-sm font-bold"><Check className="h-5 w-5" />Data source saved</div><p className="mt-1 text-xs">The tool was saved as <strong>{savedStatus === 'active' ? 'active' : 'a draft'}</strong>. Agent assignment is optional and can also be done later from the Agent page.</p></div><SectionTitle title="Assign an agent—or skip for now" help="Assignment controls which agent can call this tool. Skipping does not remove or change the saved data source." description="Choose an agent now, or finish and assign the tool later from an agent's settings." /><div className="max-w-xl"><Select label="Target Fleet Agent (optional)" value={agentId} onChange={e => setAgentId(e.target.value)}><option value="">Select agent…</option>{selectableAgents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}{agent.is_builtin ? '' : ' (Custom)'}</option>)}</Select></div></>}
             </section>
           </div>
         </main>
       </div>
       <footer className="flex shrink-0 items-center justify-between border-t border-gray-200 bg-white px-5 py-4 dark:border-gray-800 dark:bg-gray-900 sm:px-7">
-        <div>{step > 0 && <Button variant="secondary" onClick={() => setStep(value => value - 1)} disabled={busy}><ChevronLeft className="w-4 h-4" /> Back</Button>}</div>
-        <div className="flex flex-wrap justify-end gap-2">{step === 0 && <Button onClick={importDefinition} loading={busy} disabled={(mode === 'ai' && !aiPrompt.trim()) || (mode === 'url' && !endpointUrl.trim()) || (mode === 'advanced' && advancedMode !== 'manual' && !definition.trim())}>{mode === 'ai' ? 'Create setup with AI' : 'Continue'} <ChevronRight className="w-4 h-4" /></Button>}{step > 0 && step < 4 && <Button onClick={() => setStep(value => value + 1)} disabled={!canContinue || busy}>Continue <ChevronRight className="w-4 h-4" /></Button>}{step === 4 && <><Button variant="secondary" onClick={runTest} loading={busy}>Run temporary test</Button><Button onClick={activate} loading={busy} disabled={!testResult || Boolean(testResult.failure) || testResult.fingerprint !== fingerprint}>Save and activate</Button></>}</div>
+        <div>{step > 0 && step < 3 && <Button variant="secondary" onClick={() => setStep(value => value - 1)} disabled={busy}><ChevronLeft className="w-4 h-4" /> Back</Button>}</div>
+        <div className="flex flex-wrap justify-end gap-2">{step === 0 && <Button onClick={importDefinition} loading={busy} disabled={(mode === 'ai' && !aiPrompt.trim()) || (mode === 'url' && !endpointUrl.trim()) || (mode === 'advanced' && advancedMode !== 'manual' && !definition.trim())}>{mode === 'ai' ? 'Create setup with AI' : 'Continue'} <ChevronRight className="w-4 h-4" /></Button>}{step === 1 && <Button onClick={() => setStep(2)} disabled={!canContinue || busy}>Review tool <ChevronRight className="w-4 h-4" /></Button>}{step === 2 && <Button onClick={saveSource} loading={busy} disabled={!canContinue}>Save data source <ChevronRight className="w-4 h-4" /></Button>}{step === 3 && <><Button variant="secondary" onClick={onComplete} disabled={busy}>Skip for now</Button><Button onClick={assignAgent} loading={busy} disabled={!agentId || !chatbotId}>Assign agent</Button></>}</div>
       </footer>
     </div>
   </div>
