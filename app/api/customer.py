@@ -351,9 +351,21 @@ async def _maybe_escalate(
         row = (await db.execute(
             select(_CS).where(_CS.id == uuid.UUID(session_id))
         )).scalar_one_or_none()
-        turn = (row.message_count or 0) + 1
+        # Guard against row being None — without this, AttributeError is
+        # swallowed and (worse) a genuine DB error leaves the transaction
+        # aborted without a rollback, poisoning every later query on this
+        # session (InFailedSQLTransactionError).
+        if row:
+            turn = (row.message_count or 0) + 1
     except Exception:
-        pass
+        logger.warning(
+            "customer_chat.escalation_turn_count_failed",
+            session_id=session_id,
+            space_id=str(org.id),
+        )
+        # Critical: rollback the aborted transaction so downstream DB
+        # operations (_persist_turn, _persist_thoughts) can still succeed.
+        await db.rollback()
 
     explicit = result.get("reply", "").strip() == "__ESCALATE__" or result.get("escalate")
     auto     = should_escalate(result, turn_count=turn)
@@ -402,6 +414,10 @@ async def _maybe_escalate(
             chatbot_id=str(chatbot.id),
             session_id=session_id,
         )
+        # Critical: rollback the poisoned transaction so _persist_turn can
+        # still commit the customer's message and the AI reply.  Without this,
+        # every subsequent db.execute() fails with InFailedSQLTransactionError.
+        await db.rollback()
 
 
 async def _persist_turn(
@@ -756,7 +772,15 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
 
         # 4. Persist both turns and return
         elapsed_ms = int((time.time() - t0) * 1000)
-        session_id, message_id = await _persist_turn(db, org, chatbot, session_id, result, elapsed_ms, req.message, customer)
+        try:
+            session_id, message_id = await _persist_turn(db, org, chatbot, session_id, result, elapsed_ms, req.message, customer)
+        except Exception:
+            # Safety net: if the session is still in a failed transaction
+            # state (e.g. from an unhandled _maybe_escalate DB error),
+            # rollback and retry the persist once before giving up.
+            logger.warning("customer_chat.persist_retry", session_id=session_id, slug=slug)
+            await db.rollback()
+            session_id, message_id = await _persist_turn(db, org, chatbot, session_id, result, elapsed_ms, req.message, customer)
         await _persist_thoughts(db, org, chatbot, session_id, message_id, result)
         try:
             assistant_message_id = uuid.UUID(message_id)
@@ -919,9 +943,20 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
                 }
             elapsed_ms = int((time.time() - t0) * 1000)
             await _maybe_escalate(db, chatbot, org, result, session_id, req.message)
-            _, message_id = await _persist_turn(
-                db, org, chatbot, session_id, result, elapsed_ms, req.message
-            )
+            try:
+                _, message_id = await _persist_turn(
+                    db, org, chatbot, session_id, result, elapsed_ms, req.message
+                )
+            except Exception:
+                # Safety net: if the session is still in a failed transaction
+                # state (e.g. from an unhandled _maybe_escalate DB error),
+                # rollback and retry the persist once before giving up.
+                logger.warning("customer_chat_stream.persist_retry",
+                               session_id=session_id, slug=slug)
+                await db.rollback()
+                _, message_id = await _persist_turn(
+                    db, org, chatbot, session_id, result, elapsed_ms, req.message
+                )
             # Per-delta segments for faithful replay — only when reasoning
             # actually streamed live (reasoning_chunks non-empty).
             segments = [{"seq": i, "content": c} for i, c in enumerate(reasoning_chunks)] or None
