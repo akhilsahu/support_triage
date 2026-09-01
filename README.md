@@ -1005,7 +1005,9 @@ Outbound URL checks reject private/mixed DNS answers and revalidate redirects.
 Production must additionally block private, loopback, link-local, and metadata
 destinations at the firewall or outbound proxy because HTTPX cannot pin a
 validated DNS answer while preserving hostname/TLS behavior through its public
-API.
+API. Apply and verify the environment-specific checklist in
+[`docs/deployment/datasource-egress.md`](docs/deployment/datasource-egress.md)
+before enabling tenant-configured tools in production.
 
 #### `space_data_sources`
 External API connectors for live data (e.g. order status, CRM lookups).

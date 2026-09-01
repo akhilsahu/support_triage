@@ -15,24 +15,22 @@ depends_on = None
 
 
 def upgrade():
-    # Add eta_seconds (Integer)
-    op.add_column(
-        "ingestion_jobs",
+    # Some development databases received these model columns through an
+    # earlier create_all run before the Alembic revision was stamped. Keep the
+    # migration safe for both clean databases and those drifted installations.
+    existing = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("ingestion_jobs")}
+    columns = (
         sa.Column("eta_seconds", sa.Integer(), nullable=True),
-    )
-    # Add context_enriched (Boolean, default False)
-    op.add_column(
-        "ingestion_jobs",
         sa.Column("context_enriched", sa.Boolean(), nullable=True, server_default=sa.false()),
-    )
-    # Add ai_cost_usd (Float, default 0.0)
-    op.add_column(
-        "ingestion_jobs",
         sa.Column("ai_cost_usd", sa.Float(), nullable=True, server_default="0.0"),
     )
+    for column in columns:
+        if column.name not in existing:
+            op.add_column("ingestion_jobs", column)
 
 
 def downgrade():
-    op.drop_column("ingestion_jobs", "ai_cost_usd")
-    op.drop_column("ingestion_jobs", "context_enriched")
-    op.drop_column("ingestion_jobs", "eta_seconds")
+    existing = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("ingestion_jobs")}
+    for name in ("ai_cost_usd", "context_enriched", "eta_seconds"):
+        if name in existing:
+            op.drop_column("ingestion_jobs", name)

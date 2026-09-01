@@ -1,26 +1,10 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom'
 import { API_CONFIG } from './config/api'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Layout } from './components/layout/Layout'
-import { Dashboard } from './screens/Dashboard'
 import { DynamicHome, DynamicLogin, DynamicHowItWorks, DynamicPricing } from './screens/home/ThemeSwitcher'
-import { Chat } from './screens/Chat'
-import { Agents } from './screens/Agents'
-import { KnowledgeBase } from './screens/KnowledgeBase'
-import { Analytics } from './screens/Analytics'
-import { Evaluations } from './screens/Evaluations'
-import { Settings } from './screens/Settings'
-import { Integrations } from './screens/Integrations'
 import { NotFound } from './screens/NotFound'
-import { SuperAdmin } from './screens/SuperAdmin'
-import { DataSourceSetup } from './screens/DataSourceSetup'
-import { CustomerChat } from './screens/CustomerChat'
-import { Inbox } from './screens/Inbox'
-import { TestChat } from './screens/TestChat'
-import { EmbedWidget } from './screens/EmbedWidget'
-import { ChatbotProfile } from './screens/ChatbotProfile'
-import { OnboardingWizard } from './screens/OnboardingWizard'
 import { ForgotPassword } from './screens/ForgotPassword'
 import { ResetPassword } from './screens/ResetPassword'
 import { VerifyEmail } from './screens/VerifyEmail'
@@ -32,6 +16,23 @@ import { useAppStore } from './store/useAppStore'
 
 import { apiClient } from './api/client'
 import { RouteSeo } from './lib/RouteSeo'
+
+const Dashboard = lazy(() => import('./screens/Dashboard').then(module => ({ default: module.Dashboard })))
+const Chat = lazy(() => import('./screens/Chat').then(module => ({ default: module.Chat })))
+const Agents = lazy(() => import('./screens/Agents').then(module => ({ default: module.Agents })))
+const KnowledgeBase = lazy(() => import('./screens/KnowledgeBase').then(module => ({ default: module.KnowledgeBase })))
+const Analytics = lazy(() => import('./screens/Analytics').then(module => ({ default: module.Analytics })))
+const Evaluations = lazy(() => import('./screens/Evaluations').then(module => ({ default: module.Evaluations })))
+const Settings = lazy(() => import('./screens/Settings').then(module => ({ default: module.Settings })))
+const Integrations = lazy(() => import('./screens/Integrations').then(module => ({ default: module.Integrations })))
+const SuperAdmin = lazy(() => import('./screens/SuperAdmin').then(module => ({ default: module.SuperAdmin })))
+const DataSourceSetup = lazy(() => import('./screens/DataSourceSetup').then(module => ({ default: module.DataSourceSetup })))
+const CustomerChat = lazy(() => import('./screens/CustomerChat').then(module => ({ default: module.CustomerChat })))
+const Inbox = lazy(() => import('./screens/Inbox').then(module => ({ default: module.Inbox })))
+const TestChat = lazy(() => import('./screens/TestChat').then(module => ({ default: module.TestChat })))
+const EmbedWidget = lazy(() => import('./screens/EmbedWidget').then(module => ({ default: module.EmbedWidget })))
+const ChatbotProfile = lazy(() => import('./screens/ChatbotProfile').then(module => ({ default: module.ChatbotProfile })))
+const OnboardingWizard = lazy(() => import('./screens/OnboardingWizard').then(module => ({ default: module.OnboardingWizard })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -104,7 +105,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <RouteSeo />
-        <Routes>
+        <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-sm text-gray-500">Loading…</div>}><Routes>
           {/* ── Marketing / landing (root namespace, reserved) ── */}
           <Route path="/" element={<DynamicHome />} />
           <Route path="/about" element={<AboutPage />} />
@@ -159,7 +160,7 @@ export default function App() {
           />
 
           <Route path="*" element={<NotFound />} />
-        </Routes>
+        </Routes></Suspense>
       </BrowserRouter>
     </QueryClientProvider>
   )
