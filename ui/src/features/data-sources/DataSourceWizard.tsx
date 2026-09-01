@@ -58,10 +58,19 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [testResult, setTestResult] = useState<any>(null)
+  const [connectionArgs, setConnectionArgs] = useState<Record<string, string>>({})
+  const [connectionTest, setConnectionTest] = useState<any>(null)
 
   const selectableAgents = agents.filter(agent => agent.active && agent.slug !== 'triage')
   const fingerprint = useMemo(() => JSON.stringify({ draft, credential, agentId, testArgs }), [draft, credential, agentId, testArgs])
   useEffect(() => setTestResult(null), [fingerprint])
+  const inputNames = Object.keys((draft.tool.input_schema?.properties || {}) as Record<string, unknown>)
+  const connectionFingerprint = useMemo(() => JSON.stringify({ draft, credential, connectionArgs }), [draft, credential, connectionArgs])
+  useEffect(() => setConnectionTest(null), [connectionFingerprint])
+  useEffect(() => {
+    if (step !== 1) return
+    setConnectionArgs(current => Object.fromEntries(inputNames.map(name => [name, current[name] || ''])))
+  }, [step, JSON.stringify(inputNames)])
   const hasChanges = step > 0 || Boolean(aiPrompt.trim() || endpointUrl.trim() || definition.trim() || credential || agentId || sampleText.trim())
   const requestClose = () => {
     if (!hasChanges || window.confirm('Discard this data source draft? Your entries will be lost.')) onCancel()
@@ -80,6 +89,21 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
   const updateTool = (field: string, value: unknown) => setDraft(current => ({
     ...current, tool: { ...current.tool, [field]: value },
   }))
+  const updateQuery = (key: string, value: string) => setDraft(current => ({
+    ...current,
+    tool: { ...current.tool, request_template: {
+      ...current.tool.request_template,
+      query: { ...(current.tool.request_template.query || {}), [key]: value },
+    } },
+  }))
+
+  const renderedRequestUrl = useMemo(() => {
+    const render = (value: string) => Object.entries(connectionArgs).reduce(
+      (current, [name, replacement]) => current.split(`{${name}}`).join(replacement || `{${name}}`), value,
+    )
+    const query = Object.entries(draft.tool.request_template.query || {}).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(render(String(value)))}`).join('&')
+    return `${draft.connection.base_url}${render(draft.tool.path)}${query ? `?${query}` : ''}`
+  }, [draft, connectionArgs])
 
   const importDefinition = async () => {
     setError('')
@@ -136,6 +160,16 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
       const result = await dataSourceOnboardingApi.analyze(draft, sample, useAI)
       if (result.ai_used) setPendingAnalysis(result)
       else { setDraft(result.draft); setPendingAnalysis(null); setAiApplied(false) }
+    } catch (e) { setError(messageOf(e)) } finally { setBusy(false) }
+  }
+
+  const validateConnection = async () => {
+    if (!chatbotId) { setError('Select a chatbot before validating the request.'); return }
+    if (inputNames.some(name => !connectionArgs[name]?.trim())) { setError('Enter a test value for every required user input.'); return }
+    setError(''); setBusy(true)
+    try {
+      const result = await dataSourceOnboardingApi.test(draft, chatbotId, credential, connectionArgs)
+      setConnectionTest({ ...result, fingerprint: connectionFingerprint })
     } catch (e) { setError(messageOf(e)) } finally { setBusy(false) }
   }
 
@@ -229,6 +263,13 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
         {draft.source_type === 'ai' && <div className="rounded-xl border border-violet-300 bg-violet-50 p-4 text-xs text-violet-950 dark:border-violet-700 dark:bg-violet-950/30 dark:text-violet-100"><div className="flex items-center gap-2 font-semibold"><Sparkles className="h-4 w-4" />AI-generated draft</div><p className="mt-1 text-violet-700 dark:text-violet-300">Review the highlighted setup. Complete the remaining items before testing.</p>{aiMissing.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5">{aiMissing.map(item => <li key={item}>{item}</li>)}</ul>}</div>}
         {drafts.length > 1 && <Select label="OpenAPI operation" value={String(draftIndex)} onChange={e => selectOperation(Number(e.target.value))}>{drafts.map((value, index) => <option key={`${value.tool.name}-${index}`} value={index}>{value.tool.method} {value.tool.path} — {value.tool.display_name}</option>)}</Select>}
         <div className="grid md:grid-cols-2 gap-4"><Input label="Connection name" required value={draft.connection.name} onChange={e => updateConnection('name', e.target.value)} /><Input label="Base URL" required value={draft.connection.base_url} onChange={e => updateConnection('base_url', e.target.value)} /></div>
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 dark:border-indigo-800 dark:bg-indigo-950/20"><div className="mb-4 flex items-center gap-1"><h3 className="text-xs font-semibold uppercase tracking-wide text-indigo-900 dark:text-indigo-100">Generated request</h3><InfoHint label="Generated request">These values determine the request sent to the service. Placeholders in braces are replaced with user input at runtime.</InfoHint></div><div className="grid gap-3 sm:grid-cols-[100px_minmax(0,1fr)]"><div><span className="text-[10px] font-bold uppercase text-gray-500">Method</span><p className="mt-1 font-mono text-xs font-semibold text-indigo-700 dark:text-indigo-300">{draft.tool.method}</p></div><div><span className="text-[10px] font-bold uppercase text-gray-500">Path</span><Input value={draft.tool.path} onChange={event => updateTool('path', event.target.value)} /></div></div>
+          {Object.keys(draft.tool.request_template.query || {}).length > 0 && <div className="mt-4"><span className="text-[10px] font-bold uppercase text-gray-500">Query parameters</span><div className="mt-2 grid gap-2">{Object.entries(draft.tool.request_template.query || {}).map(([key, value]) => <div key={key} className="grid grid-cols-[minmax(100px,0.35fr)_minmax(0,1fr)] items-center gap-2"><code className="rounded-lg bg-white px-3 py-2 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-200">{key}</code><Input aria-label={`${key} query template`} value={String(value)} onChange={event => updateQuery(key, event.target.value)} /></div>)}</div></div>}
+          <div className="mt-4"><span className="text-[10px] font-bold uppercase text-gray-500">Required user inputs</span>{inputNames.length ? <div className="mt-2 grid gap-3 sm:grid-cols-2">{inputNames.map(name => <Input key={name} label={name} required value={connectionArgs[name] || ''} onChange={event => setConnectionArgs(current => ({ ...current, [name]: event.target.value }))} placeholder={`Test value for ${name}`} />)}</div> : <p className="mt-1 text-xs text-gray-500">No dynamic inputs detected.</p>}</div>
+          <div className="mt-4 rounded-lg bg-white p-3 dark:bg-gray-900"><span className="text-[10px] font-bold uppercase text-gray-500">Request preview</span><p className="mt-1 break-all font-mono text-xs text-gray-700 dark:text-gray-200">{renderedRequestUrl}</p></div>
+          <div className="mt-4 flex items-center gap-3"><Button size="sm" variant="secondary" onClick={validateConnection} loading={busy}>Validate request</Button><span className="text-[11px] text-gray-500">Runs once without saving this data source.</span></div>
+          {connectionTest && <div className={`mt-3 rounded-lg border p-3 text-xs ${connectionTest.failure ? 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200' : 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200'}`}><div className="flex flex-wrap gap-3 font-semibold"><span>{connectionTest.failure ? 'Request failed' : 'Request succeeded'}</span>{connectionTest.status_code && <span>HTTP {connectionTest.status_code}</span>}{connectionTest.latency_ms != null && <span>{connectionTest.latency_ms} ms</span>}</div>{connectionTest.failure ? <p className="mt-2">{connectionTest.failure.message}</p> : <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{JSON.stringify(connectionTest.records?.slice(0, 3) || [], null, 2)}</pre>}</div>}
+        </div>
         <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-gray-950/30"><div className="mb-4 flex items-center gap-1"><h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Authentication</h3><InfoHint label="Authentication">Credentials are encrypted when saved and are never included in import previews or AI analysis.</InfoHint></div><div className="grid md:grid-cols-3 gap-4"><Select label="Authentication type" value={draft.connection.auth_type} onChange={e => updateConnection('auth_type', e.target.value)}><option value="none">None</option><option value="bearer">Bearer token</option><option value="api_key">API key</option><option value="basic">Basic authentication</option></Select><Input label="Auth header" value={draft.connection.auth_header} onChange={e => updateConnection('auth_header', e.target.value)} /><Input type="password" label="Credential" required={draft.connection.credential_required} value={credential} onChange={e => setCredential(e.target.value)} /></div></div>
       </>}
 

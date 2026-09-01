@@ -7,12 +7,14 @@ import re
 import shlex
 from dataclasses import dataclass, replace
 from typing import Any
+from urllib.parse import parse_qsl, quote, urlsplit, urlunsplit
 
 from app.services.datasource.contracts import DataSourceDraft
 from app.services.datasource.importer import parse_curl
 
 
 _URL = re.compile(r"(?:(?:https?://)?(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?::\d+)?(?:/[^\s,]*)?)")
+_MARKDOWN_URL = re.compile(r"\[[^\]]*\]\((https?://[^)]+)\)|\[(https?://[^\]]+)\]")
 _CREDENTIAL = re.compile(
     r"(?i)(?:authorization\s*:|bearer\s+(?!token\b|authentication\b|auth\b)[A-Za-z0-9._~+/=-]{12,}|api[_ -]?key\s*[:=]|password\s*[:=]|secret\s*[:=])"
 )
@@ -39,12 +41,28 @@ async def describe_data_source(description: str, *, use_ai: bool = True) -> Desc
     if _CREDENTIAL.search(text):
         raise ValueError("Remove passwords, API keys, tokens, and authorization values from the description")
 
+    markdown_match = _MARKDOWN_URL.search(text)
     match = _URL.search(text)
     if not match:
         return DescribeResult(None, ("Add the complete API URL, for example https://api.example.com/orders/{id}",))
-    url = match.group(0).rstrip(".;:)")
+    url = (next((value for value in markdown_match.groups() if value), "") if markdown_match else match.group(0)).rstrip(".;:)")
     if not url.lower().startswith(("http://", "https://")):
         url = "https://" + url
+    # Convert query values described as user inputs into placeholders. The URL
+    # remains authoritative for parameter names; prose may only make an existing
+    # parameter dynamic, never invent a new one.
+    dynamic_inputs = {
+        value.lower() for value in re.findall(
+            r"(?i)\b([A-Za-z_][A-Za-z0-9_]*)\b\s+(?:will\s+be|is)\s+(?:input(?:ted)?|provided|entered|supplied)(?:\s+by\s+(?:the\s+)?user)?",
+            text,
+        )
+    }
+    parsed_url = urlsplit(url)
+    query_parts = []
+    for key, value in parse_qsl(parsed_url.query, keep_blank_values=True):
+        rendered = "{" + key + "}" if key.lower() in dynamic_inputs else value
+        query_parts.append(f"{quote(key, safe='')}={quote(rendered, safe='{}')}")
+    url = urlunsplit((parsed_url.scheme, parsed_url.netloc, parsed_url.path, "&".join(query_parts), ""))
     method = "POST" if re.search(r"(?i)\b(post|submit|send)\b", text) else "GET"
     draft = parse_curl(f"curl --request {method} {shlex.quote(url)}")
 
