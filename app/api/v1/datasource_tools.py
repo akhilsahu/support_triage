@@ -27,6 +27,7 @@ from app.schemas.datasource import (
     ConnectionUpdate,
     ExecuteTestRequest,
     DataSourceAnalyzeRequest,
+    DataSourceDescribeRequest,
     DataSourceImportRequest,
     DraftExecuteTestRequest,
     ToolCreate,
@@ -34,6 +35,7 @@ from app.schemas.datasource import (
 )
 from app.services.datasource.contracts import DataSourceDraft, DraftConnection, DraftTool, ExecutionContext, ToolConfig
 from app.services.datasource.analyzer import analyze_sample
+from app.services.datasource.assistant import describe_data_source
 from app.services.datasource.executor import DataSourceExecutor
 from app.services.datasource.importer import DataSourceImportError, parse_curl, parse_openapi
 from app.services.datasource.sanitizer import sanitize_mapping
@@ -74,6 +76,16 @@ async def import_draft(req: DataSourceImportRequest, space=Depends(current_space
     except DataSourceImportError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"drafts": [asdict(draft) for draft in drafts]}
+
+
+@router.post("/describe")
+async def describe_draft(req: DataSourceDescribeRequest, space=Depends(current_space)):
+    """Generate a reviewable draft from a credential-free plain-language request."""
+    del space
+    try:
+        return sanitize_mapping(asdict(await describe_data_source(req.description, use_ai=req.use_ai)))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/analyze")

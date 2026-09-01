@@ -41,6 +41,7 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
   const [curlExample, setCurlExample] = useState<'get' | 'post'>('get')
   const [copiedExample, setCopiedExample] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
+  const [aiMissing, setAiMissing] = useState<string[]>([])
   const [endpointUrl, setEndpointUrl] = useState('')
   const [definition, setDefinition] = useState('')
   const [drafts, setDrafts] = useState<DataSourceDraft[]>([])
@@ -83,7 +84,17 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
   const importDefinition = async () => {
     setError('')
     if (mode === 'ai') {
-      setError('AI setup is shown for interface review only. Once approved, this action will generate a reviewable draft without sending credentials.')
+      setBusy(true)
+      try {
+        const result = await dataSourceOnboardingApi.describe(aiPrompt)
+        if (!result.draft) {
+          setAiMissing(result.missing_information)
+          setError('Add the missing information below so AI can create the setup.')
+          return
+        }
+        setDraft({ ...result.draft, warnings: [...(result.draft.warnings || []), ...result.missing_information] })
+        setDrafts([]); setAiMissing(result.missing_information); setAiApplied(result.ai_used); setStep(1)
+      } catch (e) { setError(messageOf(e)) } finally { setBusy(false) }
       return
     }
     if (mode === 'url') {
@@ -198,9 +209,10 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
         </div>
         <div role="tabpanel" className="min-w-0 bg-white p-4 dark:bg-gray-900 sm:p-5">
         {mode === 'ai' && <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50 p-5 dark:border-violet-900 dark:from-violet-950/30 dark:to-indigo-950/20">
-          <div className="mb-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="rounded-lg bg-white p-2 text-violet-600 shadow-sm dark:bg-gray-900"><Sparkles className="h-4 w-4" /></span><div><h3 className="text-sm font-semibold text-gray-900 dark:text-white">Tell AI what you want to do</h3><p className="text-xs text-gray-500">No technical terms needed. Do not include passwords or API keys.</p></div></div><span className="rounded-full border border-violet-200 bg-white/70 px-2 py-1 text-[10px] font-bold text-violet-700 dark:border-violet-800 dark:bg-gray-900">UI PREVIEW</span></div>
-          <textarea aria-label="Describe the data source you need" value={aiPrompt} onChange={event => setAiPrompt(event.target.value)} rows={6} className="w-full rounded-xl border border-violet-200 bg-white p-4 text-sm leading-relaxed text-gray-900 shadow-inner placeholder:text-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-violet-800 dark:bg-gray-900 dark:text-white" placeholder="Example: Connect our order system so the support agent can check delivery status using an order ID." />
+          <div className="mb-3 flex items-center gap-2"><span className="rounded-lg bg-violet-600 p-2 text-white shadow-sm"><Sparkles className="h-4 w-4" /></span><div><h3 className="text-sm font-semibold text-violet-950 dark:text-violet-100">Tell AI what you want to do</h3><p className="text-xs text-violet-700 dark:text-violet-300">Use everyday language. Never include passwords, API keys, or access tokens.</p></div></div>
+          <textarea aria-label="Describe the data source you need" value={aiPrompt} onChange={event => { setAiPrompt(event.target.value); setAiMissing([]); setError('') }} rows={6} className="w-full rounded-xl border-2 border-violet-300 bg-white p-4 text-sm leading-relaxed text-gray-950 shadow-inner placeholder:text-gray-500 focus:border-violet-600 focus:outline-none focus:ring-4 focus:ring-violet-500/20 dark:border-violet-700 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-400" placeholder="Example: Fetch data from xyz.com/{id}. The customer will provide the ID." />
           <div className="mt-3 flex flex-wrap gap-2">{['Check an order status', 'Look up a customer account', 'Find shipment tracking'].map(example => <button type="button" key={example} onClick={() => setAiPrompt(example)} className="rounded-full border border-violet-200 bg-white/70 px-3 py-1.5 text-[11px] font-medium text-violet-700 hover:bg-white dark:border-violet-800 dark:bg-gray-900">{example}</button>)}</div>
+          {aiMissing.length > 0 && <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100"><strong className="block mb-1">AI still needs:</strong><ul className="list-disc space-y-1 pl-4">{aiMissing.map(item => <li key={item}>{item}</li>)}</ul></div>}
         </div>}
 
         {mode === 'url' && <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-950/30"><div className="mb-4 flex items-center gap-1"><h3 className="text-sm font-semibold">Paste the complete API URL</h3><InfoHint label="API URL">Include the full address beginning with https://. Put variable values such as order_id inside braces in the URL.</InfoHint></div><Input label="Full API URL" required value={endpointUrl} onChange={event => setEndpointUrl(event.target.value)} placeholder="https://api.example.com/v1/orders/{order_id}" /><p className="mt-2 text-[11px] leading-relaxed text-gray-500">We will separate the service address and endpoint path for you. You can add authentication on the next screen.</p></div>}
@@ -214,6 +226,7 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
 
       {step === 1 && <>
         <SectionTitle title="Connection identity" help="The base URL identifies the upstream service. Tool paths are appended to it later." description="Confirm where requests will be sent. Imported credentials are always removed." />
+        {draft.source_type === 'ai' && <div className="rounded-xl border border-violet-300 bg-violet-50 p-4 text-xs text-violet-950 dark:border-violet-700 dark:bg-violet-950/30 dark:text-violet-100"><div className="flex items-center gap-2 font-semibold"><Sparkles className="h-4 w-4" />AI-generated draft</div><p className="mt-1 text-violet-700 dark:text-violet-300">Review the highlighted setup. Complete the remaining items before testing.</p>{aiMissing.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5">{aiMissing.map(item => <li key={item}>{item}</li>)}</ul>}</div>}
         {drafts.length > 1 && <Select label="OpenAPI operation" value={String(draftIndex)} onChange={e => selectOperation(Number(e.target.value))}>{drafts.map((value, index) => <option key={`${value.tool.name}-${index}`} value={index}>{value.tool.method} {value.tool.path} — {value.tool.display_name}</option>)}</Select>}
         <div className="grid md:grid-cols-2 gap-4"><Input label="Connection name" required value={draft.connection.name} onChange={e => updateConnection('name', e.target.value)} /><Input label="Base URL" required value={draft.connection.base_url} onChange={e => updateConnection('base_url', e.target.value)} /></div>
         <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-gray-950/30"><div className="mb-4 flex items-center gap-1"><h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Authentication</h3><InfoHint label="Authentication">Credentials are encrypted when saved and are never included in import previews or AI analysis.</InfoHint></div><div className="grid md:grid-cols-3 gap-4"><Select label="Authentication type" value={draft.connection.auth_type} onChange={e => updateConnection('auth_type', e.target.value)}><option value="none">None</option><option value="bearer">Bearer token</option><option value="api_key">API key</option><option value="basic">Basic authentication</option></Select><Input label="Auth header" value={draft.connection.auth_header} onChange={e => updateConnection('auth_header', e.target.value)} /><Input type="password" label="Credential" required={draft.connection.credential_required} value={credential} onChange={e => setCredential(e.target.value)} /></div></div>

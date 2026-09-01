@@ -355,6 +355,8 @@ export const apiClient = {
   // Data Source Tool Registry (v2)
   importDataSourceDraft: (payload: { kind: 'curl' | 'openapi'; content: string; operation_id?: string }) =>
     http.post('/api/v1/data-sources/import', payload).then(r => r.data),
+  describeDataSourceDraft: (payload: { description: string; use_ai?: boolean }) =>
+    http.post('/api/v1/data-sources/describe', payload).then(r => r.data),
   analyzeDataSourceDraft: (payload: object) =>
     http.post('/api/v1/data-sources/analyze', payload).then(r => r.data),
   testDataSourceDraft: (payload: object) =>

@@ -134,6 +134,11 @@ class DataSourceImportRequest(ApiModel):
         return self
 
 
+class DataSourceDescribeRequest(ApiModel):
+    description: str = Field(min_length=3, max_length=5000)
+    use_ai: bool = True
+
+
 class DataSourceAnalyzeRequest(ApiModel):
     draft: DataSourceDraftInput
     sample: Any

@@ -2,6 +2,11 @@ import { apiClient } from '../../api/client'
 import type { DataSourceDraft } from './types'
 
 export const dataSourceOnboardingApi = {
+  async describe(description: string) {
+    return apiClient.describeDataSourceDraft({ description, use_ai: true }) as Promise<{
+      draft: DataSourceDraft | null; missing_information: string[]; ai_used: boolean
+    }>
+  },
   async import(kind: 'curl' | 'openapi', content: string) {
     return apiClient.importDataSourceDraft({ kind, content }) as Promise<{ drafts: DataSourceDraft[] }>
   },
