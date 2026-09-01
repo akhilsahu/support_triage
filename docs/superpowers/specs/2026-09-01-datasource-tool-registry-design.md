@@ -306,6 +306,10 @@ also prevent a stale runner from executing a changed or disabled definition.
 - Enforce connect/read/total timeouts, response byte limits, record limits, and
   per-space concurrency/rate limits.
 - Verify TLS and do not expose a user-facing disable-verification option.
+- Production deployment must enforce an outbound firewall or proxy that blocks
+  private, loopback, link-local, and cloud metadata ranges. HTTPX 0.28 has no
+  supported per-request resolved-IP pinning hook, so application DNS checks and
+  network egress policy jointly mitigate the remaining DNS-rebinding race.
 - Redact secrets and sensitive headers from logs, diagnostics, and model input.
 - Treat tool results as untrusted data and clearly delimit them in prompts.
 - Permit only read-classified operations in the first release.

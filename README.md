@@ -970,6 +970,26 @@ Reusable prompt fragments that can be attached to custom agents.
 
 ### Data Sources
 
+The current runtime uses a tool registry rather than binding one API directly
+to an agent type. Management endpoints are available under
+`/api/v1/data-sources` and separate:
+
+- `data_source_connections`: base URL and encrypted authentication secret;
+- `data_source_tools`: one read-only REST operation and its JSON schemas;
+- `agent_tool_assignments`: chatbot-specific built-in/custom agent access;
+- `data_source_test_runs`: sanitized activation diagnostics.
+
+Tools remain drafts until their current revision passes an execution test.
+Production runners receive only tools assigned to the selected active agent;
+configuration changes invalidate the affected chatbot runner. Phase 1 permits
+`GET` and explicitly read-classified lookup `POST` operations.
+
+Outbound URL checks reject private/mixed DNS answers and revalidate redirects.
+Production must additionally block private, loopback, link-local, and metadata
+destinations at the firewall or outbound proxy because HTTPX cannot pin a
+validated DNS answer while preserving hostname/TLS behavior through its public
+API.
+
 #### `space_data_sources`
 External API connectors for live data (e.g. order status, CRM lookups).
 

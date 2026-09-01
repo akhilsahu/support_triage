@@ -1,206 +1,76 @@
-"""
-OrchestraSupport MCP Server — Data Source Tools
+"""Compatibility adapter exposing the application tool registry as MCP-like tools.
 
-Single MCP server for all orgs. Flow:
-  1. Caller passes space_id (from JWT) when initialising a session
-  2. Server looks up all SpaceDataSource rows for that org
-  3. Exposes one tool per agent_type: get_order(order_id), etc.
-  4. Each tool resolves the right data source, substitutes {id} placeholders,
-     calls the org's API, normalises the response, and returns canonical records.
-
-No per-org server processes. One server, multi-tenant by space_id.
+The canonical implementation lives in ``app.services.datasource``. This module
+contains no HTTP, credential, tenancy, or response-mapping logic.
 """
 
 from __future__ import annotations
 
-import json
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
-import httpx
-import structlog
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.agents.resolved_agent import ResolvedAgent
+from app.services.datasource.contracts import ExecutionContext
+from app.services.datasource.registry import DataSourceToolRegistry, ToolDefinition
+from app.services.datasource.runtime import identity_for
 
-from app.core.encryption import decrypt
-from app.models.datasource import SpaceDataSource
-
-logger = structlog.get_logger()
-
-# ── Placeholder substitution ──────────────────────────────────────────────────
-
-def _substitute(template: Any, inputs: Dict[str, str]) -> Any:
-    """Replace {key} placeholders with runtime values — works on str/dict/list."""
-    if isinstance(template, str):
-        for k, v in inputs.items():
-            template = template.replace(f"{{{k}}}", v)
-        return template
-    if isinstance(template, dict):
-        return {k: _substitute(v, inputs) for k, v in template.items()}
-    if isinstance(template, list):
-        return [_substitute(i, inputs) for i in template]
-    return template
-
-
-# ── Auth header builder ───────────────────────────────────────────────────────
-
-def _build_auth_headers(auth_type: str, auth_value: str, auth_header: str) -> Dict[str, str]:
-    if auth_type == "bearer" and auth_value:
-        return {"Authorization": f"Bearer {auth_value}"}
-    if auth_type == "api_key" and auth_value:
-        return {auth_header: auth_value}
-    if auth_type == "basic" and auth_value:
-        return {"Authorization": f"Basic {auth_value}"}
-    return {}
-
-
-# ── Core fetch logic ──────────────────────────────────────────────────────────
-
-async def _fetch_from_datasource(
-    ds: SpaceDataSource,
-    user_inputs: Dict[str, str],
-) -> Dict[str, Any]:
-    """
-    Resolve placeholders, call the org's API, return raw response.
-    Decrypts auth_value at call time — never stored decrypted.
-    """
-    resolved_params = _substitute(ds.request_params, user_inputs)
-    resolved_body   = _substitute(ds.request_body, user_inputs) or None
-    resolved_url    = _substitute(ds.api_url, user_inputs)
-
-    headers = _build_auth_headers(ds.auth_type, decrypt(ds.auth_value), ds.auth_header)
-    headers.update(ds.request_headers)
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.request(
-            method  = ds.method or "GET",
-            url     = resolved_url,
-            headers = headers,
-            params  = resolved_params,
-            json    = resolved_body,
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-
-def _normalize_records(ds: SpaceDataSource, raw: Any) -> List[Dict[str, Any]]:
-    """Extract list of records from raw response and apply field mapping."""
-    if isinstance(raw, list):
-        records = raw
-    elif isinstance(raw, dict):
-        # Find the first list value (handles wrappers like {"orders": [...], "total": N})
-        records = next(
-            (v for v in raw.values() if isinstance(v, list) and v and isinstance(v[0], dict)),
-            [raw],
-        )
-    else:
-        records = []
-    return [ds.normalize(r) for r in records if isinstance(r, dict)]
-
-
-# ── MCP Tool registry ─────────────────────────────────────────────────────────
 
 class DataSourceMCPServer:
-    """
-    Multi-tenant MCP tool executor.
+    """Backward-compatible list/call facade over ``DataSourceToolRegistry``.
 
-    Usage:
-        server = DataSourceMCPServer(db, space_id)
-        await server.load()                          # loads org's data sources from DB
-        tools = server.tool_definitions()            # pass to LLM as tool specs
-        result = await server.call_tool("get_order", {"order_id": "ORD-1001"})
+    New callers provide a chatbot and resolved agent. The older space-only
+    constructor remains accepted but exposes no tools, failing closed instead
+    of reviving the former agent-type-wide authorization model.
     """
 
-    def __init__(self, db: AsyncSession, space_id: UUID):
-        self.db = db
-        self.space_id = space_id
-        self._sources: Dict[str, SpaceDataSource] = {}   # agent_type → data source
+    def __init__(
+        self,
+        db,
+        space_id: UUID,
+        chatbot_id: UUID | None = None,
+        agent: ResolvedAgent | None = None,
+    ) -> None:
+        self.context = (
+            ExecutionContext(space_id=space_id, chatbot_id=chatbot_id)
+            if chatbot_id is not None else None
+        )
+        self.agent = agent
+        self._registry = DataSourceToolRegistry(db)
+        self._definitions: dict[str, ToolDefinition] = {}
 
     async def load(self) -> None:
-        """Load all active data sources for this org from DB."""
-        result = await self.db.execute(
-            select(SpaceDataSource).where(
-                SpaceDataSource.space_id == self.space_id,
-                SpaceDataSource.active == True,
-            )
+        identity = identity_for(self.agent) if self.agent else None
+        if not self.context or not identity:
+            self._definitions = {}
+            return
+        definitions = await self._registry.list_tools(
+            self.context, identity.agent_id, identity.agent_kind,
         )
-        for ds in result.scalars().all():
-            self._sources[ds.agent_type] = ds
-        logger.info("MCP server loaded", space_id=str(self.space_id), sources=list(self._sources.keys()))
+        self._definitions = {definition.name: definition for definition in definitions}
 
-    def tool_definitions(self) -> List[Dict[str, Any]]:
-        """
-        Return OpenAI-compatible tool specs for all loaded data sources.
-        The LLM sees these as callable tools.
-        """
-        tools = []
-        for agent_type, ds in self._sources.items():
-            # Detect dynamic {placeholder} params from stored config
-            dynamic_keys = _extract_placeholders(ds.request_params) | \
-                           _extract_placeholders(ds.request_body)    | \
-                           _extract_placeholders(ds.api_url)
+    def tool_definitions(self) -> list[dict[str, Any]]:
+        return [definition.as_openai_tool() for definition in self._definitions.values()]
 
-            properties = {}
-            required   = []
-            for key in dynamic_keys:
-                properties[key] = {
-                    "type": "string",
-                    "description": f"Value to substitute for {{{key}}} in the {agent_type} API request",
-                }
-                required.append(key)
-
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name":        f"get_{agent_type}",
-                    "description": f"Fetch {agent_type} data from {ds.name}. "
-                                   f"Returns normalized records in canonical schema.",
-                    "parameters": {
-                        "type":       "object",
-                        "properties": properties,
-                        "required":   required,
-                    },
-                },
-            })
-        return tools
-
-    async def call_tool(self, tool_name: str, args: Dict[str, str]) -> Dict[str, Any]:
-        """
-        Execute a tool call from the LLM.
-        tool_name format: get_{agent_type}  e.g. get_order, get_logistics
-        """
-        # Extract agent_type from tool name
-        if not tool_name.startswith("get_"):
-            return {"error": f"Unknown tool: {tool_name}"}
-
-        agent_type = tool_name[4:]   # strip "get_"
-        ds = self._sources.get(agent_type)
-        if not ds:
+    async def call_tool(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+        definition = self._definitions.get(tool_name)
+        identity = identity_for(self.agent) if self.agent else None
+        if not definition or not identity or not self.context:
+            return {"error": "tool_unavailable"}
+        result = await self._registry.execute(
+            self.context,
+            identity.agent_id,
+            identity.agent_kind,
+            definition.tool_id,
+            args,
+            expected_revision=definition.revision,
+        )
+        if result.failure:
             return {
-                "error": f"No active data source configured for agent type '{agent_type}'.",
-                "available": list(self._sources.keys()),
+                "error": result.failure.code,
+                "message": result.failure.message,
+                "retryable": result.failure.retryable,
             }
-
-        try:
-            raw      = await _fetch_from_datasource(ds, args)
-            records  = _normalize_records(ds, raw)
-            logger.info("MCP tool called", tool=tool_name, space_id=str(self.space_id), records=len(records))
-            return {
-                "source":  ds.name,
-                "count":   len(records),
-                "records": records,
-            }
-        except httpx.HTTPStatusError as e:
-            return {"error": f"API returned {e.response.status_code}: {e.response.text[:200]}"}
-        except Exception as e:
-            logger.error("MCP tool error", tool=tool_name, error=str(e))
-            return {"error": str(e)}
+        return {"count": len(result.records), "records": result.records}
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _extract_placeholders(value: Any) -> set:
-    """Find all {key} placeholders in a string, dict, or list."""
-    text = json.dumps(value) if not isinstance(value, str) else value
-    return set(re.findall(r'\{(\w+)\}', text))
+__all__ = ["DataSourceMCPServer"]
