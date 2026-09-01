@@ -48,18 +48,23 @@ def build_session_db(cfg: AgnoConfig) -> Optional[Any]:
             if not cfg.session_db_url:
                 logger.warning("session.db.no_url", store=store)
                 return None
+            
+            # Agno's PostgresDb and our preflight check both require a sync driver (psycopg2).
+            # If the user passed an asyncpg URL (e.g. from DATABASE_URL), strip it so it defaults to sync.
+            sync_url = cfg.session_db_url.replace("+asyncpg", "")
+
             # PostgresDb construction is lazy — it does NOT connect. A missing or
             # unreachable `agno_sessions` database would otherwise surface only at
             # first history/memory access inside arun(), which the orchestrator
             # turns into a generic fallback reply (chat appears broken). Preflight
             # the connection here: on failure, degrade to stateless (return None,
             # loud error) so chat keeps working without session persistence.
-            if not _postgres_reachable(cfg.session_db_url):
+            if not _postgres_reachable(sync_url):
                 logger.error("session.db.unreachable", store="postgres",
                              hint="create the agno_sessions database or set SESSION_STORE=none")
                 return None
             from agno.db.postgres import PostgresDb
-            db = PostgresDb(db_url=cfg.session_db_url, db_schema=cfg.session_db_schema)
+            db = PostgresDb(db_url=sync_url, db_schema=cfg.session_db_schema)
             logger.info("session.db.ready", store="postgres", schema=cfg.session_db_schema)
             return db
 
