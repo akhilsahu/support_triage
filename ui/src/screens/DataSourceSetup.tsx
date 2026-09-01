@@ -7,6 +7,7 @@ import { Select } from '../components/ui/Select'
 import { apiClient } from '../api/client'
 import { BUILTIN_AGENTS } from '../config/agents'
 import { useAppStore } from '../store/useAppStore'
+import { DataSourceWizard } from '../features/data-sources/DataSourceWizard'
 
 
 const CANONICAL_FIELDS = [
@@ -470,6 +471,21 @@ export function DataSourceSetup() {
         )}
       </div>
     )
+  }
+
+  if (isAdding) {
+    return <DataSourceWizard
+      chatbotId={currentChatbotId}
+      agents={availableAgents}
+      onCancel={() => {
+        if (window.location.pathname.startsWith('/app/agents/datasource')) navigate('/app/agents')
+        else setIsAdding(false)
+      }}
+      onComplete={() => {
+        if (window.location.pathname.startsWith('/app/agents/datasource')) navigate('/app/agents')
+        else window.location.reload()
+      }}
+    />
   }
 
   const isStandalone = window.location.pathname.startsWith('/app/agents/datasource')

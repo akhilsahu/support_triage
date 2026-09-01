@@ -994,6 +994,13 @@ and are never included in draft or analysis responses. The temporary
 `/import`, `/analyze`, and `/test` endpoints do not create registry rows;
 activation continues through the persisted test-and-activate lifecycle.
 
+The guided screen moves through Import, Connection, Tool Review, Agent
+Assignment, and Test & Activate. OpenAPI documents with multiple supported
+operations show an operation selector. Advanced schema/template JSON stays
+collapsed by default, AI mappings require explicit confirmation, and any edit
+after a temporary successful test invalidates that result. Only an active,
+non-triage agent belonging to the selected chatbot can be assigned.
+
 Outbound URL checks reject private/mixed DNS answers and revalidate redirects.
 Production must additionally block private, loopback, link-local, and metadata
 destinations at the firewall or outbound proxy because HTTPX cannot pin a
