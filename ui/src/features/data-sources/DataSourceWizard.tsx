@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, Check, ChevronLeft, ChevronRight, Sparkles, X } from 'lucide-react'
+import { AlertCircle, Check, ChevronLeft, ChevronRight, FileCode2, Link2, Sparkles, Wand2, X } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
@@ -27,7 +27,10 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
   onComplete: () => void
 }) {
   const [step, setStep] = useState(0)
-  const [mode, setMode] = useState<'curl' | 'openapi' | 'manual'>('curl')
+  const [mode, setMode] = useState<'ai' | 'url' | 'advanced'>('ai')
+  const [advancedMode, setAdvancedMode] = useState<'openapi' | 'curl' | 'manual'>('openapi')
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [endpointUrl, setEndpointUrl] = useState('')
   const [definition, setDefinition] = useState('')
   const [drafts, setDrafts] = useState<DataSourceDraft[]>([])
   const [draftIndex, setDraftIndex] = useState(0)
@@ -47,7 +50,7 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
   const selectableAgents = agents.filter(agent => agent.active && agent.slug !== 'triage')
   const fingerprint = useMemo(() => JSON.stringify({ draft, credential, agentId, testArgs }), [draft, credential, agentId, testArgs])
   useEffect(() => setTestResult(null), [fingerprint])
-  const hasChanges = step > 0 || Boolean(definition.trim() || credential || agentId || sampleText.trim())
+  const hasChanges = step > 0 || Boolean(aiPrompt.trim() || endpointUrl.trim() || definition.trim() || credential || agentId || sampleText.trim())
   const requestClose = () => {
     if (!hasChanges || window.confirm('Discard this data source draft? Your entries will be lost.')) onCancel()
   }
@@ -68,10 +71,34 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
 
   const importDefinition = async () => {
     setError('')
-    if (mode === 'manual') { setDraft(blankDraft()); setStep(1); return }
+    if (mode === 'ai') {
+      setError('AI setup is shown for interface review only. Once approved, this action will generate a reviewable draft without sending credentials.')
+      return
+    }
+    if (mode === 'url') {
+      try {
+        const parsed = new URL(endpointUrl)
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Enter a complete HTTP or HTTPS URL.')
+        const placeholders = Array.from(new Set(`${parsed.pathname}${parsed.search}`.match(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g)?.map(value => value.slice(1, -1)) || []))
+        const label = parsed.pathname.split('/').filter(Boolean).pop()?.replace(/[_-]+/g, ' ') || parsed.hostname
+        const next = blankDraft()
+        next.source_type = 'url'
+        next.connection.name = `${parsed.hostname} connection`
+        next.connection.base_url = parsed.origin
+        next.tool.name = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'lookup_data'
+        next.tool.display_name = label.replace(/\b\w/g, value => value.toUpperCase())
+        next.tool.description = `Retrieve data from ${parsed.pathname}`
+        next.tool.path = parsed.pathname || '/'
+        next.tool.request_template.query = Object.fromEntries(parsed.searchParams.entries())
+        next.tool.input_schema = { type: 'object', properties: Object.fromEntries(placeholders.map(name => [name, { type: 'string' }])), required: placeholders, additionalProperties: false }
+        setDraft(next); setDrafts([]); setStep(1)
+      } catch (e) { setError(messageOf(e)) }
+      return
+    }
+    if (advancedMode === 'manual') { setDraft(blankDraft()); setStep(1); return }
     setBusy(true)
     try {
-      const result = await dataSourceOnboardingApi.import(mode, definition)
+      const result = await dataSourceOnboardingApi.import(advancedMode, definition)
       setDrafts(result.drafts); setDraftIndex(0); setDraft(result.drafts[0]); setCredential(''); setStep(1)
     } catch (e) { setError(messageOf(e)) } finally { setBusy(false) }
   }
@@ -147,9 +174,27 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
 
     <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-7">
       {step === 0 && <>
-        <SectionTitle title="Choose a starting point" help="Importing saves time by extracting the URL, operation, parameters, and authentication type. You will review every value before saving." description="Use an existing API definition, or configure the connection manually." />
-        <div className="flex gap-2">{(['curl','openapi','manual'] as const).map(value => <button key={value} onClick={() => setMode(value)} className={`px-4 py-2 rounded-xl border text-sm font-semibold ${mode === value ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200'}`}>{value === 'curl' ? 'cURL' : value === 'openapi' ? 'OpenAPI' : 'Manual'}</button>)}</div>
-        {mode !== 'manual' && <textarea aria-label="API definition" value={definition} onChange={e => setDefinition(e.target.value)} rows={10} className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-transparent p-3 font-mono text-xs" placeholder={mode === 'curl' ? "curl 'https://api.example.com/orders/{order_id}'" : 'Paste OpenAPI 3 JSON or YAML'} />}
+        <SectionTitle title="What would you like to connect?" help="Start in plain language, paste a complete API URL, or open advanced options when you already have technical API documentation." description="Choose the easiest option for you. Every generated setting is reviewed before anything is saved." />
+        <div className="grid gap-3 md:grid-cols-3">
+          {[
+            { value: 'ai', title: 'Describe what you need', text: 'Tell us the outcome in everyday language.', icon: Wand2, badge: 'Recommended' },
+            { value: 'url', title: 'Enter API URL', text: 'Paste the complete web address for the data.', icon: Link2 },
+            { value: 'advanced', title: 'Advanced import', text: 'Use OpenAPI, cURL, or manual setup.', icon: FileCode2 },
+          ].map(option => <button key={option.value} type="button" onClick={() => { setMode(option.value as typeof mode); setError('') }} className={`relative rounded-2xl border p-4 text-left transition ${mode === option.value ? 'border-indigo-500 bg-indigo-50/70 shadow-sm ring-1 ring-indigo-500 dark:bg-indigo-950/25' : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800/40'}`}>
+            {'badge' in option && <span className="absolute right-3 top-3 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200">{option.badge}</span>}
+            <option.icon className={`mb-3 h-5 w-5 ${mode === option.value ? 'text-indigo-600' : 'text-gray-400'}`} /><span className="block text-sm font-semibold text-gray-900 dark:text-white">{option.title}</span><span className="mt-1 block text-xs leading-relaxed text-gray-500">{option.text}</span>
+          </button>)}
+        </div>
+
+        {mode === 'ai' && <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50 p-5 dark:border-violet-900 dark:from-violet-950/30 dark:to-indigo-950/20">
+          <div className="mb-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="rounded-lg bg-white p-2 text-violet-600 shadow-sm dark:bg-gray-900"><Sparkles className="h-4 w-4" /></span><div><h3 className="text-sm font-semibold text-gray-900 dark:text-white">Tell AI what you want to do</h3><p className="text-xs text-gray-500">No technical terms needed. Do not include passwords or API keys.</p></div></div><span className="rounded-full border border-violet-200 bg-white/70 px-2 py-1 text-[10px] font-bold text-violet-700 dark:border-violet-800 dark:bg-gray-900">UI PREVIEW</span></div>
+          <textarea aria-label="Describe the data source you need" value={aiPrompt} onChange={event => setAiPrompt(event.target.value)} rows={6} className="w-full rounded-xl border border-violet-200 bg-white p-4 text-sm leading-relaxed text-gray-900 shadow-inner placeholder:text-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-violet-800 dark:bg-gray-900 dark:text-white" placeholder="Example: Connect our order system so the support agent can check delivery status using an order ID." />
+          <div className="mt-3 flex flex-wrap gap-2">{['Check an order status', 'Look up a customer account', 'Find shipment tracking'].map(example => <button type="button" key={example} onClick={() => setAiPrompt(example)} className="rounded-full border border-violet-200 bg-white/70 px-3 py-1.5 text-[11px] font-medium text-violet-700 hover:bg-white dark:border-violet-800 dark:bg-gray-900">{example}</button>)}</div>
+        </div>}
+
+        {mode === 'url' && <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-950/30"><div className="mb-4 flex items-center gap-1"><h3 className="text-sm font-semibold">Paste the complete API URL</h3><InfoHint label="API URL">Include the full address beginning with https://. Put variable values such as order_id inside braces in the URL.</InfoHint></div><Input label="Full API URL" required value={endpointUrl} onChange={event => setEndpointUrl(event.target.value)} placeholder="https://api.example.com/v1/orders/{order_id}" /><p className="mt-2 text-[11px] leading-relaxed text-gray-500">We will separate the service address and endpoint path for you. You can add authentication on the next screen.</p></div>}
+
+        {mode === 'advanced' && <div className="rounded-2xl border border-gray-200 p-5 dark:border-gray-700"><div className="mb-4"><h3 className="text-sm font-semibold">Advanced setup</h3><p className="mt-1 text-xs text-gray-500">For developers or users with API documentation.</p></div><div className="mb-4 flex flex-wrap gap-2">{(['openapi','curl','manual'] as const).map(value => <button type="button" key={value} onClick={() => setAdvancedMode(value)} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${advancedMode === value ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-200 dark:border-gray-700'}`}>{value === 'openapi' ? 'OpenAPI file' : value === 'curl' ? 'cURL command' : 'Set up manually'}</button>)}</div>{advancedMode !== 'manual' && <textarea aria-label="API definition" value={definition} onChange={e => setDefinition(e.target.value)} rows={8} className="w-full rounded-xl border border-gray-200 bg-transparent p-3 font-mono text-xs dark:border-gray-700" placeholder={advancedMode === 'curl' ? "curl 'https://api.example.com/orders/{order_id}'" : 'Paste OpenAPI 3 JSON or YAML'} />}</div>}
       </>}
 
       {step === 1 && <>
@@ -182,7 +227,7 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
       </div>
       <footer className="flex shrink-0 items-center justify-between border-t border-gray-200 bg-white px-5 py-4 dark:border-gray-800 dark:bg-gray-900 sm:px-7">
         <div>{step > 0 && <Button variant="secondary" onClick={() => setStep(value => value - 1)} disabled={busy}><ChevronLeft className="w-4 h-4" /> Back</Button>}</div>
-        <div className="flex flex-wrap justify-end gap-2">{step === 0 && <Button onClick={importDefinition} loading={busy} disabled={mode !== 'manual' && !definition.trim()}>Continue <ChevronRight className="w-4 h-4" /></Button>}{step > 0 && step < 4 && <Button onClick={() => setStep(value => value + 1)} disabled={!canContinue || busy}>Continue <ChevronRight className="w-4 h-4" /></Button>}{step === 4 && <><Button variant="secondary" onClick={runTest} loading={busy}>Run temporary test</Button><Button onClick={activate} loading={busy} disabled={!testResult || Boolean(testResult.failure) || testResult.fingerprint !== fingerprint}>Save and activate</Button></>}</div>
+        <div className="flex flex-wrap justify-end gap-2">{step === 0 && <Button onClick={importDefinition} loading={busy} disabled={(mode === 'ai' && !aiPrompt.trim()) || (mode === 'url' && !endpointUrl.trim()) || (mode === 'advanced' && advancedMode !== 'manual' && !definition.trim())}>{mode === 'ai' ? 'Create setup with AI' : 'Continue'} <ChevronRight className="w-4 h-4" /></Button>}{step > 0 && step < 4 && <Button onClick={() => setStep(value => value + 1)} disabled={!canContinue || busy}>Continue <ChevronRight className="w-4 h-4" /></Button>}{step === 4 && <><Button variant="secondary" onClick={runTest} loading={busy}>Run temporary test</Button><Button onClick={activate} loading={busy} disabled={!testResult || Boolean(testResult.failure) || testResult.fingerprint !== fingerprint}>Save and activate</Button></>}</div>
       </footer>
     </div>
   </div>
