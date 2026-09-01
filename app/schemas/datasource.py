@@ -93,6 +93,67 @@ class ExecuteTestRequest(ApiModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
 
 
+class DraftConnectionInput(ApiModel):
+    name: str = Field(min_length=1, max_length=200)
+    base_url: str = Field(min_length=1, max_length=1000)
+    auth_type: str = Field(default="none", max_length=30)
+    auth_header: str = Field(default="Authorization", max_length=100)
+    credential_required: bool = False
+    default_headers: dict[str, str] = Field(default_factory=dict)
+
+
+class DraftToolInput(ApiModel):
+    name: str = Field(min_length=1, max_length=64)
+    display_name: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=2000)
+    method: Literal["GET", "POST"] = "GET"
+    path: str = Field(default="", max_length=1000)
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+    request_template: dict[str, Any] = Field(default_factory=dict)
+    record_path: str = Field(default="", max_length=500)
+    output_mapping: dict[str, str] = Field(default_factory=dict)
+
+
+class DataSourceDraftInput(ApiModel):
+    source_type: str = Field(max_length=30)
+    connection: DraftConnectionInput
+    tool: DraftToolInput
+    warnings: list[str] = Field(default_factory=list, max_length=50)
+
+
+class DataSourceImportRequest(ApiModel):
+    kind: Literal["curl", "openapi"]
+    content: str | dict[str, Any] = Field()
+    operation_id: str | None = Field(default=None, max_length=200)
+
+    @model_validator(mode="after")
+    def bound_content(self):
+        import json
+        if len(self.content if isinstance(self.content, str) else json.dumps(self.content)) > 200_000:
+            raise ValueError("Import content is too large")
+        return self
+
+
+class DataSourceAnalyzeRequest(ApiModel):
+    draft: DataSourceDraftInput
+    sample: Any
+    use_ai: bool = False
+
+    @model_validator(mode="after")
+    def bound_sample(self):
+        import json
+        if len(json.dumps(self.sample, default=str)) > 200_000:
+            raise ValueError("Sample is too large")
+        return self
+
+
+class DraftExecuteTestRequest(ApiModel):
+    draft: DataSourceDraftInput
+    chatbot_id: UUID
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    credential: str | None = Field(default=None, max_length=10000)
+
+
 class PublicResponse(BaseModel):
     """Permit ORM-derived dictionaries while preventing accidental extras."""
 

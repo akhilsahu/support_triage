@@ -353,6 +353,12 @@ export const apiClient = {
     http.delete(`/api/v1/datasources/${id}`).then(r => r.data),
 
   // Data Source Tool Registry (v2)
+  importDataSourceDraft: (payload: { kind: 'curl' | 'openapi'; content: string; operation_id?: string }) =>
+    http.post('/api/v1/data-sources/import', payload).then(r => r.data),
+  analyzeDataSourceDraft: (payload: object) =>
+    http.post('/api/v1/data-sources/analyze', payload).then(r => r.data),
+  testDataSourceDraft: (payload: object) =>
+    http.post('/api/v1/data-sources/test', payload).then(r => r.data),
   listDataSourceConnections: () =>
     http.get('/api/v1/data-sources/connections').then(r => r.data),
   createDataSourceConnection: (payload: object) =>

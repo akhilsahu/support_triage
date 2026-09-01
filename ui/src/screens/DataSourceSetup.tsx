@@ -125,6 +125,10 @@ export function DataSourceSetup() {
   const [availableAgents, setAvailableAgents] = useState<OrgAgent[]>([])
   const [loadingSources, setLoadingSources] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
+  const [importMode, setImportMode] = useState<'curl' | 'openapi'>('curl')
+  const [importText, setImportText] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState('')
 
   useEffect(() => {
     const load = async () => {
@@ -168,6 +172,34 @@ export function DataSourceSetup() {
   }, [defaultAgent, currentChatbotId])
 
   const toObj = (rows: KV[]) => Object.fromEntries(rows.filter(r => r.key).map(r => [r.key, r.value]))
+
+  const importDraft = async () => {
+    if (!importText.trim()) return
+    setImporting(true); setImportError('')
+    try {
+      const result = await apiClient.importDataSourceDraft({ kind: importMode, content: importText })
+      const draft = result.drafts?.[0]
+      if (!draft) throw new Error('No supported operation was found.')
+      const connection = draft.connection
+      const tool = draft.tool
+      setName(tool.display_name || connection.name)
+      setApiUrl(`${connection.base_url}${tool.path}`)
+      setMethod(tool.method)
+      setAuthType(connection.auth_type)
+      setAuthHeader(connection.auth_header || 'Authorization')
+      setAuthValue('')
+      setHeaders(Object.entries(connection.default_headers || {}).map(([key, value]) => ({ key, value: String(value) })))
+      setReqParams(Object.entries(tool.request_template?.query || {}).map(([key, value]) => ({ key, value: String(value) })))
+      const body = tool.request_template?.body
+      setReqBody(body && Object.keys(body).length ? JSON.stringify(body, null, 2) : '')
+      setMapping(Object.entries(tool.output_mapping || {}).map(([canonical, apiField]) => ({ canonical, apiField: String(apiField) })))
+      setProbed(false); setSample(null)
+    } catch (e: any) {
+      setImportError(e?.response?.data?.detail || e.message || 'Could not import this definition.')
+    } finally {
+      setImporting(false)
+    }
+  }
 
   const prefillMock = (type: 'acme' | 'vertex' | 'nova') => {
     if (type === 'acme') {
@@ -457,6 +489,27 @@ export function DataSourceSetup() {
       </button>
 
       <div className="space-y-5">
+
+        <div className="bg-indigo-50/60 dark:bg-indigo-950/20 rounded-2xl border border-indigo-100 dark:border-indigo-900 p-5 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Prefill from an API definition</h3>
+            <p className="text-xs text-gray-500 mt-1">Paste cURL or OpenAPI JSON/YAML. Credentials are removed and must be entered below.</p>
+          </div>
+          <div className="flex gap-2">
+            {(['curl', 'openapi'] as const).map(value => (
+              <button type="button" key={value} onClick={() => setImportMode(value)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${importMode === value ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-gray-900 text-gray-600 border-gray-200 dark:border-gray-700'}`}>
+                {value === 'curl' ? 'cURL' : 'OpenAPI'}
+              </button>
+            ))}
+          </div>
+          <textarea aria-label="API definition" value={importText} onChange={e => setImportText(e.target.value)} rows={5}
+            placeholder={importMode === 'curl' ? "curl 'https://api.example.com/orders/{order_id}' -H 'Authorization: Bearer …'" : 'openapi: 3.0.3\nservers:\n  - url: https://api.example.com'}
+            className="w-full px-3 py-2 text-xs font-mono bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white resize-y" />
+          {importError && <p className="text-xs text-red-600">{importError}</p>}
+          <Button type="button" onClick={importDraft} disabled={!importText.trim() || importing} loading={importing} className="text-xs">
+            Prefill and review
+          </Button>
+        </div>
 
         {/* Unified Connection Settings */}
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-250/80 dark:border-gray-800 p-6 shadow-sm space-y-5 animate-fadeIn">

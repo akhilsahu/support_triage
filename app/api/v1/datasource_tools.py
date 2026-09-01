@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection
+from dataclasses import asdict
 from datetime import datetime
 from uuid import UUID
 
@@ -25,17 +26,85 @@ from app.schemas.datasource import (
     ConnectionCreate,
     ConnectionUpdate,
     ExecuteTestRequest,
+    DataSourceAnalyzeRequest,
+    DataSourceImportRequest,
+    DraftExecuteTestRequest,
     ToolCreate,
     ToolUpdate,
 )
-from app.services.datasource.contracts import ExecutionContext, ToolConfig
+from app.services.datasource.contracts import DataSourceDraft, DraftConnection, DraftTool, ExecutionContext, ToolConfig
+from app.services.datasource.analyzer import analyze_sample
 from app.services.datasource.executor import DataSourceExecutor
+from app.services.datasource.importer import DataSourceImportError, parse_curl, parse_openapi
 from app.services.datasource.sanitizer import sanitize_mapping
 from app.services.datasource.security import UnsafeDestinationError, validate_static_headers
 from app.services.datasource.validator import ToolValidationError, validate_tool_config
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/data-sources", tags=["Data Sources"])
+
+
+def _draft(req) -> DataSourceDraft:
+    return DataSourceDraft(
+        source_type=req.source_type,
+        connection=DraftConnection(**req.connection.model_dump()),
+        tool=DraftTool(**req.tool.model_dump()),
+        warnings=tuple(req.warnings),
+    )
+
+
+@router.post("/import")
+async def import_draft(req: DataSourceImportRequest, space=Depends(current_space)):
+    """Parse configuration into reviewable drafts without saving anything."""
+    del space
+    try:
+        if req.kind == "curl":
+            if not isinstance(req.content, str):
+                raise DataSourceImportError("cURL content must be text")
+            drafts = [parse_curl(req.content)]
+        else:
+            document = req.content
+            if isinstance(document, str):
+                try:
+                    import yaml
+                    document = yaml.safe_load(document)
+                except Exception as exc:
+                    raise DataSourceImportError("OpenAPI content is not valid JSON or YAML") from exc
+            drafts = parse_openapi(document, req.operation_id)
+    except DataSourceImportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"drafts": [asdict(draft) for draft in drafts]}
+
+
+@router.post("/analyze")
+async def analyze_draft(req: DataSourceAnalyzeRequest, space=Depends(current_space)):
+    """Analyze a supplied response; this endpoint does not call the upstream API."""
+    del space
+    try:
+        result = await analyze_sample(_draft(req.draft), req.sample, use_ai=req.use_ai)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return sanitize_mapping(asdict(result))
+
+
+@router.post("/test")
+async def test_draft(req: DraftExecuteTestRequest, db: AsyncSession = Depends(get_db), space=Depends(current_space)):
+    """Execute a temporary reviewed draft without persisting configuration or history."""
+    await _chatbot(db, space.id, req.chatbot_id)
+    draft = _draft(req.draft)
+    connection, tool = draft.connection, draft.tool
+    config = ToolConfig(
+        name=tool.name, method=tool.method, path=tool.path, input_schema=tool.input_schema,
+        request_template=tool.request_template, record_path=tool.record_path,
+        field_mapping=tool.output_mapping, base_url=connection.base_url,
+        default_headers=connection.default_headers, auth_type=connection.auth_type,
+        auth_header=connection.auth_header,
+        encrypted_secret=encrypt(req.credential) if req.credential else None,
+    )
+    result = await DataSourceExecutor().execute(
+        config, req.arguments, ExecutionContext(space_id=space.id, chatbot_id=req.chatbot_id)
+    )
+    return sanitize_mapping(asdict(result))
 
 
 def _not_found(label: str) -> HTTPException:

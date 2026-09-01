@@ -63,3 +63,34 @@ class ExecutionResult:
     @property
     def succeeded(self) -> bool:
         return self.failure is None
+
+
+@dataclass(frozen=True, slots=True)
+class DraftConnection:
+    name: str
+    base_url: str
+    auth_type: str = "none"
+    auth_header: str = "Authorization"
+    credential_required: bool = False
+    default_headers: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class DraftTool:
+    name: str
+    display_name: str
+    description: str
+    method: str
+    path: str
+    input_schema: dict[str, Any]
+    request_template: dict[str, Any] = field(default_factory=dict)
+    record_path: str = ""
+    output_mapping: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class DataSourceDraft:
+    source_type: str
+    connection: DraftConnection
+    tool: DraftTool
+    warnings: tuple[str, ...] = ()

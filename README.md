@@ -984,6 +984,16 @@ Production runners receive only tools assigned to the selected active agent;
 configuration changes invalidate the affected chatbot runner. Phase 1 permits
 `GET` and explicitly read-classified lookup `POST` operations.
 
+The add-data-source screen can prefill a reviewable draft from a cURL command
+or an OpenAPI 3 JSON/YAML document. Import and response analysis are
+non-persisting: deterministic parsing runs first, optional AI suggestions are
+accepted only when they reference observed response fields, and users still
+review the connection, operation, mapping, and active target agent. Imported
+credentials are discarded; secrets must be re-entered in the password field
+and are never included in draft or analysis responses. The temporary
+`/import`, `/analyze`, and `/test` endpoints do not create registry rows;
+activation continues through the persisted test-and-activate lifecycle.
+
 Outbound URL checks reject private/mixed DNS answers and revalidate redirects.
 Production must additionally block private, loopback, link-local, and metadata
 destinations at the firewall or outbound proxy because HTTPX cannot pin a
