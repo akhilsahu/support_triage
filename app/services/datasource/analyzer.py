@@ -84,10 +84,21 @@ async def analyze_sample(
     record, record_path = _record_and_path(clean_sample)
     observed = tuple(_flat_paths(record))
     by_leaf = {path.rsplit(".", 1)[-1].lower(): path for path in observed}
+    # Start with a transparent one-to-one mapping so every observed response
+    # field is available to the agent. Friendly canonical aliases are added
+    # only when they do not replace an existing output name.
     mapping: dict[str, str] = {}
+    for path in observed:
+        leaf = path.rsplit(".", 1)[-1]
+        target = leaf
+        suffix = 2
+        while target in mapping and mapping[target] != path:
+            target = f"{leaf}_{suffix}"
+            suffix += 1
+        mapping[target] = path
     for target, aliases in CANONICAL_ALIASES.items():
         match = next((by_leaf[a] for a in aliases if a in by_leaf), None)
-        if match:
+        if match and target not in mapping:
             mapping[target] = match
 
     suggested_agents: tuple[str, ...] = ()
