@@ -44,6 +44,9 @@ interface AppState {
   // Nav config
   enabledNavItems: string[] | null
   setEnabledNavItems: (items: string[]) => void
+  // Null means the authenticated capability bootstrap has not completed yet.
+  dataSourcesEnabled: boolean | null
+  setDataSourcesEnabled: (value: boolean) => void
 
   // Settings
   apiKey: string
@@ -95,7 +98,7 @@ export const useAppStore = create<AppState>()(
       onboardingComplete: false,
       setOnboardingComplete: (v) => set({ onboardingComplete: v }),
       setAuth: (token, spaceId, spaceSlug, spaceName, onboardingComplete = false) => set({ token, spaceId, spaceSlug, spaceName, onboardingComplete }),
-      logout: () => set({ token: '', spaceId: '', spaceSlug: '', spaceName: '', onboardingComplete: false, messages: [], conversationId: undefined, enabledNavItems: null, unreadSessionIds: [], activeInboxSessionId: null, inboxEvent: null, currentChatbotId: null }),
+      logout: () => set({ token: '', spaceId: '', spaceSlug: '', spaceName: '', onboardingComplete: false, messages: [], conversationId: undefined, enabledNavItems: null, dataSourcesEnabled: null, unreadSessionIds: [], activeInboxSessionId: null, inboxEvent: null, currentChatbotId: null }),
 
       themeMode: (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light',
       setThemeMode: (mode) => set(() => {
@@ -129,6 +132,8 @@ export const useAppStore = create<AppState>()(
 
       enabledNavItems: null,
       setEnabledNavItems: (items) => set({ enabledNavItems: items }),
+      dataSourcesEnabled: null,
+      setDataSourcesEnabled: (value) => set({ dataSourcesEnabled: value }),
 
       apiKey: '',
       setApiKey: (key) => set({ apiKey: key }),

@@ -16,6 +16,7 @@ import { useAppStore } from './store/useAppStore'
 
 import { apiClient } from './api/client'
 import { RouteSeo } from './lib/RouteSeo'
+import { DataSourceFeatureGuard } from './features/data-sources/DataSourceFeatureGuard'
 
 const Dashboard = lazy(() => import('./screens/Dashboard').then(module => ({ default: module.Dashboard })))
 const Chat = lazy(() => import('./screens/Chat').then(module => ({ default: module.Chat })))
@@ -128,9 +129,9 @@ export default function App() {
           <Route path="/app/dashboard" element={<PrivateRoute><Layout><Dashboard /></Layout></PrivateRoute>} />
           <Route path="/app/chat" element={<PrivateRoute><Layout><Chat /></Layout></PrivateRoute>} />
           <Route path="/app/agents" element={<PrivateRoute><Layout><Agents /></Layout></PrivateRoute>} />
-          <Route path="/app/agents/datasource" element={<PrivateRoute><DataSourceSetup /></PrivateRoute>} />
+          <Route path="/app/agents/datasource" element={<PrivateRoute><Layout><DataSourceFeatureGuard><DataSourceSetup /></DataSourceFeatureGuard></Layout></PrivateRoute>} />
           <Route path="/app/agents/test" element={<PrivateRoute><Layout><TestChat /></Layout></PrivateRoute>} />
-          <Route path="/app/data-sources" element={<PrivateRoute><Layout><DataSourceSetup /></Layout></PrivateRoute>} />
+          <Route path="/app/data-sources" element={<PrivateRoute><Layout><DataSourceFeatureGuard><DataSourceSetup /></DataSourceFeatureGuard></Layout></PrivateRoute>} />
           <Route path="/app/inbox" element={<PrivateRoute><Layout><Inbox /></Layout></PrivateRoute>} />
           <Route path="/app/knowledge-base" element={<PrivateRoute><Layout><KnowledgeBase /></Layout></PrivateRoute>} />
           <Route path="/app/analytics" element={<PrivateRoute><Layout><Analytics /></Layout></PrivateRoute>} />

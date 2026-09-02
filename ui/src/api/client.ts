@@ -458,7 +458,10 @@ export const apiClient = {
 
   // Nav config
   getNavConfig: () =>
-    http.get('/api/v1/dashboard/nav-config').then(r => r.data as { enabled_nav_items: string[] }),
+    http.get('/api/v1/dashboard/nav-config').then(r => r.data as {
+      enabled_nav_items: string[]
+      features: { data_sources: boolean }
+    }),
 
   // Org Doc Types (distinct types from org's ChromaDB partition)
   listOrgDocTypes: () =>

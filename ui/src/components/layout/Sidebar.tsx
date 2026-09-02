@@ -115,7 +115,7 @@ function ChatbotSwitcher({ collapsed, token }: { collapsed: boolean; token: stri
 }
 
 export function Sidebar() {
-  const { sidebarCollapsed, toggleSidebar, backendStatus, spaceName, spaceSlug, logout, token, enabledNavItems, setEnabledNavItems, unreadSessionIds } = useAppStore()
+  const { sidebarCollapsed, toggleSidebar, backendStatus, spaceName, spaceSlug, logout, token, enabledNavItems, setEnabledNavItems, setDataSourcesEnabled, unreadSessionIds } = useAppStore()
   const dt = useDashboardTheme()
   const unreadCount = unreadSessionIds?.length ?? 0
   const navigate = useNavigate()
@@ -129,9 +129,16 @@ export function Sidebar() {
   useEffect(() => {
     if (!token) return
     apiClient.getNavConfig()
-      .then(data => setEnabledNavItems(data.enabled_nav_items))
-      .catch(() => setEnabledNavItems(DEFAULT_ENABLED))
-  }, [token])
+      .then(data => {
+        setEnabledNavItems(data.enabled_nav_items)
+        setDataSourcesEnabled(data.features.data_sources)
+      })
+      .catch(() => {
+        // Navigation remains usable during an outage, but capabilities fail closed.
+        setEnabledNavItems(DEFAULT_ENABLED.filter(item => item !== 'data-sources'))
+        setDataSourcesEnabled(false)
+      })
+  }, [token, setDataSourcesEnabled, setEnabledNavItems])
 
   const handleLogout = async () => {
     try {
