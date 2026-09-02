@@ -291,6 +291,64 @@ function HomepageSectionsPlatformControl({ adminKey }: { adminKey: string }) {
   )
 }
 
+interface DataSourcesFeatureState {
+  platform_enabled: boolean
+}
+
+interface SpaceDataSourcesFeatureState {
+  override: boolean | null
+  effective_enabled: boolean
+}
+
+export function DataSourcesPlatformControl({ adminKey, value, onChange }: {
+  adminKey: string
+  value: boolean | null
+  onChange: (enabled: boolean) => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const enabled = value === true
+
+  const toggle = async () => {
+    setSaving(true)
+    try {
+      const data: DataSourcesFeatureState = await api(adminKey).patch('/data-sources-feature', {
+        platform_enabled: !enabled,
+      })
+      onChange(data.platform_enabled)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <p className="text-sm font-semibold text-gray-900 dark:text-white">Data Sources</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+          Controls datasource APIs, agent tools, routes, and menu availability.
+        </p>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className={`text-xs font-medium ${enabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
+          {value === null ? 'Loading…' : enabled ? 'Enabled platform-wide' : 'Disabled platform-wide'}
+        </span>
+        <button
+          onClick={toggle}
+          disabled={saving || value === null}
+          aria-label={enabled ? 'Disable Data Sources' : 'Enable Data Sources'}
+          className={`text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-50 ${
+            enabled
+              ? 'text-red-500 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20'
+              : 'text-emerald-600 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+          }`}
+        >
+          {saving ? 'Saving…' : enabled ? 'Disable' : 'Enable'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function SpaceRow({ space, adminKey, onRefresh, onViewChunks, onConfigNav }: {
   space: Space, adminKey: string, onRefresh: () => void,
   onViewChunks: (clientId: string, docId: string, docName: string) => void
@@ -538,25 +596,41 @@ const ALL_NAV_LABELS: Record<string, string> = {
 }
 const ALL_NAV_IDS = Object.keys(ALL_NAV_LABELS)
 
-function SpaceSettingsModal({ spaceId, spaceName, spaceSlug, adminKey, systemNav, onViewChunks, onClose }: {
+export function SpaceSettingsModal({ spaceId, spaceName, spaceSlug, adminKey, systemNav, platformDataSourcesEnabled, onViewChunks, onClose }: {
   spaceId: string; spaceName: string; spaceSlug: string; adminKey: string; systemNav: Record<string, boolean>;
+  platformDataSourcesEnabled: boolean;
   onViewChunks: (clientId: string, docId: string, docName: string) => void;
   onClose: () => void
 }) {
   const [spaceNavs, setSpaceNavs] = useState<string[] | null>(null)
   const [detail, setDetail] = useState<{ agents: Agent[], skills: any[], kb_docs: KbDoc[] } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [dataSourcesFeature, setDataSourcesFeature] = useState<SpaceDataSourcesFeatureState | null>(null)
+  const [savingDataSources, setSavingDataSources] = useState(false)
 
   useEffect(() => {
     Promise.all([
       api(adminKey).get(`/spaces/${spaceId}/nav`),
-      api(adminKey).get(`/orgs/${spaceId}`)
-    ]).then(([navData, orgData]) => {
+      api(adminKey).get(`/orgs/${spaceId}`),
+      api(adminKey).get(`/spaces/${spaceId}/data-sources-feature`)
+    ]).then(([navData, orgData, featureData]) => {
       setSpaceNavs(navData.enabled_nav_items)
       setDetail({ agents: orgData.agents, skills: orgData.skills, kb_docs: orgData.kb_docs || [] })
+      setDataSourcesFeature(featureData)
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [adminKey, spaceId])
+
+  const updateDataSourcesOverride = async (rawValue: string) => {
+    const override = rawValue === 'inherit' ? null : rawValue === 'enabled'
+    setSavingDataSources(true)
+    try {
+      const data = await api(adminKey).patch(`/spaces/${spaceId}/data-sources-feature`, { override })
+      setDataSourcesFeature(data)
+    } finally {
+      setSavingDataSources(false)
+    }
+  }
 
   const toggleSpaceItem = async (id: string) => {
     const current = spaceNavs ?? ALL_NAV_IDS
@@ -598,6 +672,30 @@ function SpaceSettingsModal({ spaceId, spaceName, spaceSlug, adminKey, systemNav
             </div>
           ) : (
             <div className="space-y-10">
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 border-b border-gray-100 dark:border-gray-800 pb-2">Data Sources feature</h4>
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div>
+                    <p className="text-xs text-gray-500">Choose whether this space inherits or restricts the platform setting.</p>
+                    <p className={`text-xs font-medium mt-1 ${dataSourcesFeature?.effective_enabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500'}`}>
+                      {!platformDataSourcesEnabled
+                        ? 'Disabled by platform'
+                        : dataSourcesFeature?.effective_enabled ? 'Effectively enabled' : 'Effectively disabled'}
+                    </p>
+                  </div>
+                  <select
+                    aria-label="Data Sources availability"
+                    value={dataSourcesFeature?.override == null ? 'inherit' : dataSourcesFeature.override ? 'enabled' : 'disabled'}
+                    onChange={e => updateDataSourcesOverride(e.target.value)}
+                    disabled={savingDataSources || !dataSourcesFeature}
+                    className="text-xs px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 disabled:opacity-50"
+                  >
+                    <option value="inherit">Inherit platform setting</option>
+                    <option value="enabled">Enabled</option>
+                    <option value="disabled">Disabled</option>
+                  </select>
+                </div>
+              </div>
               
               {/* DETAILS SECTION */}
               <div>
@@ -1002,6 +1100,7 @@ export function SuperAdmin() {
   const [activityTotal, setActivityTotal] = useState(0)
   const [navModalSpace, setNavModalSpace] = useState<Space | null>(null)
   const [systemNav, setSystemNav] = useState<Record<string, boolean>>({})
+  const [dataSourcesPlatformEnabled, setDataSourcesPlatformEnabled] = useState<boolean | null>(null)
 
   const fetchSpaces = useCallback(async (k: string, page: number) => {
     setLoading(true)
@@ -1031,12 +1130,13 @@ export function SuperAdmin() {
     setLoading(true)
     setError('')
     try {
-      const [s, o, a, l, navData] = await Promise.all([
+      const [s, o, a, l, navData, dataSourcesFeature] = await Promise.all([
         api(k).get('/stats'),
         api(k).get(`/orgs?limit=${SPACES_LIMIT}&offset=0`),
         api(k).get('/agents'),
         api(k).get(`/activity?limit=${ACTIVITY_LIMIT}&offset=0`),
         api(k).get('/nav').catch(() => ({ nav_config: {} })),
+        api(k).get('/data-sources-feature'),
       ])
       setStats(s)
       setSpaces(o.orgs)
@@ -1047,6 +1147,7 @@ export function SuperAdmin() {
       setActivityTotal(l.total)
       setActivityPage(0)
       setSystemNav(navData.nav_config || {})
+      setDataSourcesPlatformEnabled(!!dataSourcesFeature.platform_enabled)
       // Non-fatal — /vectordb can 500 on a ChromaDB embedding-function conflict;
       // a broken VectorDB panel shouldn't blank the whole dashboard.
       api(k).get('/vectordb').then(setVectorDB).catch(() => {})
@@ -1270,6 +1371,11 @@ export function SuperAdmin() {
         <div>
           <ChatbotLimitsControl adminKey={key} />
           <HomepageSectionsPlatformControl adminKey={key} />
+          <DataSourcesPlatformControl
+            adminKey={key}
+            value={dataSourcesPlatformEnabled}
+            onChange={setDataSourcesPlatformEnabled}
+          />
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             <table className="w-full text-left">
               <thead>
@@ -1594,6 +1700,7 @@ export function SuperAdmin() {
           spaceSlug={navModalSpace.slug}
           adminKey={key}
           systemNav={systemNav}
+          platformDataSourcesEnabled={dataSourcesPlatformEnabled === true}
           onViewChunks={(cid, did, name) => setViewingChunks({ clientId: cid, docId: did, docName: name })}
           onClose={() => setNavModalSpace(null)}
         />
