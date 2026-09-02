@@ -90,6 +90,37 @@ export interface HomepageSnapshot {
   published_at: string | null
 }
 
+export type AgentKind = 'builtin' | 'custom'
+
+export interface AgentDataSourceTool {
+  id: string
+  name: string
+  display_name: string
+  method: string
+  path: string
+  connection_name: string
+  assigned: boolean
+}
+
+export interface AgentDataSourceToolsResponse {
+  chatbot_id: string
+  agent_kind: AgentKind
+  agent_id: string
+  tools: AgentDataSourceTool[]
+}
+
+export interface ReplaceAgentDataSourceToolsPayload {
+  chatbot_id: string
+  tool_ids: string[]
+}
+
+export interface ReplaceAgentDataSourceToolsResponse {
+  chatbot_id: string
+  agent_kind: AgentKind
+  agent_id: string
+  assignments: Array<Record<string, unknown>>
+}
+
 // Tenant-scoped Evaluation Lab contracts. These intentionally omit model
 // reasoning and raw tool payloads: the backend never exposes either field.
 export interface EvaluationExpectation {
@@ -379,6 +410,20 @@ export const apiClient = {
     http.delete(`/api/v1/data-sources/tools/${id}`).then(r => r.data),
   replaceDataSourceAssignments: (toolId: string, payload: object) =>
     http.put(`/api/v1/data-sources/tools/${toolId}/assignments`, payload).then(r => r.data),
+  listAgentDataSourceTools: (
+    agentKind: AgentKind,
+    agentId: string,
+    chatbotId: string,
+  ): Promise<AgentDataSourceToolsResponse> =>
+    http.get(`/api/v1/data-sources/agents/${agentKind}/${agentId}/tools`, {
+      params: { chatbot_id: chatbotId },
+    }).then(r => r.data),
+  replaceAgentDataSourceTools: (
+    agentKind: AgentKind,
+    agentId: string,
+    payload: ReplaceAgentDataSourceToolsPayload,
+  ): Promise<ReplaceAgentDataSourceToolsResponse> =>
+    http.put(`/api/v1/data-sources/agents/${agentKind}/${agentId}/tools`, payload).then(r => r.data),
   testDataSourceTool: (toolId: string, payload: object) =>
     http.post(`/api/v1/data-sources/tools/${toolId}/execute-test`, payload).then(r => r.data),
 
