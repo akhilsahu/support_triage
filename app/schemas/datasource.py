@@ -88,6 +88,17 @@ class AssignmentReplace(ApiModel):
     assignments: list[AgentAssignmentInput] = Field(default_factory=list)
 
 
+class AgentToolReplace(ApiModel):
+    chatbot_id: UUID
+    tool_ids: list[UUID] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def unique_tools(self):
+        if len(self.tool_ids) != len(set(self.tool_ids)):
+            raise ValueError("Duplicate tool assignment")
+        return self
+
+
 class ExecuteTestRequest(ApiModel):
     chatbot_id: UUID
     arguments: dict[str, Any] = Field(default_factory=dict)

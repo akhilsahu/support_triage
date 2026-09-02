@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Collection
 from dataclasses import asdict
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 import structlog
@@ -22,6 +23,7 @@ from app.models.datasource_connection import DataSourceConnection
 from app.models.datasource_tool import DataSourceTool
 from app.models.space import BuiltinAgentCatalog, ChatbotCustomAgent, CustomAgent, SpaceBuiltinAgentConfig
 from app.schemas.datasource import (
+    AgentToolReplace,
     AssignmentReplace,
     ConnectionCreate,
     ConnectionUpdate,
@@ -379,6 +381,125 @@ async def _validate_assignment(db: AsyncSession, space_id: UUID, chatbot_id: UUI
         )
     if valid is None:
         raise HTTPException(status_code=422, detail="Agent is inactive, unavailable, or outside this chatbot")
+
+
+async def _active_tools(
+    db: AsyncSession,
+    space_id: UUID,
+    tool_ids: Collection[UUID] | None = None,
+) -> list[tuple[DataSourceTool, DataSourceConnection]]:
+    query = (
+        select(DataSourceTool, DataSourceConnection)
+        .join(DataSourceConnection, DataSourceTool.connection_id == DataSourceConnection.id)
+        .where(
+            DataSourceTool.space_id == space_id,
+            DataSourceConnection.space_id == space_id,
+            DataSourceTool.status == "active",
+            DataSourceConnection.status == "active",
+        )
+        .order_by(DataSourceTool.display_name, DataSourceTool.name)
+    )
+    if tool_ids is not None:
+        query = query.where(DataSourceTool.id.in_(tool_ids))
+    result = await db.execute(query)
+    return list(result.all())
+
+
+def _agent_tool_item(
+    tool: DataSourceTool,
+    connection: DataSourceConnection,
+    assigned: bool,
+) -> dict:
+    return {
+        "id": str(tool.id),
+        "name": tool.name,
+        "display_name": tool.display_name,
+        "method": tool.method,
+        "path": tool.path,
+        "connection_name": connection.name,
+        "assigned": assigned,
+    }
+
+
+@router.get("/agents/{agent_kind}/{agent_id}/tools")
+async def list_agent_tools(
+    agent_kind: Literal["builtin", "custom"],
+    agent_id: UUID,
+    chatbot_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    space=Depends(current_space),
+):
+    await _chatbot(db, space.id, chatbot_id)
+    await _validate_assignment(db, space.id, chatbot_id, agent_kind, agent_id)
+    tools = await _active_tools(db, space.id)
+    result = await db.execute(
+        select(AgentToolAssignment.tool_id).where(
+            AgentToolAssignment.space_id == space.id,
+            AgentToolAssignment.chatbot_id == chatbot_id,
+            AgentToolAssignment.agent_kind == agent_kind,
+            AgentToolAssignment.agent_id == agent_id,
+            AgentToolAssignment.enabled.is_(True),
+        )
+    )
+    assigned_ids = set(result.scalars().all())
+    return {
+        "chatbot_id": str(chatbot_id),
+        "agent_kind": agent_kind,
+        "agent_id": str(agent_id),
+        "tools": [
+            _agent_tool_item(tool, connection, tool.id in assigned_ids)
+            for tool, connection in tools
+        ],
+    }
+
+
+@router.put("/agents/{agent_kind}/{agent_id}/tools")
+async def replace_agent_tools(
+    agent_kind: Literal["builtin", "custom"],
+    agent_id: UUID,
+    req: AgentToolReplace,
+    db: AsyncSession = Depends(get_db),
+    space=Depends(current_space),
+):
+    await _chatbot(db, space.id, req.chatbot_id)
+    await _validate_assignment(db, space.id, req.chatbot_id, agent_kind, agent_id)
+
+    selected_tools = await _active_tools(db, space.id, req.tool_ids)
+    selected_ids = {tool.id for tool, _connection_item in selected_tools}
+    if selected_ids != set(req.tool_ids):
+        raise HTTPException(
+            status_code=422,
+            detail="One or more tools are inactive, unavailable, or outside this space",
+        )
+
+    await db.execute(
+        delete(AgentToolAssignment).where(
+            AgentToolAssignment.space_id == space.id,
+            AgentToolAssignment.chatbot_id == req.chatbot_id,
+            AgentToolAssignment.agent_kind == agent_kind,
+            AgentToolAssignment.agent_id == agent_id,
+        )
+    )
+    replacements = [
+        AgentToolAssignment(
+            space_id=space.id,
+            chatbot_id=req.chatbot_id,
+            tool_id=tool_id,
+            agent_kind=agent_kind,
+            agent_id=agent_id,
+            enabled=True,
+        )
+        for tool_id in req.tool_ids
+    ]
+    db.add_all(replacements)
+    await _commit(db)
+    _post_commit_invalidate(space.id, {req.chatbot_id})
+    return {
+        "chatbot_id": str(req.chatbot_id),
+        "agent_kind": agent_kind,
+        "agent_id": str(agent_id),
+        "assignments": [item.to_dict() for item in replacements],
+    }
 
 
 @router.get("/tools/{tool_id}/assignments")
