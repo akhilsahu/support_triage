@@ -66,6 +66,9 @@ class Space(Base):
     # Nav — null means "use system-wide defaults"; a JSON list restricts to those items
     enabled_nav_items  = Column(Text, nullable=True)   # JSON list of nav item IDs
 
+    # NULL inherits the platform-wide Data Sources capability setting.
+    datasources_enabled = Column(Boolean, nullable=True)
+
     onboarding_complete = Column(Boolean, default=False, nullable=False)
 
     created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -107,6 +110,7 @@ class Space(Base):
             "active":               self.active,
             "show_rag_citations":   self.show_rag_citations,
             "max_chatbots":         self.max_chatbots,
+            "datasources_enabled":  self.datasources_enabled,
             "onboarding_complete":  self.onboarding_complete,
             "created_at":           self.created_at.isoformat() if self.created_at else None,
         }
@@ -531,6 +535,7 @@ class PlatformSettings(Base):
     # per-bot) is also True. False by default -- off platform-wide until a
     # super admin turns it on.
     homepage_sections_platform_enabled = Column(Boolean, default=False, server_default="false", nullable=False)
+    datasources_platform_enabled = Column(Boolean, default=True, server_default="true", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
