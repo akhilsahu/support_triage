@@ -29,9 +29,10 @@ function messageOf(error: any) {
   return error?.response?.data?.detail || error?.message || 'Something went wrong. Your entries were preserved.'
 }
 
-export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
+export function DataSourceWizard({ chatbotId, agents, initialAgentId = '', onCancel, onComplete }: {
   chatbotId: string | null
   agents: FleetAgent[]
+  initialAgentId?: string
   onCancel: () => void
   onComplete: () => void
 }) {
@@ -48,7 +49,7 @@ export function DataSourceWizard({ chatbotId, agents, onCancel, onComplete }: {
   const [draftIndex, setDraftIndex] = useState(0)
   const [draft, setDraft] = useState<DataSourceDraft>(blankDraft)
   const [credential, setCredential] = useState('')
-  const [agentId, setAgentId] = useState('')
+  const [agentId, setAgentId] = useState(initialAgentId)
   const [sampleText, setSampleText] = useState('')
   const [aiApplied, setAiApplied] = useState(false)
   const [pendingAnalysis, setPendingAnalysis] = useState<any>(null)

@@ -13,6 +13,9 @@ import { apiClient } from '../api/client'
 import { ModelControls } from '../components/ModelControls'
 import type { ModelEffort } from '../components/ModelControls'
 import { motion, AnimatePresence } from 'framer-motion'
+import { DataSourceToolPicker } from '../features/data-sources/DataSourceToolPicker'
+import { DataSourceWizard } from '../features/data-sources/DataSourceWizard'
+import type { AgentDataSourceTool } from '../api/client'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,17 +41,6 @@ export interface OrgAgent {
   reasoning_effort: string | null
 }
 
-
-interface DataSource {
-  id: string
-  name: string
-  agent_type: string
-  api_url: string
-  auth_type: string
-  field_mapping: Record<string, string | null>
-  active: boolean
-  created_at: string
-}
 
 // ── Doc Type Chips ─────────────────────────────────────────────────────────────
 
@@ -995,17 +987,72 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
 
 // ── Main Agents screen ────────────────────────────────────────────────────────
 
+function AgentDataSources({ agent, chatbotId, refreshKey, onPlug }: {
+  agent: OrgAgent
+  chatbotId: string | null
+  refreshKey: number
+  onPlug: (agent: OrgAgent) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [tools, setTools] = useState<AgentDataSourceTool[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const loadAssignments = async () => {
+    if (!chatbotId) return
+    setLoading(true)
+    setError('')
+    try {
+      const response = await apiClient.listAgentDataSourceTools(
+        agent.is_builtin ? 'builtin' : 'custom',
+        agent.id,
+        chatbotId,
+      )
+      setTools(response.tools.filter(tool => tool.assigned))
+    } catch (value) {
+      const apiError = value as { response?: { data?: { detail?: string } } }
+      setError(apiError.response?.data?.detail || 'Could not load assigned data sources.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const toggleExpanded = () => {
+    setExpanded(current => !current)
+  }
+
+  useEffect(() => {
+    if (expanded) void loadAssignments()
+  }, [expanded, refreshKey, chatbotId])
+
+  return <div className="mt-3 border-t border-gray-100 pt-3 dark:border-gray-700">
+    <button type="button" onClick={toggleExpanded} className="flex w-full items-center justify-between text-xs font-medium text-gray-600 transition-colors hover:text-indigo-600 dark:text-gray-400">
+      <span className="flex items-center gap-1.5"><Database className="h-3.5 w-3.5" />Data Sources{tools.length > 0 && ` (${tools.length})`}</span>
+      <ChevronRight className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+    </button>
+    {expanded && <div className="mt-2 space-y-1.5">
+      {loading ? <p className="flex items-center gap-1.5 text-xs text-gray-400"><Loader2 className="h-3 w-3 animate-spin" />Loading assigned tools…</p>
+        : error ? <div className="flex items-center justify-between gap-2"><p className="text-xs text-red-500">{error}</p><button type="button" onClick={() => void loadAssignments()} className="text-xs font-medium text-indigo-600">Retry</button></div>
+          : tools.length === 0 ? <p className="text-xs italic text-gray-400">No data source tools assigned.</p>
+            : tools.map(tool => <div key={tool.id} className="rounded-lg bg-gray-50 px-2.5 py-2 dark:bg-gray-800"><div className="flex items-center justify-between gap-2"><p className="truncate text-xs font-medium text-gray-700 dark:text-gray-300">{tool.display_name || tool.name}</p><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-label="Active" /></div><p className="mt-0.5 truncate text-[11px] text-gray-400">{tool.connection_name} · {tool.method} {tool.path}</p></div>)}
+      <button type="button" disabled={!chatbotId} onClick={() => onPlug(agent)} className="mt-1 flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-indigo-400"><Plus className="h-3 w-3" />Plug data source</button>
+    </div>}
+  </div>
+}
+
 export function Agents() {
   const navigate = useNavigate()
   const spaceSlug = useAppStore(s => s.spaceSlug)
   const currentChatbotId = useAppStore(s => s.currentChatbotId)
   const setCurrentChatbotId = useAppStore(s => s.setCurrentChatbotId)
+  const dataSourcesEnabled = useAppStore(s => s.dataSourcesEnabled)
   const [agents, setAgents] = useState<OrgAgent[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
-  const [dataSources, setDataSources] = useState<DataSource[]>([])
   const [docTypes, setDocTypes] = useState<string[]>([])
-  const [expandedAgent, setExpandedAgent] = useState<string | null>(null)
+  const [toolPickerAgent, setToolPickerAgent] = useState<OrgAgent | null>(null)
+  const [wizardAgent, setWizardAgent] = useState<OrgAgent | null>(null)
+  const [dataSourceRefreshKey, setDataSourceRefreshKey] = useState(0)
   const [editingAgent, setEditingAgent] = useState<OrgAgent | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -1093,7 +1140,6 @@ export function Agents() {
   }, [currentChatbotId])
 
   useEffect(() => {
-    apiClient.listDataSources().then(setDataSources).catch(() => { })
     apiClient.listOrgDocTypes().then(d => setDocTypes(d.doc_types || [])).catch(() => { })
   }, [])
 
@@ -1148,12 +1194,6 @@ export function Agents() {
         setTriageBanner(`Specialist agent "${agent.name}" was deleted.`)
       }
     } catch { /* ignore */ }
-  }
-
-  const handleDeleteDs = async (id: string) => {
-    if (!confirm('Delete this data source?')) return
-    await apiClient.deleteDataSource(id)
-    apiClient.listDataSources().then(setDataSources).catch(() => { })
   }
 
   const builtinAgents = agents.filter(a => a.is_builtin)
@@ -1360,9 +1400,6 @@ export function Agents() {
             {builtinAgents.map(agent => {
               const t = getAgentTheme(agent.name)
               const isLocked = agent.slug === 'triage'
-              const agentDs = dataSources.filter(d => d.agent_type === agent.agent_type)
-              const isExpanded = expandedAgent === agent.slug
-
               return (
                 <Card key={agent.slug} layoutId={agent.id || agent.slug} className="p-5 flex flex-col">
                   <div className="flex items-start justify-between mb-3 gap-2">
@@ -1404,42 +1441,7 @@ export function Agents() {
                     </button>
                   </div>
 
-                  {!isLocked && (
-                    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-                      <button onClick={() => setExpandedAgent(isExpanded ? null : agent.slug)}
-                        className="flex items-center justify-between w-full text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-indigo-600 transition-colors">
-                        <span className="flex items-center gap-1.5">
-                          <Database className="w-3.5 h-3.5" />
-                          Data Sources {agentDs.length > 0 && `(${agentDs.length})`}
-                        </span>
-                        <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                      </button>
-
-                      {isExpanded && (
-                        <div className="mt-2 space-y-1.5">
-                          {agentDs.length === 0 && <p className="text-xs text-gray-400 italic">No data source connected.</p>}
-                          {agentDs.map(ds => (
-                            <div key={ds.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-lg px-2.5 py-1.5">
-                              <div>
-                                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">{ds.name}</p>
-                                <p className="text-xs text-gray-400 truncate max-w-[160px]">{ds.api_url}</p>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <span className={`w-1.5 h-1.5 rounded-full ${ds.active ? 'bg-indigo-400' : 'bg-gray-300'}`} />
-                                <button onClick={() => handleDeleteDs(ds.id)} className="p-1 text-red-400 hover:text-red-600">
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                          <button onClick={() => navigate(`/agents/datasource?agent=${agent.agent_type}`)}
-                            className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 mt-1">
-                            <Plus className="w-3 h-3" /> Connect data source
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {!isLocked && dataSourcesEnabled === true && <AgentDataSources agent={agent} chatbotId={currentChatbotId} refreshKey={dataSourceRefreshKey} onPlug={setToolPickerAgent} />}
                 </Card>
               )
             })}
@@ -1518,6 +1520,7 @@ export function Agents() {
                         <Trash2 className="w-3.5 h-3.5" /> Delete
                       </button>
                     </div>
+                    {dataSourcesEnabled === true && <AgentDataSources agent={agent} chatbotId={currentChatbotId} refreshKey={dataSourceRefreshKey} onPlug={setToolPickerAgent} />}
                   </Card>
                 ))}
               </div>
@@ -1537,6 +1540,35 @@ export function Agents() {
           />
         )}
       </AnimatePresence>
+
+      {toolPickerAgent && currentChatbotId && <DataSourceToolPicker
+        agent={toolPickerAgent}
+        chatbotId={currentChatbotId}
+        onClose={() => setToolPickerAgent(null)}
+        onSaved={() => {
+          setDataSourceRefreshKey(key => key + 1)
+          setToolPickerAgent(null)
+        }}
+        onCreateSource={() => {
+          setWizardAgent(toolPickerAgent)
+          setToolPickerAgent(null)
+        }}
+      />}
+
+      {wizardAgent && <DataSourceWizard
+        chatbotId={currentChatbotId}
+        agents={agents}
+        initialAgentId={wizardAgent.id}
+        onCancel={() => {
+          setToolPickerAgent(wizardAgent)
+          setWizardAgent(null)
+        }}
+        onComplete={() => {
+          setDataSourceRefreshKey(key => key + 1)
+          setToolPickerAgent(wizardAgent)
+          setWizardAgent(null)
+        }}
+      />}
 
 
       <AnimatePresence>
