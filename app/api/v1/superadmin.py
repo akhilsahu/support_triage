@@ -10,12 +10,13 @@ from typing import Optional
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Header
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.database import get_db
 from app.models.space import Space
+from app.services.datasource.availability import datasource_feature_enabled
 from app.rag.vector_store import get_vector_store
 from app.api.db_utils import (
     platform_stats, list_orgs, get_org_by_id,
@@ -376,6 +377,76 @@ class NavConfigRequest(BaseModel):
     nav_config: dict   # { nav_item_id: bool }
 
 
+class DataSourcesPlatformRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    platform_enabled: StrictBool
+
+
+class DataSourcesSpaceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    override: StrictBool | None = None
+
+
+@router.get("/data-sources-feature", dependencies=[Depends(require_super_admin)])
+async def get_data_sources_feature(db: AsyncSession = Depends(get_db)):
+    """Return the platform-wide Data Sources master switch."""
+    ps = await _get_or_create_platform_settings(db)
+    return {"platform_enabled": ps.datasources_platform_enabled}
+
+
+@router.patch("/data-sources-feature", dependencies=[Depends(require_super_admin)])
+async def patch_data_sources_feature(
+    req: DataSourcesPlatformRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Set the platform-wide Data Sources master switch."""
+    ps = await _get_or_create_platform_settings(db)
+    ps.datasources_platform_enabled = req.platform_enabled
+    await db.commit()
+    return {"platform_enabled": ps.datasources_platform_enabled}
+
+
+@router.get(
+    "/spaces/{space_id}/data-sources-feature",
+    dependencies=[Depends(require_super_admin)],
+)
+async def get_space_data_sources_feature(
+    space_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return a space's nullable override and effective Data Sources state."""
+    org = await get_org_by_id(db, space_id)
+    if not org:
+        raise HTTPException(404, "Space not found.")
+    return {
+        "override": org.datasources_enabled,
+        "effective_enabled": await datasource_feature_enabled(db, org),
+    }
+
+
+@router.patch(
+    "/spaces/{space_id}/data-sources-feature",
+    dependencies=[Depends(require_super_admin)],
+)
+async def patch_space_data_sources_feature(
+    space_id: uuid.UUID,
+    req: DataSourcesSpaceRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Set a space override directly; null restores platform inheritance."""
+    org = await get_org_by_id(db, space_id)
+    if not org:
+        raise HTTPException(404, "Space not found.")
+    org.datasources_enabled = req.override
+    await db.commit()
+    return {
+        "override": org.datasources_enabled,
+        "effective_enabled": await datasource_feature_enabled(db, org),
+    }
+
+
 @router.get("/nav", dependencies=[Depends(require_super_admin)])
 async def get_system_nav(db: AsyncSession = Depends(get_db)):
     """Get system-wide nav item enable/disable config."""
@@ -507,4 +578,3 @@ async def patch_platform_settings(req: PlatformSettingsPatchRequest, db: AsyncSe
     ps.active_homepage = req.active_homepage
     await db.commit()
     return {"active_homepage": ps.active_homepage}
-

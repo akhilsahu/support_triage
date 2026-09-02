@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.auth import current_space
 from app.models.space import Space, CustomAgent, PromptSkill
+from app.services.datasource.availability import datasource_feature_enabled
 from app.api.db_utils import (
     get_agent, list_agents, get_skill, list_skills, count_skills,
     analytics_for_org,
@@ -481,8 +482,15 @@ async def get_nav_config(
     else:
         enabled = system_enabled
 
+    data_sources_enabled = await datasource_feature_enabled(db, org)
+    if not data_sources_enabled:
+        enabled.discard("data-sources")
+
     ordered = sorted(enabled, key=lambda x: ALL_NAV_ITEMS.index(x) if x in ALL_NAV_ITEMS else 99)
-    return {"enabled_nav_items": ordered}
+    return {
+        "enabled_nav_items": ordered,
+        "features": {"data_sources": data_sources_enabled},
+    }
 
 
 # ── Agent Meta Suggestions ────────────────────────────────────────────────────
