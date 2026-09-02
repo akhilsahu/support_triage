@@ -27,6 +27,12 @@ class FakeSession:
         self.statements.append(statement)
         return SimpleNamespace(scalars=lambda: _Scalars(self.rows))
 
+    async def get(self, _model, _identity):
+        return SimpleNamespace(datasources_enabled=None)
+
+    async def scalar(self, _statement):
+        return SimpleNamespace(datasources_platform_enabled=True)
+
 
 class SpyExecutor:
     def __init__(self):

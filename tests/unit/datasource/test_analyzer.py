@@ -31,7 +31,7 @@ async def test_analyze_ai_filters_invented_fields_and_agents():
         draft, [{"state": "ok"}], [AgentSummary("active", "Orders", "custom")],
         use_ai=True, llm_generate=fake_generate,
     )
-    assert result.draft.tool.output_mapping == {"status": "state"}
+    assert result.draft.tool.output_mapping == {"state": "state", "status": "state"}
     assert result.suggested_agent_ids == ("active",)
 
 

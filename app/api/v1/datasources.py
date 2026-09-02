@@ -29,10 +29,15 @@ from app.core.auth import current_space
 from app.core.database import get_db
 from app.core.encryption import encrypt, decrypt
 from app.models.datasource import SpaceDataSource, CANONICAL_ORDER_FIELDS
+from app.services.datasource.availability import require_datasource_feature
 from app.services.llm_service import llm_service
 
 logger = structlog.get_logger()
-router = APIRouter(prefix="/datasources", tags=["Data Sources"])
+router = APIRouter(
+    prefix="/datasources",
+    tags=["Data Sources"],
+    dependencies=[Depends(require_datasource_feature)],
+)
 
 
 # ── Pydantic models ───────────────────────────────────────────────────────────

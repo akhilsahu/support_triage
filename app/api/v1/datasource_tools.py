@@ -33,9 +33,10 @@ from app.schemas.datasource import (
     ToolCreate,
     ToolUpdate,
 )
-from app.services.datasource.contracts import DataSourceDraft, DraftConnection, DraftTool, ExecutionContext, ToolConfig
 from app.services.datasource.analyzer import analyze_sample
+from app.services.datasource.availability import require_datasource_feature
 from app.services.datasource.assistant import describe_data_source
+from app.services.datasource.contracts import DataSourceDraft, DraftConnection, DraftTool, ExecutionContext, ToolConfig
 from app.services.datasource.executor import DataSourceExecutor
 from app.services.datasource.importer import DataSourceImportError, parse_curl, parse_openapi
 from app.services.datasource.sanitizer import sanitize_mapping
@@ -43,7 +44,11 @@ from app.services.datasource.security import UnsafeDestinationError, validate_st
 from app.services.datasource.validator import ToolValidationError, validate_tool_config
 
 logger = structlog.get_logger(__name__)
-router = APIRouter(prefix="/data-sources", tags=["Data Sources"])
+router = APIRouter(
+    prefix="/data-sources",
+    tags=["Data Sources"],
+    dependencies=[Depends(require_datasource_feature)],
+)
 
 
 def _draft(req) -> DataSourceDraft:

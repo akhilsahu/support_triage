@@ -18,8 +18,10 @@ from app.models.space import (
     BuiltinAgentCatalog,
     ChatbotCustomAgent,
     CustomAgent,
+    Space,
     SpaceBuiltinAgentConfig,
 )
+from app.services.datasource.availability import datasource_feature_enabled
 from app.services.datasource.contracts import (
     ExecutionContext,
     ExecutionFailure,
@@ -85,6 +87,8 @@ class DataSourceToolRegistry:
     ) -> list[ToolDefinition]:
         if agent_kind not in _SUPPORTED_AGENT_KINDS:
             return []
+        if not await self._feature_enabled(context):
+            return []
         result = await self._db.execute(
             self._authorized_query(context, agent_id, agent_kind)
             .order_by(DataSourceTool.name, DataSourceTool.id)
@@ -110,6 +114,8 @@ class DataSourceToolRegistry:
         """
         if agent_kind not in _SUPPORTED_AGENT_KINDS:
             return _unavailable()
+        if not await self._feature_enabled(context):
+            return _unavailable()
         result = await self._db.execute(
             self._authorized_query(context, agent_id, agent_kind, tool_id=tool_id)
         )
@@ -120,6 +126,13 @@ class DataSourceToolRegistry:
         if expected_revision is not None and tool.revision != expected_revision:
             return _unavailable()
         return await self._executor.execute(self._config(tool), arguments, context)
+
+    async def _feature_enabled(self, context: ExecutionContext) -> bool:
+        """Resolve runtime availability without exposing whether stored tools exist."""
+        space = await self._db.get(Space, context.space_id)
+        if space is None:
+            return False
+        return await datasource_feature_enabled(self._db, space)
 
     @staticmethod
     def _definition(tool: DataSourceTool) -> ToolDefinition:
