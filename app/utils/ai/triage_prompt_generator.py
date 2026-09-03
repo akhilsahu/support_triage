@@ -51,19 +51,25 @@ The generated prompt MUST be structured cleanly into 3 distinct sections using G
 # 1. Chatbot Role & Scope
 - State the chatbot persona, brand identity, and high-level responsibilities.
 - Define what user intents are supported vs out-of-scope.
+- IMPORTANT: Do NOT mark "contact customer support", "complaints", "working hours", or similar meta/operational queries as out-of-scope. These must be delegated to the closest specialist who may have this information in their knowledge base.
 
 # 2. Specialist Agent Routing Directory
 - List every available Specialist Agent (using its exact name and slug).
 - Define precise routing criteria and intent triggers specifying when to delegate user messages to each specialist.
+- Include a **Fallback Routing Rule**: Any query that does not clearly match a specific specialist (meta/operational queries, contact info, complaints, hours, general inquiries) MUST be routed to the specialist with the broadest or most relevant scope. The triage agent must NEVER answer such queries directly.
 
 # 3. Domain Taxonomy & Disambiguation Guardrails
 - Automatically extract domain-specific entity rules and taxonomy boundaries from the knowledge base summaries.
 - **Ambiguous Query & Clarification Rule**: Instruct the agent that when a customer asks a general or ambiguous question that applies to multiple products, plans, or policies in the knowledge base, it MUST call the `ask_user` tool immediately to present a choice of available options rather than guessing.
+- **Ambiguous Product Reference Rule**: Instruct the agent that when the customer uses non-specific references like "my card", "my plan", "my policy", or "my account" without naming the exact product, and multiple specialists exist covering different variants — it MUST call the `ask_user` tool to let the customer select which product/card they hold before routing. Never guess which product the customer holds.
 - **Strict Numerical Preservation**: Instruct the agent that when quoting fees, pricing schedules, interest rates, or percentages, it MUST quote exact figures verbatim for each specific variant without cross-contaminating figures.
 - **Rich Visual Formatting**: Instruct the agent to ALWAYS present fees, rates, charges, or comparisons in clean Markdown Tables or via `render_table` / `render_cards` tools instead of plain bullet walls.
 - **360° Comprehensive Product/Policy Overview**: Instruct the agent that when asked for key features, details, or an overview of a specific entity (product/plan/policy/grade), it MUST provide a complete 360-degree overview (Executive Summary, Fee/Pricing Table, Welcome/Included Perks, Feature Matrix, Milestones, Excluded Rules, and Perks) in one response.
 - **Restriction & Exclusion Verification**: Instruct the agent that when asked about benefits, coverage, or refunds on a specific item or category, it MUST check explicit non-eligible transaction rules, cite specific restriction codes or clause references (e.g. MCC 5094/5944 for Jewelry, Policy Clause 13.1, Non-refundable Deposit Clause), and state clearly if a category is excluded (0% benefit / non-eligible).
 - **Runtime Step-by-Step SOP Protocol**: Instruct the agent to follow a sequential 5-step retrieval protocol: (1) Intent & Entity Parsing, (2) Multi-Angle Search, (3) Exclusion & Code Verification, (4) Structured Layout Assembly, (5) Completeness Audit.
+
+The generated prompt MUST end with this exact block (do not paraphrase it):
+CRITICAL REMINDER: You are a ROUTER ONLY. You must NEVER generate a customer-facing answer under any circumstances — not for greetings, not for meta questions, not for off-topic queries, not for anything. Every single message must result in a delegation to a specialist or a clarifying ask_user call. There are absolutely no exceptions.
 
 Be clear, authoritative, and concise. Output ONLY the 3-part Markdown prompt text without meta-commentary."""
 

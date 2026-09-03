@@ -38,6 +38,25 @@ def _uses_max_completion_tokens(model_id: str) -> bool:
     return m.startswith(("gpt-5", "o1", "o3", "o4"))
 
 
+def _supports_reasoning_effort(model_id: str) -> bool:
+    """
+    OpenAI's `reasoning_effort` request argument is only accepted by its
+    reasoning-model family (o1/o3/o4, gpt-5*) — the same family that requires
+    `max_completion_tokens`. Non-reasoning models (gpt-4o, gpt-4o-mini, …)
+    reject it with a 400 (`Unrecognized request argument supplied:
+    reasoning_effort`), which surfaced as "Error in Team run" and an empty /
+    error reply to the customer. So the effort override is only forwarded to
+    models that actually accept it.
+
+    Handles both bare OpenAI ids ("gpt-5-mini") and OpenRouter-style prefixed
+    ids ("openai/gpt-5-mini", "anthropic/claude-…" → unsupported).
+    """
+    m = (model_id or "").lower()
+    if "/" in m:
+        m = m.split("/", 1)[1]
+    return m.startswith(("gpt-5", "o1", "o3", "o4"))
+
+
 def _build_openai(
     cfg: AgnoConfig,
     temperature: float,
@@ -52,7 +71,9 @@ def _build_openai(
         from agno.models.openai import OpenAIChat
         model_id = model or cfg.llm_model or "gpt-4o-mini"
         kwargs: dict = dict(id=model_id, api_key=settings.OPENAI_API_KEY, temperature=temperature)
-        if reasoning_effort:
+        # reasoning_effort is only accepted by OpenAI's reasoning family
+        # (o1/o3/o4, gpt-5*). Passing it to gpt-4o-mini etc. is a 400 error.
+        if reasoning_effort and _supports_reasoning_effort(model_id):
             kwargs["reasoning_effort"] = reasoning_effort
         if _uses_max_completion_tokens(model_id):
             kwargs["max_completion_tokens"] = max_tokens
@@ -97,7 +118,9 @@ def _build_openrouter(
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        if reasoning_effort:
+        if reasoning_effort and _supports_reasoning_effort(
+            model or cfg.llm_model or settings.OPENROUTER_MODEL
+        ):
             kwargs["reasoning_effort"] = reasoning_effort
         return OpenRouter(**kwargs)
     except Exception as e:
