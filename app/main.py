@@ -356,7 +356,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 async def health_check():
     """Health check endpoint"""
     db_status = await check_db_connection()
-    redis_status = redis_client.redis is not None
+    redis_status = await redis_client.ping()
     
     return {
         "status": "healthy" if db_status and redis_status else "unhealthy",

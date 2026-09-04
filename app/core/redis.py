@@ -37,6 +37,16 @@ class RedisClient:
             await self.redis.close()
             logger.info("Redis connection closed")
 
+    async def ping(self) -> bool:
+        """Return True only if Redis answers a PING right now."""
+        if self.redis is None:
+            return False
+        try:
+            return bool(await self.redis.ping())
+        except Exception as e:
+            logger.warning("Redis PING failed", error=str(e))
+            return False
+
     async def get(self, key: str) -> Optional[Any]:
         """Get value from Redis"""
         try:
