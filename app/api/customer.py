@@ -742,6 +742,13 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
             conversation_id=req.conversation_id or session_id,
             customer_id=customer.id if customer else None,
         )
+        # AI usage attribution — task-scoped ContextVar; every provider call in
+        # this request records space/chatbot/session without touching call sites.
+        from app.services.ai_usage_context import AiUsageContext, set_ai_usage_context
+        set_ai_usage_context(AiUsageContext(
+            space_id=org.id, chatbot_id=chatbot.id,
+            session_id=uuid.UUID(session_id) if session_id else None,
+        ))
         await record_conversation_event(
             context=execution_context,
             event_type=ConversationEventType.MESSAGE_RECEIVED,
@@ -876,6 +883,13 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
         session_id=session_id,
         conversation_id=req.conversation_id or session_id,
     )
+    # AI usage attribution — task-scoped ContextVar (visible inside the stream
+    # generator too); see the non-streaming path for the same pattern.
+    from app.services.ai_usage_context import AiUsageContext, set_ai_usage_context
+    set_ai_usage_context(AiUsageContext(
+        space_id=org.id, chatbot_id=chatbot.id,
+        session_id=uuid.UUID(session_id) if session_id else None,
+    ))
     await record_conversation_event(
         context=execution_context,
         event_type=ConversationEventType.MESSAGE_RECEIVED,

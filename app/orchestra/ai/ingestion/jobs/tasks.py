@@ -136,6 +136,12 @@ async def ingest_document(
     enable_enrichment: Optional[bool] = None,
     **kwargs,
 ) -> None:
+    # AI usage attribution — embedding cost lands on this space + KB.
+    from app.services.ai_usage_context import AiUsageContext, set_ai_usage_context
+    set_ai_usage_context(AiUsageContext(
+        space_id=UUID(space_id) if space_id else None,
+        kb_id=UUID(kb_id) if kb_id else None,
+    ))
 
     """Ingest one uploaded document, recording progress on its job row.
 
