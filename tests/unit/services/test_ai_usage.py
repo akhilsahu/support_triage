@@ -93,3 +93,43 @@ async def test_track_usage_openai_real_usage_not_estimated(monkeypatch):
     assert ev.estimated is False and ev.prompt_tokens == 30
     assert ev.completion_tokens == 10 and ev.total_tokens == 40
 
+
+async def test_tracked_embedding_function_records_usage(monkeypatch):
+    """Chroma EF wrapper: passes vectors through, records estimated usage."""
+    import asyncio
+
+    import app.services.ai_usage as mod
+    captured = {}
+
+    async def fake_record(ev):
+        captured["ev"] = ev
+
+    monkeypatch.setattr(mod, "record_usage_event", fake_record)
+
+    from app.orchestra.ai.embedding import service as emb_service
+
+    calls = []
+
+    def fake_inner(texts):
+        calls.append(list(texts))
+        return [[0.1, 0.2] for _ in texts]
+
+    ef = emb_service._UsageTrackedEmbeddingFunction(
+        fake_inner, provider="openai", model="text-embedding-3-small",
+    )
+    # attribute delegation to the inner EF still works
+    fake_inner.fancy_attr = "kept"
+    assert ef.fancy_attr == "kept"
+
+    out = ef(["hello world", "second text"])
+    await asyncio.sleep(0)  # let the fire-and-forget task run
+
+    assert out == [[0.1, 0.2], [0.1, 0.2]]          # vectors untouched
+    assert calls == [["hello world", "second text"]]
+    ev = captured["ev"]
+    assert ev.kind == "embedding" and ev.estimated is True
+    assert ev.prompt_tokens == 5                    # 23 chars // 4
+    assert ev.completion_tokens == 0 and ev.total_tokens == 5
+    assert ev.meta == {"batch_size": 2}
+
+

@@ -22,6 +22,50 @@ logger = structlog.get_logger()
 # dimensions or query vectors won't match stored vectors. These build each from
 # the single EmbeddingConfig so they can never drift.
 
+class _UsageTrackedEmbeddingFunction:
+    """Wraps a Chroma embedding function; records fail-open usage per batch.
+
+    The write path (ingestion) is the bulk of embedding cost — attribute it to
+    the kb in the AiUsageContext (set by ingestion tasks). Token counts are
+    estimated (chars/4): the OpenAI embeddings API here reports no usage.
+    Vector return values are passed through untouched.
+    """
+
+    def __init__(self, inner, provider: str, model: str):
+        self._inner = inner
+        self._provider = provider
+        self._model = model
+
+    def __call__(self, input):  # noqa: A002 — Chroma's EF signature
+        import time as _time
+        _t0 = _time.monotonic()
+        vectors = self._inner(input)
+        try:
+            import asyncio
+
+            from app.services.ai_usage import (
+                build_usage_event,
+                estimate_tokens,
+                record_usage_event,
+            )
+            ev = build_usage_event(
+                kind="embedding", provider=self._provider, model=self._model,
+                latency_ms=int((_time.monotonic() - _t0) * 1000),
+                usage={"prompt_tokens": estimate_tokens("".join(input or [])),
+                       "completion_tokens": 0},
+                estimated=True,
+                meta={"batch_size": len(input or [])},
+            )
+            asyncio.get_running_loop().create_task(record_usage_event(ev))
+        except Exception as e:  # telemetry must never break ingestion
+            logger.warning("embedding.usage_track_failed", error=str(e))
+        return vectors
+
+    def __getattr__(self, name):
+        # Delegate everything else (name(), config, ...) to the inner EF.
+        return getattr(self._inner, name)
+
+
 def build_chroma_embedding_function(cfg=None):
     """OpenAIEmbeddingFunction for the ChromaDB write path. None on failure.
 
@@ -40,7 +84,9 @@ def build_chroma_embedding_function(cfg=None):
         )
         if cfg.base_url:
             kwargs["api_base"] = cfg.base_url
-        return OpenAIEmbeddingFunction(**kwargs)
+        return _UsageTrackedEmbeddingFunction(
+            OpenAIEmbeddingFunction(**kwargs), provider="openai", model=cfg.model,
+        )
     except Exception as e:
         logger.warning("embedding.chroma_ef_unavailable", error=str(e))
         return None
