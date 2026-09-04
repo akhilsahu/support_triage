@@ -588,7 +588,7 @@ Multiple agents execute simultaneously, results are aggregated.
 Agent selection based on previous results or conditions.
 
 ### Graph-based Execution
-Complex workflows using LangGraph for state management.
+Complex workflows using the Agno orchestration layer (`app/orchestra/ai`) for agent teams and session state management.
 
 ## 🤖 Agent Types
 
@@ -1261,7 +1261,7 @@ For issues and questions:
 ## 🙏 Acknowledgments
 
 - FastAPI framework
-- LangChain/LangGraph for agent orchestration
+- Agno for agent orchestration
 - pgvector for vector storage
 - SQLAlchemy for ORM
 - All contributors and maintainers

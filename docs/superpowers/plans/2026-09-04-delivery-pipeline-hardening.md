@@ -419,6 +419,13 @@ ignore = ["E501"]
 
 - [ ] **Step 3: Convert the 3 prints in `app/core/langgraph_persistence.py`**
 
+> **DEVIATION (executed 2026-09-04):** During execution the component-usage check the reviewer
+> requested proved the module is **dead code**: zero importers repo-wide, `langgraph` absent from
+> `requirements.txt` (the prod image cannot import it), untouched since the first commits, and
+> superseded by the Agno session store. Decision: **delete the module** and fix the two stale
+> LangGraph claims in `README.md` (lines 591, 1264) instead of converting prints. Original
+> conversion instructions preserved below for reference.
+
 After the existing app imports (line 27, `from app.core.database import get_db`), add:
 ```python
 import structlog

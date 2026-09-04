@@ -60,8 +60,27 @@ include = '\.pyi?$'
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-select = ["E", "F", "I", "N", "W", "UP"]
+select = ["E", "F", "I", "N", "W", "UP", "T20"]
 ignore = ["E501"]
+
+[tool.ruff.per-file-ignores]
+# Intentional stdout demos / CLI maintenance scripts (run via `python -m ...`)
+"app/orchestra/ai/run.py" = ["T201"]
+"app/orchestra/ai/demochat.py" = ["T201"]
+"app/orchestra/poc.py" = ["T201"]
+"app/orchestra/legacy/poc.py" = ["T201"]
+"app/orchestra/ai/ingestion/demo.py" = ["T201"]
+"app/orchestra/ai/ingestion/retrieval_quality_demo.py" = ["T201"]
+"app/orchestra/ai/chunking/demo.py" = ["T201"]
+"app/orchestra/ai/knowledge/demo.py" = ["T201"]
+"app/orchestra/ai/knowledge/rag_quality_eval.py" = ["T201"]
+"app/orchestra/ai/facts/demo.py" = ["T201"]
+"app/renderengine/democheck.py" = ["T201"]
+"app/utils/ai/document_ingestion.py" = ["T201"]
+"app/utils/ai/triage_prompt_generator.py" = ["T201"]
+# Deliberate dev-console fallback; a structured `email.dev_fallback` warning is
+# emitted via structlog immediately before each print.
+"app/services/inbox/email_notify.py" = ["T201"]
 
 [tool.mypy]
 python_version = "3.11"
