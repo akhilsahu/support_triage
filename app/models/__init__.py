@@ -21,6 +21,7 @@ from app.models.evaluation import EvaluationSuite, EvaluationCase, EvaluationRun
 from app.models.inbox import SessionWaitingQueue, SessionAssignmentHistory, SpaceAssignmentRule
 from app.models.staff import StaffMember
 from app.models.training_feedback import TrainingFeedback
+from app.models.ai_usage import AiUsageEvent
 
 __all__ = [
     "Space", "SpaceBuiltinAgentConfig", "CustomAgent", "ChatbotCustomAgent", "BuiltinAgentCatalog",
@@ -41,6 +42,7 @@ __all__ = [
     "SessionWaitingQueue", "SessionAssignmentHistory", "SpaceAssignmentRule",
     "StaffMember",
     "TrainingFeedback",
+    "AiUsageEvent",
 ]
 
 # Made with Bob
