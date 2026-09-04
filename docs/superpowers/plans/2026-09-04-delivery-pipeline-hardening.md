@@ -456,6 +456,11 @@ git add pyproject.toml app/core/langgraph_persistence.py && git commit -m "chore
 
 ### Task 7: CI gate — backend + frontend jobs ahead of the VPS deploy
 
+> **DEVIATION (executed 2026-09-04):** Task 4's lint baseline surfaced 73 violations (24 files),
+> beyond quick cleanup — the Completion-Notes contingency applies: `npm run lint` runs inside
+> `frontend-checks` with `continue-on-error: true` (non-blocking) until the baseline is cleaned.
+> `type-check` and `npm run test` remain hard gates.
+
 Rewrite `.github/workflows/deploy.yml` so `deploy` runs **only after** `backend-tests` and `frontend-checks` pass, and only on pushes to `main` (PRs get the checks without deploying). Note: `pytest`/`pytest-asyncio` are dev-only (not in `requirements.txt`), so the backend job installs them explicitly; `-o addopts=""` neutralizes the `--cov` options from `pyproject.toml` so `pytest-cov` is not needed in CI.
 
 **Files:**
