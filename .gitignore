@@ -174,9 +174,6 @@ thingstodo/
 # Expendable files
 expendable/
 test/
-tests/
-test_*
-tests_*
 scripts/finetuning/
 
 # Committed-junk prevention (2026-09 hardening)
