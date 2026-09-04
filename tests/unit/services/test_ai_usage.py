@@ -33,3 +33,63 @@ def test_build_usage_event_error_row():
                            error_type="RateLimitError")
     assert ev.ok is False and ev.error_type == "RateLimitError"
     assert ev.total_tokens is None
+
+
+async def test_track_usage_estimates_watsonx_and_records(monkeypatch):
+    """watsonx returns no usage — _track_usage must estimate and mark estimated."""
+    import asyncio
+
+    import app.services.ai_usage as mod
+    captured = {}
+
+    async def fake_record(ev):
+        captured["ev"] = ev
+
+    monkeypatch.setattr(mod, "record_usage_event", fake_record)
+
+    from app.services.llm_service import llm_service
+
+    llm_service._track_usage(
+        provider="watsonx", model="ibm/granite-13b-chat-v2",
+        messages=[{"role": "user", "content": "x" * 400}],
+        system_prompt=None, content="y" * 80,
+        usage=None, latency_ms=150, ok=True, error_type=None,
+    )
+    await asyncio.sleep(0)  # let the fire-and-forget task run
+
+    ev = captured["ev"]
+    assert ev.kind == "chat" and ev.provider == "watsonx"
+    assert ev.estimated is True
+    assert ev.prompt_tokens == 100 and ev.completion_tokens == 20
+    assert ev.total_tokens == 120 and ev.ok is True
+
+
+async def test_track_usage_openai_real_usage_not_estimated(monkeypatch):
+    import asyncio
+
+    import app.services.ai_usage as mod
+    captured = {}
+
+    async def fake_record(ev):
+        captured["ev"] = ev
+
+    monkeypatch.setattr(mod, "record_usage_event", fake_record)
+
+    from app.services.llm_service import llm_service
+
+    class _FakePydanticUsage:
+        def model_dump(self):
+            return {"prompt_tokens": 30, "completion_tokens": 10, "total_tokens": 40}
+
+    llm_service._track_usage(
+        provider="openai", model="gpt-4o-mini",
+        messages=[{"role": "user", "content": "hi"}],
+        system_prompt=None, content="hello",
+        usage=_FakePydanticUsage(), latency_ms=90, ok=True, error_type=None,
+    )
+    await asyncio.sleep(0)
+
+    ev = captured["ev"]
+    assert ev.estimated is False and ev.prompt_tokens == 30
+    assert ev.completion_tokens == 10 and ev.total_tokens == 40
+

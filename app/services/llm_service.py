@@ -195,24 +195,91 @@ class LLMService:
             max_tokens=max_tokens
         )
 
-        if provider == LLMProvider.WATSONX:
-            return await self._generate_watsonx(
-                messages, model, temperature, max_tokens, system_prompt, **kwargs
+        import time as _time
+        _t0 = _time.monotonic()
+        try:
+            if provider == LLMProvider.WATSONX:
+                result = await self._generate_watsonx(
+                    messages, model, temperature, max_tokens, system_prompt, **kwargs
+                )
+            elif provider == LLMProvider.OPENAI:
+                result = await self._generate_openai(
+                    messages, model, temperature, max_tokens, system_prompt, **kwargs
+                )
+            elif provider == LLMProvider.ANTHROPIC:
+                result = await self._generate_anthropic(
+                    messages, model, temperature, max_tokens, system_prompt, **kwargs
+                )
+            elif provider == LLMProvider.OPENROUTER:
+                result = await self._generate_openrouter(
+                    messages, model, temperature, max_tokens, system_prompt, **kwargs
+                )
+            else:
+                raise ValueError(f"Unsupported provider: {provider}")
+        except Exception as exc:
+            self._track_usage(
+                provider=provider.value, model=model, messages=messages,
+                system_prompt=system_prompt, content=None, usage=None,
+                latency_ms=int((_time.monotonic() - _t0) * 1000),
+                ok=False, error_type=type(exc).__name__,
             )
-        elif provider == LLMProvider.OPENAI:
-            return await self._generate_openai(
-                messages, model, temperature, max_tokens, system_prompt, **kwargs
+            raise
+        self._track_usage(
+            provider=provider.value, model=model, messages=messages,
+            system_prompt=system_prompt, content=result.get("content"),
+            usage=result.get("usage"),
+            latency_ms=int((_time.monotonic() - _t0) * 1000),
+            ok=True, error_type=None,
+        )
+        return result
+
+    def _track_usage(
+        self,
+        *,
+        provider: str,
+        model: str,
+        messages: List[Dict[str, str]],
+        system_prompt: Optional[str],
+        content: Optional[str],
+        usage: Optional[Dict[str, Any]],
+        latency_ms: int,
+        ok: bool,
+        error_type: Optional[str],
+    ) -> None:
+        """Fire-and-forget AI usage record. Fail-open — never affects the reply."""
+        try:
+            import asyncio
+            import time
+
+            from app.services.ai_usage import (
+                build_usage_event,
+                estimate_tokens,
+                record_usage_event,
             )
-        elif provider == LLMProvider.ANTHROPIC:
-            return await self._generate_anthropic(
-                messages, model, temperature, max_tokens, system_prompt, **kwargs
+
+            # OpenAI/Anthropic SDKs return pydantic usage objects — normalize to dict.
+            if usage is not None and not isinstance(usage, dict):
+                dump = getattr(usage, "model_dump", None)
+                usage = dump() if callable(dump) else dict(usage)
+
+            estimated = False
+            if not usage and provider == LLMProvider.WATSONX.value:
+                # watsonx generate_text returns plain text — estimate both sides.
+                prompt_text = "".join(m.get("content", "") for m in messages)
+                if system_prompt:
+                    prompt_text = f"{system_prompt}\n{prompt_text}"
+                usage = {"prompt_tokens": estimate_tokens(prompt_text),
+                         "completion_tokens": estimate_tokens(content or "")}
+                estimated = True
+
+            ev = build_usage_event(
+                kind="chat", provider=provider, model=model, latency_ms=latency_ms,
+                usage=usage, estimated=estimated, ok=ok, error_type=error_type,
             )
-        elif provider == LLMProvider.OPENROUTER:
-            return await self._generate_openrouter(
-                messages, model, temperature, max_tokens, system_prompt, **kwargs
-            )
-        else:
-            raise ValueError(f"Unsupported provider: {provider}")
+            loop = asyncio.get_running_loop()
+            loop.create_task(record_usage_event(ev))
+        except Exception as e:  # pragma: no cover — telemetry must never break chat
+            logger.warning("llm_service.usage_track_failed", error=str(e))
 
     
     async def _generate_watsonx(
