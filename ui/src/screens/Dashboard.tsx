@@ -107,6 +107,13 @@ export function Dashboard() {
   const [stats, setStats]           = useState<DashboardStats | null>(null)
   const [loading, setLoading]       = useState(true)
   const [waitingCount, setWaiting]  = useState(0)
+  const [usage, setUsage]           = useState<{ total_tokens: number; total_calls: number } | null>(null)
+
+  useEffect(() => {
+    apiClient.getUsageSummary()
+      .then(setUsage)
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     apiClient.getDashboardStats()
@@ -129,6 +136,13 @@ export function Dashboard() {
     { label: 'RAG Hit Rate',    value: `${stats.rag_hit_rate}%`,              icon: TrendingUp,   from: dt.stat1[0], to: dt.stat1[1], delta: 'Last 7 days' },
     { label: 'Active Agents',   value: stats.active_agents.toString(),        icon: Bot,          from: dt.stat2[0], to: dt.stat2[1], delta: stats.active_agents > 0 ? 'Running now' : 'None active' },
     { label: 'Knowledge Docs',  value: stats.kb_doc_count.toString(),         icon: Database,     from: dt.stat3[0], to: dt.stat3[1], delta: `${stats.kb_doc_count} document${stats.kb_doc_count !== 1 ? 's' : ''}` },
+    ...(usage && usage.total_calls > 0 ? [{
+      label: 'AI Tokens (30d)',
+      value: usage.total_tokens.toLocaleString(),
+      icon: Zap,
+      from: dt.stat0[1], to: dt.stat1[0],
+      delta: `${usage.total_calls} call${usage.total_calls !== 1 ? 's' : ''}`,
+    }] : []),
   ] : []
 
   return (
@@ -231,7 +245,7 @@ export function Dashboard() {
           className="space-y-6"
         >
           {/* ── Stat Cards Grid (Translucent Apple Glass Cards) ─────────────── */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-5">
             {statCards.map(s => {
               const Icon = s.icon
               return (

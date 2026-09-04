@@ -494,6 +494,10 @@ export const apiClient = {
   getDashboardStats: () =>
     http.get('/api/v1/dashboard/stats').then(r => r.data),
 
+  // AI usage / cost summary (space-scoped, fail-open telemetry source)
+  getUsageSummary: (days = 30) =>
+    http.get(`/api/v1/usage/summary?days=${days}`).then(r => r.data),
+
   // Org Profile
   getProfile: () =>
     http.get('/api/v1/dashboard/profile').then(r => r.data),
