@@ -652,6 +652,22 @@ export function KBModal({
 
               {selectedPreview && (
                 <div className="relative rounded-2xl border-2 border-indigo-500/30 dark:border-indigo-500/20 bg-indigo-500/[0.03] dark:bg-indigo-500/[0.05] overflow-hidden shadow-[0_0_22px_rgba(99,102,241,0.08)] dark:shadow-[0_0_22px_rgba(99,102,241,0.05)] transition-all">
+                  {/* Quality guidance: quick (httpx) previews can come back boilerplate-heavy */}
+                  {selectedPreview.quality?.rating === 'poor' && (
+                    <div
+                      role="alert"
+                      className="mx-5 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-300"
+                    >
+                      <span>⚠️ Poor extraction quality — this quick preview may be missing page content.</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPreviewMode('deep')}
+                        className="underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-200"
+                      >
+                        Try Deep Preview
+                      </button>
+                    </div>
+                  )}
                   {/* Floating stats badge (theme-adaptive: adapts to dashboard theme bg-white dark:bg-gray-900 border/text colors) */}
                   <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-indigo-150 dark:border-indigo-900/60 bg-white/90 dark:bg-gray-900/90 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 shadow-2xs">
                     <span>{selectedPreview.page_count} page{selectedPreview.page_count === 1 ? '' : 's'}</span>
