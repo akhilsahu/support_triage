@@ -14,7 +14,9 @@ import { transition } from '../motion'
 const links = [
   { label: 'Product', to: '/#product' },
   { label: 'How it works', to: '/#how-it-works' },
+  { label: 'Integrations', to: '/#integrations' },
   { label: 'Pricing', to: '/#pricing' },
+  { label: 'FAQ', to: '/#faq' },
 ]
 
 function MobileMenu({ close }: { close: () => void }) {
