@@ -318,6 +318,7 @@ async def dashboard_stats(
     from datetime import datetime, timedelta
     from sqlalchemy import select, func, cast, Date
     from app.models.space import ConversationLog, CustomAgent
+    from app.models.chat import ChatSession
     from app.rag.vector_store import get_vector_store
     import asyncio
 
@@ -441,12 +442,31 @@ async def dashboard_stats(
         for a in agents
     ]
 
+    # CSAT — average rating + response count (last 30 days)
+    since_30d = now - timedelta(days=30)
+    csat_avg = (await db.execute(
+        select(func.avg(ChatSession.csat_rating)).where(
+            ChatSession.space_id == org.id,
+            ChatSession.csat_rating.isnot(None),
+            ChatSession.csat_at >= since_30d,
+        )
+    )).scalar()
+    csat_count = (await db.execute(
+        select(func.count()).select_from(ChatSession).where(
+            ChatSession.space_id == org.id,
+            ChatSession.csat_rating.isnot(None),
+            ChatSession.csat_at >= since_30d,
+        )
+    )).scalar() or 0
+
     return {
         "total_messages":  total_msgs,
         "messages_24h":    msgs_24h,
         "rag_hit_rate":    rag_rate,
         "active_agents":   active_agents,
         "kb_doc_count":    kb_docs,
+        "csat_avg":        round(float(csat_avg), 2) if csat_avg is not None else None,
+        "csat_count":      int(csat_count),
         "messages_per_day": per_day,
         "recent_activity": recent_activity,
         "fleet":           fleet,

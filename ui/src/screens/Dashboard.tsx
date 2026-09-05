@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   MessageSquare, TrendingUp, Bot, Database, Activity,
-  ArrowRight, ExternalLink, Loader2, Bell, Zap, Sparkles, ChevronRight
+  ArrowRight, ExternalLink, Loader2, Bell, Zap, Sparkles, ChevronRight, Star
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useDashboardTheme } from '../config/dashboardTheme'
@@ -34,6 +34,8 @@ interface DashboardStats {
   rag_hit_rate: number
   active_agents: number
   kb_doc_count: number
+  csat_avg: number | null
+  csat_count: number
   messages_per_day: { day: string; date: string; msgs: number }[]
   recent_activity: { agent_slug: string; message: string; intent: string | null; timestamp: string | null }[]
   fleet: { slug: string; name: string; icon: string; active: boolean; is_builtin: boolean; agent_type: string; description: string }[]
@@ -143,6 +145,13 @@ export function Dashboard() {
       from: dt.stat0[1], to: dt.stat1[0],
       delta: `${usage.total_calls} call${usage.total_calls !== 1 ? 's' : ''}`,
     }] : []),
+    ...(stats.csat_count > 0 ? [{
+      label: 'CSAT (30d)',
+      value: stats.csat_avg !== null ? `${stats.csat_avg}★` : '—',
+      icon: Star,
+      from: dt.stat2[1], to: dt.stat3[1],
+      delta: `${stats.csat_count} rating${stats.csat_count !== 1 ? 's' : ''}`,
+    }] : []),
   ] : []
 
   return (
@@ -245,7 +254,7 @@ export function Dashboard() {
           className="space-y-6"
         >
           {/* ── Stat Cards Grid (Translucent Apple Glass Cards) ─────────────── */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-5">
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 sm:gap-5">
             {statCards.map(s => {
               const Icon = s.icon
               return (

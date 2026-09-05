@@ -101,6 +101,12 @@ class FeedbackRequest(BaseModel):
     rating: str   # "up" | "down"
 
 
+class CsatRequest(BaseModel):
+    session_id: str
+    rating: int   # 1..5
+    comment: Optional[str] = None
+
+
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
@@ -1201,6 +1207,68 @@ async def submit_feedback(slug: str, req: FeedbackRequest,
                 message_id=str(row.id),
                 reason="invalid_session_id",
             )
+        return JSONResponse({}, status_code=204, headers=_CORS)
+    finally:
+        await db.close()
+
+
+# ── CSAT micro-poll (post-resolution satisfaction) ───────────────────────────
+
+@router.post("/api/chat/{slug}/csat", status_code=204)
+async def submit_csat(slug: str, req: CsatRequest,
+                      chatbot_slug: Optional[str] = Query(None, alias="chatbot")):
+    """Record a customer's 1..5 satisfaction rating (with optional comment).
+
+    Idempotent (last write wins). Mirrors submit_feedback: org-scoped session
+    lookup so one brand can't rate another's session.
+    """
+    if req.rating < 1 or req.rating > 5:
+        return JSONResponse({"detail": "rating must be between 1 and 5."},
+                            status_code=400, headers=_CORS)
+
+    org, chatbot, db = await _get_brand(slug, chatbot_slug)
+    try:
+        try:
+            session_uuid = uuid.UUID(req.session_id)
+        except (ValueError, TypeError):
+            return JSONResponse({"detail": "Invalid session_id."},
+                                status_code=400, headers=_CORS)
+
+        session = (await db.execute(
+            select(ChatSession).where(
+                ChatSession.id == session_uuid,
+                ChatSession.space_id == org.id,
+            )
+        )).scalar_one_or_none()
+        if not session:
+            return JSONResponse({"detail": "Session not found."},
+                                status_code=404, headers=_CORS)
+
+        session.csat_rating = req.rating
+        session.csat_comment = (req.comment or "").strip() or None
+        session.csat_at = datetime.utcnow()
+        await db.commit()
+
+        try:
+            event_context = ConversationExecutionContext(
+                space_id=org.id,
+                chatbot_id=chatbot.id,
+                session_id=str(session.id),
+                conversation_id=str(session.id),
+            )
+            await record_conversation_event(
+                context=event_context,
+                event_type=ConversationEventType.CSAT_SUBMITTED,
+                data=ConversationEventData(metadata={
+                    "rating": req.rating,
+                    "comment": session.csat_comment,
+                }),
+            )
+        except Exception:
+            # CSAT is already saved — analytics is best-effort.
+            logger.warning("customer_csat.event_skipped",
+                           space_id=str(org.id), session_id=str(session.id))
+
         return JSONResponse({}, status_code=204, headers=_CORS)
     finally:
         await db.close()

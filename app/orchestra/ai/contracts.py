@@ -37,6 +37,7 @@ class ConversationEventType(str, Enum):
     CLARIFICATION_REQUESTED = "clarification.requested"
     ANSWER_COMPLETED = "answer.completed"
     FEEDBACK_RECEIVED = "feedback.received"
+    CSAT_SUBMITTED = "csat.submitted"
     ESCALATION_STARTED = "escalation.started"
     HUMAN_ASSIGNED = "human.assigned"
     CONVERSATION_RESOLVED = "conversation.resolved"

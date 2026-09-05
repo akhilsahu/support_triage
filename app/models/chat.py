@@ -17,7 +17,7 @@ Redis cache key: chat:history:{str(id)}
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, ForeignKey, Index, Text
+from sqlalchemy import Boolean, Column, DateTime, Integer, SmallInteger, String, ForeignKey, Index, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -61,6 +61,11 @@ class ChatSession(Base):
     message_count   = Column(Integer, default=0, nullable=False)
     started_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
     last_message_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # CSAT micro-poll (migration 0055_csat)
+    csat_rating  = Column(SmallInteger, nullable=True)
+    csat_comment = Column(Text, nullable=True)
+    csat_at      = Column(DateTime(timezone=True), nullable=True)
 
     # HITL clarification (ask_user) — set when the agent's last run paused on a
     # question instead of answering. All three are NULL together, or set together.

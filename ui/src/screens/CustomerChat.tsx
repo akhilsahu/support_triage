@@ -442,6 +442,23 @@ export function CustomerChat() {
   const [escalated, setEscalated]       = useState(false)
   const [escalating, setEscalating]     = useState(false)
   const [humanTransferEnabled, setHumanTransferEnabled] = useState(true)
+  const [csatPicked, setCsatPicked]     = useState<number | null>(null)
+  const [csatComment, setCsatComment]   = useState('')
+  const [csatSent, setCsatSent]         = useState(false)
+
+  const submitCsat = useCallback(async () => {
+    if (csatPicked === null || csatSent) return
+    setCsatSent(true)
+    // CSAT is a background signal — mirror the feedback call (fail-silent).
+    fetch(`${API_CONFIG.baseURL}/api/chat/${slug}/csat${botQuery}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        rating:     csatPicked,
+        comment:    csatComment.trim() || undefined,
+      }),
+    }).catch(() => {})
+  }, [csatPicked, csatSent, csatComment, sessionId, slug, botQuery])
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const sseRef        = useRef<EventSource | null>(null)
   const titleBaseRef  = useRef<string>('Live Chat')
@@ -1137,12 +1154,52 @@ export function CustomerChat() {
             />
           ) : (
           <>
-          {/* A nudge while free messages remain, so the gate isn't a surprise. */}
+          {/* Free-messages nudge */}
           {freeLeft > 0 && freeLeft <= 2 && (
             <p className={`text-[11.5px] mb-1.5 text-center ${t.textMuted}`}>
               {freeLeft} free message{freeLeft === 1 ? '' : 's'} left — sign in to save your history.
             </p>
           )}
+
+          {/* CSAT micro-poll — shown after resolution/escalation (or a few turns in) */}
+          {messages.length >= 2 && !csatSent && (
+            <div className={`rounded-2xl border px-3 py-2.5 mb-2 text-[13px] ${t.inputWrapCls}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className={`font-medium ${t.textMuted}`}>Help us improve—how was that?</span>
+                <div className="flex items-center gap-0.5">
+                  {[1,2,3,4,5].map(n => (
+                    <button
+                      key={n}
+                      type="button"
+                      aria-label={`Rate ${n} star${n === 1 ? '' : 's'}`}
+                      onClick={() => setCsatPicked(n)}
+                      className={`text-base leading-none px-0.5 transition-transform hover:scale-125 ${csatPicked !== null && n <= (csatPicked ?? 0) ? 'text-amber-400' : t.textMuted}`}
+                    >★</button>
+                  ))}
+                </div>
+              </div>
+              {csatPicked !== null && (
+                <div className="flex items-center gap-2 mt-2">
+                  <input
+                    value={csatComment}
+                    onChange={e => setCsatComment(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && submitCsat()}
+                    placeholder="Optional comment…"
+                    aria-label="CSAT comment"
+                    className={`flex-1 bg-transparent outline-none text-[13px] placeholder:opacity-60 ${t.inputFieldCls}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={submitCsat}
+                    disabled={csatPicked === null}
+                    className="text-[12px] font-semibold px-2.5 py-1 rounded-full"
+                    style={{ background: accentColor, color: '#fff' }}
+                  >Submit</button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Input pill — WCAG: min height 44px */}
           <div className={`flex items-center gap-3 px-4 py-2.5 rounded-2xl border transition-all duration-200 min-h-[52px] ${t.inputWrapCls}`}>
             <input
