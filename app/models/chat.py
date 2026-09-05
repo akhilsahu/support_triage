@@ -54,6 +54,7 @@ class ChatSession(Base):
     ai_disabled        = Column(Boolean, default=False, nullable=False)
     escalated_at       = Column(DateTime, nullable=True)
     escalation_reason  = Column(String(100), nullable=True)
+    escalation_brief   = Column(JSONB, nullable=True)   # AI handoff brief (see workflows/escalation.py)
     assigned_staff_id  = Column(UUID(as_uuid=True), ForeignKey("staff_members.id", ondelete="SET NULL"), nullable=True)
     claimed_at         = Column(DateTime, nullable=True)
     resolved_at        = Column(DateTime, nullable=True)

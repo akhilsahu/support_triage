@@ -423,21 +423,34 @@ async def _maybe_escalate(
         return
 
     try:
+        # Generate the AI handoff brief first (fail-open — on any error we
+        # proceed without it), then transfer so the brief persists on the session.
+        brief = None
+        try:
+            from app.orchestra.ai.workflows.escalation import run_escalation_workflow
+            brief_result = await run_escalation_workflow(
+                session_id=session_id,
+                space_id=str(org.id),
+                org_name=org.display_name,
+                history=[{"role": "user", "content": message}],
+            )
+            if isinstance(brief_result, dict) and "agent_brief" in brief_result:
+                brief = brief_result
+        except Exception:
+            logger.warning(
+                "customer_chat.escalation_brief_failed",
+                session_id=session_id,
+                space_id=str(org.id),
+            )
+
         await transfer_to_staff(
             db=db,
             session_id=uuid.UUID(session_id),
             source="ai_escalation",
             escalation_reason="agent_requested" if explicit else "auto_heuristic",
             last_customer_message=message,
+            ai_brief=brief,
         )
-        import asyncio
-        from app.orchestra.ai.workflows.escalation import run_escalation_workflow
-        asyncio.create_task(run_escalation_workflow(
-            session_id=session_id,
-            space_id=str(org.id),
-            org_name=org.display_name,
-            history=[{"role": "user", "content": message}],
-        ))
         result["reply"] = chatbot.human_transfer_message or "Connecting you with a human agent."
         result["agent"] = "human"
         event_context = ConversationExecutionContext(

@@ -376,6 +376,7 @@ def _session_out(s: ChatSession) -> dict:
         "assigned_staff_id":  str(s.assigned_staff_id) if s.assigned_staff_id else None,
         "escalated_at":       s.escalated_at.isoformat() if s.escalated_at else None,
         "escalation_reason":  s.escalation_reason,
+        "escalation_brief":   s.escalation_brief,
         "message_count":      s.message_count,
         "last_message_at":    s.last_message_at.isoformat() if s.last_message_at else None,
     }

@@ -9,7 +9,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   CheckCircle, Clock, Send, RefreshCw, X,
   ArrowRightLeft, Users, Plus, Trash2, Inbox as InboxIcon,
-  ChevronRight, MessageCircle, UserCheck,
+  ChevronRight, MessageCircle, UserCheck, Sparkles,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import apiClient from '../api/client'
@@ -25,6 +25,7 @@ interface Session {
   assigned_staff_id: string | null
   escalated_at: string | null
   escalation_reason: string | null
+  escalation_brief: { agent_brief?: string; summary?: string; urgency?: string; ticket_id?: string | null } | null
   message_count: number
   last_message_at: string | null
 }
@@ -369,6 +370,25 @@ function ChatView({ session: initialSession, token, onClose, onResolved, reloadT
             <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
             New message ↓
           </button>
+        )}
+
+        {/* ── AI handoff brief ── */}
+        {session.escalation_brief?.agent_brief && (
+          <div className="mx-4 mt-4 mb-1 rounded-2xl border border-indigo-200/70 dark:border-indigo-800/60 bg-indigo-50/70 dark:bg-indigo-950/30 p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+              <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wide">AI handoff brief</span>
+              {session.escalation_brief.urgency && (
+                <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 uppercase tracking-wide">
+                  {session.escalation_brief.urgency}
+                </span>
+              )}
+            </div>
+            {session.escalation_brief.summary && (
+              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{session.escalation_brief.summary}</p>
+            )}
+            <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed whitespace-pre-wrap">{session.escalation_brief.agent_brief}</p>
+          </div>
         )}
       </div>
 

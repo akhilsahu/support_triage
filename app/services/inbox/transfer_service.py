@@ -59,6 +59,7 @@ async def transfer_to_staff(
     escalation_reason: str | None = None,
     last_customer_message: str = "",
     exclude_staff_id: UUID | None = None,
+    ai_brief: dict | None = None,
 ) -> str:
     """
     Attempt to assign an available staff member to the given session.
@@ -71,6 +72,9 @@ async def transfer_to_staff(
     5. Select staff (direct → history → LLM → load balance)
     6. Assign or queue
     7. Emit SSE events
+
+    `ai_brief` (when provided) is the AI's handoff summary/urgency/agent_brief
+    from the escalation workflow; persisted so the inbox agent starts with context.
     """
 
     # 1. Lock session row
@@ -94,6 +98,10 @@ async def transfer_to_staff(
     session.escalated_at = datetime.utcnow()
     session.escalation_reason = escalation_reason or source
     session.status = "escalated"
+
+    # Persist the AI handoff brief so the inbox agent starts with context.
+    if ai_brief:
+        session.escalation_brief = ai_brief
 
     space_id = session.space_id
     rule = await get_or_create_rule(db, space_id)
