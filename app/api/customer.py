@@ -422,6 +422,56 @@ async def _maybe_escalate(
     if not (explicit or auto):
         return
 
+    # Check if any staff member is currently within service hours.
+    # If not, the customer sees a "we're closed" message and stays with the AI
+    # (their message persists in the transcript; staff can review it later).
+    from app.models.staff import StaffMember
+    from app.models.inbox import SpaceAssignmentRule
+    from app.services.inbox.service_hours import is_within_service_hours
+
+    staff_result = await db.execute(
+        select(StaffMember).where(
+            StaffMember.space_id == org.id,
+            StaffMember.active == True,
+        )
+    )
+    all_active_staff = list(staff_result.scalars().all())
+    any_within_hours = any(
+        is_within_service_hours(s.service_hours_start, s.service_hours_end, s.timezone)
+        for s in all_active_staff
+    )
+
+    if not any_within_hours:
+        # Outside business hours — use no_staff_message, skip transfer.
+        rule_result = await db.execute(
+            select(SpaceAssignmentRule).where(SpaceAssignmentRule.space_id == org.id)
+        )
+        rule = rule_result.scalar_one_or_none()
+        closed_message = (
+            rule.no_staff_message if rule and rule.no_staff_message
+            else "Our team is currently unavailable. Please try again later."
+        )
+        result["reply"] = closed_message
+        result["agent"] = "human"
+        event_context = ConversationExecutionContext(
+            space_id=org.id,
+            chatbot_id=chatbot.id,
+            session_id=session_id,
+            conversation_id=session_id,
+        )
+        await record_conversation_event(
+            context=event_context,
+            event_type=ConversationEventType.ESCALATION_STARTED,
+            data=ConversationEventData(
+                agent="human",
+                metadata={
+                    "reason": "agent_requested" if explicit else "auto_heuristic",
+                    "after_hours": True,
+                },
+            ),
+        )
+        return
+
     try:
         # Generate the AI handoff brief first (fail-open — on any error we
         # proceed without it), then transfer so the brief persists on the session.
