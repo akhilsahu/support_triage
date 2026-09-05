@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 import structlog
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
@@ -324,6 +324,49 @@ async def _handle_human_session(
         reply="", agent="human", intent="human_handoff",
         session_id=session_id, rag_hit=False, response_ms=0, citations=[],
     )
+
+
+# ── SSE reconnect dedup ───────────────────────────────────────────────────────
+# The chat stream is POST-based SSE (fetchSSE), so the browser's automatic
+# EventSource reconnect doesn't apply — the client resends the turn. A dropped
+# connection after the reply persisted would otherwise re-run the LLM and
+# produce a duplicate answer (and double cost). These helpers make the resend
+# idempotent: same message + already-persisted turn → replay, don't re-run.
+
+def _match_completed_turn(rows, message: str) -> Optional[str]:
+    """Pure matcher: did this exact turn already complete?
+
+    `rows` is newest-first ConversationLog rows for one session. Returns the
+    persisted assistant reply when the newest row is an assistant message whose
+    directly-preceding customer message equals `message` (whitespace-normalized
+    and collapsed — clients may resend with different spacing/linebreaks).
+    None otherwise — the caller proceeds with a live run.
+    """
+    def _norm(s: Optional[str]) -> str:
+        return " ".join((s or "").split())
+
+    wanted = _norm(message)
+    if not wanted or len(rows) < 2:
+        return None
+    newest, parent = rows[0], rows[1]
+    if newest.role != "assistant":
+        return None
+    if parent.role != "user" or _norm(parent.message) != wanted:
+        return None
+    return newest.message
+
+
+async def _find_completed_turn(db: AsyncSession, org_id, session_id: str,
+                               message: str) -> Optional[str]:
+    """DB wrapper around _match_completed_turn (org + session scoped)."""
+    rows = (await db.execute(
+        select(ConversationLog)
+        .where(ConversationLog.session_id == session_id,
+               ConversationLog.space_id == org_id)
+        .order_by(ConversationLog.timestamp.desc())
+        .limit(2)
+    )).scalars().all()
+    return _match_completed_turn(rows, message)
 
 
 async def _maybe_escalate(
@@ -839,7 +882,8 @@ async def customer_chat(slug: str, req: CustomerChatRequest,
 
 @router.post("/api/chat/{slug}/stream")
 async def customer_chat_stream(slug: str, req: CustomerChatRequest,
-                               chatbot_slug: Optional[str] = Query(None, alias="chatbot")):
+                               chatbot_slug: Optional[str] = Query(None, alias="chatbot"),
+                               request: Request = None):
     """
     Stream reply chunks as SSE.
 
@@ -911,10 +955,40 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
     # its full reply, which we emit as a single chunk + the done event.
     pending = await _get_pending_clarify(db, session_id, org.id)
 
+    # Idempotent reconnect: a client retrying after a dropped stream sends
+    # Last-Event-ID. If this exact turn already persisted, replay the stored
+    # reply instead of re-running the LLM (no duplicate answers / charges).
+    last_event_id = request.headers.get("last-event-id") if request is not None else None
+    completed = None
+    if last_event_id:
+        try:
+            completed = await _find_completed_turn(db, org.id, session_id, req.message)
+        except Exception:
+            logger.warning("customer_chat_stream.replay_check_failed",
+                           session_id=session_id, slug=slug)
+            await db.rollback()
+
     async def generate():
+        seq = 0
         chunks: List[str] = []
         reasoning_chunks: List[str] = []
         try:
+            if completed:
+                # Reconnect replay — the turn already persisted server-side.
+                reply_text = completed
+                yield {"id": str(seq), "data": reply_text}
+                seq += 1
+                yield {"id": str(seq), "event": "done", "data": json.dumps({
+                    "session_id": session_id,
+                    "reply":      reply_text,
+                    "replayed":   True,
+                    "agent":      "team",
+                    "rag_hit":    None,
+                    "citations":  [],
+                    "blocks":     [],
+                    "message_id": None,
+                })}
+                return
             if pending:
                 result = await executor.resume(
                     run_id=pending["run_id"], requirements=pending["requirements"], answer=req.message,
@@ -922,7 +996,8 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
                 reply_text = result.get("reply", "")
                 chunks = [reply_text]
                 if reply_text:
-                    yield {"data": reply_text}
+                    yield {"id": str(seq), "data": reply_text}
+                    seq += 1
                 if executor.pending:
                     await _set_pending_clarify(db, session_id, executor.pending)
                 else:
@@ -933,11 +1008,13 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
                 async for chunk in executor.stream(req.message):
                     if isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] != "content":
                         reasoning_chunks.append(chunk[1])
-                        yield {"event": "reasoning", "data": chunk[1]}
+                        yield {"id": str(seq), "event": "reasoning", "data": chunk[1]}
+                        seq += 1
                     else:
                         text = chunk[1] if isinstance(chunk, tuple) and len(chunk) == 2 else chunk
                         chunks.append(text)
-                        yield {"data": text}
+                        yield {"id": str(seq), "data": text}
+                        seq += 1
 
                 # Stream complete — pull structured metadata the SSE text stream
                 # couldn't carry inline (agent/rag_hit/citations from the final run).
@@ -986,6 +1063,7 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
                 message_id=assistant_message_id,
             )
             yield {
+                "id": str(seq),
                 "event": "done",
                 "data":  json.dumps({
                     "session_id": session_id,
@@ -1002,11 +1080,11 @@ async def customer_chat_stream(slug: str, req: CustomerChatRequest,
 
         except Exception:
             logger.exception("customer_chat_stream.failed", slug=slug)
-            yield {"event": "error", "data": "Stream failed. Please try again."}
+            yield {"id": str(seq), "event": "error", "data": "Stream failed. Please try again."}
         finally:
             await db.close()
 
-    return EventSourceResponse(generate(), headers=_CORS)
+    return EventSourceResponse(generate(), headers=_CORS, ping=15)
 
 
 # ── Chat suggestions ──────────────────────────────────────────────────────────
