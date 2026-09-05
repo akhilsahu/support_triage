@@ -9,7 +9,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   CheckCircle, Clock, Send, RefreshCw, X,
   ArrowRightLeft, Users, Plus, Trash2, Inbox as InboxIcon,
-  ChevronRight, MessageCircle, UserCheck, Sparkles,
+  ChevronRight, MessageCircle, UserCheck, Sparkles, MessageSquare,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import apiClient from '../api/client'
@@ -32,6 +32,7 @@ interface Session {
 
 interface HistoryItem { role: string; message: string; timestamp: string | null }
 interface StaffMember { id: string; name: string; email: string; presence: string; active_chat_count: number }
+interface CannedReply { id: string; space_id: string; label: string; body: string; created_at: string | null; updated_at: string | null }
 
 // ── Transfer modal ─────────────────────────────────────────────────────────────
 
@@ -101,6 +102,8 @@ function ChatView({ session: initialSession, token, onClose, onResolved, reloadT
   const [claiming, setClaiming]         = useState(false)
   const [showTransfer, setShowTransfer] = useState(false)
   const [showNewPill, setShowNewPill]   = useState(false)
+  const [cannedReplies, setCannedReplies] = useState<CannedReply[]>([])
+  const [showCannedPicker, setShowCannedPicker] = useState(false)
   const bottomRef    = useRef<HTMLDivElement>(null)
   const inputRef     = useRef<HTMLInputElement>(null)
   const scrollRef       = useRef<HTMLDivElement>(null)
@@ -123,6 +126,11 @@ function ChatView({ session: initialSession, token, onClose, onResolved, reloadT
       setSession(d); setHistory(d.history ?? [])
     } catch {}
   }, [session.id, token])
+
+  // Load canned replies for this space
+  useEffect(() => {
+    apiClient.listCannedReplies(token).then(setCannedReplies).catch(() => {})
+  }, [token])
 
   // Register a callback so the parent can push a new message directly
   // without waiting for an API round-trip.
@@ -396,6 +404,31 @@ function ChatView({ session: initialSession, token, onClose, onResolved, reloadT
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
         {canReply ? (
           <div className="px-4 py-3 flex items-center gap-3">
+            {cannedReplies.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowCannedPicker(p => !p)}
+                  title="Insert canned reply"
+                  className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center justify-center transition-colors flex-shrink-0"
+                >
+                  <MessageSquare className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                </button>
+                {showCannedPicker && (
+                  <div className="absolute bottom-full left-0 mb-2 w-64 max-h-56 overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-30">
+                    {cannedReplies.map(cr => (
+                      <button
+                        key={cr.id}
+                        onClick={() => { setReply(cr.body); setShowCannedPicker(false) }}
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors border-b border-gray-100 dark:border-gray-800 last:border-0"
+                      >
+                        <span className="font-medium text-gray-800 dark:text-gray-200 block truncate">{cr.label}</span>
+                        <span className="text-xs text-gray-400 block truncate">{cr.body}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <input
               ref={inputRef}
               value={reply}

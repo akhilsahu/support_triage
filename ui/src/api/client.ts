@@ -685,6 +685,15 @@ export const apiClient = {
     http.delete(`/api/v1/inbox/staff/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
   transferSession: (sessionId: string, targetStaffId: string, token: string) =>
     http.post(`/api/v1/inbox/sessions/${sessionId}/transfer`, { target_staff_id: targetStaffId }, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
+  // ── Canned replies ──
+  listCannedReplies: (token: string) =>
+    http.get('/api/v1/inbox/canned-replies', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
+  createCannedReply: (token: string, payload: { label: string; body: string }) =>
+    http.post('/api/v1/inbox/canned-replies', payload, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
+  updateCannedReply: (id: string, token: string, payload: { label?: string; body?: string }) =>
+    http.put(`/api/v1/inbox/canned-replies/${id}`, payload, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
+  deleteCannedReply: (id: string, token: string) =>
+    http.delete(`/api/v1/inbox/canned-replies/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data),
 }
 
 export default apiClient

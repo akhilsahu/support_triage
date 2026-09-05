@@ -23,7 +23,7 @@ from app.api.v1 import facts as kb_facts
 from app.api.v1 import fact_extraction
 from app.api import chat, auth, customer, space, chatbot_user
 from app.api.v1 import dashboard, superadmin
-from app.api.v1.inbox import staff_auth, sessions, escalation, stream
+from app.api.v1.inbox import staff_auth, sessions, escalation, stream, canned_replies
 from app.api.v1 import widget as widget_api
 # CopilotKit setup removed (unused dependency)
 
@@ -421,6 +421,7 @@ app.include_router(staff_auth.router, prefix="/api/v1", tags=["Inbox — Staff"]
 app.include_router(sessions.router,   prefix="/api/v1", tags=["Inbox — Sessions"])
 app.include_router(escalation.router, prefix="/api/v1", tags=["Inbox — Escalation"])
 app.include_router(stream.router,     prefix="/api/v1", tags=["Inbox — SSE"])
+app.include_router(canned_replies.router, prefix="/api/v1", tags=["Inbox — Canned Replies"])
 
 # Uploaded assets (chatbot logos, etc.) — served as static files
 _UPLOADS_DIR = Path(settings.CHATBOT_LOGO_DIR).parent

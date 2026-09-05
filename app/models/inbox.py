@@ -116,3 +116,32 @@ class SpaceAssignmentRule(Base):
             "queue_message":                self.queue_message,
             "no_staff_message":             self.no_staff_message,
         }
+
+
+class CannedReply(Base):
+    """
+    Per-space canned (quick) replies for inbox agents.
+
+    A short `label` shown in the picker + the full `body` text inserted
+    into the reply box. Space-scoped so each business controls its own
+    templates. No personalization placeholders yet — plain text.
+    """
+    __tablename__ = "canned_replies"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    space_id   = Column(UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    label      = Column(String(80), nullable=False)
+    body       = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "id":         str(self.id),
+            "space_id":    str(self.space_id),
+            "label":       self.label,
+            "body":        self.body,
+            "created_at":  self.created_at.isoformat() if self.created_at else None,
+            "updated_at":  self.updated_at.isoformat() if self.updated_at else None,
+        }
