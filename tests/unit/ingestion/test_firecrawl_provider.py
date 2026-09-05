@@ -1,4 +1,5 @@
 from dataclasses import replace
+import json
 
 import httpx
 import pytest
@@ -30,10 +31,11 @@ async def test_firecrawl_returns_markdown_page_and_sends_expected_request(monkey
         assert request.url == "https://firecrawl.test/v1/scrape"
         assert request.headers["Authorization"] == "Bearer test-key"
         assert request.headers["content-type"] == "application/json"
-        assert request.content == (
-            b'{"url":"https://93.184.216.34/page","formats":["markdown"],'
-            b'"onlyMainContent":true}'
-        )
+        assert json.loads(request.content) == {
+            "url": "https://93.184.216.34/page",
+            "formats": ["markdown"],
+            "onlyMainContent": True,
+        }
         return httpx.Response(200, json=_success_payload())
 
     monkeypatch.setattr(firecrawl, "_transport", httpx.MockTransport(handler))

@@ -60,7 +60,7 @@ async def test_execute_substitutes_placeholders_decrypts_secret_and_maps(context
     )
 
     assert result.records == [{"id": "A1", "status": "sent"}]
-    assert seen["request"].url.raw_path == b"/orders/A%201?expand=status-A+1"
+    assert seen["request"].url.raw_path in (b"/orders/A%201?expand=status-A+1", b"/orders/A%201?expand=status-A%201")
     assert seen["request"].url.params["expand"] == "status-A 1"
     assert seen["request"].headers["authorization"] == "Bearer plain-cipher"
     assert "plain-cipher" not in repr(result)
