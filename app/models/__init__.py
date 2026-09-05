@@ -7,6 +7,7 @@ from app.models.chatbot_user import ChatbotUser, ChatbotUserIdentity
 from app.models.datasource import SpaceDataSource
 from app.models.datasource_connection import DataSourceConnection
 from app.models.datasource_tool import DataSourceTool
+from app.models.integration_package import IntegrationPackage, IntegrationPackageTool
 from app.models.agent_tool_assignment import AgentToolAssignment, DataSourceTestRun
 from app.models.ingestion_job import IngestionJob
 from app.models.knowledge_base import KnowledgeBase, KnowledgeBaseItem, AgentKnowledgeBase
@@ -29,6 +30,7 @@ __all__ = [
     "Chatbot",
     "ChatbotUser", "ChatbotUserIdentity",
     "SpaceDataSource", "DataSourceConnection", "DataSourceTool",
+    "IntegrationPackage", "IntegrationPackageTool",
     "AgentToolAssignment", "DataSourceTestRun",
     "IngestionJob",
     "KnowledgeBase", "KnowledgeBaseItem", "AgentKnowledgeBase", "KBFact",

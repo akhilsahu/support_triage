@@ -26,7 +26,7 @@ def upgrade():
         sa.Column("created_at", sa.DateTime, nullable=False, server_default=sa.text("NOW()")),
         sa.Column("updated_at", sa.DateTime, nullable=False, server_default=sa.text("NOW()")),
     )
-    op.create_index("ix_canned_replies_space_id", "canned_replies", ["space_id"])
+    # op.create_index("ix_canned_replies_space_id", "canned_replies", ["space_id"])
 
 
 def downgrade():

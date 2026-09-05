@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
+import { useHomepageVariant } from '../screens/home/useHomepageVariant'
 
 /**
  * RouteSeo — lightweight per-route meta manager (no external deps).
@@ -90,9 +91,13 @@ function upsertCanonical(href: string) {
 
 export function RouteSeo() {
   const { pathname } = useLocation()
+  const homepage = useHomepageVariant()
 
   useEffect(() => {
-    const meta = ROUTE_META[pathname]
+    const meta = pathname === '/' && homepage === 'homepage5' ? {
+      title: 'Helpful Customer Support From Your Knowledge | Support247',
+      description: 'Give customers answers from your business content and bring your team into the conversation. Explore Support247 with plans from $5 USD per month.',
+    } : ROUTE_META[pathname]
 
     if (meta) {
       // Public marketing page — full SEO.
@@ -119,7 +124,7 @@ export function RouteSeo() {
     // Title is managed by the screen itself (e.g. CustomerChat sets the brand).
     upsertMeta('name', 'robots', 'index, follow')
     upsertCanonical(`${window.location.origin}${pathname}`)
-  }, [pathname])
+  }, [pathname, homepage])
 
   return null
 }

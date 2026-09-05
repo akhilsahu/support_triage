@@ -1,5 +1,10 @@
 import { lazy, Suspense } from 'react'
-import { useAppStore } from '../../store/useAppStore'
+import { useHomepageVariant } from './useHomepageVariant'
+
+const Homepage5 = lazy(() => import('./home5/Homepage').then(m => ({ default: m.Homepage5 })))
+const AuthPage5 = lazy(() => import('./home5/AuthPage').then(m => ({ default: m.AuthPage5 })))
+const Pricing5 = lazy(() => import('./home5/Pricing').then(m => ({ default: m.Pricing5 })))
+const HowItWorks5 = lazy(() => import('./home5/HowItWorks').then(m => ({ default: m.HowItWorks5 })))
 
 const Homepage1 = lazy(() => import('./home1/Homepage').then(m => ({ default: m.Homepage1 })))
 const Homepage2 = lazy(() => import('./home2/Homepage').then(m => ({ default: m.Homepage2 })))
@@ -19,10 +24,11 @@ const Pricing2 = lazy(() => import('./home2/Pricing').then(m => ({ default: m.Pr
 const Pricing3 = lazy(() => import('./home3/Pricing').then(m => ({ default: m.Pricing3 })))
 
 export function DynamicHome() {
-  const { activeHomepage } = useAppStore()
+  const activeHomepage = useHomepageVariant()
   return (
     <Suspense fallback={null}>
-      {activeHomepage === 'homepage4' ? <Homepage4 /> :
+      {activeHomepage === 'homepage5' ? <Homepage5 /> :
+       activeHomepage === 'homepage4' ? <Homepage4 /> :
        activeHomepage === 'homepage3' ? <Homepage3 /> :
        activeHomepage === 'homepage2' ? <Homepage2 /> :
        <Homepage1 />}
@@ -31,28 +37,28 @@ export function DynamicHome() {
 }
 
 export function DynamicLogin() {
-  const { activeHomepage } = useAppStore()
+  const activeHomepage = useHomepageVariant()
   return (
     <Suspense fallback={null}>
-      {activeHomepage === 'homepage3' ? <AuthPage3 /> : activeHomepage === 'homepage2' ? <AuthPage2 /> : <AuthPage1 />}
+      {activeHomepage === 'homepage5' ? <AuthPage5 /> : activeHomepage === 'homepage3' ? <AuthPage3 /> : activeHomepage === 'homepage2' ? <AuthPage2 /> : <AuthPage1 />}
     </Suspense>
   )
 }
 
 export function DynamicHowItWorks() {
-  const { activeHomepage } = useAppStore()
+  const activeHomepage = useHomepageVariant()
   return (
     <Suspense fallback={null}>
-      {activeHomepage === 'homepage3' ? <HowItWorks3 /> : activeHomepage === 'homepage2' ? <HowItWorks2 /> : <HowItWorks1 />}
+      {activeHomepage === 'homepage5' ? <HowItWorks5 /> : activeHomepage === 'homepage3' ? <HowItWorks3 /> : activeHomepage === 'homepage2' ? <HowItWorks2 /> : <HowItWorks1 />}
     </Suspense>
   )
 }
 
 export function DynamicPricing() {
-  const { activeHomepage } = useAppStore()
+  const activeHomepage = useHomepageVariant()
   return (
     <Suspense fallback={null}>
-      {activeHomepage === 'homepage3' ? <Pricing3 /> : activeHomepage === 'homepage2' ? <Pricing2 /> : <Pricing1 />}
+      {activeHomepage === 'homepage5' ? <Pricing5 /> : activeHomepage === 'homepage3' ? <Pricing3 /> : activeHomepage === 'homepage2' ? <Pricing2 /> : <Pricing1 />}
     </Suspense>
   )
 }

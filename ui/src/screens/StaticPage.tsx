@@ -261,7 +261,7 @@ const THEMES = {
 
 export function usePublicTheme() {
   const { activeHomepage } = useAppStore()
-  return THEMES[activeHomepage] ?? THEMES.homepage1
+  return THEMES[activeHomepage === 'homepage5' ? 'homepage4' : activeHomepage] ?? THEMES.homepage1
 }
 
 // ── Layout wrapper ────────────────────────────────────────────────────────────

@@ -6,12 +6,15 @@ import { API_CONFIG } from '@/config/api'
 const API = `${API_CONFIG.baseURL}/api/v1`
 export type Tab = 'login' | 'register'
 
-export function useAuthForm() {
+export function useAuthForm(options: { onRegistered?: () => void } = {}) {
   const navigate = useNavigate()
   const location = useLocation()
   const { setAuth } = useAppStore()
 
-  const [tab, setTab] = useState<Tab>('login')
+  const [tab, setTab] = useState<Tab>(() => {
+    const value = new URLSearchParams(location.search).get('tab')
+    return value === 'register' || value === 'signup' ? 'register' : 'login'
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -73,6 +76,7 @@ export function useAuthForm() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || 'Registration failed')
+      options.onRegistered?.()
       // Pass email via navigate state (not URL) — stays in memory, not logged anywhere
       navigate('/app/verify-email', { state: { email: regEmail.trim() } })
     } catch (err: unknown) {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   Users, Bot, MessageSquare, BarChart3, Activity,
   Search, ChevronDown, ChevronUp, Shield, RefreshCw,
-  CheckCircle, XCircle, Eye, EyeOff, Database, Zap, HardDrive, FileText, Layers, Trash2, Loader2, X,
+  CheckCircle, XCircle, Eye, EyeOff, Database, Zap, HardDrive, FileText, Layers, Trash2, Loader2, X, Blocks,
   Home as HomeIcon,
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
@@ -122,6 +122,14 @@ interface Agent {
   active: boolean
   is_builtin: boolean
   rag_enabled: boolean
+}
+
+interface IntegrationPackage {
+  id: string
+  slug: string
+  name: string
+  icon_url: string
+  is_active: boolean
 }
 
 interface LogEntry {
@@ -512,7 +520,7 @@ function AgentRow({ agent, adminKey, onToggled }: {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'spaces' | 'agents' | 'builtin' | 'activity' | 'vectordb' | 'nav' | 'homepage'
+type Tab = 'overview' | 'spaces' | 'agents' | 'builtin' | 'activity' | 'vectordb' | 'nav' | 'homepage' | 'integrations'
 
 // ── Builtin Agent Toggle Row ───────────────────────────────────────────────────
 
@@ -869,7 +877,7 @@ function NavConfigTab({ adminKey, systemNav, setSystemNav }: { adminKey: string;
 function HomepageConfigTab({ adminKey }: { adminKey: string }) {
   const { activeHomepage, setActiveHomepage } = useAppStore()
 
-  const setHomepageGlobal = async (val: 'homepage1' | 'homepage2' | 'homepage3' | 'homepage4') => {
+  const setHomepageGlobal = async (val: 'homepage1' | 'homepage2' | 'homepage3' | 'homepage4' | 'homepage5') => {
     try {
       const res = await fetch(`${API_CONFIG.baseURL}/api/v1/super-admin/settings`, {
         method: 'PATCH',
@@ -1053,6 +1061,34 @@ function HomepageConfigTab({ adminKey }: { adminKey: string }) {
               </div>
             </div>
           </button>
+
+          {/* Card 5: Homepage 5 */}
+          <button
+            onClick={() => setHomepageGlobal('homepage5')}
+            className={`flex flex-col text-left rounded-2xl border p-5 transition-all outline-none ${
+              activeHomepage === 'homepage5'
+                ? 'border-fuchsia-500 bg-fuchsia-50/10 ring-2 ring-fuchsia-500/20'
+                : 'border-gray-200 dark:border-gray-700 bg-transparent hover:border-gray-400 dark:hover:border-gray-600'
+            }`}
+          >
+            <div className="flex items-center justify-between w-full mb-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-fuchsia-500 dark:text-fuchsia-400">Layout 5</span>
+              {activeHomepage === 'homepage5' && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-fuchsia-500 text-white">Active</span>
+              )}
+            </div>
+            <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Homepage 5 (Redesigned)</h4>
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mb-6">
+              The latest and most premium homepage redesign with rich visual hierarchy.
+            </p>
+            <div className="w-full h-32 rounded-xl bg-white border border-slate-200/60 flex p-3 overflow-hidden select-none pointer-events-none gap-3 shadow-inner">
+              <div className="w-full flex flex-col justify-center items-center gap-1.5">
+                <div className="w-12 h-1 bg-slate-200 rounded" />
+                <div className="w-20 h-2 bg-gradient-to-r from-fuchsia-500 to-rose-400 rounded" />
+                <div className="w-16 h-1 bg-slate-100 rounded" />
+              </div>
+            </div>
+          </button>
         </div>
       </div>
     </div>
@@ -1074,6 +1110,7 @@ interface VectorDBData {
 
 export function SuperAdmin() {
   const [key, setKey] = useState('')
+  const [usernameInput, setUsernameInput] = useState('admin')
   const [keyInput, setKeyInput] = useState('')
   const [showKey, setShowKey] = useState(false)
   const [authError, setAuthError] = useState('')
@@ -1083,6 +1120,7 @@ export function SuperAdmin() {
   const [spaces, setSpaces] = useState<Space[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [builtinAgents, setBuiltinAgents] = useState<BuiltinAgentType[]>([])
+  const [integrations, setIntegrations] = useState<IntegrationPackage[]>([])
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [vectorDB, setVectorDB] = useState<VectorDBData | null>(null)
   const [expandedVecOrg, setExpandedVecOrg] = useState<string | null>(null)
@@ -1153,6 +1191,8 @@ export function SuperAdmin() {
       api(k).get('/vectordb').then(setVectorDB).catch(() => {})
       // Non-fatal — requires migration 0015
       api(k).get('/builtin-agents').then(b => setBuiltinAgents(b.builtin_agents || [])).catch(() => {})
+      // Integrations
+      api(k).get('/integrations').then(i => setIntegrations(i.integrations || [])).catch(() => {})
     } catch {
       setError('Failed to load data. Check the API key and that the backend is running.')
     } finally {
@@ -1215,6 +1255,17 @@ export function SuperAdmin() {
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6">
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Username</label>
+                <input
+                  type="text"
+                  value={usernameInput}
+                  onChange={e => setUsernameInput(e.target.value)}
+                  placeholder="admin"
+                  required
+                  className={inputCls}
+                />
+              </div>
+              <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Admin Key</label>
                 <div className="relative">
                   <input
@@ -1254,6 +1305,7 @@ export function SuperAdmin() {
     { id: 'vectordb',  label: 'Vector DB',      icon: HardDrive  },
     { id: 'nav',       label: 'Nav Config',     icon: Layers     },
     { id: 'homepage',  label: 'Homepage',       icon: HomeIcon   },
+    { id: 'integrations', label: 'Integrations',icon: Blocks     },
   ]
 
   return (
@@ -1475,6 +1527,64 @@ export function SuperAdmin() {
                   )
                 }
               />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Integrations ── */}
+      {tab === 'integrations' && (
+        <div className="space-y-4">
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-3">
+            <p className="text-xs text-amber-800 dark:text-amber-300">
+              Toggling an integration off hides it from the Integrations tab for all tenants.
+            </p>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            {integrations.length === 0 && (
+              <p className="px-4 py-8 text-center text-sm text-gray-400">No integration packages found.</p>
+            )}
+            {integrations.map(pkg => (
+              <div key={pkg.slug} className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                <div className="flex items-center gap-3">
+                  {pkg.icon_url ? (
+                    <img src={pkg.icon_url} alt={pkg.name} className="w-6 h-6 object-contain" />
+                  ) : (
+                    <Blocks className="w-6 h-6 text-gray-400" />
+                  )}
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{pkg.name}</p>
+                    <p className="text-xs text-gray-400">@{pkg.slug}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={`text-xs font-medium ${pkg.is_active ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
+                    {pkg.is_active ? 'Active globally' : 'Disabled'}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      const prev = [...integrations];
+                      setIntegrations(integrations.map(p => p.slug === pkg.slug ? { ...p, is_active: !pkg.is_active } : p));
+                      try {
+                        await fetch(`${API}/integrations/${pkg.slug}`, {
+                          method: 'PATCH',
+                          headers: { 'X-Super-Admin-Key': key, 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ is_active: !pkg.is_active }),
+                        });
+                      } catch (err) {
+                        setIntegrations(prev);
+                      }
+                    }}
+                    className={`text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors ${
+                      pkg.is_active
+                        ? 'text-red-500 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20'
+                        : 'text-emerald-600 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+                    }`}
+                  >
+                    {pkg.is_active ? 'Disable' : 'Enable'}
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
         </div>

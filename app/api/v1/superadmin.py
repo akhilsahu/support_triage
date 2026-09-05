@@ -578,3 +578,58 @@ async def patch_platform_settings(req: PlatformSettingsPatchRequest, db: AsyncSe
     ps.active_homepage = req.active_homepage
     await db.commit()
     return {"active_homepage": ps.active_homepage}
+
+
+# ── Integrations (Global) ─────────────────────────────────────────────────────
+
+@router.get("/integrations", dependencies=[Depends(require_super_admin)])
+async def list_integration_packages(db: AsyncSession = Depends(get_db)):
+    """List all global integration packages."""
+    from sqlalchemy import select as sa_select
+    from app.models.integration_package import IntegrationPackage
+    result = await db.execute(sa_select(IntegrationPackage).order_by(IntegrationPackage.name))
+    packages = result.scalars().all()
+    return {
+        "integrations": [
+            {
+                "id": str(p.id),
+                "slug": p.slug,
+                "name": p.name,
+                "description": p.description,
+                "icon_url": p.icon_url,
+                "is_active": p.is_active,
+            }
+            for p in packages
+        ]
+    }
+
+
+class IntegrationPackagePatchRequest(BaseModel):
+    is_active: bool
+
+
+@router.patch("/integrations/{package_slug}", dependencies=[Depends(require_super_admin)])
+async def patch_integration_package(
+    package_slug: str,
+    req: IntegrationPackagePatchRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle a global integration package."""
+    from sqlalchemy import select as sa_select
+    from app.models.integration_package import IntegrationPackage
+    
+    result = await db.execute(sa_select(IntegrationPackage).where(IntegrationPackage.slug == package_slug))
+    package = result.scalar_one_or_none()
+    
+    if not package:
+        raise HTTPException(404, "Integration package not found.")
+    
+    package.is_active = req.is_active
+    await db.commit()
+    
+    logger.info("super_admin.integration_package_toggled", slug=package_slug, is_active=req.is_active)
+    return {
+        "id": str(package.id),
+        "slug": package.slug,
+        "is_active": package.is_active,
+    }

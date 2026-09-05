@@ -427,6 +427,12 @@ export const apiClient = {
   testDataSourceTool: (toolId: string, payload: object) =>
     http.post(`/api/v1/data-sources/tools/${toolId}/execute-test`, payload).then(r => r.data),
 
+  // Integrations (Tenant-facing)
+  listIntegrations: () =>
+    http.get('/api/v1/integrations').then(r => r.data),
+  installIntegration: (slug: string, credentials: Record<string, string>) =>
+    http.post(`/api/v1/integrations/${slug}/install`, { credentials }).then(r => r.data),
+
   // Org Knowledge Base (legacy chunks viewer)
   getDocChunks: (docId: string) =>
     http.get(`/api/v1/org/kb/${docId}/chunks`).then(r => r.data),

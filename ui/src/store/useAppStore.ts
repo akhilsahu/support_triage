@@ -69,8 +69,8 @@ interface AppState {
   dispatchInboxEvent: (type: string, data: string) => void
 
   // Active Homepage Layout
-  activeHomepage: 'homepage1' | 'homepage2' | 'homepage3' | 'homepage4'
-  setActiveHomepage: (homepage: 'homepage1' | 'homepage2' | 'homepage3' | 'homepage4') => void
+  activeHomepage: 'homepage1' | 'homepage2' | 'homepage3' | 'homepage4' | 'homepage5'
+  setActiveHomepage: (homepage: 'homepage1' | 'homepage2' | 'homepage3' | 'homepage4' | 'homepage5') => void
 
   // Factor 1 (platform-wide, super-admin) master switch for the AI homepage
   // sections renderengine -- read by ChatbotProfile to decide whether its own

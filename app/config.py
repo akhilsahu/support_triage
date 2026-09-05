@@ -313,7 +313,7 @@ class Settings(BaseSettings):
     # Super Admin
     SUPER_ADMIN_KEY: str = "super-secret-change-me"
     AVAILABLE_HOMEPAGES: List[str] = Field(
-        default=["homepage1", "homepage2", "homepage3", "homepage4"]
+        default=["homepage1", "homepage2", "homepage3", "homepage4", "homepage5"]
     )
 
     # Memory (mem0)

@@ -410,6 +410,10 @@ app.include_router(customer.router)
 app.include_router(chatbot_user.router)
 app.include_router(widget_api.router)   # public — no prefix, CORS * on responses
 
+from app.api.v1 import integrations as integrations_api
+
+app.include_router(integrations_api.router, prefix="/api/v1")
+
 # Pluggable modular integration routes
 app.include_router(shopify_router, prefix="/api/v1/integrations")
 app.include_router(whatsapp_router, prefix="/api/v1/integrations")

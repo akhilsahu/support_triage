@@ -262,7 +262,7 @@ export function Integrations() {
   const [selectedBot, setSelectedBot] = useState<Chatbot | null>(null)
   const [loadingBots, setLoadingBots] = useState(true)
   
-  const [integrations, setIntegrations] = useState<IntegrationItem[]>(INTEGRATIONS_DATA)
+  const [integrations, setIntegrations] = useState<IntegrationItem[]>([])
   const [activeItem, setActiveItem] = useState<IntegrationItem | null>(null)
   const [formState, setFormState] = useState<Record<string, string>>({})
   const [testingStatus, setTestingStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle')
@@ -283,22 +283,30 @@ export function Integrations() {
   useEffect(() => {
     if (!selectedBot) return
 
-    const cacheKey = `support247_integrations_cache_${selectedBot.id}`
-    const local = localStorage.getItem(cacheKey)
-    
-    if (local) {
-      try {
-        const parsed = JSON.parse(local)
-        setIntegrations(INTEGRATIONS_DATA.map(item => ({
-          ...item,
-          status: parsed[item.id] ? 'connected' : 'disconnected'
-        })))
-      } catch {
-        setIntegrations(INTEGRATIONS_DATA)
+    apiClient.listIntegrations().then((data: any) => {
+      const activeSlugs = data.integrations.map((i: any) => i.slug)
+      const available = INTEGRATIONS_DATA.filter(item => activeSlugs.includes(item.id))
+      
+      const cacheKey = `support247_integrations_cache_${selectedBot.id}`
+      const local = localStorage.getItem(cacheKey)
+      
+      if (local) {
+        try {
+          const parsed = JSON.parse(local)
+          setIntegrations(available.map(item => ({
+            ...item,
+            status: parsed[item.id] ? 'connected' : 'disconnected'
+          })))
+        } catch {
+          setIntegrations(available)
+        }
+      } else {
+        setIntegrations(available)
       }
-    } else {
-      setIntegrations(INTEGRATIONS_DATA)
-    }
+    }).catch(() => {
+      // Fallback on error
+      setIntegrations([])
+    })
   }, [selectedBot])
 
   const openWizard = (item: IntegrationItem) => {
@@ -321,31 +329,42 @@ export function Integrations() {
     setFormState(prev => ({ ...prev, [name]: val }))
   }
 
-  const saveConfig = () => {
+  const saveConfig = async () => {
     if (!activeItem || !selectedBot) return
     
-    // Save settings scoped to the specific chatbot ID
-    const savedKey = `support247_integ_form_${activeItem.id}_${selectedBot.id}`
-    localStorage.setItem(savedKey, JSON.stringify(formState))
-    
-    // Set status to connected
-    const updated = integrations.map(item => {
-      if (item.id === activeItem.id) {
-        return { ...item, status: 'connected' as const }
-      }
-      return item
-    })
-    setIntegrations(updated)
-    
-    // Save mapping states cache scoped to the specific chatbot ID
-    const cacheKey = `support247_integrations_cache_${selectedBot.id}`
-    const cache: Record<string, boolean> = {}
-    updated.forEach(item => {
-      cache[item.id] = item.status === 'connected'
-    })
-    localStorage.setItem(cacheKey, JSON.stringify(cache))
-    
-    setActiveItem(null)
+    setTestingStatus('testing')
+    try {
+      await apiClient.installIntegration(activeItem.id, formState)
+      setTestingStatus('success')
+      
+      setTimeout(() => {
+        // Save settings scoped to the specific chatbot ID
+        const savedKey = `support247_integ_form_${activeItem.id}_${selectedBot.id}`
+        localStorage.setItem(savedKey, JSON.stringify(formState))
+        
+        // Set status to connected
+        const updated = integrations.map(item => {
+          if (item.id === activeItem.id) {
+            return { ...item, status: 'connected' as const }
+          }
+          return item
+        })
+        setIntegrations(updated)
+        
+        // Save mapping states cache scoped to the specific chatbot ID
+        const cacheKey = `support247_integrations_cache_${selectedBot.id}`
+        const cache: Record<string, boolean> = {}
+        updated.forEach(item => {
+          cache[item.id] = item.status === 'connected'
+        })
+        localStorage.setItem(cacheKey, JSON.stringify(cache))
+        
+        setActiveItem(null)
+      }, 1000)
+    } catch (error) {
+      console.error(error)
+      setTestingStatus('failed')
+    }
   }
 
   const disconnectConfig = () => {
@@ -611,8 +630,9 @@ export function Integrations() {
                   <Button variant="secondary" onClick={testConnection} className="text-xs">
                     Test Connection
                   </Button>
-                  <Button onClick={saveConfig} className="text-xs gap-1.5">
-                    <Save className="w-3.5 h-3.5" /> Save settings
+                  <Button onClick={saveConfig} className="text-xs gap-1.5" disabled={testingStatus === 'testing' || testingStatus === 'success'}>
+                    {testingStatus === 'testing' ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} 
+                    {testingStatus === 'testing' ? 'Saving...' : 'Save settings'}
                   </Button>
                 </div>
               </div>
