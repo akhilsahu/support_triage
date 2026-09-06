@@ -31,10 +31,10 @@ export function HeroSection() {
         transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
         className="text-5xl md:text-7xl font-bold tracking-tight text-[#1C1C1C] max-w-4xl text-balance leading-[1.1]"
       >
-        Resolve 70% of tickets instantly with AI that <span className="text-[#526B54] relative inline-block">
-          actually knows
+        Resolve customer questions instantly with AI that <span className="text-[#526B54] relative inline-block">
+          answers from
           <svg className="absolute -bottom-2 left-0 w-full text-[#526B54]/30 h-3" viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M0 10 Q 50 20 100 10" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" /></svg>
-        </span> your business.
+        </span> your business knowledge.
       </motion.h1>
 
       {/* Description */}
