@@ -1,0 +1,43 @@
+[
+  {
+    "name": "FREE TRIAL",
+    "price": "$0",
+    "subhead": "Super-Admin Config: Free tier to start your AI support workspace.",
+    "features": [
+      "Your own support workspace",
+      "Answers grounded in your guides",
+      "Website chat and a branded page",
+      "Limited to 10000 messages monthly"
+    ]
+  },
+  {
+    "name": "STARTER",
+    "price": "$19",
+    "subhead": "Super-Admin Config: Perfect entry point for growing support teams.",
+    "features": [
+      "Your own support workspace",
+      "Answers grounded in your guides",
+      "Website chat and a branded page"
+    ]
+  },
+  {
+    "name": "GROWTH",
+    "price": "$29",
+    "subhead": "Super-Admin Config: For multi-agent support and team tools.",
+    "features": [
+      "A shared space for conversations",
+      "Connect to your store & tools",
+      "Human handoff when it matters"
+    ]
+  },
+  {
+    "name": "SCALE",
+    "price": "$249",
+    "subhead": "Super-Admin Config: High volume automation with dedicated SLAs.",
+    "features": [
+      "Unlimited automated responses",
+      "Dedicated account manager",
+      "Custom integrations & SLAs"
+    ]
+  }
+]

@@ -5,4 +5,4 @@ Allow: /
 # Private app — don't index the dashboard / authed product
 Disallow: /app/
 
-Sitemap: https://support247.chat/sitemap.xml
+Sitemap: https://www.support247.chat/sitemap.xml

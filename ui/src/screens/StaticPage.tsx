@@ -448,16 +448,36 @@ export function FeaturesPage() {
   )
 }
 
+import { usePricingTiers } from '../hooks/usePricingTiers'
+
 export function PricingPage() {
   const t = usePublicTheme()
+  const { packages } = usePricingTiers()
+
+  const defaultDetails: Record<string, { price: string; cta: string; highlight: boolean }> = {
+    FREE: { price: '$0', cta: 'Get started', highlight: false },
+    STARTER: { price: '$29', cta: 'Start free trial', highlight: false },
+    GROWTH: { price: '$99', cta: 'Start free trial', highlight: true },
+    SCALE: { price: '$249', cta: 'Contact us', highlight: false },
+  }
+
+  const items = packages.map((pkg) => {
+    const key = (pkg.name || '').toUpperCase()
+    const detail = defaultDetails[key] || { price: '$49', cta: 'Get started', highlight: false }
+    return {
+      name: pkg.name,
+      price: detail.price,
+      desc: pkg.subhead,
+      features: pkg.features,
+      cta: detail.cta,
+      highlight: detail.highlight,
+    }
+  })
+
   return (
     <StaticPage title="Pricing" subtitle="Simple, transparent pricing that scales with you">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 not-prose">
-        {[
-          { name: 'Free', price: '$0', desc: 'Perfect for small teams getting started.', features: ['Up to 500 messages/mo', '3 active agents', '1 GB knowledge base', 'Community support'], cta: 'Get started', highlight: false },
-          { name: 'Pro', price: '$49', desc: 'For growing businesses with real volume.', features: ['Up to 20,000 messages/mo', 'Unlimited agents', '10 GB knowledge base', 'Analytics dashboard', 'Priority support'], cta: 'Start free trial', highlight: true },
-          { name: 'Enterprise', price: 'Custom', desc: 'For large-scale deployments.', features: ['Unlimited messages', 'Unlimited agents', 'Unlimited storage', 'SLA guarantee', 'Dedicated support', 'Custom integrations'], cta: 'Contact us', highlight: false },
-        ].map(({ name, price, desc, features, cta, highlight }) => (
+        {items.map(({ name, price, desc, features, cta, highlight }) => (
           <div key={name} className={`rounded-2xl border p-6 flex flex-col ${highlight ? t.pricingHL : t.pricingNorm}`}>
             <p className={t.pricingName}>{name}</p>
             <p className={t.pricingPrice}>{price}<span className="text-sm font-normal opacity-50">{price !== 'Custom' ? '/mo' : ''}</span></p>
@@ -472,6 +492,7 @@ export function PricingPage() {
     </StaticPage>
   )
 }
+
 
 export function PrivacyPage() {
   const t = usePublicTheme()

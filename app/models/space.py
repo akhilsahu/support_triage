@@ -523,7 +523,7 @@ class PlatformSettings(Base):
 
     id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     nav_config = Column(Text, nullable=True)   # JSON dict {id: bool}
-    active_homepage = Column(String(50), default="homepage1", server_default="homepage1")
+    active_homepage = Column(String(50), default="homepage5", server_default="homepage5")
     # Global default chatbot cap per space. 1 = single (multi off), N = up to N,
     # -1 = unlimited. Overridden per-space by Space.max_chatbots when non-null.
     default_max_chatbots = Column(Integer, default=1, server_default="1", nullable=False)

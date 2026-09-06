@@ -633,3 +633,128 @@ async def patch_integration_package(
         "slug": package.slug,
         "is_active": package.is_active,
     }
+
+
+# ── Pricing Tiers Configuration (Super Admin Managed) ─────────────────────────
+
+import json
+from pathlib import Path
+from typing import Union, Dict, Any, List
+
+PRICING_TIERS_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "pricing_tiers.json"
+
+
+class PricingTierPackage(BaseModel):
+    """
+    Pydantic model for a super-admin configured pricing tier package.
+    Structure:
+      - name: e.g. "FREE", "STARTER", "GROWTH", "SCALE"
+      - price: e.g. "$0", "$29", "$99", "$249" or 29
+      - subhead: subheading string or dictionary describing the package
+      - features: list of string features (e.g. ["Your own support workspace", ...])
+    """
+    name: str
+    price: Optional[Union[str, int, float]] = None
+    subhead: Union[str, Dict[str, Any]]
+    features: List[str]
+
+
+class PricingTiersUpdateRequest(BaseModel):
+    packages: List[PricingTierPackage]
+
+
+def load_pricing_tiers_config() -> List[Dict[str, Any]]:
+    """
+    Load super-admin pricing tier package configurations from the backend config JSON file.
+    If the file is missing or unparseable, returns default package configurations.
+    """
+    if PRICING_TIERS_CONFIG_PATH.exists():
+        try:
+            with open(PRICING_TIERS_CONFIG_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+        except Exception as err:
+            logger.error("super_admin.load_pricing_tiers_failed", error=str(err), path=str(PRICING_TIERS_CONFIG_PATH))
+
+    return [
+        {
+            "name": "FREE",
+            "price": "$0",
+            "subhead": "Get started with basic support features.",
+            "features": [
+                "Your own support workspace",
+                "Answers grounded in your guides",
+                "Website chat and a branded page"
+            ]
+        },
+        {
+            "name": "STARTER",
+            "price": "$29",
+            "subhead": "A place to start helping your customers.",
+            "features": [
+                "Your own support workspace",
+                "Answers grounded in your guides",
+                "Website chat and a branded page"
+            ]
+        },
+        {
+            "name": "GROWTH",
+            "price": "$99",
+            "subhead": "For people sharing the work of support.",
+            "features": [
+                "A shared space for conversations",
+                "Connect to your store & tools",
+                "Human handoff when it matters"
+            ]
+        },
+        {
+            "name": "SCALE",
+            "price": "$249",
+            "subhead": "For growing teams and high-volume support.",
+            "features": [
+                "Unlimited automated responses",
+                "Dedicated account manager",
+                "Custom integrations & SLAs"
+            ]
+        }
+    ]
+
+
+
+@router.get("/pricing-tiers", dependencies=[Depends(require_super_admin)])
+async def get_pricing_tiers():
+    """
+    Super-admin endpoint to retrieve configured pricing packages.
+    """
+    packages = load_pricing_tiers_config()
+    logger.info("super_admin.pricing_tiers_retrieved", count=len(packages))
+    return {"packages": packages}
+
+
+@router.patch("/pricing-tiers", dependencies=[Depends(require_super_admin)])
+async def update_pricing_tiers(req: PricingTiersUpdateRequest):
+    """
+    Super-admin endpoint to update pricing tier configuration in the backend config file.
+    """
+    packages_data = [pkg.model_dump() for pkg in req.packages]
+    try:
+        PRICING_TIERS_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(PRICING_TIERS_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(packages_data, f, indent=2)
+        logger.info("super_admin.pricing_tiers_updated", package_names=[p.name for p in req.packages])
+        return {"status": "success", "packages": packages_data}
+    except Exception as err:
+        logger.error("super_admin.save_pricing_tiers_failed", error=str(err))
+        raise HTTPException(status_code=500, detail=f"Failed to update pricing tiers: {str(err)}")
+
+
+@router.get("/pricing-tiers/public")
+async def get_public_pricing_tiers():
+    """
+    Publicly accessible endpoint to retrieve current pricing tier configuration.
+    """
+    packages = load_pricing_tiers_config()
+    logger.info("pricing_tiers.public_read", count=len(packages))
+    return {"packages": packages}
+

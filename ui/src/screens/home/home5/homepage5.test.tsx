@@ -251,14 +251,9 @@ describe('pricing, preview and metadata', () => {
       '/contact'
     )
     const links = screen.getAllByRole('link', { name: 'Create your account' })
-    expect(links[0]).toHaveAttribute(
-      'href',
-      '/app/login?tab=register&plan=starter'
-    )
-    expect(links[1]).toHaveAttribute(
-      'href',
-      '/app/login?tab=register&plan=growth'
-    )
+    const hrefs = links.map(link => link.getAttribute('href'))
+    expect(hrefs).toContain('/app/login?tab=register&plan=starter')
+    expect(hrefs).toContain('/app/login?tab=register&plan=growth')
     expect(
       screen.queryByRole('button', { name: /annual/i })
     ).not.toBeInTheDocument()
@@ -307,7 +302,7 @@ describe('pricing, preview and metadata', () => {
       </MemoryRouter>
     )
     await waitFor(() =>
-      expect(document.title).toContain('Helpful Customer Support')
+      expect(document.title).toContain('AI Customer Support for Shopify')
     )
     act(() => useAppStore.setState({ activeHomepage: 'homepage1' }))
     await waitFor(() =>

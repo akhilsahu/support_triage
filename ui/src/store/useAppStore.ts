@@ -156,7 +156,7 @@ export const useAppStore = create<AppState>()(
         inboxEvent: { type, data, seq: (s.inboxEvent?.seq ?? 0) + 1 },
       })),
 
-      activeHomepage: 'homepage1',
+      activeHomepage: 'homepage5',
       setActiveHomepage: (homepage) => set({ activeHomepage: homepage }),
 
       homepageSectionsPlatformEnabled: false,
