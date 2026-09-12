@@ -413,7 +413,7 @@ function PromptModal({ agent, docTypes: _docTypes, chatbotSlug, onClose, onSaved
   const [temperature, setTemperature] = useState(agent.temperature ?? 0.7)
   const [maxTokens, setMaxTokens] = useState(agent.max_tokens ?? 500)
   const [ragEnabled, setRagEnabled] = useState(agent.rag_enabled ?? false)
-  const [_ragDocTypes, _setRagDocTypes] = useState<string[]>(agent.rag_doc_types ?? [])
+  const [ragDocTypes, _setRagDocTypes] = useState<string[]>(agent.rag_doc_types ?? [])
   const [ragTopK, setRagTopK] = useState(agent.rag_top_k ?? 5)
   const [selectedKbIds, setSelectedKbIds] = useState<string[]>(agent.kb_ids ?? [])
   const [kbAssignments, setKbAssignments] = useState<Record<string, string[]>>(() => {
@@ -700,7 +700,7 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
   const [temperature, setTemperature] = useState(0.4)
   const [maxTokens, setMaxTokens] = useState(500)
   const [ragEnabled, setRagEnabled] = useState(!!(prefill?.docType || prefill?.kb_ids?.length))
-  const [_ragDocTypes, _setRagDocTypes] = useState<string[]>(prefill?.docType ? [prefill.docType] : [])
+  const [ragDocTypes, _setRagDocTypes] = useState<string[]>(prefill?.docType ? [prefill.docType] : [])
   const [ragTopK, setRagTopK] = useState(5)
   const [_docTypes, setDocTypes] = useState<string[]>([])
   const [selectedKbIds, setSelectedKbIds] = useState<string[]>(prefill?.kb_ids || [])
