@@ -6,17 +6,15 @@ import {
   useReducedMotion,
 } from 'framer-motion'
 import {
-  ArrowUpRight,
   BookOpen,
   Check,
   ChevronRight,
   Headphones,
-  Leaf,
+  Bot,
   MessageCircle,
   Pause,
   Play,
   RotateCcw,
-  Users,
 } from 'lucide-react'
 import { scenarios } from '../content'
 import { useDemoSequence } from '../useDemoSequence'
@@ -37,14 +35,26 @@ export function SupportDemo() {
       <div className="w-full bg-[#1C1C1C] rounded-3xl p-4 md:p-6 shadow-2xl relative border border-[#2A2A2A]">
         
         {/* Scenario Tabs */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide" role="group" aria-label="Sample conversations">
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide" role="tablist" aria-label="Industry demos">
           {scenarios.map((item, i) => (
             <button
               id={`h5-scenario-${i}`}
               key={item.id}
               onClick={() => start(i)}
-              aria-label={item.label}
-              aria-pressed={scenarioIndex === i}
+              type="button"
+              role="tab"
+              aria-selected={scenarioIndex === i}
+              aria-controls="h5-demo-panel"
+              tabIndex={scenarioIndex === i ? 0 : -1}
+              onKeyDown={(event) => {
+                const next = event.key === 'ArrowRight' ? (i + 1) % scenarios.length
+                  : event.key === 'ArrowLeft' ? (i - 1 + scenarios.length) % scenarios.length
+                    : event.key === 'Home' ? 0 : event.key === 'End' ? scenarios.length - 1 : null
+                if (next === null) return
+                event.preventDefault()
+                start(next)
+                document.getElementById(`h5-scenario-${next}`)?.focus()
+              }}
               className={`flex-1 min-w-[120px] flex items-center gap-3 p-3 rounded-xl border text-left text-sm transition-all
                 ${scenarioIndex === i 
                   ? 'bg-[#FCFBF9] text-[#1C1C1C] border-transparent shadow-sm' 
@@ -52,21 +62,21 @@ export function SupportDemo() {
                 }`}
             >
               <span className={`text-xs ${scenarioIndex === i ? 'text-[#526B54]' : 'opacity-60'}`}>0{i + 1}</span>
-              <span className="font-medium whitespace-nowrap">{item.shortLabel}</span>
+              <span className="font-medium whitespace-nowrap">{item.label}</span>
             </button>
           ))}
         </div>
 
         {/* Chat Window */}
-        <div className="bg-[#FCFBF9] rounded-2xl overflow-hidden shadow-inner flex flex-col">
+        <div id="h5-demo-panel" role="tabpanel" aria-labelledby={`h5-scenario-${scenarioIndex}`} className="bg-[#FCFBF9] rounded-2xl overflow-hidden shadow-inner flex flex-col">
           {/* Chat Header */}
           <div className="px-5 py-4 border-b border-[#E5E2DB] flex items-center gap-4 bg-white/50 backdrop-blur-md">
             <div className="w-10 h-10 rounded-full bg-[#EFECE6] text-[#526B54] flex items-center justify-center shrink-0">
-              <Leaf size={20} />
+              <Bot size={20} />
             </div>
             <div className="flex flex-col">
-              <strong className="font-serif text-lg text-[#1C1C1C] font-medium leading-tight">fern & field</strong>
-              <span className="text-xs text-[#737373]">Customer care · sample shop</span>
+              <strong className="font-serif text-lg text-[#1C1C1C] font-medium leading-tight">{scenario.brand}</strong>
+              <span className="text-xs text-[#737373]">{scenario.label} · sample workspace</span>
             </div>
             <MessageCircle size={20} className="ml-auto text-[#A3A3A3]" />
           </div>
@@ -95,7 +105,7 @@ export function SupportDemo() {
                   <div className="w-6 h-6 rounded-full bg-[#E5E2DB] flex items-center justify-center">
                     <Headphones size={12} className="text-[#4A4A4A]" />
                   </div>
-                  Fern & Field assistant
+                  {scenario.agent}
                 </div>
 
                 {/* Agent Response */}
@@ -123,7 +133,7 @@ export function SupportDemo() {
                     className="self-start mt-3 bg-[#EFECE6] border border-[#E5E2DB] rounded-xl p-3 max-w-[85%] text-[#4A4A4A]"
                   >
                     <div className="flex items-center gap-2 text-xs font-semibold mb-1 text-[#526B54]">
-                      {scenario.id === 'handoff' ? <Users size={14} /> : <BookOpen size={14} />}
+                      <BookOpen size={14} />
                       {scenario.source}
                     </div>
                     <p className="text-xs italic leading-relaxed">"{scenario.excerpt}"</p>
@@ -179,7 +189,7 @@ export function SupportDemo() {
       </div>
       
       <p className="mt-6 text-xs text-[#737373]">
-        Fictional shop, sample content. See how a support conversation can work.
+        Fictional workspaces and sample policies. Choose an industry to explore a support conversation.
       </p>
       <span className="sr-only" role="status">
         {status === 'complete'

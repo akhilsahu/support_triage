@@ -37,7 +37,11 @@ export function DataSourceWizard({ chatbotId, agents, initialAgentId = '', onCan
   onComplete: () => void
 }) {
   const [step, setStep] = useState(0)
-  const [mode, setMode] = useState<'ai' | 'url' | 'advanced'>('ai')
+  const [mode, setMode] = useState<'presets' | 'ai' | 'url' | 'advanced'>('ai')
+  const [presets, setPresets] = useState<any[]>([])
+  const [selectedPreset, setSelectedPreset] = useState<any | null>(null)
+  const [presetCredentials, setPresetCredentials] = useState<Record<string, string>>({})
+  const [presetSearch, setPresetSearch] = useState('')
   const [advancedMode, setAdvancedMode] = useState<'openapi' | 'curl' | 'manual'>('openapi')
   const [curlExample, setCurlExample] = useState<'get' | 'post'>('get')
   const [copiedExample, setCopiedExample] = useState(false)
@@ -83,6 +87,11 @@ export function DataSourceWizard({ chatbotId, agents, initialAgentId = '', onCan
     credential, connectionArgs,
   }), [draft.connection, draft.tool.method, draft.tool.path, draft.tool.input_schema, draft.tool.request_template, credential, connectionArgs])
   useEffect(() => setConnectionTest(null), [connectionFingerprint])
+  useEffect(() => {
+    apiClient.listDataSourcePresets()
+      .then(res => { if (res.presets) setPresets(res.presets) })
+      .catch(() => {})
+  }, [])
   useEffect(() => {
     if (step !== 1) return
     setConnectionArgs(current => Object.fromEntries(inputNames.map(name => [name, current[name] || ''])))
@@ -148,8 +157,58 @@ export function DataSourceWizard({ chatbotId, agents, initialAgentId = '', onCan
     return `${draft.connection.base_url}${render(draft.tool.path)}${query ? `?${query}` : ''}`
   }, [draft, connectionArgs])
 
+  const applyPreset = (preset: any) => {
+    setError('')
+    const siteUrl = presetCredentials.site_url || presetCredentials.shop_url || (presetCredentials.subdomain ? `https://${presetCredentials.subdomain}.zendesk.com` : '')
+    if (!siteUrl && preset.required_credentials?.some((c: any) => c.required && c.name.includes('url'))) {
+      setError('Please provide the site address or domain.')
+      return
+    }
+    const baseUrl = (preset.base_url_template || '{site_url}').replace('{site_url}', siteUrl || 'https://api.example.com').replace('{shop_url}', presetCredentials.shop_url || 'shop.myshopify.com').replace('{subdomain}', presetCredentials.subdomain || 'mybrand')
+    
+    let secretVal = presetCredentials.access_token || presetCredentials.api_token || presetCredentials.api_key || ''
+    if (preset.auth_type === 'basic' && presetCredentials.consumer_key && presetCredentials.consumer_secret) {
+      secretVal = `${presetCredentials.consumer_key}:${presetCredentials.consumer_secret}`
+    } else if (preset.auth_type === 'basic' && presetCredentials.email && presetCredentials.api_token) {
+      secretVal = `${presetCredentials.email}/token:${presetCredentials.api_token}`
+    }
+
+    const defaultTool = preset.default_tool || preset.tools?.[0] || {}
+    const next = blankDraft()
+    next.source_type = 'preset'
+    next.connection.name = `${preset.name} Connection`
+    next.connection.base_url = baseUrl.replace(/\/$/, '')
+    next.connection.auth_type = preset.auth_type || 'none'
+    next.connection.auth_header = preset.auth_header || 'Authorization'
+    next.connection.credential_required = Boolean(secretVal || preset.required_credentials?.some((c: any) => c.required && c.type === 'password'))
+    
+    if (defaultTool.name) {
+      next.tool = {
+        name: defaultTool.name,
+        display_name: defaultTool.display_name || defaultTool.name,
+        description: defaultTool.description || '',
+        method: defaultTool.method || 'GET',
+        path: defaultTool.path || '/',
+        input_schema: defaultTool.input_schema || { type: 'object', properties: {}, required: [], additionalProperties: false },
+        request_template: defaultTool.request_template || { query: {}, headers: {}, body: {} },
+        record_path: defaultTool.record_path || '',
+        output_mapping: defaultTool.output_mapping || {}
+      }
+    }
+
+    setDraft(next)
+    setCredential(secretVal)
+    setDrafts([])
+    setStep(1)
+  }
+
   const importDefinition = async () => {
     setError('')
+    if (mode === 'presets') {
+      if (selectedPreset) applyPreset(selectedPreset)
+      else setError('Select a Quick Preset to continue.')
+      return
+    }
     if (mode === 'ai') {
       setBusy(true)
       try {
@@ -297,6 +356,7 @@ export function DataSourceWizard({ chatbotId, agents, initialAgentId = '', onCan
                 <div className="overflow-hidden rounded-2xl border border-gray-200 md:grid md:grid-cols-[220px_minmax(0,1fr)] dark:border-gray-700">
                   <div role="tablist" aria-label="Data source setup method" className="grid grid-cols-3 gap-1 border-b border-gray-200 bg-gray-50 p-2 md:grid-cols-1 md:content-start md:border-b-0 md:border-r dark:border-gray-700 dark:bg-gray-950/40">
                     {[
+                      { value: 'presets', title: 'Quick Presets', text: 'WooCommerce, WP Blog, Shopify', icon: Sparkles },
                       { value: 'ai', title: 'Describe your need', text: 'Use everyday language', icon: Wand2 },
                       { value: 'url', title: 'Enter API URL', text: 'Paste the full address', icon: Link2 },
                       { value: 'advanced', title: 'Advanced import', text: 'OpenAPI, cURL, or manual', icon: FileCode2 },
@@ -305,6 +365,106 @@ export function DataSourceWizard({ chatbotId, agents, initialAgentId = '', onCan
                     </button>)}
                   </div>
                   <div role="tabpanel" className="min-w-0 bg-white p-4 dark:bg-gray-900 sm:p-5">
+                    {mode === 'presets' && <div className="space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Select a pre-built Data Source Preset</h3>
+                          <p className="text-xs text-gray-500 mt-0.5">Quickly connect common platforms without writing REST definitions.</p>
+                        </div>
+                        <div className="relative w-full sm:w-56">
+                          <input
+                            type="text"
+                            placeholder="Search presets (e.g. Woo, WP)..."
+                            value={presetSearch}
+                            onChange={e => setPresetSearch(e.target.value)}
+                            className="w-full pl-3 pr-3 py-1.5 text-xs rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {presets.filter(p => {
+                          const q = presetSearch.toLowerCase().trim()
+                          if (!q) return true
+                          return p.name?.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q)
+                        }).map(p => {
+                          const isSelected = selectedPreset?.id === p.id
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => { setSelectedPreset(p); setError('') }}
+                              className={`text-left p-4 rounded-xl border transition-all relative ${
+                                isSelected
+                                  ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20 ring-2 ring-indigo-500/20 shadow-sm'
+                                  : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 bg-white dark:bg-gray-900'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <span className="text-xs font-bold text-gray-900 dark:text-white">{p.name}</span>
+                                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                                  {p.category}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">
+                                {p.description}
+                              </p>
+                              <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                                <span>{p.tools?.length || 1} pre-configured tools</span>
+                                <span className="text-[10px] text-gray-400">API {p.api_version}</span>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+
+                      {selectedPreset && (
+                        <div className="mt-5 p-5 rounded-2xl border-2 border-indigo-500/80 bg-indigo-50/60 dark:border-indigo-500/60 dark:bg-indigo-950/40 shadow-lg space-y-4 animate-in fade-in duration-200">
+                          <div className="flex items-center justify-between border-b border-indigo-200/80 dark:border-indigo-900/50 pb-3">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-600 text-white text-xs font-bold">2</span>
+                              <div>
+                                <h4 className="text-xs font-bold text-indigo-950 dark:text-indigo-100 uppercase tracking-wider">
+                                  Configure {selectedPreset.name} Credentials &amp; API Keys
+                                </h4>
+                                <p className="text-[11px] text-indigo-700 dark:text-indigo-300">
+                                  Enter your platform address and API credentials to configure this data source.
+                                </p>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200">
+                              API {selectedPreset.api_version}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 gap-3.5 pt-1">
+                            {selectedPreset.required_credentials?.map((cred: any) => (
+                              <div key={cred.name} className="space-y-1">
+                                <label className="block text-xs font-semibold text-gray-800 dark:text-gray-200 pl-0.5">
+                                  {cred.label} {cred.required && <span className="text-red-500">*</span>}
+                                </label>
+                                <Input
+                                  type={cred.type === 'password' ? 'password' : 'text'}
+                                  placeholder={cred.placeholder}
+                                  required={cred.required}
+                                  value={presetCredentials[cred.name] || ''}
+                                  onChange={e => setPresetCredentials(prev => ({ ...prev, [cred.name]: e.target.value }))}
+                                  className="text-xs bg-white dark:bg-gray-900"
+                                />
+                                {cred.help && <p className="text-[11px] text-gray-500 dark:text-gray-400 pl-0.5">{cred.help}</p>}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="pt-2 flex items-center justify-between">
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 italic">
+                              Credentials are encrypted at rest and verified on the next step.
+                            </p>
+                            <Button size="sm" onClick={() => applyPreset(selectedPreset)} className="gap-1.5 text-xs font-bold shadow-md shadow-indigo-500/20">
+                              Continue to Connection Test <ChevronRight className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>}
+
                     {mode === 'ai' && <div className="rounded-2xl border-2 border-violet-400 bg-gradient-to-br from-violet-100 via-white to-indigo-100 p-6 shadow-[0_12px_32px_rgba(109,40,217,0.14)] ring-4 ring-violet-100/80 dark:border-violet-600 dark:from-violet-950/60 dark:via-gray-900 dark:to-indigo-950/50 dark:ring-violet-950/50">
                       <div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 p-3 text-white shadow-lg shadow-violet-500/25"><Sparkles className="h-5 w-5" /></span><div><h3 className="text-lg font-bold text-violet-950 dark:text-violet-50">Tell AI what you want to do</h3><p className="mt-0.5 text-sm font-medium text-violet-700 dark:text-violet-300">Use everyday language. Never include passwords, API keys, or access tokens.</p></div></div>
                       <textarea aria-label="Describe the data source you need" value={aiPrompt} onChange={event => { setAiPrompt(event.target.value); setAiMissing([]); setError('') }} rows={6} className="w-full rounded-xl border-2 border-violet-400 bg-white p-4 text-base leading-relaxed text-gray-950 shadow-inner placeholder:text-gray-500 focus:border-violet-700 focus:outline-none focus:ring-4 focus:ring-violet-500/25 dark:border-violet-600 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-400" placeholder="Fetch data from https://jsonplaceholder.typicode.com/posts?userId=1 where userId will be inputted by the user" />

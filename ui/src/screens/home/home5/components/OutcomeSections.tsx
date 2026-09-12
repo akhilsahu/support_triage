@@ -35,18 +35,18 @@ export function OutcomeSections() {
                   {i === 0 && (
                     <div className="w-full max-w-[240px] flex flex-col gap-3">
                       <span className="self-end bg-[#526B54] text-white text-xs px-3 py-2 rounded-2xl rounded-tr-sm shadow-sm">
-                        Do you ship on weekends?
+                        How do I reset my API key?
                       </span>
                       <div className="flex gap-2 items-end">
                         <span className="w-6 h-6 rounded-full bg-white border border-[#E5E2DB] flex items-center justify-center shrink-0">
                           <MessageCircle size={12} className="text-[#526B54]" />
                         </span>
                         <div className="bg-white border border-[#E5E2DB] text-[#1C1C1C] text-xs px-3 py-2 rounded-2xl rounded-tl-sm shadow-sm">
-                          Here’s what our shipping guide says…
+                          Generate a new key in Settings → API keys.
                         </div>
                       </div>
                       <span className="inline-flex items-center gap-1.5 self-start ml-8 mt-1 text-[10px] font-medium text-[#526B54] bg-[#EFECE6] px-2 py-1 rounded-md">
-                        <FileText size={10} /> Shipping guide
+                        <FileText size={10} /> API authentication guide
                       </span>
                     </div>
                   )}
@@ -56,7 +56,7 @@ export function OutcomeSections() {
                         <BookOpen size={16} className="text-[#526B54]" />
                         <strong className="text-xs font-bold">Your knowledge base</strong>
                       </div>
-                      {['Getting started.pdf', 'Returns & exchanges', 'Frequently asked questions'].map((title) => (
+                      {['Getting started.pdf', 'Billing & subscriptions', 'Frequently asked questions'].map((title) => (
                         <div key={title} className="flex items-center justify-between bg-[#FCFBF9] border border-[#E5E2DB] p-2 rounded-xl">
                           <span className="flex items-center gap-2 text-[10px] font-medium text-[#4A4A4A]">
                             <FileText size={12} className="text-[#A3A3A3]" />

@@ -5,7 +5,7 @@ import {
   FileText,
   MessageSquare,
   ShieldCheck,
-  ShoppingBag,
+  CreditCard,
   Zap,
 } from 'lucide-react'
 import { SectionHeading } from './Common'
@@ -16,11 +16,11 @@ export function AnimatedBeamSection() {
       <div className="w-full max-w-7xl mx-auto px-6">
         <SectionHeading
           eyebrow="REAL-TIME DATA FLOW"
-          title="Connect your knowledge. AI answers with 100% source attribution."
-          description="Data flows instantly from your help center, Shopify store, and documents into our grounded AI engine."
+          title="Connect your sources. Route questions to the right agent."
+          description="Bring together Notion, Confluence, Stripe Billing, and PostgreSQL data. Incoming questions reach specialized agents with the context they need."
         />
 
-        <div className="relative flex flex-col md:flex-row items-center justify-between w-full max-w-5xl mx-auto mt-20 p-8 md:p-12 bg-white border border-[#E5E2DB] rounded-3xl shadow-sm overflow-hidden">
+        <div className="relative flex flex-col md:flex-row items-center justify-between w-full max-w-5xl mx-auto mt-20 gap-6 p-6 md:p-12 bg-white border border-[#E5E2DB] rounded-3xl shadow-sm overflow-hidden">
           {/* SVG Flow Lines */}
           <svg className="absolute inset-0 w-full h-full pointer-events-none hidden md:block" viewBox="0 0 800 300" preserveAspectRatio="none" fill="none">
             {/* Paths connecting sources to central bot */}
@@ -98,11 +98,11 @@ export function AnimatedBeamSection() {
           <div className="flex flex-col gap-6 z-10 w-full md:w-auto">
             <div className="flex items-center gap-4 bg-white border border-[#E5E2DB] p-3 rounded-2xl shadow-sm max-w-[260px]">
               <div className="w-12 h-12 rounded-xl bg-[#EFECE6] text-[#526B54] flex items-center justify-center shrink-0">
-                <ShoppingBag size={20} />
+                <CreditCard size={20} />
               </div>
               <div>
-                <strong className="block text-sm font-semibold text-[#1C1C1C]">Shopify Store</strong>
-                <span className="block text-xs text-[#737373]">Orders & Shipping status</span>
+                <strong className="block text-sm font-semibold text-[#1C1C1C]">Stripe Billing</strong>
+                <span className="block text-xs text-[#737373]">Subscriptions & invoices</span>
               </div>
             </div>
 
@@ -111,8 +111,8 @@ export function AnimatedBeamSection() {
                 <FileText size={20} />
               </div>
               <div>
-                <strong className="block text-sm font-semibold text-[#1C1C1C]">Help Docs & PDFs</strong>
-                <span className="block text-xs text-[#737373]">Return Policy & FAQs</span>
+                <strong className="block text-sm font-semibold text-[#1C1C1C]">Notion & Confluence</strong>
+                <span className="block text-xs text-[#737373]">Documentation & knowledge bases</span>
               </div>
             </div>
 
@@ -121,8 +121,8 @@ export function AnimatedBeamSection() {
                 <Database size={20} />
               </div>
               <div>
-                <strong className="block text-sm font-semibold text-[#1C1C1C]">Zendesk / Intercom</strong>
-                <span className="block text-xs text-[#737373]">Historical conversations</span>
+                <strong className="block text-sm font-semibold text-[#1C1C1C]">PostgreSQL & APIs</strong>
+                <span className="block text-xs text-[#737373]">Business records & workflows</span>
               </div>
             </div>
           </div>
@@ -137,10 +137,10 @@ export function AnimatedBeamSection() {
               <div className="w-16 h-16 rounded-2xl bg-[#526B54] text-white flex items-center justify-center mb-4">
                 <Bot size={32} />
               </div>
-              <strong className="text-lg font-bold text-[#1C1C1C] mb-1">AI Triage Core</strong>
-              <span className="text-sm text-[#737373] mb-3">Grounded RAG Engine</span>
+              <strong className="text-lg font-bold text-[#1C1C1C] mb-1">Support Agent Router</strong>
+              <span className="text-sm text-[#737373] mb-3">Incoming questions → specialist</span>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#EFECE6] text-[#526B54] text-xs font-semibold rounded-full">
-                <ShieldCheck size={14} /> 0% Hallucination Guard
+                <ShieldCheck size={14} /> Grounded in your sources
               </div>
             </motion.div>
           </div>
@@ -152,8 +152,8 @@ export function AnimatedBeamSection() {
                 <Zap size={20} />
               </div>
               <div>
-                <strong className="block text-sm font-semibold text-[#1C1C1C]">Instant Deflection</strong>
-                <span className="block text-xs text-[#737373]">Answered in &lt; 2s</span>
+                <strong className="block text-sm font-semibold text-[#1C1C1C]">Billing Agent</strong>
+                <span className="block text-xs text-[#737373]">Payments & account questions</span>
               </div>
             </div>
 
@@ -162,8 +162,8 @@ export function AnimatedBeamSection() {
                 <MessageSquare size={20} />
               </div>
               <div>
-                <strong className="block text-sm font-semibold text-[#1C1C1C]">Agent Handoff</strong>
-                <span className="block text-xs text-[#737373]">Contextual briefing ready</span>
+                <strong className="block text-sm font-semibold text-[#1C1C1C]">Technical Assistant</strong>
+                <span className="block text-xs text-[#737373]">API & troubleshooting questions</span>
               </div>
             </div>
           </div>

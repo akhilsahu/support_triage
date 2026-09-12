@@ -62,6 +62,15 @@ def _draft(req) -> DataSourceDraft:
     )
 
 
+@router.get("/presets")
+async def list_presets(space=Depends(current_space)):
+    """List pre-configured Data Source presets (WooCommerce, WordPress Blog, Shopify, Stripe, Zendesk)."""
+    del space
+    from app.services.datasource.presets import get_all_presets
+    logger.info("Serving data source presets list")
+    return {"presets": get_all_presets()}
+
+
 @router.post("/import")
 async def import_draft(req: DataSourceImportRequest, space=Depends(current_space)):
     """Parse configuration into reviewable drafts without saving anything."""

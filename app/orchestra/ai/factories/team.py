@@ -26,7 +26,7 @@ from app.orchestra.ai.factories.agent import AgentFactory
 from app.orchestra.ai.factories.llm import LLMFactory
 from app.orchestra.ai.knowledge.base import BaseKnowledgeBackend
 from app.orchestra.ai.knowledge.null import NullKnowledgeBackend
-from app.orchestra.ai.prompts import TRIAGE_COORDINATOR_PROMPT
+from app.orchestra.ai.prompts import ASK_USER_INSTRUCTIONS, TRIAGE_COORDINATOR_PROMPT
 
 logger = structlog.get_logger()
 
@@ -260,7 +260,7 @@ class TeamFactory:
 
             if clarify_enabled:
                 from agno.tools.user_feedback import UserFeedbackTools
-                from app.orchestra.ai.prompts import ASK_USER_INSTRUCTIONS
+                team_kwargs["instructions"] += "\n\n" + ASK_USER_INSTRUCTIONS
                 team_kwargs["tools"] = [UserFeedbackTools(instructions=ASK_USER_INSTRUCTIONS)]
             # HISTORY / MEMORY / SUMMARY live on the leader (the conversation).
             from app.orchestra.ai.session.store import session_runner_kwargs

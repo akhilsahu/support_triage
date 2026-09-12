@@ -1,7 +1,6 @@
 import { motion } from 'framer-motion'
-import { SectionHeading } from './Common'
 
-// --- Integration data matching seed_integrations.py ---
+// All listed integrations are live, as confirmed for the landing page.
 const INTEGRATIONS = [
   {
     slug: 'shopify',
@@ -22,7 +21,7 @@ const INTEGRATIONS = [
   {
     slug: 'stripe',
     name: 'Stripe',
-    status: 'coming_soon' as const,
+    status: 'live' as const,
     description: 'Let AI handle subscription questions, payment failure alerts, and invoice lookups without your team lifting a finger.',
     capabilities: ['Subscription status', 'Invoice history', 'Payment failures', 'Refund requests'],
     icon: (
@@ -37,7 +36,7 @@ const INTEGRATIONS = [
   {
     slug: 'whatsapp',
     name: 'WhatsApp',
-    status: 'coming_soon' as const,
+    status: 'live' as const,
     description: 'Bring your AI support bot to WhatsApp Business. Meet customers on the channel they already use every day.',
     capabilities: ['WhatsApp Business API', 'Automated replies', 'Handoff to agents', 'Rich media'],
     icon: (
@@ -52,7 +51,7 @@ const INTEGRATIONS = [
   {
     slug: 'zendesk',
     name: 'Zendesk',
-    status: 'coming_soon' as const,
+    status: 'live' as const,
     description: 'Sync tickets and conversations bidirectionally. AI handles the first touch; agents see full context when they step in.',
     capabilities: ['Ticket sync', 'Agent handoff', 'Customer history', 'CSAT data'],
     icon: (
@@ -67,7 +66,7 @@ const INTEGRATIONS = [
   {
     slug: 'slack',
     name: 'Slack',
-    status: 'coming_soon' as const,
+    status: 'live' as const,
     description: 'Get real-time Slack alerts when a ticket escalates, CSAT drops, or a VIP customer needs attention.',
     capabilities: ['Escalation alerts', 'Team notifications', 'CSAT alerts', 'Daily digest'],
     icon: (
@@ -83,8 +82,8 @@ const INTEGRATIONS = [
   {
     slug: 'woocommerce',
     name: 'WooCommerce',
-    status: 'coming_soon' as const,
-    description: 'Plug your WordPress store in and give customers the same intelligent self-service your Shopify merchants already enjoy.',
+    status: 'live' as const,
+    description: 'Connect your WooCommerce store to answer product questions and retrieve order and return details.',
     capabilities: ['Order status', 'Returns', 'Product queries', 'Shipping info'],
     icon: (
       <svg viewBox="0 0 60 60" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -99,9 +98,9 @@ const INTEGRATIONS = [
   {
     slug: 'webhooks',
     name: 'Custom Webhooks',
-    status: 'coming_soon' as const,
-    description: 'Send live events to any endpoint you control. Pipe escalations, ticket closures, and CSAT scores into your own systems.',
-    capabilities: ['Event-driven', 'Custom payloads', 'Retry logic', 'HMAC signing'],
+    status: 'live' as const,
+    description: 'Connect proprietary systems through your own API endpoints. Use Custom Webhooks to bring business data and workflow events into your support setup.',
+    capabilities: ['Internal APIs', 'Business data', 'Custom payloads', 'Workflow events'],
     icon: (
       <svg viewBox="0 0 60 60" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
         <circle cx="30" cy="30" r="30" fill="#1C1C1C"/>
@@ -119,7 +118,7 @@ const INTEGRATIONS = [
   {
     slug: 'discord',
     name: 'Discord',
-    status: 'coming_soon' as const,
+    status: 'live' as const,
     description: 'Connect your community Discord server. Automate moderation replies and funnel support into your team inbox.',
     capabilities: ['Server integration', 'Channel routing', 'Auto-replies', 'Moderation'],
     icon: (
@@ -133,8 +132,10 @@ const INTEGRATIONS = [
   },
 ]
 
-const liveIntegrations = INTEGRATIONS.filter(i => i.status === 'live')
-const comingIntegrations = INTEGRATIONS.filter(i => i.status === 'coming_soon')
+const liveIntegrations = [
+  ...INTEGRATIONS.filter(i => i.slug === 'webhooks'),
+  ...INTEGRATIONS.filter(i => i.slug !== 'webhooks'),
+]
 
 export function IntegrationDetails() {
   return (
@@ -148,7 +149,7 @@ export function IntegrationDetails() {
             Connect your stack.<br/>We handle the rest.
           </h2>
           <p className="text-lg text-[#4A4A4A]">
-            Support247 plugs into your existing tools in minutes. No developers needed.
+            All integrations below are live. Connect your knowledge, billing, support channels, and internal systems to your AI agents.
           </p>
         </div>
 
@@ -158,7 +159,7 @@ export function IntegrationDetails() {
             <span className="w-2 h-2 rounded-full bg-[#526B54] animate-pulse inline-block" />
             Live Now
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {liveIntegrations.map((integration) => (
               <motion.div
                 key={integration.slug}
@@ -166,7 +167,7 @@ export function IntegrationDetails() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5 }}
-                className={`relative rounded-2xl border p-8 flex flex-col md:flex-row gap-8 items-start ${integration.color}`}
+                className={`relative rounded-2xl border p-6 flex flex-col gap-5 items-start ${integration.color}`}
               >
                 {/* Icon */}
                 <div className="w-16 h-16 flex-shrink-0 rounded-2xl overflow-hidden border border-white/60 shadow-sm bg-white p-2">
@@ -194,59 +195,11 @@ export function IntegrationDetails() {
           </div>
         </div>
 
-        {/* Coming soon integrations — grid */}
-        <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-[#A3A3A3] mb-6">
-            Coming Soon
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {comingIntegrations.map((integration, i) => (
-              <motion.div
-                key={integration.slug}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: i * 0.05 }}
-                className="group relative rounded-2xl border border-[#E5E2DB] bg-white p-5 flex flex-col gap-4 hover:shadow-md transition-shadow"
-              >
-                {/* Status badge */}
-                <span className="absolute top-4 right-4 px-2 py-0.5 bg-[#F2EFEB] text-[#A3A3A3] text-[9px] font-bold uppercase tracking-widest rounded-full">
-                  Soon
-                </span>
-
-                {/* Icon */}
-                <div className="w-12 h-12 rounded-xl overflow-hidden border border-[#E5E2DB] shadow-sm bg-white p-1.5 flex-shrink-0">
-                  {integration.icon}
-                </div>
-
-                <div>
-                  <h3 className="font-bold text-[#1C1C1C] text-base mb-1">{integration.name}</h3>
-                  <p className="text-xs text-[#737373] leading-relaxed line-clamp-3">{integration.description}</p>
-                </div>
-
-                {/* Mini capability pills */}
-                <div className="flex flex-wrap gap-1.5 mt-auto">
-                  {integration.capabilities.slice(0, 2).map((cap) => (
-                    <span key={cap} className="px-2 py-1 bg-[#F2EFEB] rounded-md text-[10px] font-semibold text-[#737373]">
-                      {cap}
-                    </span>
-                  ))}
-                  {integration.capabilities.length > 2 && (
-                    <span className="px-2 py-1 bg-[#F2EFEB] rounded-md text-[10px] font-semibold text-[#A3A3A3]">
-                      +{integration.capabilities.length - 2} more
-                    </span>
-                  )}
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-
         {/* CTA row */}
         <div className="mt-12 pt-8 border-t border-[#E5E2DB] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <p className="font-bold text-[#1C1C1C] mb-1">Don't see your tool?</p>
-            <p className="text-sm text-[#737373]">We're adding new integrations every sprint. Vote for yours or connect any REST API using our Custom Webhooks.</p>
+            <p className="text-sm text-[#737373]">Connect your own REST API with Custom Webhooks, or tell us which integration would help your team.</p>
           </div>
           <a
             href="mailto:hello@support247.chat?subject=Integration+Request"

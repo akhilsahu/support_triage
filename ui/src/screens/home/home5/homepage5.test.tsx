@@ -9,6 +9,9 @@ import {
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { SupportDemo } from './components/SupportDemo'
+import { IntegrationDetails } from './components/IntegrationDetails'
+import { scenarios } from './content'
 import { useDemoSequence } from './useDemoSequence'
 import { AuthPage5 } from './AuthPage'
 import { Pricing5 } from './Pricing'
@@ -55,11 +58,11 @@ describe('sample support conversation', () => {
     act(() => vi.advanceTimersByTime(700))
     expect(result.current.step).toBe(1)
     act(() => result.current.start(2))
-    expect(result.current.scenario.id).toBe('handoff')
+    expect(result.current.scenario.id).toBe('education')
     expect(result.current.step).toBe(0)
     for (let i = 0; i < 3; i++) act(() => vi.advanceTimersByTime(700))
     expect(result.current.status).toBe('complete')
-    expect(result.current.scenario.id).toBe('handoff')
+    expect(result.current.scenario.id).toBe('education')
   })
   it('pauses without progressing and resumes from the same step', () => {
     vi.useFakeTimers()
@@ -89,6 +92,35 @@ describe('sample support conversation', () => {
     expect(result.current.status).toBe('paused')
     unmount()
     expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe('Homepage5 industries and integrations', () => {
+  it('switches industry context and supports keyboard tab navigation', async () => {
+    render(<MemoryRouter><SupportDemo /></MemoryRouter>)
+    expect(screen.getByRole('tab', { name: /SaaS/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Atlas Cloud')
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('API rate-limit documentation')
+
+    for (const scenario of scenarios.slice(1)) {
+      const tab = screen.getByRole('tab', { name: new RegExp(scenario.label) })
+      fireEvent.click(tab)
+      expect(tab).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByRole('tabpanel')).toHaveTextContent(scenario.brand)
+      await waitFor(() => expect(screen.getByRole('tabpanel')).toHaveTextContent(scenario.question))
+    }
+    fireEvent.keyDown(screen.getByRole('tab', { name: /E-Commerce/ }), { key: 'ArrowRight' })
+    expect(screen.getByRole('tab', { name: /SaaS/ })).toHaveFocus()
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'h5-scenario-0')
+  })
+
+  it('shows every integration in the live tier, with Custom Webhooks first', () => {
+    render(<IntegrationDetails />)
+    const names = screen.getAllByRole('heading', { level: 3 }).map(node => node.textContent)
+    expect(names[0]).toBe('Custom Webhooks')
+    expect(names).toEqual(expect.arrayContaining(['Shopify', 'Stripe', 'WhatsApp', 'Zendesk', 'Slack', 'WooCommerce', 'Discord']))
+    expect(screen.getAllByText('Live', { exact: true })).toHaveLength(names.length)
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
   })
 })
 
@@ -302,8 +334,13 @@ describe('pricing, preview and metadata', () => {
       </MemoryRouter>
     )
     await waitFor(() =>
-      expect(document.title).toContain('AI Customer Support for Shopify')
+      expect(document.title).toContain('Grounded AI Support Agents for Your Business Knowledge and Workflows')
     )
+    const title = document.title
+    expect(document.querySelector('meta[property="og:title"]')).toHaveAttribute('content', title)
+    expect(document.querySelector('meta[name="twitter:title"]')).toHaveAttribute('content', title)
+    expect(document.querySelector('meta[name="description"]')?.getAttribute('content')).toContain('internal APIs')
+    expect(document.getElementById('site-structured-data')?.textContent).toContain('Grounded AI Support Agents')
     act(() => useAppStore.setState({ activeHomepage: 'homepage1' }))
     await waitFor(() =>
       expect(document.title).toContain('AI Customer Support Chatbot Platform')

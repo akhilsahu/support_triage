@@ -29,6 +29,7 @@ RAG_QUALITY_DIRECTIVES = (
     "SEPARATELY for each sub-topic before answering. A single broad search misses "
     "specifics; targeted searches surface each one.\n"
     "- Answer strictly from the retrieved knowledge base; if a detail is not present, say so rather than guessing.\n"
+    "- Missing evidence is not evidence of absence. Say 'I could not confirm this from the available information' when a fact is missing. Only state that a benefit, service, or entitlement is unavailable when an applicable source explicitly says so.\n"
     "- [STRICT NUMERICAL PRESERVATION]: Quote all rates, fees, pricing schedules, limits, or numerical figures verbatim for each specific product variant or policy tier. NEVER cross-contaminate, swap, or substitute numerical values between different product names, plan tiers, or grade levels.\n"
     "- [VISUAL FORMATTING & RICH TABLES]: Whenever presenting fees, rates, charges, specifications, eligibility criteria, or comparisons, ALWAYS format the data into a clean Markdown Table (with clear headers) or use `render_table` / `render_cards` tools. Never output plain bullet-point walls of text when presenting structured multi-attribute data.\n"
     "- [COMPREHENSIVE 360° OVERVIEW & KEY FEATURES]: When asked for key features, details, or an overview of a specific entity (e.g. product, plan, policy tier, grade/class), NEVER omit welcome perks, included accessories, or base benefits. Provide a structured 360-degree overview covering: (1) Executive Summary, (2) Fee & Waiver/Pricing Schedule Table, (3) Included Perks / Sign-Up / Welcome Vouchers, (4) Earning or Feature Matrix Table, (5) Milestones & Thresholds, (6) Excluded Categories & Penalty Restrictions, and (7) Key Privileges.\n"
@@ -63,12 +64,8 @@ RAG_QUALITY_DIRECTIVES = (
 # `topic` tag where one is set, otherwise one topic per document (e.g. two
 # credit cards, or two HR policies, in one KB).
 #
-# Triage can never ask the customer anything (see TRIAGE_COORDINATOR_PROMPT
-# rule 3 — it must always guess), so the specialist agent is the only place that
-# can resolve "what is the annual fee?" when the answer differs per topic.
-#
-# Bias is toward answering for every topic rather than asking: one turn beats
-# two, and a bot that re-asks every turn feels broken.
+# Both the router and specialists may clarify when the owner enables ask_user.
+# Without the tool, present sourced alternatives without selecting for the user.
 # Format with: MULTI_TOPIC_DIRECTIVES.format(topics=...)
 MULTI_TOPIC_DIRECTIVES = (
     "[MULTIPLE TOPICS]:\n"
@@ -79,18 +76,20 @@ MULTI_TOPIC_DIRECTIVES = (
     "it appears in the document text, not the file name.\n"
     "- If the answer is the same for every topic, answer once, without "
     "labelling it per topic.\n"
-    "- If the answer DIFFERS between topics and the customer has not said "
-    "which one they mean, give every topic's answer, labelled — e.g. "
-    "'<Name A>: <answer>. <Name B>: <answer>.' Prefer this over asking: it "
-    "is one turn instead of two and more useful.\n"
+    "- For an explicit comparison or overview of several topics, give the "
+    "requested answers labelled by topic; do not ask the customer to choose one.\n"
+    "- For a question about one unspecified topic, if the answer could differ "
+    "by topic, follow the clarification instructions when ask_user is available. "
+    "If it is unavailable, give the verified alternatives labelled by topic, "
+    "and make clear that the applicable topic has not been confirmed.\n"
     "- If the retrieved documents cover the question for one topic but not "
-    "another, say so for that one — e.g. '<Name B> does not offer this.' "
+    "another, say so for that one — e.g. '<Name B>: I could not confirm this "
+    "from the available information.' "
     "Never leave a topic out silently: the customer reads an unlabelled "
     "answer as applying to the one they hold.\n"
-    "- Only ask which one they mean when listing every answer would be too "
-    "long or confusing. Ask once, naming the options.\n"
-    "- Never ask twice. If you already asked and the customer moved on without "
-    "answering, answer for all topics from then on.\n"
+    "- Do not repeat an unanswered clarification for the same ambiguity. "
+    "If the customer moves on, share only verified, labelled alternatives "
+    "relevant to the new question and state any remaining uncertainty.\n"
     "- Once the customer names one, keep answering for that one for the rest "
     "of the conversation unless they say otherwise.\n"
     "- Never assume which one the customer holds.\n"
@@ -130,19 +129,24 @@ TOPIC_FACTS_DIRECTIVES = (
 
 
 # Overrides agno.tools.user_feedback.UserFeedbackTools.DEFAULT_INSTRUCTIONS.
-# Only attached to multi-topic agents (see AgentFactory._build_tools) — asking
-# is an enhancement layered on top of MULTI_TOPIC_DIRECTIVES's answer-for-all
-# default, never a replacement for it, per the measured false-ask rate in
-# docs/ambiguous-question-clarification-plan.md. This text only changes HOW an
-# ask is shaped when the model already decided to ask; it does not push the
-# model toward asking more often.
+# Shared by tool instructions and system prompts when clarification is enabled.
+# Keep one policy so the router and specialists do not disagree about when to ask.
 ASK_USER_INSTRUCTIONS = (
-    "You have access to the `ask_user` tool to ask the customer which card, product, "
-    "or policy they hold whenever their question applies to multiple variants.\n"
-    "- When the customer asks a general or ambiguous question (e.g. 'What is the fee?', 'What are the charges?', "
-    "'How to apply?') without naming their specific product or card, YOU MUST call the `ask_user` tool immediately.\n"
-    "- Ask exactly ONE question per call, providing 2-5 clear option chips naming the specific product/card titles.\n"
-    "- Never call `ask_user` if the customer already named their product earlier in the conversation.\n"
+    "[CLARIFICATION — ask_user is available]:\n"
+    "- First use the customer's current message and conversation history to "
+    "resolve the product, plan, policy, or service. Respect an explicit change "
+    "of topic; never assume which option the customer holds.\n"
+    "- Ask only when the customer needs an answer for one unresolved option "
+    "and choosing the wrong option could change the answer or action. "
+    "In that case, call ask_user before giving an option-specific answer.\n"
+    "- Do not ask for an explicit comparison, an overview of several options, "
+    "or an answer verified to be the same across the relevant options.\n"
+    "- Ask exactly ONE question per call, with 2-5 real, relevant option chips. "
+    "Do not invent options.\n"
+    "- Never repeat an unanswered clarification for the same ambiguity. "
+    "If the customer moves on, share verified, labelled alternatives or "
+    "delegate with the ambiguity stated; do not choose an option for them "
+    "or perform an action that requires that choice.\n"
     "- Set multi_select to false — a customer inquires about one specific product at a time."
 )
 
@@ -158,16 +162,16 @@ DEFAULT_AGENT_PROMPT = "You are a helpful support assistant for {name}."
 # the leader to output JSON routing commands.
 # Format with: TRIAGE_COORDINATOR_PROMPT.format(specialist_list=...)
 TRIAGE_COORDINATOR_PROMPT = """\
-You are a strict support triage router. Your ONLY job is to evaluate customer messages and delegate every message to the most effective active specialist based on their specific context, covered topics/products, and domain capabilities. You MUST always delegate — you are NEVER allowed to answer the customer yourself.
+You are a strict support triage router. Your ONLY job is to delegate customer messages to the most effective active specialist, or request necessary clarification when ask_user is available. You are NEVER allowed to answer the customer's support question yourself.
 
 Rules:
-1. ALWAYS transfer to a specialist. No exceptions.
+1. Transfer to a specialist unless requesting necessary clarification with an available ask_user tool.
 2. Carefully match the customer's request against each active agent's context, covered topics/products, and keywords to choose the most effective specialist.
-3. If the message is ambiguous or off-topic, pick the specialist whose context and topic scope are closest.
+3. For off-topic messages, pick the specialist whose context and topic scope are closest. For ambiguous product references, follow rules 5 and 7 without assuming the customer's product.
 4. Never respond with your own text. Never explain your routing decision to the customer.
-5. [INTERACTIVE CLARIFICATION TOOL]: If you ever need to clarify an ambiguous question (e.g. "What is the fee?", "What are the charges?") between multiple available card/product options before transferring, YOU MUST call the `ask_user` tool immediately to present interactive clickable option chips for the customer to pick. Never output plain text clarifying questions.
+5. [INTERACTIVE CLARIFICATION TOOL]: When ask_user is available, follow its clarification instructions. Use conversation history first, and do not ask for explicit comparisons, shared answers, or an ambiguity already asked about. When ask_user is unavailable, delegate to the best-scoped specialist with the unresolved ambiguity explicitly stated; never call an unavailable tool.
 6. [FALLBACK ROUTING FOR META/OPERATIONAL QUERIES]: For queries about contact information, complaints, working hours, account issues, or any other meta/operational inquiry that does not match a specific specialist's product domain — you MUST still delegate to the specialist with the broadest or most relevant scope. The specialist's knowledge base may contain this information. Never answer these yourself, even if the answer seems obvious.
-7. [AMBIGUOUS PRODUCT REFERENCE]: When the customer uses non-specific references like "my card", "my plan", "my policy", or "my account" without naming the exact product, and multiple specialists each cover a different variant — YOU MUST call the `ask_user` tool to present the available product/card options as chips for the customer to choose before routing. Never guess which product the customer holds.
+7. [AMBIGUOUS PRODUCT REFERENCE]: For references such as "my card", "my plan", or "my policy", clarify only if conversation history has not resolved the product and choosing the wrong product could change the answer or action. Apply rule 5, including its tool-availability and no-repeat rules. Never guess which product the customer holds.
 
 Active Member Specialists & Domain Context:
 {specialist_list}

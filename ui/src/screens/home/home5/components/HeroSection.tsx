@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bot, Calculator, CheckCircle2, ShieldCheck, Zap } from 'lucide-react'
 import { SignupLink } from './Common'
+import { hero } from '../content'
 import { SupportDemo } from './SupportDemo'
 import { ROICalculator } from './ROICalculator'
 import { AnimatedBackground } from './AnimatedBackground'
@@ -31,10 +32,10 @@ export function HeroSection() {
         transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
         className="text-5xl md:text-7xl font-bold tracking-tight text-[#1C1C1C] max-w-4xl text-balance leading-[1.1]"
       >
-        Resolve customer questions instantly with AI that <span className="text-[#526B54] relative inline-block">
-          answers from
+        Grounded AI support agents for your <span className="text-[#526B54] relative inline-block">
+          business knowledge
           <svg className="absolute -bottom-2 left-0 w-full text-[#526B54]/30 h-3" viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M0 10 Q 50 20 100 10" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" /></svg>
-        </span> your business knowledge.
+        </span> and workflows.
       </motion.h1>
 
       {/* Description */}
@@ -44,7 +45,7 @@ export function HeroSection() {
         transition={{ duration: 0.6, ease: "easeOut", delay: 0.2 }}
         className="mt-6 text-lg md:text-xl text-[#4A4A4A] max-w-2xl text-balance"
       >
-        Connect your Shopify store, help center, and internal docs in seconds. Give your customers perfectly grounded answers without the manual setup.
+        {hero.description}
       </motion.p>
 
       {/* CTA Actions */}
@@ -94,7 +95,7 @@ export function HeroSection() {
                 transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
               />
             )}
-            <span className="relative z-10 flex items-center gap-2"><Bot size={16} /> Live AI Demo</span>
+            <span className="relative z-10 flex items-center gap-2"><Bot size={16} /> Explore AI demos</span>
           </button>
           <button
             onClick={() => setHeroMode('calc')}

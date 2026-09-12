@@ -2,51 +2,67 @@ export const SIGNUP_URL = '/app/login?tab=register'
 
 export const hero = {
   eyebrow: 'A little less repetition. A lot more support.',
-  title: 'Turn your knowledge into helpful customer support.',
+  title: 'Grounded AI support agents for your business knowledge and workflows.',
   description:
-    'Give customers answers from your content, and bring your team into the conversation when they need more help.',
+    'Connect your documentation, knowledge bases, and internal APIs in seconds. Give customers answers grounded in your business knowledge, with human handoff when needed.',
 }
 
 export const scenarios = [
   {
-    id: 'question',
-    label: 'Answer a common question',
-    shortLabel: 'A quick answer',
-    question: 'How do I look after my new linen shirt?',
+    id: 'saas',
+    label: 'SaaS',
+    brand: 'Atlas Cloud',
+    agent: 'Technical Assistant',
+    question: 'What happens when I hit the API rate limit?',
     answer:
-      'Wash it on a gentle cycle at 30°C with similar colours. Let it air dry, and use a warm iron while it’s still a little damp.',
-    source: 'Linen care guide',
+      'In this example, your workspace allows 1,000 requests per minute. If you reach the limit, the API returns HTTP 429. Wait for the Retry-After interval before sending another request.',
+    source: 'API rate-limit documentation',
     excerpt:
-      'Machine wash linen at 30°C on a gentle cycle. Air dry. Iron on a warm setting while slightly damp.',
-    detail: 'An everyday question, answered from the shop’s own care guide.',
-    result: 'Answered from sample content',
+      'Sample plan: 1,000 requests per minute per workspace. HTTP 429 responses include a Retry-After header indicating when to retry.',
+    detail: 'Technical answers grounded in your API documentation.',
+    result: 'Sample API documentation cited',
   },
   {
-    id: 'source',
-    label: 'Show an answer source',
-    shortLabel: 'An answer with a source',
-    question: 'Can I return something if it doesn’t fit?',
+    id: 'fintech',
+    label: 'FinTech',
+    brand: 'ClearPay Finance',
+    agent: 'Billing Agent',
+    question: 'When will my payment settle?',
     answer:
-      'Yes. In this sample shop, unworn items can be returned within 30 days of delivery, with their original tags attached.',
+      'This sample account uses a two-business-day settlement schedule. A payment captured on Monday settles on Wednesday, unless a bank holiday changes the schedule.',
+    source: 'Payment settlement policy',
+    excerpt:
+      'Sample account: captured payments settle after two business days. Weekends and bank holidays are excluded.',
+    detail: 'Billing answers grounded in your account policies.',
+    result: 'Sample settlement policy cited',
+  },
+  {
+    id: 'education',
+    label: 'Education',
+    brand: 'Northstar Learning',
+    agent: 'Student Support Agent',
+    question: 'What is the deadline to drop a course?',
+    answer:
+      'For this sample term, you can drop a course through the student portal until September 18 at 5 p.m. campus time. After that deadline, contact the registrar to discuss your options.',
+    source: 'Academic calendar · course changes',
+    excerpt:
+      'Sample term: the course drop deadline is September 18 at 5 p.m. campus time. Later requests must be reviewed by the registrar.',
+    detail: 'Student support grounded in your academic policies.',
+    result: 'Sample academic calendar cited',
+  },
+  {
+    id: 'ecommerce',
+    label: 'E-Commerce',
+    brand: 'Fern & Field',
+    agent: 'Customer Care Agent',
+    question: 'Can I return something if it does not fit?',
+    answer:
+      'Yes. In this sample store, unworn items can be returned within 30 days of delivery, with their original tags attached.',
     source: 'Returns policy',
     excerpt:
       'Unworn items with original tags may be returned within 30 days of delivery.',
-    detail: 'A visible source makes the answer easier to check.',
-    result: 'Sample policy cited',
-  },
-  {
-    id: 'handoff',
-    label: 'Hand off to the team',
-    shortLabel: 'A human when it matters',
-    question: 'My order arrived damaged. Can someone help?',
-    answer:
-      'That needs a closer look. I’ll pass this conversation to the team so they can help with your damaged order.',
-    source: 'Conversation shared with the team',
-    excerpt:
-      'Customer needs help with an order that arrived damaged. The conversation is ready for a teammate to review.',
-    detail:
-      'A simulated handoff. No real teammate is contacted in this example.',
-    result: 'Sample handoff prepared',
+    detail: 'Customer care grounded in your store policies.',
+    result: 'Sample returns policy cited',
   },
 ] as const
 
@@ -63,7 +79,7 @@ export const outcomes = [
   },
   {
     title: 'More than just text.',
-    text: 'Connected to your store. Look up orders, check shipping, and answer product questions in real time without leaving the chat.',
+    text: 'Connect your business tools and APIs. Look up billing details, account information, and workflow status without leaving the conversation.',
     icon: 'people',
   },
 ] as const
@@ -110,7 +126,7 @@ export const plans = [
     description: 'For people sharing the work of support.',
     features: [
       'A shared space for conversations',
-      'Connect to your store & tools',
+      'Connect your business tools & APIs',
       'Human handoff when it matters',
     ],
   },
@@ -135,7 +151,7 @@ export const faqs = [
   {
     question: 'How do agents take actions?',
     answer:
-      'Support247 utilizes the Model Context Protocol (MCP) to seamlessly execute tool actions, like performing Shopify order lookups or processing Stripe billing events, rather than just regurgitating PDF text.',
+      'Agents use connected tools and APIs to retrieve account details, check subscription status, and support your business workflows. Connect Custom Webhooks for your own systems, alongside Stripe, Shopify, and your other integrations.',
   },
   {
     question: 'What are the prices and usage limits?',

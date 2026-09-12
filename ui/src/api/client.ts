@@ -384,6 +384,8 @@ export const apiClient = {
     http.delete(`/api/v1/datasources/${id}`).then(r => r.data),
 
   // Data Source Tool Registry (v2)
+  listDataSourcePresets: () =>
+    http.get('/api/v1/data-sources/presets').then(r => r.data),
   importDataSourceDraft: (payload: { kind: 'curl' | 'openapi'; content: string; operation_id?: string }) =>
     http.post('/api/v1/data-sources/import', payload).then(r => r.data),
   describeDataSourceDraft: (payload: { description: string; use_ai?: boolean }) =>

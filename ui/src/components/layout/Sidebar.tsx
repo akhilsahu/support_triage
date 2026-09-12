@@ -49,7 +49,7 @@ function ChatbotSwitcher({ collapsed, token }: { collapsed: boolean; token: stri
           if (def) setCurrentChatbotId(def.id)
         }
       })
-      .catch(() => {})
+      .catch(() => { })
   }, [token])
 
   useEffect(() => {
@@ -164,8 +164,8 @@ export function Sidebar() {
           isActive
             ? dt.navActive
             : flagUnread
-            ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold ring-1 ring-emerald-300 dark:ring-emerald-500/40'
-            : 'text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-white',
+              ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold ring-1 ring-emerald-300 dark:ring-emerald-500/40'
+              : 'text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-white',
           sidebarCollapsed && 'justify-center px-2'
         )}>
         <span className="relative flex-shrink-0">

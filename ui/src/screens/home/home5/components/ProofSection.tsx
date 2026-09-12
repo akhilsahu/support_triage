@@ -1,7 +1,6 @@
 import { motion, useInView } from 'framer-motion'
 import { useRef, useEffect, useState } from 'react'
 import {
-  ArrowUpRight,
   CheckCircle2,
   Clock,
   Database,
@@ -9,7 +8,6 @@ import {
   FileText,
   Layers,
   MessageSquare,
-  Shield,
   ShoppingBag,
   Zap,
 } from 'lucide-react'
@@ -50,14 +48,14 @@ function NumberTicker({ value, suffix = '' }: { value: number; suffix?: string }
 }
 
 const integrations = [
-  { name: 'Shopify Store', icon: ShoppingBag, color: '#526B54' },
+  { name: 'Custom Webhooks', icon: Zap, color: '#526B54' },
   { name: 'Zendesk Support', icon: MessageSquare, color: '#1C1C1C' },
-  { name: 'Intercom Inbox', icon: Zap, color: '#4A4A4A' },
+  { name: 'Shopify', icon: ShoppingBag, color: '#4A4A4A' },
   { name: 'PostgreSQL DB', icon: Database, color: '#526B54' },
   { name: 'Stripe Billing', icon: DollarSign, color: '#1C1C1C' },
   { name: 'PDF & Notion Docs', icon: FileText, color: '#4A4A4A' },
   { name: 'Slack Alerts', icon: Layers, color: '#526B54' },
-  { name: 'SOC2 & GDPR Safe', icon: Shield, color: '#1C1C1C' },
+  { name: 'Confluence', icon: FileText, color: '#1C1C1C' },
 ]
 
 export function ProofSection() {

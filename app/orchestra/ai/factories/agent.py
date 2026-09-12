@@ -72,12 +72,8 @@ def _build_tools(resolved: ResolvedAgent, shared_tools: List[Any], clarify_enabl
     Shared MCP tools plus two optional Agno toolkits:
 
     - UserFeedbackTools (ask_user), only when the OWNER has turned it on
-      (Chatbot.clarify_enabled) AND the agent has 2+ topics to disambiguate
-      — the owner-facing toggle is the gate; topic count is what makes the
-      toggle meaningful for THIS agent. See
-      docs/ambiguous-question-clarification-plan.md "Where does the owner
-      enable this — chatbot or agent?" for why the toggle lives on the
-      chatbot and the per-agent condition is derived, not a second toggle.
+      (Chatbot.clarify_enabled). The shared clarification instructions decide
+      whether the current question needs disambiguation.
     - RenderTools (render_table/render_cards/render_tabs), every agent, gated
       only by RENDER_TOOLS_ENABLED — a layout choice isn't tied to topic
       ambiguity the way asking is; see
@@ -314,20 +310,14 @@ class AgentFactory:
                     parts.append(f"\n[{skill_name.upper()} DIRECTIVE]: {skill_text}")
 
         # Disambiguation, when this agent's knowledge spans several topics.
-        # Triage is forbidden from asking the customer anything, so this is the
-        # only place a "which topic do you mean?" can come from.
+        # The router and specialists use the same clarification policy.
         if resolved.topic_names:
             parts.append(MULTI_TOPIC_DIRECTIVES.format(
                 topics="\n".join(f"  - {t}" for t in resolved.topic_names)
             ))
 
         if clarify_enabled:
-            parts.append(
-                "[CLARIFICATION DIRECTIVE — USE `ask_user` TOOL]:\n"
-                "When a customer asks a general or ambiguous question (e.g., 'What is the annual fee?', 'What are the charges?', 'How to apply?') "
-                "that applies to multiple products, cards, or policies in your knowledge base, DO NOT answer for all of them at once or guess. "
-                "YOU MUST call the `ask_user` tool immediately to present a choice of available products so the customer can pick which one they hold."
-            )
+            parts.append(ASK_USER_INSTRUCTIONS)
 
 
         # Confirmed attributes. Deliberately NOT gated on topic count: the

@@ -42,8 +42,8 @@ const HOMEPAGE_META: Record<ReturnType<typeof useHomepageVariant>, Meta> = {
     description: 'Build an AI support team with your business documents. Configure agents, publish your support space, and help customers with human handoff.',
   },
   homepage5: {
-    title: `AI Customer Support for Shopify and Your Website | ${BRAND}`,
-    description: `Answer customer questions from your docs and Shopify data, with human handoff when needed. Plans from $${Math.min(...plans.map(plan => plan.price))} USD per month.`,
+    title: `Grounded AI Support Agents for Your Business Knowledge and Workflows | ${BRAND}`,
+    description: `Connect documentation, knowledge bases, and internal APIs to grounded AI support agents with human handoff. Plans from $${Math.min(...plans.map(plan => plan.price))} USD per month.`,
   },
 }
 
