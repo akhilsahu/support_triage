@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Save, CheckCircle, AlertCircle, X, ChevronRight, HelpCircle, Key, Server, Terminal, Shield, RefreshCw, Bot } from 'lucide-react'
+import { Save, CheckCircle, AlertCircle, X, ChevronRight, HelpCircle, Key, Server, RefreshCw, Bot } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
-import { Toggle } from '../components/ui/Toggle'
 import { apiClient } from '../api/client'
 
 // Import official brand logo image assets provided in assets directory
@@ -17,7 +16,7 @@ import zendeskLogoImg from '../assets/images/logos/Logo_Primary_Licorice.png'
 
 // ── Custom SVG logos for a premium, native visual experience ───────────────────
 
-const ShopifyLogo = ({ size = 32 }: { size?: number }) => (
+const _ShopifyLogo = ({ size = 32 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" role="img" xmlns="http://www.w3.org/2000/svg">
     <title>Shopify</title>
     {/* Dark green right perspective face */}
@@ -29,32 +28,32 @@ const ShopifyLogo = ({ size = 32 }: { size?: number }) => (
   </svg>
 )
 
-const WhatsAppLogo = ({ size = 32 }: { size?: number }) => (
+const _WhatsAppLogo = ({ size = 32 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M12.012 2C6.48 2 2.01 6.47 2.01 12c0 1.91.54 3.7 1.48 5.24L2 22l4.91-1.42A9.927 9.927 0 0012.01 22c5.53 0 10-4.47 10-10S17.54 2 12.012 2zm5.79 12.98c-.25.7-1.45 1.37-2 1.42-.51.05-1.18.27-3.48-.68-2.93-1.21-4.81-4.21-4.96-4.41-.15-.2-1.2-1.6-1.2-3.05 0-1.45.75-2.15 1.02-2.45.2.2.4.25.55.25h.4c.15 0 .35-.05.55.45.2.5 1.02 2.45 1.1 2.65.1.2.15.4.02.65-.13.25-.28.4-.53.7-.25.3-.53.67-.76.9-.25.25-.51.52-.2.95.3.52 1.34 2.2 2.87 3.56 1.97 1.75 3.62 2.3 4.13 2.51.5.21.8.18 1.1-.15.3-.33 1.3-1.5 1.65-2.02.35-.52.7-.42 1.18-.25.48.17 3.05 1.43 3.57 1.7.53.26.88.38 1 .6.12.23.12 1.3-.13 2z" fill="#25D366" />
   </svg>
 )
 
-const SlackLogo = ({ size = 32 }: { size?: number }) => (
+const _SlackLogo = ({ size = 32 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M5.042 15.165a2.528 2.528 0 01-2.52 2.523 2.528 2.528 0 01-2.522-2.523 2.528 2.528 0 012.522-2.52h2.52v2.52zm1.261 0a2.528 2.528 0 012.52-2.52h5.043a2.528 2.528 0 012.522 2.52v5.043a2.528 2.528 0 01-2.522 2.52H8.823a2.528 2.528 0 01-2.52-2.52v-5.043zM8.823 5.042a2.528 2.528 0 01-2.52-2.52A2.528 2.528 0 018.823 0a2.528 2.528 0 012.52 2.522v2.52h-2.52zm0 1.261a2.528 2.528 0 012.52 2.52v5.043a2.528 2.528 0 01-2.52 2.522H3.78a2.528 2.528 0 01-2.52-2.522V8.823a2.528 2.528 0 012.52-2.52h5.043zm10.135 3.781a2.528 2.528 0 012.52-2.522 2.528 2.528 0 012.522 2.522 2.528 2.528 0 01-2.522 2.52h-2.52v-2.52zm-1.262 0a2.528 2.528 0 01-2.52 2.52h-5.043a2.528 2.528 0 01-2.522-2.52V5.042a2.528 2.528 0 012.522-2.52h5.043a2.528 2.528 0 012.52 2.52v5.043zm-3.781 10.135a2.528 2.528 0 012.52 2.52 2.528 2.528 0 01-2.52 2.522 2.528 2.528 0 01-2.522-2.522v-2.52h2.522zm0-1.262a2.528 2.528 0 01-2.522-2.52v-5.043a2.528 2.528 0 012.522-2.52h5.043a2.528 2.528 0 012.52 2.52v5.043h-5.043z" fill="#E01E5A" />
   </svg>
 )
 
-const DiscordLogo = ({ size = 32 }: { size?: number }) => (
+const _DiscordLogo = ({ size = 32 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M19.27 4.73a10.84 10.84 0 00-2.66-.82.06.06 0 00-.06.03c-.23.41-.48.94-.66 1.37a9.92 9.92 0 00-3.89 0c-.18-.43-.44-.96-.67-1.37a.06.06 0 00-.06-.03 10.83 10.83 0 00-2.66.82.05.05 0 00-.02.02c-1.7 2.54-2.18 5.01-1.95 7.46a.05.05 0 00.02.04 11.02 11.02 0 003.3 1.66.06.06 0 00.06-.02c.26-.35.49-.72.69-1.11a.06.06 0 00-.03-.08c-1.04-.4-2.03-.9-2.97-1.5a.06.06 0 01-.01-.1c.2-.15.4-.3.59-.46a.06.06 0 01.06 0c3.92 1.8 8.18 1.8 12.06 0a.06.06 0 01.06 0c.19.16.39.31.59.46a.06.06 0 01-.01.1 9.87 9.87 0 01-2.97 1.5.06.06 0 00-.03.08c.2.39.43.76.69 1.11a.06.06 0 00.06.02 11.01 11.01 0 003.3-1.66.05.05 0 00.02-.04c.28-2.85-.47-5.32-1.95-7.46a.05.05 0 00-.02-.02zM8.52 11.6c-.64 0-1.17-.59-1.17-1.3 0-.72.52-1.3 1.17-1.3s1.17.59 1.17 1.3c0 .71-.52 1.3-1.17 1.3zm6.96 0c-.64 0-1.17-.59-1.17-1.3 0-.72.52-1.3 1.17-1.3s1.17.59 1.17 1.3c0 .71-.52 1.3-1.17 1.3z" fill="#5865F2" />
   </svg>
 )
 
-const ZendeskLogo = ({ size = 32 }: { size?: number }) => (
+const _ZendeskLogo = ({ size = 32 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M19.78 18.06l-4.52-4.52a2.38 2.38 0 00-3.37 0l-4.52 4.52a2.38 2.38 0 000 3.37l4.52 4.52c.93.93 2.44.93 3.37 0l4.52-4.52a2.38 2.38 0 000-3.37z" fill="#00A656" />
     <path d="M8.74 5.94L4.22 1.42a2.38 2.38 0 00-3.37 0 2.38 2.38 0 000 3.37l4.52 4.52a2.38 2.38 0 003.37 0l4.52-4.52a2.38 2.38 0 000-3.37L8.74 5.94z" fill="#032F30" />
   </svg>
 )
 
-const StripeLogo = ({ size = 32 }: { size?: number }) => (
+const _StripeLogo = ({ size = 32 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M13.962 10.662c0-1.137-.92-1.7-2.454-1.7-1.42 0-2.733.486-3.834 1.18L6.46 7.426c1.472-.942 3.328-1.572 5.259-1.572 4.093 0 6.643 2.1 6.643 5.485 0 5.44-7.464 6.136-7.464 8.084 0 .973.91 1.477 2.329 1.477 1.838 0 3.361-.63 4.57-1.399l1.103 2.58c-1.574 1.054-3.794 1.764-5.965 1.764-4.58 0-6.938-2.278-6.938-5.32 0-5.748 7.968-6.425 7.968-9.283z" fill="#635BFF" />
   </svg>
@@ -456,7 +455,7 @@ export function Integrations() {
       {/* Grid of integrations */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {integrations.map(item => {
-          const Logo = item.logo
+          const _Logo = item.logo
           const isConnected = item.status === 'connected'
           return (
             <Card

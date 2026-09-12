@@ -7,7 +7,7 @@ interface LogoProps {
 }
 
 const Logo: React.FC<LogoProps> = ({ 
-  variant = 'default', 
+  variant: _variant = 'default', 
   size = 'md',
   className = '' 
 }) => {

@@ -1,4 +1,4 @@
-import { motion, useInView } from 'framer-motion'
+import { useInView } from 'framer-motion'
 import { useRef, useEffect, useState } from 'react'
 import {
   CheckCircle2,

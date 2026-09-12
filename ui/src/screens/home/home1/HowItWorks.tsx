@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, CheckCircle2, Globe, MessageSquare, ShoppingBag, Layers, ShieldCheck, Home, FileText, Bot, Share2, Shield } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Globe, MessageSquare, ShoppingBag, Layers, ShieldCheck, Home, FileText, Bot, Share2, Shield } from 'lucide-react'
 import { IMAGES } from '../../../config/images.config'
 
 const FOOTER_LINKS = {

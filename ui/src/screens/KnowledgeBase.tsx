@@ -55,7 +55,7 @@ interface KBItem {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const inputCls = 'w-full px-2.5 py-1.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white'
-const labelCls = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
+const _labelCls = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
 
 // ── Chunks Modal ──────────────────────────────────────────────────────────────
 
@@ -156,7 +156,7 @@ export function KBModal({
   const [title, setTitle] = useState('')
   const [docType, setDocType] = useState('general')
   const [expiryDate, setExpiryDate] = useState('')
-  const [question, setQuestion] = useState('')
+  const [question, _setQuestion] = useState('')
   const [content, setContent] = useState('')
   const [qnas, setQnas] = useState<Array<{ question: string; answer: string }>>([{ question: '', answer: '' }])
   const [url, setUrl] = useState('')

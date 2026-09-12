@@ -91,7 +91,7 @@ export async function fetchSSE({
     const decoder = new TextDecoder()
     let buffer = ''
 
-    while (true) {
+    while (!signal?.aborted) {
       const { done, value } = await reader.read()
       if (done) break
 

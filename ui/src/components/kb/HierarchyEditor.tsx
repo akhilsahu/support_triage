@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { MoreVertical, Network, CornerDownRight, Save, ShieldCheck, Loader2 } from 'lucide-react'
+import { Network, CornerDownRight, Save, ShieldCheck, Loader2 } from 'lucide-react'
 import { apiClient } from '../../api/client'
 
 export function HierarchyEditor({ 

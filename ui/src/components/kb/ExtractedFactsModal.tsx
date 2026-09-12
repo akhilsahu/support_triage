@@ -185,7 +185,7 @@ export function ExtractedFactsModal({
     }
   }
 
-  const handleRegenerate = () => {
+  const _handleRegenerate = () => {
     if (!feedback.trim()) return
     extractMutation.mutate(feedback)
     setFeedback('')
@@ -400,7 +400,7 @@ export function ExtractedFactsModal({
                 <div className="flex flex-col gap-6">
                   {/* Chat History */}
                   {chatHistory.map((msg, index) => {
-                    const isLatest = index === chatHistory.length - 1;
+                    const _isLatest = index === chatHistory.length - 1;
                     return (
                     <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'user' ? 'bg-gray-200 dark:bg-gray-800' : 'bg-indigo-100 dark:bg-indigo-900/50'

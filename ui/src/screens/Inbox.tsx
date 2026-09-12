@@ -124,7 +124,7 @@ function ChatView({ session: initialSession, token, onClose, onResolved, reloadT
       // Snapshot scroll state before React updates the DOM
       wasAtBottom.current = isAtBottom()
       setSession(d); setHistory(d.history ?? [])
-    } catch {}
+    } catch { /* no-op */ }
   }, [session.id, token])
 
   // Load canned replies for this space
@@ -167,7 +167,7 @@ function ChatView({ session: initialSession, token, onClose, onResolved, reloadT
     }
   }, [history])
 
-  const claim = async () => {
+  const _claim = async () => {
     setClaiming(true)
     try { await apiClient.claimSession(session.id, token); await load() }
     finally { setClaiming(false); setTimeout(() => inputRef.current?.focus(), 100) }
@@ -205,7 +205,7 @@ function ChatView({ session: initialSession, token, onClose, onResolved, reloadT
 
   const resolve = async () => {
     if (!confirm('Mark this session as resolved?')) return
-    try { await apiClient.resolveSession(session.id, token); onResolved() } catch {}
+    try { await apiClient.resolveSession(session.id, token); onResolved() } catch { /* no-op */ }
   }
 
   // Determine what actions are available

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   Users, Bot, MessageSquare, BarChart3, Activity,
   Search, ChevronDown, ChevronUp, Shield, RefreshCw,
-  CheckCircle, XCircle, Eye, EyeOff, Database, Zap, HardDrive, FileText, Layers, Trash2, Loader2, X, Blocks,
+  Eye, EyeOff, Database, Zap, HardDrive, FileText, Layers, Trash2, Loader2, X, Blocks,
   Home as HomeIcon,
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
@@ -357,15 +357,15 @@ export function DataSourcesPlatformControl({ adminKey, value, onChange }: {
   )
 }
 
-function SpaceRow({ space, adminKey, onRefresh, onViewChunks, onConfigNav }: {
+function SpaceRow({ space, adminKey, onRefresh, onViewChunks: _onViewChunks, onConfigNav }: {
   space: Space, adminKey: string, onRefresh: () => void,
   onViewChunks: (clientId: string, docId: string, docName: string) => void
   onConfigNav: (space: Space) => void
 }) {
-  const [toggling, setToggling] = useState(false)
+  const [_toggling, setToggling] = useState(false)
   const [limitInput, setLimitInput] = useState(space.max_chatbots == null ? '' : String(space.max_chatbots))
 
-  const toggleActive = async () => {
+  const _toggleActive = async () => {
     setToggling(true)
     try {
       await api(adminKey).patch(`/orgs/${space.id}`, { active: !space.active })

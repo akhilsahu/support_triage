@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { AlertCircle, Check, ChevronRight, Loader2, RefreshCw, Search, Server, Sparkles, X } from 'lucide-react'
+import { AlertCircle, Check, ChevronRight, Loader2, RefreshCw, Search, Sparkles, X } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'

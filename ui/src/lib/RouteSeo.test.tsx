@@ -40,14 +40,14 @@ describe('homepage-aware SEO', () => {
 
   it('updates all metadata and removes stale offers when the active homepage switches', async () => {
     mount()
-    await waitFor(() => expect(document.title).toContain('Shopify'))
+    await waitFor(() => expect(document.title).toContain('Grounded AI Support'))
     expect(meta('description')).toContain('$29 USD per month')
     expect(graph().find(item => item['@type'] === 'SoftwareApplication')?.offers.price).toBe(29)
     expectSocialMatchesPage()
     const titles = new Set([document.title])
     for (const homepage of ['homepage1', 'homepage2', 'homepage3', 'homepage4'] as const) {
       act(() => useAppStore.getState().setActiveHomepage(homepage))
-      await waitFor(() => expect(document.title).not.toContain('Shopify'))
+      await waitFor(() => expect(document.title).not.toContain('Grounded AI Support'))
       titles.add(document.title)
       expectSocialMatchesPage()
       expect(meta('description')).not.toContain('$29')
@@ -63,7 +63,7 @@ describe('homepage-aware SEO', () => {
   it('uses preview SEO without changing the public homepage setting', () => {
     useAppStore.setState({ activeHomepage: 'homepage2' })
     mount('/?homepage=homepage5')
-    expect(document.title).toContain('Shopify')
+    expect(document.title).toContain('Grounded AI Support')
     expect(useAppStore.getState().activeHomepage).toBe('homepage2')
     expect(document.querySelector('link[rel="canonical"]')).toHaveAttribute('href', 'https://www.support247.chat/')
     expectSocialMatchesPage()
@@ -80,7 +80,7 @@ describe('homepage-aware SEO', () => {
     await waitFor(() => expect(meta('robots')).toBe('noindex, nofollow'))
     expect(document.getElementById('site-structured-data')).toBeNull()
     fireEvent.click(screen.getByText('Home'))
-    await waitFor(() => expect(document.title).toContain('Shopify'))
+    await waitFor(() => expect(document.title).toContain('Grounded AI Support'))
     expect(meta('robots')).toContain('index, follow')
     expect(graph().find(item => item['@type'] === 'SoftwareApplication')?.offers.price).toBe(29)
   })

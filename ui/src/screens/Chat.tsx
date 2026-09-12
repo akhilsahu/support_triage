@@ -8,7 +8,6 @@ import { Send, Trash2, Bot, User, Sparkles, MessageCircle, Zap, AlertTriangle } 
 import { format } from 'date-fns'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '../components/ui/cn'
-import { ChatSkeleton } from '../components/ui/SkeletonLoader'
 import { SourceCitation } from '../components/ui/SourceCitation'
 import { useAppStore } from '../store/useAppStore'
 import { apiClient } from '../api/client'
@@ -308,9 +307,9 @@ export function Chat() {
             </motion.div>
           )}
 
-          {messages.map((msg, i) => {
+          {messages.map((msg, _i) => {
             const isUser = msg.role === 'user'
-            const agentTheme = msg.agent ? getAgentTheme(msg.agent) : null
+            const _agentTheme = msg.agent ? getAgentTheme(msg.agent) : null
 
             return (
               <motion.div 

@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { LucideIcon, LayoutDashboard, Settings, User, Bell, Search, Activity, Zap, Shield, Sun, Moon, Droplets, Coffee, Type, Bot, MessageSquare, Database } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { LayoutDashboard, Settings, User, Bell, Search, Activity, Sun, Moon, Droplets, Coffee, Type, Bot, MessageSquare, Database } from 'lucide-react';
 import clsx from 'clsx';
 import { useLocation, useNavigate } from 'react-router-dom';
 

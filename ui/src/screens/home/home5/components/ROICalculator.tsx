@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { DollarSign, Clock, CheckCircle, ArrowRight } from 'lucide-react'
+import { DollarSign, Clock, CheckCircle } from 'lucide-react'
 import { SignupLink } from './Common'
 
 export function ROICalculator() {

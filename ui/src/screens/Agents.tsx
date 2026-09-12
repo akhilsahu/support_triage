@@ -399,7 +399,7 @@ function AdvancedSettingsCollapsible({
 
 // ── Prompt Edit Modal ─────────────────────────────────────────────────────────
 
-function PromptModal({ agent, docTypes, chatbotSlug, onClose, onSaved }: {
+function PromptModal({ agent, docTypes: _docTypes, chatbotSlug, onClose, onSaved }: {
   agent: OrgAgent
   docTypes: string[]
   chatbotSlug?: string | null
@@ -413,7 +413,7 @@ function PromptModal({ agent, docTypes, chatbotSlug, onClose, onSaved }: {
   const [temperature, setTemperature] = useState(agent.temperature ?? 0.7)
   const [maxTokens, setMaxTokens] = useState(agent.max_tokens ?? 500)
   const [ragEnabled, setRagEnabled] = useState(agent.rag_enabled ?? false)
-  const [ragDocTypes, setRagDocTypes] = useState<string[]>(agent.rag_doc_types ?? [])
+  const [_ragDocTypes, _setRagDocTypes] = useState<string[]>(agent.rag_doc_types ?? [])
   const [ragTopK, setRagTopK] = useState(agent.rag_top_k ?? 5)
   const [selectedKbIds, setSelectedKbIds] = useState<string[]>(agent.kb_ids ?? [])
   const [kbAssignments, setKbAssignments] = useState<Record<string, string[]>>(() => {
@@ -700,9 +700,9 @@ export function CreateAgentModal({ onClose, onCreated, prefill }: {
   const [temperature, setTemperature] = useState(0.4)
   const [maxTokens, setMaxTokens] = useState(500)
   const [ragEnabled, setRagEnabled] = useState(!!(prefill?.docType || prefill?.kb_ids?.length))
-  const [ragDocTypes, setRagDocTypes] = useState<string[]>(prefill?.docType ? [prefill.docType] : [])
+  const [_ragDocTypes, _setRagDocTypes] = useState<string[]>(prefill?.docType ? [prefill.docType] : [])
   const [ragTopK, setRagTopK] = useState(5)
-  const [docTypes, setDocTypes] = useState<string[]>([])
+  const [_docTypes, setDocTypes] = useState<string[]>([])
   const [selectedKbIds, setSelectedKbIds] = useState<string[]>(prefill?.kb_ids || [])
   const [kbAssignments, setKbAssignments] = useState<Record<string, string[]>>({})
   const [allKBs, setAllKBs] = useState<{ id: string; name: string; item_count: number }[]>([])
@@ -1042,7 +1042,7 @@ function AgentDataSources({ agent, chatbotId, refreshKey, onPlug }: {
 
 export function Agents() {
   const navigate = useNavigate()
-  const spaceSlug = useAppStore(s => s.spaceSlug)
+  const _spaceSlug = useAppStore(s => s.spaceSlug)
   const currentChatbotId = useAppStore(s => s.currentChatbotId)
   const setCurrentChatbotId = useAppStore(s => s.setCurrentChatbotId)
   const dataSourcesEnabled = useAppStore(s => s.dataSourcesEnabled)
@@ -1116,7 +1116,7 @@ export function Agents() {
         setTransferMessage(bot.human_transfer_message || "You're being connected to a human agent. Please hold on.")
         setClarifyEnabled(bot.clarify_enabled ?? false)
       }
-    } catch { }
+    } catch { /* no-op */ }
   }
 
   const saveTransferSettings = async () => {
@@ -1130,7 +1130,7 @@ export function Agents() {
       })
       setTransferSaved(true)
       setTimeout(() => setTransferSaved(false), 2000)
-    } catch { }
+    } catch { /* no-op */ }
     finally { setSavingTransfer(false) }
   }
 

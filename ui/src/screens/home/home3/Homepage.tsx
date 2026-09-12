@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useSpaceSearch } from '../../../hooks/useSpaceSearch'
-import { Search, ArrowRight, Sparkles, CheckCircle2, Bot, Link2, TrendingUp, Globe, MessageSquare, ShoppingBag, Layers, ShieldCheck, Home } from 'lucide-react'
+import { Search, ArrowRight, Bot, Link2, TrendingUp, Globe, MessageSquare, ShoppingBag, Layers, ShieldCheck, Home } from 'lucide-react'
 import { IMAGES } from '../../../config/images.config'
 
 const FOOTER_LINKS = {

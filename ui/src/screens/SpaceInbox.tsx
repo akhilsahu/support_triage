@@ -143,7 +143,7 @@ function ChatPanel({ sessionId, token, onResolved, displayName }: {
       const data = await apiClient.getInboxSession(sessionId, token)
       setSession(data)
       setHistory(data.history ?? [])
-    } catch {}
+    } catch { /* no-op */ }
   }, [sessionId, token])
 
   useEffect(() => { load() }, [load])
@@ -154,7 +154,7 @@ function ChatPanel({ sessionId, token, onResolved, displayName }: {
     try { 
       await apiClient.resolveSession(sessionId, token)
       onResolved() 
-    } catch {}
+    } catch { /* no-op */ }
   }
 
   const claim = async () => {
@@ -162,7 +162,7 @@ function ChatPanel({ sessionId, token, onResolved, displayName }: {
       await apiClient.claimSession(sessionId, token)
       load()
       onResolved()
-    } catch {}
+    } catch { /* no-op */ }
   }
 
   const sendReply = async (e: React.FormEvent) => {
@@ -174,7 +174,7 @@ function ChatPanel({ sessionId, token, onResolved, displayName }: {
       setReplyText('')
       load()
       onResolved()
-    } catch {}
+    } catch { /* no-op */ }
     finally { setSending(false) }
   }
 
@@ -576,7 +576,7 @@ export function SpaceInbox() {
     try {
       const data = await apiClient.listInboxSessions(token)
       setSessions(data)
-    } catch {} finally { setLoading(false) }
+    } catch { /* no-op */ } finally { setLoading(false) }
   }, [token])
 
   useEffect(() => {

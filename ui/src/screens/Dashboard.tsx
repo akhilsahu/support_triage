@@ -410,7 +410,7 @@ export function Dashboard() {
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-                {stats.fleet.map((agent, i) => {
+                {stats.fleet.map((agent, _i) => {
                   const t = getAgentTheme(agent.name)
                   return (
                     <motion.div
