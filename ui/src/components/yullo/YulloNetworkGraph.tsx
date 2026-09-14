@@ -58,9 +58,9 @@ export function YulloNetworkGraph() {
   return (
     <section id="network" className="py-28 px-6 relative z-20 max-w-6xl mx-auto">
       <div className="text-center mb-16">
-        <div className="inline-flex items-center gap-2 rounded-full border border-blue-200/60 bg-blue-50/60 px-4 py-1 text-xs font-semibold tracking-wider text-blue-800 uppercase mb-3">
-          <Sparkles className="h-3.5 w-3.5 text-[#FFDA2D]" />
-          <span>06 / CONNECTED PLACES</span>
+        <div className="flex items-center justify-center gap-2 text-[11px] font-semibold tracking-[0.16em] uppercase text-slate-500 mb-3">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#FFDA2D]" />
+          <span>THE YULLO NETWORK</span>
         </div>
         <h2 className={`text-4xl sm:text-6xl font-extrabold text-[#101828] tracking-tight leading-tight ${yulloConfig.typography.headingClass}`}>
           One space can<br />

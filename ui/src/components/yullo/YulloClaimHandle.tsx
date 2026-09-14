@@ -16,11 +16,6 @@ export function YulloClaimHandle() {
 
   return (
     <section id="claim" className="py-36 sm:py-44 px-6 relative z-20 max-w-5xl mx-auto text-center border-t border-slate-200/60 my-8">
-      <div className="inline-flex items-center gap-2 rounded-full border border-blue-200/60 bg-blue-50/60 px-4 py-1 text-xs font-semibold tracking-wider text-blue-800 uppercase mb-4">
-        <Sparkles className="h-3.5 w-3.5 text-[#FFDA2D]" />
-        <span>YOUR PLACE ON THE NETWORK</span>
-      </div>
-
       <h2 className={`text-4xl sm:text-6xl md:text-7xl font-extrabold text-[#101828] tracking-tight leading-tight ${yulloConfig.typography.headingClass}`}>
         Claim your place.
       </h2>

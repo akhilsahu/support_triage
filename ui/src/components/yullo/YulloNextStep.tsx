@@ -28,16 +28,6 @@ export function YulloNextStep() {
       >
         People are beginning to expect more than somewhere to land. They expect somewhere that understands why they came.
       </motion.p>
-
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        whileInView={{ opacity: 1, scale: 1 }}
-        viewport={{ once: true }}
-        transition={{ delay: 0.35 }}
-        className="mt-12 text-sm font-semibold text-slate-400 italic tracking-wide"
-      >
-        “This is your chance to build your place before that becomes ordinary.”
-      </motion.div>
     </section>
   )
 }

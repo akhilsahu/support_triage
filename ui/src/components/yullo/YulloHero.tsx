@@ -32,17 +32,6 @@ export function YulloHero() {
       </div>
 
       <div className="relative z-10 max-w-4xl mx-auto flex flex-col items-center">
-        {/* Eyebrow */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-          className="inline-flex items-center gap-2 rounded-full border border-blue-200/60 bg-blue-50/60 px-4 py-1.5 text-xs font-semibold tracking-wider text-blue-800 uppercase backdrop-blur-sm mb-6"
-        >
-          <Sparkles className="h-3.5 w-3.5 text-[#FFDA2D]" />
-          <span>THE INTERNET IS CHANGING</span>
-        </motion.div>
-
         {/* Main Headline */}
         <motion.h1
           initial={{ opacity: 0, y: 24 }}

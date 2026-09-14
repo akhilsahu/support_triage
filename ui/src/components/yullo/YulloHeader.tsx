@@ -31,8 +31,8 @@ export function YulloHeader() {
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         scrolled
-          ? 'bg-white/85 backdrop-blur-xl border-b border-slate-200/80 shadow-md py-3'
-          : 'bg-white/65 backdrop-blur-xl border-b border-slate-200/40 shadow-sm py-4'
+          ? 'bg-white/65 backdrop-blur-xl border-b border-slate-200/80 shadow-sm py-3'
+          : 'bg-white/30 backdrop-blur-xl border-b border-slate-200/30 py-4'
       }`}
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 md:px-12">

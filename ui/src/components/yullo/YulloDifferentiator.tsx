@@ -29,10 +29,6 @@ export function YulloDifferentiator() {
         </p>
       </motion.div>
 
-      <div className="mt-6 inline-block rounded-full bg-blue-50 border border-blue-200/80 px-6 py-2 text-sm font-bold text-blue-900 shadow-sm">
-        Yullo is built for that moment of connection.
-      </div>
-
       {/* Clean Vertical Connection Flow (Unboxed) */}
       <div className="mt-16 max-w-2xl mx-auto flex flex-col items-center">
         {/* Step 1 */}

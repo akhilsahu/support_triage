@@ -22,9 +22,9 @@ export function YulloAuraInteractive() {
       <div className="grid lg:grid-cols-12 gap-12 items-center">
         {/* Left Column: Asymmetric Storytelling */}
         <div className="lg:col-span-5 text-left">
-          <div className="inline-flex items-center gap-2 rounded-full border border-blue-200/60 bg-blue-50/60 px-4 py-1 text-xs font-semibold tracking-wider text-blue-800 uppercase mb-4">
-            <Sparkles className="h-3.5 w-3.5 text-[#FFDA2D]" />
-            <span>03 / PRESENCE OVER PAGES</span>
+          <div className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] uppercase text-slate-500 mb-3">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#FFDA2D]" />
+            <span>AURA</span>
           </div>
 
           <h2 className={`text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight leading-tight ${yulloConfig.typography.headingClass}`}>
