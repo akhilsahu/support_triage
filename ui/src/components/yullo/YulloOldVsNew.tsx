@@ -35,51 +35,49 @@ export function YulloOldVsNew() {
   const [activeStep, setActiveStep] = useState(1)
 
   return (
-    <section id="how-it-works" className="py-24 px-6 relative z-20 max-w-5xl mx-auto text-center border-t border-slate-200/80">
-      <div className="inline-flex items-center gap-2 rounded-full border border-blue-200/60 bg-blue-50/60 px-4 py-1 text-xs font-semibold tracking-wider text-blue-800 uppercase mb-4">
-        <Layers className="h-3.5 w-3.5 text-[#FFDA2D]" />
-        <span>THE YULLO EVOLUTION</span>
-      </div>
+    <section id="how-it-works" className="py-24 px-6 relative z-20 max-w-5xl mx-auto border-t border-slate-200/80">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+        <div className="text-left max-w-2xl">
+          <h2 className="text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight leading-tight">
+            You showed up.<br />
+            You shared your work.<br />
+            <span className="text-slate-400">And then you waited.</span>
+          </h2>
+        </div>
 
-      <h2 className="text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight">
-        From static pages to a connected ecosystem.
-      </h2>
-      <p className="mt-4 text-base sm:text-lg text-slate-600 max-w-2xl mx-auto">
-        Explore how Yullo transforms quiet websites into living, intelligent spaces.
-      </p>
-
-      {/* Step Tabs Indicator */}
-      <div className="mt-10 flex flex-wrap justify-center items-center gap-3">
-        {STAGES.map(stage => {
-          const isActive = activeStep === stage.id
-          return (
-            <button
-              key={stage.id}
-              type="button"
-              onClick={() => setActiveStep(stage.id)}
-              className={`flex items-center gap-2.5 rounded-2xl px-5 py-2.5 text-xs sm:text-sm font-semibold transition-all duration-200 ${
-                isActive
-                  ? 'bg-[#101828] text-white shadow-lg scale-[1.02]'
-                  : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200/80'
-              }`}
-            >
-              <span
-                className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-extrabold"
-                style={{
-                  backgroundColor: isActive ? '#FFDA2D' : '#e2e8f0',
-                  color: '#101828',
-                }}
+        {/* Step Tabs Indicator */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {STAGES.map(stage => {
+            const isActive = activeStep === stage.id
+            return (
+              <button
+                key={stage.id}
+                type="button"
+                onClick={() => setActiveStep(stage.id)}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all duration-200 ${
+                  isActive
+                    ? 'bg-[#101828] text-white shadow-md'
+                    : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
+                }`}
               >
-                0{stage.id}
-              </span>
-              <span>{stage.id === 1 ? 'Old Internet' : stage.id === 2 ? 'Aura Awakening' : 'Connected Ecosystem'}</span>
-            </button>
-          )
-        })}
+                <span
+                  className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-extrabold"
+                  style={{
+                    backgroundColor: isActive ? '#FFDA2D' : '#e2e8f0',
+                    color: '#101828',
+                  }}
+                >
+                  {stage.id}
+                </span>
+                <span>{stage.id === 1 ? 'Static Page' : stage.id === 2 ? 'Aura' : 'Ecosystem'}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Step Stage Display Box */}
-      <div className="mt-10 relative min-h-[460px] flex items-center justify-center">
+      <div className="mt-10 relative min-h-[440px] flex items-center justify-center">
         <AnimatePresence mode="wait">
           {activeStep === 1 && (
             <motion.div
@@ -90,13 +88,7 @@ export function YulloOldVsNew() {
               transition={{ duration: 0.35 }}
               className="w-full max-w-3xl rounded-3xl border border-slate-300 bg-slate-50 p-8 shadow-sm text-center"
             >
-              <div className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-2">
-                01 / {STAGES[0].badge}
-              </div>
-              <h3 className="text-2xl sm:text-4xl font-bold text-[#101828]">
-                {STAGES[0].title}
-              </h3>
-              <p className="mt-3 text-sm sm:text-base text-slate-600 max-w-lg mx-auto">
+              <p className="text-sm sm:text-base text-slate-600 max-w-xl mx-auto leading-relaxed">
                 {STAGES[0].subtitle}
               </p>
 

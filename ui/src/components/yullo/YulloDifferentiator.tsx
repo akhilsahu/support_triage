@@ -33,69 +33,70 @@ export function YulloDifferentiator() {
         Yullo is built for that moment of connection.
       </div>
 
-      {/* 3-Tier Flow Diagram */}
-      <div className="mt-16 max-w-3xl mx-auto flex flex-col items-center gap-6">
-        {/* Tier 1: YOU / BUSINESS */}
+      {/* Clean Vertical Connection Flow (Unboxed) */}
+      <div className="mt-16 max-w-2xl mx-auto flex flex-col items-center">
+        {/* Step 1 */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 15 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ delay: 0.2 }}
-          className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-sm text-left flex items-center justify-between"
+          viewport={{ once: true }}
+          className="flex items-center gap-4 text-left w-full bg-white/60 border border-slate-200/80 rounded-2xl p-4 shadow-sm"
         >
-          <div>
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">LAYER 01</div>
-            <div className="text-lg font-bold text-[#101828] mt-0.5">YOU / BUSINESS</div>
-            <div className="text-xs text-slate-500 mt-1">Creator, Studio, Enterprise, Idea</div>
+          <div className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center font-extrabold text-xs text-slate-700">
+            01
           </div>
-          <div className="h-3 w-3 rounded-full bg-slate-400" />
+          <div>
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Starting Point</div>
+            <div className="text-sm font-bold text-[#101828]">YOU / YOUR BUSINESS</div>
+          </div>
         </motion.div>
 
-        {/* Pulse Arrow 1 */}
-        <div className="flex flex-col items-center text-blue-500">
-          <ArrowDown className="h-6 w-6 animate-bounce" />
-        </div>
+        {/* Pulse Connector Line */}
+        <div className="h-10 w-0.5 bg-gradient-to-b from-slate-300 via-blue-400 to-blue-500 my-1" />
 
-        {/* Tier 2: AURA */}
+        {/* Step 2 */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 15 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.15 }}
+          className="flex items-center justify-between text-left w-full bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-2xl p-4 shadow-sm"
+        >
+          <div className="flex items-center gap-4">
+            <div className="h-8 w-8 rounded-xl bg-[#101828] p-1 flex items-center justify-center">
+              <img src={yulloConfig.assets.logo} alt="Yullo Logo" className="h-5 w-auto object-contain" />
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-blue-600 uppercase tracking-wider">The Presence Layer</div>
+              <div className="text-sm font-bold text-[#101828]">YOUR AURA WELCOMES VISITORS</div>
+            </div>
+          </div>
+          <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping" />
+        </motion.div>
+
+        {/* Pulse Connector Line */}
+        <div className="h-10 w-0.5 bg-gradient-to-b from-blue-500 via-purple-500 to-slate-900 my-1" />
+
+        {/* Step 3 */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
           transition={{ delay: 0.3 }}
-          className="w-full max-w-lg rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50/80 to-cyan-50/80 p-6 shadow-md text-left flex items-center justify-between relative overflow-hidden"
+          className="flex items-center justify-between text-left w-full bg-[#101828] border border-slate-900 text-white rounded-2xl p-4 shadow-md"
         >
-          <div className="relative z-10">
-            <div className="text-xs font-semibold text-blue-600 uppercase tracking-wider">LAYER 02 — YOUR AURA</div>
-            <div className="text-lg font-bold text-[#101828] mt-0.5">AI Understands Your World</div>
-            <div className="text-xs text-slate-600 mt-1">Grounded Knowledge Base & Interactive Guidance</div>
+          <div className="flex items-center gap-4">
+            <div className="h-8 w-8 rounded-xl bg-[#FFDA2D] text-[#101828] font-extrabold flex items-center justify-center text-xs">
+              03
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-[#4CD8FF] uppercase tracking-wider">The Result</div>
+              <div className="text-sm font-bold text-white">RELEVANT CONNECTIONS OPEN NATURALLY</div>
+            </div>
           </div>
-          <div className="h-10 w-10 rounded-xl bg-[#101828] p-1.5 flex items-center justify-center shadow-sm relative z-10">
-            <img src={yulloConfig.assets.logo} alt="Yullo Logo" className="h-7 w-auto object-contain" />
-          </div>
-        </motion.div>
-
-        {/* Pulse Arrow 2 */}
-        <div className="flex flex-col items-center text-blue-500">
-          <ArrowDown className="h-6 w-6 animate-bounce" />
-        </div>
-
-        {/* Tier 3: THE YULLO NETWORK */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ delay: 0.4 }}
-          className="w-full max-w-lg rounded-2xl border border-slate-900 bg-[#101828] p-6 shadow-xl text-left text-white flex items-center justify-between"
-        >
-          <div>
-            <div className="text-xs font-semibold text-[#4CD8FF] uppercase tracking-wider">LAYER 03</div>
-            <div className="text-lg font-bold text-white mt-0.5">YULLO NETWORK</div>
-            <div className="text-xs text-slate-300 mt-1">Connected People • Ideas • Opportunities</div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#4CD8FF]" />
-            <span className="h-2.5 w-2.5 rounded-full bg-[#6695FF]" />
-            <span className="h-2.5 w-2.5 rounded-full bg-[#A98CFF]" />
+          <div className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full bg-[#4CD8FF]" />
+            <span className="h-2 w-2 rounded-full bg-[#FFDA2D]" />
           </div>
         </motion.div>
       </div>

@@ -1,32 +1,72 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Sparkles, Globe } from 'lucide-react'
 
-const NETWORK_NODES = [
-  { id: 'designer', title: 'Product Designer', loc: 'San Francisco · UI/UX · Systems', color: '#4CD8FF' },
-  { id: 'engineer', title: 'AI Engineer', loc: 'London · LLMs · RAG Architect', color: '#6695FF' },
-  { id: 'studio', title: 'Northstar Studio', loc: 'New York · Brand & SaaS Development', color: '#FFDA2D' },
-  { id: 'creator', title: 'Travel Creator', loc: 'Kyoto · Photography · Partnerships', color: '#A98CFF' },
-  { id: 'community', title: 'Vision Community', loc: 'Global · Computer Vision & Robotics', color: '#4CD8FF' },
+const ECOSYSTEM_NODES = [
+  {
+    id: 'startup',
+    label: 'Early Startup',
+    sub: 'yullo.co/hyperion',
+    color: '#FFDA2D',
+    connectionText: 'Looking for someone to shape their first product identity.',
+    target: 'designer',
+  },
+  {
+    id: 'designer',
+    label: 'Northstar Studio',
+    sub: 'yullo.co/northstarstudio',
+    color: '#4CD8FF',
+    connectionText: 'Connecting startup with specialized brand identity system.',
+    target: 'photographer',
+  },
+  {
+    id: 'photographer',
+    label: 'Visual Creator',
+    sub: 'yullo.co/elena_photo',
+    color: '#6695FF',
+    connectionText: 'Collaborating on high-impact launch photography.',
+    target: 'developer',
+  },
+  {
+    id: 'developer',
+    label: 'Systems Architect',
+    sub: 'yullo.co/alexdev',
+    color: '#A98CFF',
+    connectionText: 'Integrating live API endpoints & interactive components.',
+    target: 'startup',
+  },
 ]
 
 export function YulloNetworkGraph() {
-  const [hoveredNode, setHoveredNode] = useState<string>('studio')
+  const [activeNodeId, setActiveNodeId] = useState<string>('startup')
 
-  const current = NETWORK_NODES.find(n => n.id === hoveredNode) || NETWORK_NODES[2]
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActiveNodeId(prev => {
+        const idx = ECOSYSTEM_NODES.findIndex(n => n.id === prev)
+        const nextIdx = (idx + 1) % ECOSYSTEM_NODES.length
+        return ECOSYSTEM_NODES[nextIdx].id
+      })
+    }, 3200)
+
+    return () => clearInterval(timer)
+  }, [])
+
+  const activeNode = ECOSYSTEM_NODES.find(n => n.id === activeNodeId) || ECOSYSTEM_NODES[0]
 
   return (
-    <section id="network" className="py-24 px-6 relative z-20 max-w-6xl mx-auto">
+    <section id="network" className="py-28 px-6 relative z-20 max-w-6xl mx-auto">
       <div className="text-center mb-16">
         <div className="inline-flex items-center gap-2 rounded-full border border-blue-200/60 bg-blue-50/60 px-4 py-1 text-xs font-semibold tracking-wider text-blue-800 uppercase mb-3">
           <Sparkles className="h-3.5 w-3.5 text-[#FFDA2D]" />
-          <span>CONNECTED PLACES</span>
+          <span>06 / CONNECTED PLACES</span>
         </div>
-        <h2 className="text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight">
-          One space can open another.
+        <h2 className="text-4xl sm:text-6xl font-extrabold text-[#101828] tracking-tight leading-tight">
+          One space can<br />
+          open another.
         </h2>
         <p className="mt-4 text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-          Your Yullo Link doesn't have to exist in isolation. As the network grows, people can move naturally between relevant ideas, businesses, people and opportunities — based on what they're actually looking for.
+          Your Yullo Link doesn't have to exist in isolation. As the network grows, people move naturally between relevant ideas, businesses, people and opportunities — based on what they're actually looking for.
         </p>
 
         <div className="mt-6 inline-block rounded-2xl bg-slate-900 px-6 py-2.5 text-xs sm:text-sm font-semibold text-slate-200 shadow-md">
@@ -34,46 +74,60 @@ export function YulloNetworkGraph() {
         </div>
       </div>
 
-      {/* Network Nodes Grid */}
-      <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-        {NETWORK_NODES.map(node => {
-          const isHovered = hoveredNode === node.id
-          return (
-            <motion.div
-              key={node.id}
-              onMouseEnter={() => setHoveredNode(node.id)}
-              whileHover={{ y: -4 }}
-              className={`cursor-pointer rounded-2xl border p-6 transition-all duration-200 text-left ${
-                isHovered
-                  ? 'border-blue-300 bg-white shadow-xl ring-2 ring-blue-400/20'
-                  : 'border-slate-200 bg-white/70 hover:bg-white shadow-sm'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <span
-                  className="h-3.5 w-3.5 rounded-full"
-                  style={{ backgroundColor: node.color }}
-                />
-                <Globe className="h-4 w-4 text-slate-400" />
-              </div>
-              <h3 className="text-base font-bold text-[#101828]">{node.title}</h3>
-              <p className="mt-1 text-xs text-slate-500 font-mono">{node.loc}</p>
-            </motion.div>
-          )
-        })}
+      {/* Living Interactive Network Graphic Container */}
+      <div className="max-w-4xl mx-auto rounded-3xl border border-slate-200/90 bg-gradient-to-b from-white via-[#F9FBFF] to-slate-50/80 p-8 sm:p-12 shadow-xl relative overflow-hidden text-left">
+        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-6 flex items-center justify-between">
+          <span>Interactive Ecosystem Flow</span>
+          <span className="text-blue-600 font-mono text-[11px] animate-pulse">Click any node to route connection →</span>
+        </div>
 
-        {/* Dynamic Highlight Card */}
-        <div className="rounded-2xl border border-slate-900 bg-[#101828] p-6 text-white text-left flex flex-col justify-between md:col-span-1">
-          <div>
-            <div className="text-xs font-semibold text-[#4CD8FF] uppercase tracking-wider mb-2">
-              Active Network Node
+        {/* Node Connection Web Display */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+          {ECOSYSTEM_NODES.map(node => {
+            const isActive = activeNodeId === node.id
+            return (
+              <button
+                key={node.id}
+                type="button"
+                onClick={() => setActiveNodeId(node.id)}
+                className={`p-4 rounded-2xl border text-left transition-all duration-300 relative ${
+                  isActive
+                    ? 'bg-[#101828] text-white border-slate-900 shadow-lg scale-[1.03]'
+                    : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span
+                    className="h-3 w-3 rounded-full"
+                    style={{ backgroundColor: node.color }}
+                  />
+                  {isActive && <Globe className="h-3.5 w-3.5 text-[#FFDA2D]" />}
+                </div>
+                <div className="text-sm font-bold">{node.label}</div>
+                <div className={`text-[10px] font-mono mt-0.5 ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>
+                  {node.sub}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Active Route Pulse Banner */}
+        <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="h-2.5 w-2.5 rounded-full bg-blue-500 animate-ping shrink-0" />
+            <div>
+              <div className="text-xs font-semibold text-blue-900 uppercase tracking-wider">
+                Live Network Connection Path
+              </div>
+              <div className="text-sm font-semibold text-slate-700 mt-0.5">
+                “{activeNode.connectionText}”
+              </div>
             </div>
-            <div className="text-lg font-bold text-white">{current.title}</div>
-            <div className="text-xs text-slate-300 font-mono mt-1">{current.loc}</div>
           </div>
-          <div className="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-400 flex items-center justify-between">
-            <span>Aura Connected</span>
-            <span className="text-[#FFDA2D] font-bold">Live →</span>
+
+          <div className="shrink-0 rounded-xl bg-white px-4 py-2 text-xs font-mono font-bold text-slate-800 border border-blue-200/80 shadow-sm">
+            {activeNode.label} ➔ {ECOSYSTEM_NODES.find(n => n.id === activeNode.target)?.label}
           </div>
         </div>
       </div>
