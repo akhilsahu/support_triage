@@ -1,4 +1,4 @@
-import yulloLogo from '../assets/images/logos/yullo/yullo__cyan_network.png'
+import yulloLogo from '../assets/images/logos/yullo/yullo.png'
 
 /**
  * Yullo Brand System & Configuration
@@ -32,6 +32,7 @@ export const yulloConfig = {
 
   // Nomenclature
   nomenclature: {
+    title: 'Yullo — Make your place on the internet feel alive.',
     link: 'Yullo Link',
     aura: 'Aura',
     network: 'Yullo Network',
