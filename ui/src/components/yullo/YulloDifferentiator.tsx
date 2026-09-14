@@ -19,7 +19,7 @@ export function YulloDifferentiator() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.3 }}
         transition={{ delay: 0.1 }}
-        className="mt-6 text-lg sm:text-xl text-slate-700 max-w-2xl mx-auto leading-relaxed space-y-3 font-medium"
+        className="mt-6 text-xl sm:text-2xl text-slate-900 max-w-2xl mx-auto leading-relaxed space-y-3 font-medium"
       >
         <p>Someone is looking for the thing you’re building.</p>
         <p>Someone needs the skill you’ve spent years developing.</p>

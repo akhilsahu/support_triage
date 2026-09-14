@@ -45,7 +45,7 @@ export function YulloUseCases() {
           <h2 className={`text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight leading-tight ${yulloConfig.typography.headingClass}`}>
             See what happens when someone finds you.
           </h2>
-          <p className="mt-4 text-lg sm:text-xl text-slate-700 leading-relaxed font-normal">
+          <p className="mt-4 text-xl sm:text-2xl text-slate-900 leading-relaxed font-normal">
             Whatever someone asks your Yullo Link, your Aura understands why they came and guides them toward what matters.
           </p>
 

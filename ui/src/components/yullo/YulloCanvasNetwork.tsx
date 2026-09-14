@@ -137,19 +137,27 @@ export function YulloCanvasNetwork() {
 
       const scrollPct = scrollRef.current
 
-      // Calculate Scroll Phase Opacity Multiplier:
-      // Hero (0-15%): ~0.7
-      // Old Internet (15-35%): ~0.15 (almost silent)
-      // Aura/Next (35-60%): ~0.6 (awakening)
-      // Network (60-85%): ~0.9 (expanded)
-      // Final CTA (85-100%): ~0.95 (converging toward Y logo)
-      let globalOpacityMult = 0.7
-      if (scrollPct > 0.15 && scrollPct <= 0.35) {
-        globalOpacityMult = 0.15
-      } else if (scrollPct > 0.35 && scrollPct <= 0.6) {
-        globalOpacityMult = 0.65
-      } else if (scrollPct > 0.6) {
-        globalOpacityMult = 0.95
+      // 7-Phase Section-Reactive Scroll Choreography:
+      // 1. Hero (0-14%): Scattered ambient nodes floating
+      // 2. You showed up (14-30%): Connections almost disappear (isolated static state)
+      // 3. Aura (30-45%): Yellow node activates with glowing pulse ring
+      // 4. Right people (45-60%): Distant nodes notice each other with proximity vectors
+      // 5. Internet changing quietly (60-72%): Long connection beam slowly forms
+      // 6. One space can open another (72-86%): Multi-path golden network connects
+      // 7. Claim your place & Finale (86-100%): New yellow node enters center and anchors
+      let globalOpacityMult = 0.75
+      if (scrollPct > 0.14 && scrollPct <= 0.30) {
+        globalOpacityMult = 0.12 // You showed up: connections almost disappear
+      } else if (scrollPct > 0.30 && scrollPct <= 0.45) {
+        globalOpacityMult = 0.65 // Aura: awakening
+      } else if (scrollPct > 0.45 && scrollPct <= 0.60) {
+        globalOpacityMult = 0.75 // Right people: distant nodes notice each other
+      } else if (scrollPct > 0.60 && scrollPct <= 0.72) {
+        globalOpacityMult = 0.85 // Internet changing: long beam
+      } else if (scrollPct > 0.72 && scrollPct <= 0.86) {
+        globalOpacityMult = 0.95 // One space: multi-path golden connections
+      } else if (scrollPct > 0.86) {
+        globalOpacityMult = 1.0 // Claim & Finale: yellow node anchors
       }
 
       // Draw connection lines
