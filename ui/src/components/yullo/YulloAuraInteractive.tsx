@@ -31,7 +31,7 @@ export function YulloAuraInteractive() {
             Give your space an Aura.
           </h2>
 
-          <p className="mt-4 text-base sm:text-lg text-slate-600 leading-relaxed font-normal">
+          <p className="mt-4 text-lg sm:text-xl text-slate-700 leading-relaxed font-normal">
             Aura turns your Yullo Link into a space that feels present. It learns your world and helps each visitor find what matters to them — without making them dig for it.
           </p>
 

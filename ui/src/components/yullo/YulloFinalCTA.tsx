@@ -7,7 +7,31 @@ export function YulloFinalCTA() {
   return (
     <section className="py-32 px-6 bg-[#0B1020] text-white relative overflow-hidden text-center">
       {/* Background Visual Yellow Y glow & subtle network nodes */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-[#FFDA2D]/10 blur-3xl pointer-events-none" />
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-[#FFDA2D]/10 blur-3xl pointer-events-none" />
+
+      {/* Culminating Network Backdrop SVG */}
+      <div className="absolute inset-0 pointer-events-none opacity-25 flex items-center justify-center">
+        <svg className="w-full h-full max-w-5xl" viewBox="0 0 1000 600" fill="none" xmlns="http://www.w3.org/2000/svg">
+          {/* Faint Connection Lines */}
+          <line x1="200" y1="150" x2="500" y2="300" stroke="#4CD8FF" strokeWidth="1" strokeDasharray="4 4" />
+          <line x1="800" y1="180" x2="500" y2="300" stroke="#6695FF" strokeWidth="1" strokeDasharray="4 4" />
+          <line x1="300" y1="450" x2="500" y2="300" stroke="#A98CFF" strokeWidth="1" strokeDasharray="4 4" />
+          <line x1="750" y1="420" x2="500" y2="300" stroke="#4CD8FF" strokeWidth="1" strokeDasharray="4 4" />
+          {/* Active Golden Connection Line */}
+          <line x1="500" y1="300" x2="680" y2="280" stroke="#FFDA2D" strokeWidth="2" opacity="0.8" />
+
+          {/* Dim Blue/Violet Outer Nodes */}
+          <circle cx="200" cy="150" r="6" fill="#4CD8FF" opacity="0.6" />
+          <circle cx="800" cy="180" r="7" fill="#6695FF" opacity="0.6" />
+          <circle cx="300" cy="450" r="5" fill="#A98CFF" opacity="0.6" />
+          <circle cx="750" cy="420" r="6" fill="#4CD8FF" opacity="0.6" />
+          <circle cx="680" cy="280" r="7" fill="#FFDA2D" opacity="0.9" />
+
+          {/* Center Yullo Node */}
+          <circle cx="500" cy="300" r="10" fill="#FFDA2D" opacity="0.8" />
+          <circle cx="500" cy="300" r="24" stroke="#FFDA2D" strokeWidth="1.5" opacity="0.3" />
+        </svg>
+      </div>
 
       <div className="relative z-10 max-w-4xl mx-auto flex flex-col items-center">
         {/* Central Glowing Logo */}

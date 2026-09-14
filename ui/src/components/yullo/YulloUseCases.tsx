@@ -42,15 +42,10 @@ export function YulloUseCases() {
       <div className="grid lg:grid-cols-12 gap-10 items-center">
         {/* Left Column: Headline & Situation Tabs */}
         <div className="lg:col-span-5 text-left">
-          <div className="inline-flex items-center gap-2 rounded-full border border-blue-200/60 bg-blue-50/60 px-4 py-1 text-xs font-semibold tracking-wider text-blue-800 uppercase mb-4">
-            <Sparkles className="h-3.5 w-3.5 text-[#FFDA2D]" />
-            <span>07 / REAL MOMENTS</span>
-          </div>
-
           <h2 className={`text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight leading-tight ${yulloConfig.typography.headingClass}`}>
             See what happens when someone finds you.
           </h2>
-          <p className="mt-4 text-base text-slate-600 leading-relaxed font-normal">
+          <p className="mt-4 text-lg sm:text-xl text-slate-700 leading-relaxed font-normal">
             Whatever someone asks your Yullo Link, your Aura understands why they came and guides them toward what matters.
           </p>
 

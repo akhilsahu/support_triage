@@ -24,7 +24,7 @@ export function YulloNextStep() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ delay: 0.2 }}
-        className="mt-8 text-lg sm:text-2xl text-slate-600 max-w-2xl mx-auto leading-relaxed font-normal"
+        className="mt-8 text-xl sm:text-2xl text-slate-800 max-w-2xl mx-auto leading-relaxed font-medium"
       >
         People are beginning to expect more than somewhere to land. They expect somewhere that understands why they came.
       </motion.p>

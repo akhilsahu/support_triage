@@ -15,28 +15,28 @@ export function YulloClaimHandle() {
   }
 
   return (
-    <section id="claim" className="py-24 px-6 relative z-20 max-w-5xl mx-auto text-center">
-      <div className="inline-flex items-center gap-2 rounded-full border border-blue-200/60 bg-blue-50/60 px-4 py-1 text-xs font-semibold tracking-wider text-blue-800 uppercase mb-3">
+    <section id="claim" className="py-36 sm:py-44 px-6 relative z-20 max-w-5xl mx-auto text-center border-t border-slate-200/60 my-8">
+      <div className="inline-flex items-center gap-2 rounded-full border border-blue-200/60 bg-blue-50/60 px-4 py-1 text-xs font-semibold tracking-wider text-blue-800 uppercase mb-4">
         <Sparkles className="h-3.5 w-3.5 text-[#FFDA2D]" />
         <span>YOUR PLACE ON THE NETWORK</span>
       </div>
 
-      <h2 className={`text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight ${yulloConfig.typography.headingClass}`}>
+      <h2 className={`text-4xl sm:text-6xl md:text-7xl font-extrabold text-[#101828] tracking-tight leading-tight ${yulloConfig.typography.headingClass}`}>
         Claim your place.
       </h2>
 
       {/* 3 Pillars */}
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-6 text-sm sm:text-base font-medium text-slate-600">
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-[#FFDA2D]" />
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-6 sm:gap-8 text-base sm:text-lg font-semibold text-slate-800">
+        <div className="flex items-center gap-2.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#FFDA2D] shadow-sm" />
           <span>A name people can find.</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-[#4CD8FF]" />
+        <div className="flex items-center gap-2.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#4CD8FF] shadow-sm" />
           <span>A space people can explore.</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-[#6695FF]" />
+        <div className="flex items-center gap-2.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#6695FF] shadow-sm" />
           <span>An Aura that makes it yours.</span>
         </div>
       </div>
@@ -47,7 +47,7 @@ export function YulloClaimHandle() {
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
-        className="mt-10 max-w-2xl mx-auto rounded-3xl border border-slate-200 bg-white p-3 shadow-xl flex flex-col sm:flex-row items-center gap-3"
+        className="mt-12 max-w-2xl mx-auto rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl flex flex-col sm:flex-row items-center gap-3"
       >
         <div className="flex-1 flex items-center px-4 py-2 text-base sm:text-lg font-mono w-full">
           <span className="text-slate-400 font-normal shrink-0">yullo.co/</span>
