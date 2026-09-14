@@ -18,7 +18,19 @@ export function YulloFinalCTA() {
           <line x1="300" y1="450" x2="500" y2="300" stroke="#A98CFF" strokeWidth="1" strokeDasharray="4 4" />
           <line x1="750" y1="420" x2="500" y2="300" stroke="#4CD8FF" strokeWidth="1" strokeDasharray="4 4" />
           {/* Active Golden Connection Line */}
-          <line x1="500" y1="300" x2="680" y2="280" stroke="#FFDA2D" strokeWidth="2" opacity="0.8" />
+          <motion.line
+            x1="500"
+            y1="300"
+            x2="680"
+            y2="280"
+            stroke="#FFDA2D"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            initial={{ pathLength: 0, opacity: 0 }}
+            whileInView={{ pathLength: 1, opacity: 0.9 }}
+            viewport={{ once: true }}
+            transition={{ duration: 1.2, delay: 0.5, ease: 'easeOut' }}
+          />
 
           {/* Dim Blue/Violet Outer Nodes */}
           <circle cx="200" cy="150" r="6" fill="#4CD8FF" opacity="0.6" />

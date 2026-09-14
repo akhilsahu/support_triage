@@ -37,11 +37,8 @@ export function YulloClaimHandle() {
       </div>
 
       {/* Interactive Search Box */}
-      <motion.form
+      <form
         onSubmit={handleCheck}
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
         className="mt-12 max-w-2xl mx-auto rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl flex flex-col sm:flex-row items-center gap-3"
       >
         <div className="flex-1 flex items-center px-4 py-2 text-base sm:text-lg font-mono w-full">
@@ -64,7 +61,7 @@ export function YulloClaimHandle() {
           <span>Claim your Yullo Link</span>
           <ArrowRight className="h-4 w-4 text-[#FFDA2D]" />
         </button>
-      </motion.form>
+      </form>
 
       <div className="mt-4 text-xs font-medium text-slate-400">
         Your place on Yullo starts here.

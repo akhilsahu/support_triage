@@ -32,6 +32,9 @@ export function YulloCanvasNetwork() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (prefersReducedMotion) return
+
     let animationFrameId: number
     let width = (canvas.width = window.innerWidth)
     let height = (canvas.height = window.innerHeight)

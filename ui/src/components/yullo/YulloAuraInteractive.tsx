@@ -36,7 +36,13 @@ export function YulloAuraInteractive() {
         </div>
 
         {/* Right Column: Interactive Aura Node Canvas Card */}
-        <div className="lg:col-span-7">
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.7, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+          className="lg:col-span-7"
+        >
           <div className="relative rounded-3xl border border-slate-200/90 bg-gradient-to-b from-white to-[#F9FBFF] p-6 sm:p-8 shadow-xl overflow-hidden">
             {/* Top Header Tag */}
             <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-200/60">
@@ -122,7 +128,7 @@ export function YulloAuraInteractive() {
               </div>
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
     </section>
   )

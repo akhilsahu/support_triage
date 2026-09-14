@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, ArrowRight, Sparkles } from 'lucide-react'
 import { yulloConfig } from '../../config/yullo'
 
@@ -79,51 +79,54 @@ export function YulloUseCases() {
 
         {/* Right Column: Dynamic Interactive Showcase Card */}
         <div className="lg:col-span-7">
-          <motion.div
-            key={current.id}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-            className="rounded-3xl border border-slate-200/90 bg-white p-8 shadow-xl text-left flex flex-col justify-between min-h-[360px]"
-          >
-            <div>
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>Situation: {current.title}</span>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={current.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              className="rounded-3xl border border-slate-200/90 bg-white p-8 shadow-xl text-left flex flex-col justify-between min-h-[360px]"
+            >
+              <div>
+                <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Situation: {current.title}</span>
+                  </div>
+                  <span className="text-xs font-mono font-semibold text-slate-700">yullo.co/northstarstudio</span>
                 </div>
-                <span className="text-xs font-mono font-semibold text-slate-700">yullo.co/northstarstudio</span>
+
+                {/* Visitor Question */}
+                <div className="mt-6">
+                  <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                    Visitor Prompt
+                  </div>
+                  <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4 border border-slate-200/80 text-sm font-semibold text-[#101828]">
+                    <MessageSquare className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                    <span>{current.query}</span>
+                  </div>
+                </div>
+
+                {/* Aura Action Response */}
+                <div className="mt-6">
+                  <div className="text-[11px] font-semibold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                    <span>Aura Response & Guidance</span>
+                  </div>
+                  <div className="rounded-2xl bg-gradient-to-r from-blue-50/70 to-cyan-50/70 p-4 border border-blue-100 text-xs text-slate-700 leading-relaxed">
+                    {current.auraAction}
+                  </div>
+                </div>
               </div>
 
-              {/* Visitor Question */}
-              <div className="mt-6">
-                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Visitor Prompt
-                </div>
-                <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4 border border-slate-200/80 text-sm font-semibold text-[#101828]">
-                  <MessageSquare className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                  <span>{current.query}</span>
-                </div>
+              {/* Next Step */}
+              <div className="mt-8 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-[#101828]">
+                <span>Next Step: <span className="text-blue-600">{current.nextStep}</span></span>
+                <ArrowRight className="h-4 w-4 text-blue-600" />
               </div>
-
-              {/* Aura Action Response */}
-              <div className="mt-6">
-                <div className="text-[11px] font-semibold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-                  <span>Aura Response & Guidance</span>
-                </div>
-                <div className="rounded-2xl bg-gradient-to-r from-blue-50/70 to-cyan-50/70 p-4 border border-blue-100 text-xs text-slate-700 leading-relaxed">
-                  {current.auraAction}
-                </div>
-              </div>
-            </div>
-
-            {/* Next Step */}
-            <div className="mt-8 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-[#101828]">
-              <span>Next Step: <span className="text-blue-600">{current.nextStep}</span></span>
-              <ArrowRight className="h-4 w-4 text-blue-600" />
-            </div>
-          </motion.div>
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
     </section>

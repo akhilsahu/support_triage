@@ -39,9 +39,15 @@ export function YulloOldVsNew() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
         <div className="text-left max-w-2xl">
           <h2 className={`text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight leading-tight ${yulloConfig.typography.headingClass}`}>
-            You showed up.<br />
-            You shared your work.<br />
-            <span className="text-slate-400">And then you waited.</span>
+            <motion.span initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
+              You showed up.<br />
+            </motion.span>
+            <motion.span initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: 0.2 }}>
+              You shared your work.<br />
+            </motion.span>
+            <motion.span initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6, delay: 0.4 }} className="text-slate-400 block mt-1">
+              And then you waited.
+            </motion.span>
           </h2>
         </div>
 
