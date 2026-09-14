@@ -7,7 +7,7 @@ const LINKS = ['Website', 'Store', 'Instagram', 'Portfolio', 'Book', 'Contact', 
 
 export function YulloNextStep() {
   return (
-    <section className="py-36 px-6 relative z-20 max-w-4xl mx-auto text-center border-t border-slate-200/50 my-16">
+    <section className="py-16 px-6 relative z-20 max-w-4xl mx-auto text-center border-t border-slate-200/50 my-4">
       <motion.h2
         initial={{ opacity: 0, y: 24 }}
         whileInView={{ opacity: 1, y: 0 }}

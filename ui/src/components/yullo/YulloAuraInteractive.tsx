@@ -22,16 +22,11 @@ export function YulloAuraInteractive() {
       <div className="grid lg:grid-cols-12 gap-12 items-center">
         {/* Left Column: Asymmetric Storytelling */}
         <div className="lg:col-span-5 text-left">
-          <div className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] uppercase text-slate-500 mb-3">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#FFDA2D]" />
-            <span>AURA</span>
-          </div>
-
           <h2 className={`text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight leading-tight ${yulloConfig.typography.headingClass}`}>
             Give your space an Aura.
           </h2>
 
-          <p className="mt-4 text-lg sm:text-xl text-slate-700 leading-relaxed font-normal">
+          <p className="mt-4 text-lg sm:text-xl text-slate-800 leading-relaxed font-normal">
             Aura turns your Yullo Link into a space that feels present. It learns your world and helps each visitor find what matters to them — without making them dig for it.
           </p>
 
