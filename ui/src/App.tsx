@@ -34,6 +34,7 @@ const TestChat = lazy(() => import('./screens/TestChat').then(module => ({ defau
 const EmbedWidget = lazy(() => import('./screens/EmbedWidget').then(module => ({ default: module.EmbedWidget })))
 const ChatbotProfile = lazy(() => import('./screens/ChatbotProfile').then(module => ({ default: module.ChatbotProfile })))
 const OnboardingWizard = lazy(() => import('./screens/OnboardingWizard').then(module => ({ default: module.OnboardingWizard })))
+const YulloHome = lazy(() => import('./screens/yullo/YulloHome').then(module => ({ default: module.YulloHome })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -109,6 +110,7 @@ export default function App() {
         <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-sm text-gray-500">Loading…</div>}><Routes>
           {/* ── Marketing / landing (root namespace, reserved) ── */}
           <Route path="/" element={<DynamicHome />} />
+          <Route path="/yullo" element={<YulloHome />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/what-we-do" element={<WhatWeDoPage />} />
           <Route path="/how-it-works" element={<DynamicHowItWorks />} />
