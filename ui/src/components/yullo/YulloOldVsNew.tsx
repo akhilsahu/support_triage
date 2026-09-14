@@ -86,14 +86,14 @@ export function YulloOldVsNew() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.35 }}
-              className="w-full max-w-3xl rounded-3xl border border-slate-300 bg-slate-50 p-8 shadow-sm text-center"
+              className="w-full max-w-4xl sm:max-w-5xl rounded-3xl border border-slate-300/80 bg-slate-50/90 p-8 sm:p-10 shadow-md text-center"
             >
-              <p className="text-sm sm:text-base text-slate-600 max-w-xl mx-auto leading-relaxed">
+              <p className="text-base sm:text-lg text-slate-700 max-w-2xl mx-auto leading-relaxed font-normal">
                 {STAGES[0].subtitle}
               </p>
 
               {/* Static Website Mockup */}
-              <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm grayscale opacity-75 max-w-2xl mx-auto">
+              <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-8 shadow-md grayscale opacity-80 max-w-3xl mx-auto min-h-[300px]">
                 <div className="flex items-center gap-2 pb-4 border-b border-slate-200">
                   <div className="h-3 w-3 rounded-full bg-slate-300" />
                   <div className="h-3 w-3 rounded-full bg-slate-300" />
@@ -135,7 +135,7 @@ export function YulloOldVsNew() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.35 }}
-              className="w-full max-w-3xl rounded-3xl border border-blue-200 bg-white p-8 shadow-xl text-center relative overflow-hidden"
+              className="w-full max-w-4xl sm:max-w-5xl rounded-3xl border border-blue-200 bg-white p-8 sm:p-10 shadow-xl text-center relative overflow-hidden"
             >
               <div className="text-xs font-semibold uppercase tracking-widest text-blue-600 mb-2">
                 02 / {STAGES[1].badge}
@@ -143,37 +143,37 @@ export function YulloOldVsNew() {
               <h3 className="text-2xl sm:text-4xl font-bold text-[#101828]">
                 {STAGES[1].title}
               </h3>
-              <p className="mt-3 text-sm sm:text-base text-slate-600 max-w-lg mx-auto">
+              <p className="mt-3 text-base sm:text-lg text-slate-700 max-w-xl mx-auto">
                 {STAGES[1].subtitle}
               </p>
 
               {/* Aura Awakening Transformation Diagram */}
-              <div className="mt-8 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/60 to-cyan-50/60 p-6 shadow-md max-w-2xl mx-auto">
+              <div className="mt-8 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/60 to-cyan-50/60 p-8 shadow-md max-w-3xl mx-auto">
                 <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                  <div className="flex flex-col gap-2 text-left w-full md:w-40">
+                  <div className="flex flex-col gap-2 text-left w-full md:w-48">
                     <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Static Inputs</div>
-                    <div className="rounded-xl bg-white p-2.5 text-xs font-medium text-slate-700 border border-slate-200">
+                    <div className="rounded-xl bg-white p-3 text-sm font-medium text-slate-700 border border-slate-200">
                       Website / Store
                     </div>
-                    <div className="rounded-xl bg-white p-2.5 text-xs font-medium text-slate-700 border border-slate-200">
+                    <div className="rounded-xl bg-white p-3 text-sm font-medium text-slate-700 border border-slate-200">
                       Social / Portfolio
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-center justify-center p-5 rounded-2xl bg-[#101828] text-white shadow-lg">
-                    <div className="h-12 w-12 rounded-xl bg-white/10 p-1.5 flex items-center justify-center border border-white/20 shadow-sm mb-1">
-                      <img src={yulloConfig.assets.logo} alt="Yullo Logo" className="h-8 w-auto object-contain" />
+                  <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-[#101828] text-white shadow-lg">
+                    <div className="h-14 w-14 rounded-xl bg-white/10 p-1.5 flex items-center justify-center border border-white/20 shadow-sm mb-1">
+                      <img src={yulloConfig.assets.logo} alt="Yullo Logo" className="h-9 w-auto object-contain" />
                     </div>
                     <div className="text-xs font-bold tracking-wide">YULLO AURA</div>
                     <div className="text-[10px] text-slate-300 font-mono mt-0.5">yullo.co/northstarstudio</div>
                   </div>
 
-                  <div className="flex flex-col gap-2 text-left w-full md:w-40">
+                  <div className="flex flex-col gap-2 text-left w-full md:w-48">
                     <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Aura Outputs</div>
-                    <div className="rounded-xl bg-blue-100/80 p-2.5 text-xs font-semibold text-blue-900 border border-blue-200">
+                    <div className="rounded-xl bg-blue-100/80 p-3 text-sm font-semibold text-blue-900 border border-blue-200">
                       Services & Portfolio
                     </div>
-                    <div className="rounded-xl bg-cyan-100/80 p-2.5 text-xs font-semibold text-cyan-900 border border-cyan-200">
+                    <div className="rounded-xl bg-cyan-100/80 p-3 text-sm font-semibold text-cyan-900 border border-cyan-200">
                       Live Customer Answers
                     </div>
                   </div>
@@ -198,7 +198,7 @@ export function YulloOldVsNew() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.35 }}
-              className="w-full max-w-3xl rounded-3xl border border-slate-900 bg-[#101828] p-8 shadow-2xl text-left text-white relative overflow-hidden"
+              className="w-full max-w-4xl sm:max-w-5xl rounded-3xl border border-slate-900 bg-[#101828] p-8 sm:p-10 shadow-2xl text-left text-white relative overflow-hidden"
             >
               <div className="text-center">
                 <div className="inline-block text-xs font-semibold uppercase tracking-widest text-[#FFDA2D] bg-slate-800 px-3 py-1 rounded-full mb-2">

@@ -69,8 +69,8 @@ export function YulloNetworkGraph() {
 
       {/* Living Unboxed Network Visualization */}
       <div className="max-w-4xl mx-auto relative text-left">
-        {/* Floating Node Connection Matrix (Unboxed) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 mb-6">
+        {/* Floating Organic Network Constellation Nodes */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8 mb-8">
           {ECOSYSTEM_NODES.map(node => {
             const isActive = activeNodeId === node.id
             return (
@@ -78,20 +78,28 @@ export function YulloNetworkGraph() {
                 key={node.id}
                 type="button"
                 onClick={() => setActiveNodeId(node.id)}
-                className={`p-5 rounded-2xl border text-left transition-all duration-300 relative ${
+                className={`p-6 rounded-3xl text-center flex flex-col items-center justify-center transition-all duration-300 relative ${
                   isActive
-                    ? 'bg-[#101828] text-white border-slate-900 shadow-xl scale-[1.04] z-10'
-                    : 'bg-white/80 backdrop-blur-sm text-slate-700 hover:bg-white border-slate-200/90 shadow-sm'
+                    ? 'bg-[#101828] text-white shadow-2xl scale-105 ring-2 ring-[#FFDA2D]/60 z-10'
+                    : 'bg-white/75 backdrop-blur-sm text-slate-800 hover:bg-white border border-slate-200/80 shadow-sm'
                 }`}
               >
-                <div className="flex items-center justify-between mb-3">
-                  <span
-                    className="h-3 w-3 rounded-full shadow-sm"
-                    style={{ backgroundColor: node.color }}
-                  />
-                  {isActive && <Globe className="h-4 w-4 text-[#FFDA2D]" />}
+                {/* Node Avatar Circle */}
+                <div
+                  className={`h-12 w-12 rounded-full flex items-center justify-center font-extrabold text-sm mb-3 relative transition-transform ${
+                    isActive ? 'scale-110 shadow-md' : ''
+                  }`}
+                  style={{
+                    backgroundColor: node.color,
+                    color: '#101828',
+                  }}
+                >
+                  {node.label.charAt(0)}
+                  {isActive && (
+                    <span className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-[#FFDA2D] border-2 border-[#101828] animate-ping" />
+                  )}
                 </div>
-                <div className="text-base font-bold">{node.label}</div>
+                <div className="text-base font-bold tracking-tight">{node.label}</div>
                 <div className={`text-xs font-mono mt-1 ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>
                   {node.sub}
                 </div>
