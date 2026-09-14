@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Sparkles, Globe } from 'lucide-react'
+import { yulloConfig } from '../../config/yullo'
 
 const ECOSYSTEM_NODES = [
   {
@@ -61,7 +62,7 @@ export function YulloNetworkGraph() {
           <Sparkles className="h-3.5 w-3.5 text-[#FFDA2D]" />
           <span>06 / CONNECTED PLACES</span>
         </div>
-        <h2 className="text-4xl sm:text-6xl font-extrabold text-[#101828] tracking-tight leading-tight">
+        <h2 className={`text-4xl sm:text-6xl font-extrabold text-[#101828] tracking-tight leading-tight ${yulloConfig.typography.headingClass}`}>
           One space can<br />
           open another.
         </h2>

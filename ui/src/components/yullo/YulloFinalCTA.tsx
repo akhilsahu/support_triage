@@ -27,7 +27,7 @@ export function YulloFinalCTA() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ delay: 0.1 }}
-          className="text-4xl sm:text-6xl font-bold tracking-tight text-white max-w-3xl leading-tight"
+          className={`text-4xl sm:text-6xl font-bold tracking-tight text-white max-w-3xl leading-tight ${yulloConfig.typography.headingClass}`}
         >
           Somewhere out there, someone is looking for what you do.
         </motion.h2>

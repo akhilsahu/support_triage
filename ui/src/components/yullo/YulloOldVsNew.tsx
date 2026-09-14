@@ -38,7 +38,7 @@ export function YulloOldVsNew() {
     <section id="how-it-works" className="py-24 px-6 relative z-20 max-w-5xl mx-auto border-t border-slate-200/80">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
         <div className="text-left max-w-2xl">
-          <h2 className="text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight leading-tight">
+          <h2 className={`text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight leading-tight ${yulloConfig.typography.headingClass}`}>
             You showed up.<br />
             You shared your work.<br />
             <span className="text-slate-400">And then you waited.</span>

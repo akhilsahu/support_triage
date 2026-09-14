@@ -41,4 +41,12 @@ export const yulloConfig = {
     heroTitle: 'Make your place on the internet feel alive.',
     heroSubtitle: 'You’ve built something worth discovering. Give people a place where they can understand what you do, explore what matters, and find their way closer to you.',
   },
+
+  // Typography Tokens
+  typography: {
+    headingFont: 'Satoshi',
+    bodyFont: 'Instrument Sans',
+    headingClass: 'font-satoshi',
+    bodyClass: 'font-instrument',
+  },
 }

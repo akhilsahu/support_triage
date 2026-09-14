@@ -38,7 +38,7 @@ export function YulloHome() {
   }, [])
 
   return (
-    <div className="scroll-smooth min-h-screen bg-[#F9FBFF] text-[#101828] font-sans antialiased selection:bg-[#FFDA2D] selection:text-[#101828] relative overflow-x-hidden">
+    <div className={`scroll-smooth min-h-screen bg-[#F9FBFF] text-[#101828] ${yulloConfig.typography.bodyClass} antialiased selection:bg-[#FFDA2D] selection:text-[#101828] relative overflow-x-hidden`}>
       {/* Dynamic Interactive HTML5 Canvas Network Background */}
       <YulloCanvasNetwork />
 

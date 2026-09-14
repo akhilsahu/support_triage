@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Check, ArrowRight, Sparkles } from 'lucide-react'
+import { yulloConfig } from '../../config/yullo'
 
 export function YulloClaimHandle() {
   const [handle, setHandle] = useState('northstarstudio')
@@ -20,7 +21,7 @@ export function YulloClaimHandle() {
         <span>YOUR PLACE ON THE NETWORK</span>
       </div>
 
-      <h2 className="text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight">
+      <h2 className={`text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight ${yulloConfig.typography.headingClass}`}>
         Claim your place.
       </h2>
 

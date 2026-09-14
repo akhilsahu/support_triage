@@ -48,7 +48,7 @@ export function YulloHero() {
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-          className="text-4xl sm:text-6xl md:text-7xl font-bold tracking-tight text-[#101828] leading-[1.1] max-w-4xl"
+          className={`text-4xl sm:text-6xl md:text-7xl font-bold tracking-tight text-[#101828] leading-[1.1] max-w-4xl ${yulloConfig.typography.headingClass}`}
         >
           Make your place on the internet feel{' '}
           <span className="relative inline-block text-[#101828]">

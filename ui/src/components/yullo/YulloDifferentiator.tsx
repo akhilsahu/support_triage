@@ -10,7 +10,7 @@ export function YulloDifferentiator() {
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.3 }}
-        className="text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight max-w-3xl mx-auto"
+        className={`text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight max-w-3xl mx-auto ${yulloConfig.typography.headingClass}`}
       >
         The right people are already out there.
       </motion.h2>

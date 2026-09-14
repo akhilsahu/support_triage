@@ -13,7 +13,7 @@ export function YulloNextStep() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ delay: 0.1 }}
-        className="text-4xl sm:text-6xl md:text-7xl font-extrabold text-[#101828] tracking-tight leading-[1.1]"
+        className={`text-4xl sm:text-6xl md:text-7xl font-extrabold text-[#101828] tracking-tight leading-[1.1] ${yulloConfig.typography.headingClass}`}
       >
         The internet is<br />
         changing quietly.

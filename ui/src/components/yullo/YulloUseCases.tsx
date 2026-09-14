@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { MessageSquare, ArrowRight, Sparkles } from 'lucide-react'
+import { yulloConfig } from '../../config/yullo'
 
 const SITUATIONS = [
   {
@@ -46,7 +47,7 @@ export function YulloUseCases() {
             <span>07 / REAL MOMENTS</span>
           </div>
 
-          <h2 className="text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight leading-tight">
+          <h2 className={`text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight leading-tight ${yulloConfig.typography.headingClass}`}>
             See what happens when someone finds you.
           </h2>
           <p className="mt-4 text-base text-slate-600 leading-relaxed font-normal">

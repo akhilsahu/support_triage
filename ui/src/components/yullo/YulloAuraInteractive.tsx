@@ -27,7 +27,7 @@ export function YulloAuraInteractive() {
             <span>03 / PRESENCE OVER PAGES</span>
           </div>
 
-          <h2 className="text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight leading-tight">
+          <h2 className={`text-3xl sm:text-5xl font-bold text-[#101828] tracking-tight leading-tight ${yulloConfig.typography.headingClass}`}>
             Give your space an Aura.
           </h2>
 

@@ -6,7 +6,9 @@ export default {
       fontFamily: { 
         sans: ['Inter', 'system-ui', 'sans-serif'],
         geist: ['Geist', 'system-ui', 'sans-serif'],
-        outfit: ['Outfit', 'system-ui', 'sans-serif']
+        outfit: ['Outfit', 'system-ui', 'sans-serif'],
+        instrument: ['"Instrument Sans"', 'system-ui', 'sans-serif'],
+        satoshi: ['Satoshi', 'system-ui', 'sans-serif'],
       },
       letterSpacing: {
         'ultra-wide': '0.15em',
