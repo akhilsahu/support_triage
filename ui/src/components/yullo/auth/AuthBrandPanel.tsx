@@ -4,18 +4,28 @@ import { AuthBrandNetwork } from './AuthBrandNetwork'
 
 export function AuthBrandPanel() {
   return (
-    <div className="relative flex-1 bg-[#F8FAFD] border-r border-slate-200/60 p-8 md:p-12 lg:p-16 flex flex-col justify-between overflow-hidden">
-      {/* Network background layer with primary brand cluster & bridging middle connections */}
+    <div className="relative w-full min-h-[100dvh] bg-[#F8FAFD] border-r border-slate-200/60 flex flex-col justify-between items-center overflow-hidden">
+      {/* Network background layer */}
       <AuthBrandNetwork />
 
-      {/* Brand Cluster (Vertically centered at ~35-40% down matching Auth Panel) */}
-      <div className="relative z-10 max-w-[430px] my-auto lg:mt-[14vh] lg:mb-auto py-4">
-        {/* Y Logo - 160–175px size, 20px above headline */}
+      {/* Top flex spacer */}
+      <div className="relative z-10 h-6 shrink-0 pointer-events-none" />
+
+      {/* Compact Brand Block Container */}
+      <div
+        className="relative z-10 my-auto py-4"
+        style={{
+          width: 'min(500px, calc(100% - 64px))',
+          marginInline: 'clamp(28px, 5vw, 72px)',
+          marginTop: 'clamp(0px, 2vh, 28px)',
+        }}
+      >
+        {/* Y Logo - 160–180px size, 24–36px above headline */}
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className="mb-5 inline-block"
+          className="mb-7 inline-block"
         >
           <img
             src={yulloConfig.assets.logoTransparent}
@@ -29,13 +39,13 @@ export function AuthBrandPanel() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-          className="text-2xl md:text-3xl lg:text-[31px] font-bold text-[#0B1220] tracking-tight leading-[1.14]"
+          className="text-2xl md:text-3xl lg:text-[32px] font-bold text-[#0B1220] tracking-tight leading-[1.14]"
           style={{ fontFamily: 'Satoshi, sans-serif' }}
         >
           Your place starts here.
         </motion.h1>
 
-        {/* Supporting Copy - Tightly bound under headline */}
+        {/* Supporting Copy - 10–14px under headline */}
         <motion.p
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
@@ -48,7 +58,7 @@ export function AuthBrandPanel() {
       </div>
 
       {/* Bottom Subtle Copyright Notice */}
-      <div className="relative z-10 text-[11px] text-slate-400/80 font-mono tracking-wider pb-1">
+      <div className="relative z-10 w-full text-center text-[11px] text-slate-400/80 font-mono tracking-wider pb-3 shrink-0">
         © Yullo. All rights reserved.
       </div>
     </div>
