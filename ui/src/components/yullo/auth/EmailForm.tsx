@@ -94,11 +94,11 @@ export function EmailForm({ onSubmit, onSwitchToPhone, loading, errorMessage }: 
         )}
       </button>
 
-      <div className="pt-1 text-center">
+      <div className="pt-1.5 text-center">
         <button
           type="button"
           onClick={onSwitchToPhone}
-          className="text-xs font-medium text-slate-500 hover:text-[#0B1220] transition-colors py-1 px-2 rounded-md hover:bg-slate-100/60"
+          className="text-sm font-medium text-slate-700 hover:text-[#0B1220] transition-colors py-1 px-2.5 rounded-md hover:bg-slate-100/80"
         >
           Use phone instead
         </button>
