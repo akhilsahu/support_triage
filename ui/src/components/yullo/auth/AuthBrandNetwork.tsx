@@ -44,14 +44,14 @@ export function AuthBrandNetwork() {
     window.addEventListener('resize', resizeCanvas)
 
     const isMobile = window.innerWidth < 768
-    const nodeCount = isMobile ? 10 : 26
+    const nodeCount = isMobile ? 10 : 24
     const nodeColors = ['#FFDA2D', '#4CD8FF', '#6695FF', '#A98CFF']
 
     const nodes: Node[] = []
     for (let i = 0; i < nodeCount; i++) {
       let x = Math.random() * canvas.width
-      // Concentrate ~60% of nodes around center vertical band (30% - 70%)
       let y: number
+      // Concentrate ~60% of nodes around center vertical band (30% - 70%)
       if (Math.random() < 0.6) {
         y = canvas.height * (0.3 + Math.random() * 0.4)
       } else {
@@ -70,6 +70,26 @@ export function AuthBrandNetwork() {
         driftSpeed: Math.random() * 0.0004 + 0.0002, // 2-6px over 8-14s
         driftDistance: Math.random() * 4 + 2,
       })
+    }
+
+    // Explicitly add 3 very faint top-left nodes to balance empty top-left space without cluttering
+    if (!isMobile) {
+      for (let k = 0; k < 3; k++) {
+        const fx = canvas.width * (0.08 + k * 0.07 + Math.random() * 0.04)
+        const fy = canvas.height * (0.08 + k * 0.06 + Math.random() * 0.04)
+        nodes.push({
+          x: fx,
+          y: fy,
+          originX: fx,
+          originY: fy,
+          radius: Math.random() * 1.5 + 3,
+          color: nodeColors[k % nodeColors.length],
+          opacity: 0.28,
+          driftAngle: Math.random() * Math.PI * 2,
+          driftSpeed: 0.00025,
+          driftDistance: 3,
+        })
+      }
     }
 
     const pulses: Pulse[] = []
@@ -115,7 +135,7 @@ export function AuthBrandNetwork() {
         spawnPulse(time)
       }
 
-      // Draw connections with improved contrast near brand block
+      // Draw connections
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           const dx = nodes[i].x - nodes[j].x
@@ -123,7 +143,6 @@ export function AuthBrandNetwork() {
           const dist = Math.hypot(dx, dy)
 
           if (dist < 200) {
-            // Higher line contrast (0.12 - 0.26 range)
             const lineAlpha = (1 - dist / 200) * 0.24
             ctx.beginPath()
             ctx.moveTo(nodes[i].x, nodes[i].y)
