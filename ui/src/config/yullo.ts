@@ -1,4 +1,5 @@
 import yulloLogo from '../assets/images/logos/yullo/yullo.png'
+import yulloLogoTransparent from '../assets/images/logos/yullo/logo_transparent.png'
 
 /**
  * Yullo Brand System & Configuration
@@ -15,6 +16,7 @@ export const yulloConfig = {
   // Brand Assets
   assets: {
     logo: yulloLogo,
+    logoTransparent: yulloLogoTransparent,
   },
   
   // Palette Tokens

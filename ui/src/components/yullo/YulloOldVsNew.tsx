@@ -168,7 +168,7 @@ export function YulloOldVsNew() {
 
                   <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-[#101828] text-white shadow-lg">
                     <div className="h-14 w-14 rounded-xl bg-white/10 p-1.5 flex items-center justify-center border border-white/20 shadow-sm mb-1">
-                      <img src={yulloConfig.assets.logo} alt="Yullo Logo" className="h-9 w-auto object-contain" />
+                      <img src={yulloConfig.assets.logoTransparent} alt="Yullo Logo" className="h-9 w-auto object-contain" />
                     </div>
                     <div className="text-xs font-bold tracking-wide">YULLO AURA</div>
                     <div className="text-[10px] text-slate-300 font-mono mt-0.5">yullo.co/northstarstudio</div>
@@ -223,7 +223,7 @@ export function YulloOldVsNew() {
                 <div className="flex items-center justify-between pb-4 border-b border-slate-800">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-xl bg-white/10 p-1.5 flex items-center justify-center border border-white/20">
-                      <img src={yulloConfig.assets.logo} alt="Yullo Logo" className="h-7 w-auto object-contain" />
+                      <img src={yulloConfig.assets.logoTransparent} alt="Yullo Logo" className="h-7 w-auto object-contain" />
                     </div>
                     <div>
                       <div className="text-[11px] text-[#4CD8FF] font-semibold uppercase tracking-wider">Connected Yullo Endpoint</div>

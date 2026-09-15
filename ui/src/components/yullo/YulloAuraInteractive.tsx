@@ -48,7 +48,7 @@ export function YulloAuraInteractive() {
             <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-200/60">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-2xl bg-slate-900 p-1.5 flex items-center justify-center shadow-sm">
-                  <img src={yulloConfig.assets.logo} alt="Yullo Logo" className="h-7 w-auto object-contain" />
+                  <img src={yulloConfig.assets.logoTransparent} alt="Yullo Logo" className="h-7 w-auto object-contain" />
                 </div>
                 <div>
                   <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Yullo Link Address</div>

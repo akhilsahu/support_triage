@@ -63,7 +63,7 @@ export function YulloDifferentiator() {
           <div className="flex-1 border-b border-slate-200/80 pb-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="h-7 w-7 rounded-lg bg-[#101828] p-1 flex items-center justify-center">
-                <img src={yulloConfig.assets.logo} alt="Yullo Logo" className="h-4 w-auto object-contain" />
+                <img src={yulloConfig.assets.logoTransparent} alt="Yullo Logo" className="h-4 w-auto object-contain" />
               </div>
               <div>
                 <div className="text-xs font-semibold text-blue-600 uppercase tracking-wider">02 / Aura Alignment</div>

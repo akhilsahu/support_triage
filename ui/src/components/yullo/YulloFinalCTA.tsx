@@ -54,7 +54,7 @@ export function YulloFinalCTA() {
           transition={{ duration: 0.6 }}
           className="h-20 w-20 rounded-3xl bg-white/10 p-3 flex items-center justify-center shadow-2xl border border-white/20 mb-8"
         >
-          <img src={yulloConfig.assets.logo} alt="Yullo Logo" className="h-14 w-auto object-contain" />
+          <img src={yulloConfig.assets.logoTransparent} alt="Yullo Logo" className="h-14 w-auto object-contain" />
         </motion.div>
 
         {/* Headline */}
