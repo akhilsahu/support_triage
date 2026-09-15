@@ -18,7 +18,7 @@ export function AuthBrandPanel() {
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className="mb-6 ml-1.5 inline-block"
+          className="mb-9 ml-1.5 inline-block"
         >
           <img
             src={yulloConfig.assets.logoTransparent}

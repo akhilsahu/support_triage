@@ -143,7 +143,13 @@ export function AuthBrandNetwork() {
           const dist = Math.hypot(dx, dy)
 
           if (dist < 200) {
-            const lineAlpha = (1 - dist / 200) * 0.24
+            let lineAlpha = (1 - dist / 200) * 0.22
+            // Attenuate line opacity near right edge so it doesn't overpower the brand cluster
+            const avgX = (nodes[i].x + nodes[j].x) / 2
+            if (avgX > canvas.width * 0.65) {
+              lineAlpha *= 0.65
+            }
+
             ctx.beginPath()
             ctx.moveTo(nodes[i].x, nodes[i].y)
             ctx.lineTo(nodes[j].x, nodes[j].y)

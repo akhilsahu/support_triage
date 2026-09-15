@@ -255,7 +255,7 @@ export function AuthPanel({ onAuthSuccess }: AuthPanelProps) {
       </div>
 
       {/* Legal Footer Notice */}
-      <div className="w-full max-w-[420px] text-center pt-6 pb-2 border-t border-slate-100">
+      <div className="w-full max-w-[390px] text-center pt-6 pb-8 mb-4 border-t border-slate-100">
         <p className="text-xs text-slate-500 font-normal leading-relaxed">
           By continuing, you agree to Yullo’s{' '}
           <a href="/terms" className="text-slate-700 underline underline-offset-2 hover:text-[#0B1220]">
