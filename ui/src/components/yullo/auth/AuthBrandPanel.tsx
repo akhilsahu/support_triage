@@ -8,42 +8,42 @@ export function AuthBrandPanel() {
       {/* Network background layer */}
       <AuthBrandNetwork />
 
-      {/* Top Header / Logo */}
-      <div className="relative z-10">
+      {/* Empty top spacing helper */}
+      <div className="relative z-10 h-4 pointer-events-none" />
+
+      {/* Unified Center Brand Block (Logo + Copy grouped together) */}
+      <div className="relative z-10 max-w-[420px] my-auto py-6">
+        {/* Y Logo - 40–50px above headline */}
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="inline-block"
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          className="mb-10 inline-block"
         >
           <img
             src={yulloConfig.assets.logoTransparent}
             alt="Yullo Brand Logo"
-            className="w-[140px] md:w-[160px] lg:w-[175px] h-auto object-contain"
-            style={{
-              filter: 'drop-shadow(0 8px 28px rgba(255, 218, 45, 0.14))',
-            }}
+            className="w-[115px] md:w-[130px] h-auto object-contain opacity-95"
           />
         </motion.div>
-      </div>
 
-      {/* Center Atmospheric Copy */}
-      <div className="relative z-10 max-w-md my-auto py-12">
+        {/* Headline */}
         <motion.h1
-          initial={{ opacity: 0, y: 12 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-          className="text-3xl md:text-4xl lg:text-[42px] font-bold text-[#0B1220] tracking-tight leading-[1.08]"
+          transition={{ duration: 0.6, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+          className="text-2xl md:text-3xl lg:text-[34px] font-bold text-[#0B1220] tracking-tight leading-[1.15]"
           style={{ fontFamily: 'Satoshi, sans-serif' }}
         >
           Your place starts here.
         </motion.h1>
 
+        {/* Supporting Copy */}
         <motion.p
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-          className="mt-4 text-base md:text-lg text-slate-600 font-normal leading-relaxed"
+          transition={{ duration: 0.6, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          className="mt-3.5 text-sm md:text-base text-slate-600 font-normal leading-relaxed"
           style={{ fontFamily: 'Instrument Sans, sans-serif' }}
         >
           Step into Yullo and continue building the space people discover, understand and connect with.
@@ -51,7 +51,7 @@ export function AuthBrandPanel() {
       </div>
 
       {/* Bottom Subtle Brand Accent */}
-      <div className="relative z-10 text-xs text-slate-400 font-mono tracking-wider">
+      <div className="relative z-10 text-[11px] text-slate-400 font-mono tracking-wider">
         © Yullo. All rights reserved.
       </div>
     </div>

@@ -143,8 +143,8 @@ export function AuthPanel({ onAuthSuccess }: AuthPanelProps) {
   }
 
   return (
-    <div className="flex-1 bg-white border-l border-slate-900/[0.06] p-6 sm:p-10 md:p-14 flex flex-col justify-between items-center w-full overflow-y-auto">
-      <div className="w-full max-w-[420px] my-auto py-8">
+    <div className="flex-1 bg-white border-l border-slate-900/[0.06] p-6 sm:p-10 md:p-12 flex flex-col justify-between items-center w-full overflow-y-auto">
+      <div className="w-full max-w-[400px] my-auto lg:mt-[10vh] lg:mb-auto py-4">
         <AnimatePresence mode="wait">
           {step === 'success' ? (
             <AuthTransition

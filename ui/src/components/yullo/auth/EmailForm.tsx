@@ -79,11 +79,11 @@ export function EmailForm({ onSubmit, onSwitchToPhone, loading, errorMessage }: 
       <button
         type="submit"
         disabled={loading || !email.trim()}
-        className="w-full h-[52px] rounded-[14px] bg-[#0B1220] text-white font-medium text-[15px] flex items-center justify-center gap-2 transition-all duration-150 hover:bg-[#152033] hover:-translate-y-[1px] active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed shadow-none"
+        className="w-full h-[52px] rounded-[14px] bg-[#0B1220] text-white font-medium text-[15px] flex items-center justify-center gap-2 transition-all duration-150 hover:bg-[#152033] hover:-translate-y-[1px] active:translate-y-0 disabled:bg-slate-100 disabled:text-slate-400 disabled:border disabled:border-slate-200/80 disabled:hover:translate-y-0 disabled:cursor-not-allowed shadow-none"
       >
         {loading ? (
-          <span className="flex items-center gap-2 text-slate-300">
-            <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+          <span className="flex items-center gap-2 text-slate-500 font-normal">
+            <svg className="animate-spin h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
@@ -94,7 +94,7 @@ export function EmailForm({ onSubmit, onSwitchToPhone, loading, errorMessage }: 
         )}
       </button>
 
-      <div className="pt-2 text-center">
+      <div className="pt-1 text-center">
         <button
           type="button"
           onClick={onSwitchToPhone}
