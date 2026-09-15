@@ -33,6 +33,7 @@ class Space(Base):
     __tablename__ = "spaces"
 
     id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     slug         = Column(String(80), unique=True, nullable=False, index=True)
     display_name = Column(String(200), nullable=False)
     email        = Column(String(255), unique=True, nullable=False, index=True)
@@ -75,6 +76,7 @@ class Space(Base):
     updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    owner_user             = relationship("User", back_populates="spaces")
     chatbots               = relationship("Chatbot", back_populates="space",
                                           cascade="all, delete-orphan")
     builtin_agent_configs  = relationship("SpaceBuiltinAgentConfig", back_populates="space",

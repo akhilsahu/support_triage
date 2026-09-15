@@ -1,5 +1,7 @@
 """Database models — import all to ensure SQLAlchemy relationships resolve correctly."""
 
+from app.models.user import User
+from app.models.auth_identity import AuthIdentity
 from app.models.space import Space, SpaceBuiltinAgentConfig, CustomAgent, ChatbotCustomAgent, BuiltinAgentCatalog
 from app.models.chat import ChatSession, MessageThought
 from app.models.chatbot import Chatbot
@@ -25,6 +27,7 @@ from app.models.training_feedback import TrainingFeedback
 from app.models.ai_usage import AiUsageEvent
 
 __all__ = [
+    "User", "AuthIdentity",
     "Space", "SpaceBuiltinAgentConfig", "CustomAgent", "ChatbotCustomAgent", "BuiltinAgentCatalog",
     "ChatSession", "MessageThought",
     "Chatbot",

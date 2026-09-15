@@ -24,6 +24,7 @@ from app.api.v1 import fact_extraction
 from app.api import chat, auth, customer, space, chatbot_user
 from app.api.v1 import dashboard, superadmin
 from app.api.v1.inbox import staff_auth, sessions, escalation, stream, canned_replies
+from app.api.v1 import yullo_auth
 from app.api.v1 import widget as widget_api
 # CopilotKit setup removed (unused dependency)
 
@@ -382,6 +383,7 @@ async def root():
 
 
 # Include API routers
+app.include_router(yullo_auth.router, prefix="/api/v1", tags=["Yullo Auth"])
 app.include_router(auth.router, prefix="/api/v1", tags=["Auth"])
 app.include_router(chat.router, tags=["Chat"])
 app.include_router(agents.router, prefix="/api/v1", tags=["Agents"])

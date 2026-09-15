@@ -67,7 +67,7 @@ export function YulloHeader() {
         {/* Right: Sign in & Prominent Dark Navy CTA */}
         <div className="flex items-center gap-4">
           <Link
-            to="/app/login"
+            to="/auth"
             className="text-sm font-medium text-slate-600 hover:text-[#101828] transition-colors hidden sm:block"
           >
             Sign in
