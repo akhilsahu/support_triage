@@ -11,6 +11,7 @@ interface Node {
   driftAngle: number
   driftSpeed: number
   driftDistance: number
+  cluster: 'primary' | 'secondary' | 'bridge'
 }
 
 interface Pulse {
@@ -44,50 +45,72 @@ export function AuthBrandNetwork() {
     window.addEventListener('resize', resizeCanvas)
 
     const isMobile = window.innerWidth < 768
-    const nodeCount = isMobile ? 10 : 24
     const nodeColors = ['#FFDA2D', '#4CD8FF', '#6695FF', '#A98CFF']
-
     const nodes: Node[] = []
-    for (let i = 0; i < nodeCount; i++) {
-      let x = Math.random() * canvas.width
-      let y: number
-      // Concentrate ~60% of nodes around center vertical band (30% - 70%)
-      if (Math.random() < 0.6) {
-        y = canvas.height * (0.3 + Math.random() * 0.4)
-      } else {
-        y = Math.random() * canvas.height
+
+    if (isMobile) {
+      // Mobile sparse arrangement
+      for (let i = 0; i < 9; i++) {
+        const x = Math.random() * canvas.width
+        const y = Math.random() * canvas.height
+        nodes.push({
+          x, y, originX: x, originY: y,
+          radius: Math.random() * 2 + 3,
+          color: nodeColors[i % nodeColors.length],
+          opacity: Math.random() * 0.3 + 0.4,
+          driftAngle: Math.random() * Math.PI * 2,
+          driftSpeed: 0.0003,
+          driftDistance: 3,
+          cluster: 'primary',
+        })
+      }
+    } else {
+      // 1. Primary Cluster (around Brand block: upper-middle / center-left)
+      for (let i = 0; i < 14; i++) {
+        const x = canvas.width * (0.16 + Math.random() * 0.36)
+        const y = canvas.height * (0.20 + Math.random() * 0.32)
+        nodes.push({
+          x, y, originX: x, originY: y,
+          radius: Math.random() * 2.2 + 3.2,
+          color: nodeColors[i % nodeColors.length],
+          opacity: Math.random() * 0.35 + 0.4, // 0.4 - 0.75 range
+          driftAngle: Math.random() * Math.PI * 2,
+          driftSpeed: Math.random() * 0.0003 + 0.00015,
+          driftDistance: Math.random() * 3.5 + 1.5,
+          cluster: 'primary',
+        })
       }
 
-      nodes.push({
-        x,
-        y,
-        originX: x,
-        originY: y,
-        radius: Math.random() * 2 + 3.5,
-        color: nodeColors[i % nodeColors.length],
-        opacity: Math.random() * 0.35 + 0.4, // 0.4 - 0.75 range
-        driftAngle: Math.random() * Math.PI * 2,
-        driftSpeed: Math.random() * 0.0004 + 0.0002, // 2-6px over 8-14s
-        driftDistance: Math.random() * 4 + 2,
-      })
-    }
-
-    // Explicitly add 3 very faint top-left nodes to balance empty top-left space without cluttering
-    if (!isMobile) {
-      for (let k = 0; k < 3; k++) {
-        const fx = canvas.width * (0.08 + k * 0.07 + Math.random() * 0.04)
-        const fy = canvas.height * (0.08 + k * 0.06 + Math.random() * 0.04)
+      // 2. Secondary Cluster (Lower-Right balance area)
+      for (let i = 0; i < 9; i++) {
+        const x = canvas.width * (0.62 + Math.random() * 0.28)
+        const y = canvas.height * (0.60 + Math.random() * 0.28)
         nodes.push({
-          x: fx,
-          y: fy,
-          originX: fx,
-          originY: fy,
-          radius: Math.random() * 1.5 + 3,
-          color: nodeColors[k % nodeColors.length],
-          opacity: 0.28,
+          x, y, originX: x, originY: y,
+          radius: Math.random() * 2 + 3,
+          color: nodeColors[(i + 1) % nodeColors.length],
+          opacity: Math.random() * 0.3 + 0.35,
+          driftAngle: Math.random() * Math.PI * 2,
+          driftSpeed: Math.random() * 0.0003 + 0.00015,
+          driftDistance: Math.random() * 3.5 + 1.5,
+          cluster: 'secondary',
+        })
+      }
+
+      // 3. Bridging Nodes (connecting upper-left brand cluster to lower-right cluster)
+      for (let i = 0; i < 3; i++) {
+        const t = (i + 1) / 4
+        const x = canvas.width * (0.42 + t * 0.18 + (Math.random() - 0.5) * 0.06)
+        const y = canvas.height * (0.48 + t * 0.16 + (Math.random() - 0.5) * 0.06)
+        nodes.push({
+          x, y, originX: x, originY: y,
+          radius: 3.5,
+          color: nodeColors[(i + 2) % nodeColors.length],
+          opacity: 0.45,
           driftAngle: Math.random() * Math.PI * 2,
           driftSpeed: 0.00025,
           driftDistance: 3,
+          cluster: 'bridge',
         })
       }
     }
@@ -113,7 +136,7 @@ export function AuthBrandNetwork() {
           fromIdx,
           toIdx,
           progress: 0,
-          speed: 0.008,
+          speed: 0.007,
           color: nodes[fromIdx].color,
         })
       }
@@ -135,29 +158,43 @@ export function AuthBrandNetwork() {
         spawnPulse(time)
       }
 
-      // Draw connections
+      // Draw cluster connections
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           const dx = nodes[i].x - nodes[j].x
           const dy = nodes[i].y - nodes[j].y
           const dist = Math.hypot(dx, dy)
 
-          if (dist < 200) {
-            let lineAlpha = (1 - dist / 200) * 0.22
-            // Attenuate line opacity near right edge so it doesn't overpower the brand cluster
-            const avgX = (nodes[i].x + nodes[j].x) / 2
-            if (avgX > canvas.width * 0.65) {
-              lineAlpha *= 0.65
+          // Same-cluster or bridge connection
+          const maxDist = (nodes[i].cluster === 'bridge' || nodes[j].cluster === 'bridge') ? 240 : 175
+          if (dist < maxDist) {
+            let lineAlpha = (1 - dist / maxDist) * 0.18
+            if (nodes[i].cluster === 'secondary' && nodes[j].cluster === 'secondary') {
+              lineAlpha *= 0.8 // Soften secondary cluster lines
             }
 
             ctx.beginPath()
             ctx.moveTo(nodes[i].x, nodes[i].y)
             ctx.lineTo(nodes[j].x, nodes[j].y)
             ctx.strokeStyle = `rgba(102, 149, 255, ${lineAlpha})`
-            ctx.lineWidth = 1.2
+            ctx.lineWidth = 1.1
             ctx.stroke()
           }
         }
+      }
+
+      // Draw long faint diagonal bridging line connecting upper brand cluster to lower-right cluster
+      if (!isMobile && nodes.length > 15) {
+        const brandNode = nodes[0] // Primary cluster node
+        const lowerNode = nodes[15] // Secondary cluster node
+        ctx.beginPath()
+        ctx.moveTo(brandNode.x, brandNode.y)
+        ctx.lineTo(lowerNode.x, lowerNode.y)
+        ctx.strokeStyle = 'rgba(102, 149, 255, 0.09)'
+        ctx.lineWidth = 1
+        ctx.setLineDash([4, 6])
+        ctx.stroke()
+        ctx.setLineDash([])
       }
 
       // Draw pulses
@@ -175,10 +212,10 @@ export function AuthBrandNetwork() {
         const py = fromNode.y + (toNode.y - fromNode.y) * pulse.progress
 
         ctx.beginPath()
-        ctx.arc(px, py, 3.5, 0, Math.PI * 2)
+        ctx.arc(px, py, 3, 0, Math.PI * 2)
         ctx.fillStyle = pulse.color
         ctx.shadowColor = pulse.color
-        ctx.shadowBlur = 8
+        ctx.shadowBlur = 6
         ctx.fill()
         ctx.shadowBlur = 0
       }
