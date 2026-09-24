@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, String, Text, ForeignKey, Index, JSON
+from sqlalchemy import Boolean, Column, DateTime, Float, String, Text, ForeignKey, Index, JSON, UniqueConstraint, ForeignKeyConstraint, Integer
 
 
 from sqlalchemy.dialects.postgresql import UUID
@@ -53,6 +53,7 @@ class KnowledgeBase(Base):
 
     __table_args__ = (
         Index("ix_kb_space", "space_id"),
+        UniqueConstraint('id', 'space_id', name='uq_knowledge_bases_id_space_id'),
     )
 
     def to_dict(self) -> dict:
@@ -85,8 +86,8 @@ class KnowledgeBaseItem(Base):
     __tablename__ = "knowledge_base_items"
 
     id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    kb_id      = Column(UUID(as_uuid=True), ForeignKey("knowledge_bases.id", ondelete="CASCADE"),
-                        nullable=False, index=True)
+    space_id   = Column(UUID(as_uuid=True), nullable=False, index=True)
+    kb_id      = Column(UUID(as_uuid=True), nullable=False, index=True)
     item_type  = Column(String(20), nullable=False)   # doc | text | qna
     title      = Column(String(500), nullable=True)
 
@@ -116,6 +117,17 @@ class KnowledgeBaseItem(Base):
     ai_cost_usd      = Column(Float, default=0.0, nullable=False)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Generic lifecycle fields
+    ingestion_status = Column(String(50), nullable=True)
+    source_version = Column(Integer, nullable=True)
+    published_version = Column(Integer, nullable=True)
+    content_hash = Column(String(64), nullable=True)
+    source_locator = Column(String(500), nullable=True)
+    source_metadata = Column(JSON, nullable=True)
+    creation_key = Column(String(200), nullable=True)
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
+    last_error_code = Column(String(50), nullable=True)
 
     # Relationships
     kb = relationship("KnowledgeBase", back_populates="items")
@@ -123,6 +135,12 @@ class KnowledgeBaseItem(Base):
     __table_args__ = (
         Index("ix_kb_item_kb", "kb_id"),
         Index("ix_kb_item_type", "item_type"),
+        UniqueConstraint('id', 'space_id', 'kb_id', name='uq_knowledge_base_items_id_space_id_kb_id'),
+        ForeignKeyConstraint(
+            ['kb_id', 'space_id'],
+            ['knowledge_bases.id', 'knowledge_bases.space_id'],
+            ondelete='CASCADE'
+        ),
     )
 
     def to_dict(self) -> dict:

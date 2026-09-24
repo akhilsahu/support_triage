@@ -5,7 +5,8 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import delete
+from sqlalchemy import delete, update
+from datetime import datetime
 
 from app.api.auth import current_space
 from app.core.database import get_db, AsyncSessionLocal
@@ -368,14 +369,28 @@ async def commit_extracted_facts(
     owns = (await db.execute(
         select(KnowledgeBaseItem).where(
             KnowledgeBaseItem.kb_id == kb_id,
+            KnowledgeBaseItem.space_id == space.id,
             KnowledgeBaseItem.doc_id == doc_id
         )
     )).scalar_one_or_none()
     if not owns:
         raise HTTPException(404, "Document not found in this knowledge base.")
 
-    # Delete existing KBFact records for this document to prevent duplicates on multiple saves
-    await db.execute(delete(KBFact).where(KBFact.source_doc_id == doc_id))
+    # Hard-delete existing unreviewed proposals
+    await db.execute(delete(KBFact).where(
+        KBFact.kb_id == kb_id,
+        KBFact.space_id == space.id,
+        KBFact.source_doc_id == doc_id,
+        KBFact.review_status == 'extracted'
+    ))
+
+    # Expire existing owner_confirmed facts instead of hard-deleting
+    await db.execute(update(KBFact).where(
+        KBFact.kb_id == kb_id,
+        KBFact.space_id == space.id,
+        KBFact.source_doc_id == doc_id,
+        KBFact.review_status.in_(['owner_confirmed', 'source_authoritative'])
+    ).values(valid_until=datetime.utcnow()))
 
     # Convert schema to DB model
     fact_dicts = []
@@ -383,12 +398,15 @@ async def commit_extracted_facts(
         fact = KBFact(
             kb_id=kb_id, 
             space_id=space.id, 
-            verified=True, 
+            verified=True,
+            review_status='owner_confirmed',
+            valid_from=datetime.utcnow(),
             subject=p.subject,
             label=p.label,
             value=p.value,
             note=p.note,
-            source_doc_id=doc_id
+            source_doc_id=doc_id,
+            source_item_id=owns.id
         )
         fact_dicts.append(p.model_dump())
         db.add(fact)

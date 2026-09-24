@@ -16,7 +16,7 @@ See app/orchestra/ai/ingestion/jobs/ for the runner that advances these rows.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text, ForeignKey, Index, JSON
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text, ForeignKey, Index, JSON, ForeignKeyConstraint
 
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -57,6 +57,18 @@ class IngestionJob(Base):
     eta_seconds      = Column(Integer, nullable=True)
     context_enriched = Column(Boolean, default=False, nullable=True)
     ai_cost_usd      = Column(Float, default=0.0, nullable=True)
+    
+    # Generic ingestion fields
+    kb_item_id         = Column(UUID(as_uuid=True), ForeignKey("knowledge_base_items.id", ondelete="CASCADE"), nullable=True)
+    source_version     = Column(Integer, nullable=True)
+    attempt            = Column(Integer, nullable=True)
+    idempotency_key    = Column(String(200), nullable=True)
+    dispatch_attempts  = Column(Integer, nullable=True)
+    dispatch_after     = Column(DateTime(timezone=True), nullable=True)
+    last_dispatched_at = Column(DateTime(timezone=True), nullable=True)
+    lease_token        = Column(UUID(as_uuid=True), nullable=True)
+    lease_expires_at   = Column(DateTime(timezone=True), nullable=True)
+    last_heartbeat_at  = Column(DateTime(timezone=True), nullable=True)
 
     # JSON-safe args for the ingest_document task, captured at enqueue time so
     # a failed/interrupted job can be re-queued by the retry endpoint instead of
@@ -69,6 +81,11 @@ class IngestionJob(Base):
 
     __table_args__ = (
         Index("ix_ingestion_jobs_space_created", "space_id", "created_at"),
+        ForeignKeyConstraint(
+            ['kb_item_id', 'space_id', 'kb_id'],
+            ['knowledge_base_items.id', 'knowledge_base_items.space_id', 'knowledge_base_items.kb_id'],
+            ondelete='CASCADE', name='fk_ingestion_job_kb_item'
+        ),
     )
 
     @property

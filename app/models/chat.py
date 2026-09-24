@@ -34,6 +34,9 @@ class ChatSession(Base):
     chatbot_id      = Column(UUID(as_uuid=True),
                              ForeignKey("chatbots.id", ondelete="CASCADE"),
                              nullable=True, index=True)
+                             
+    runtime_type    = Column(String(20), nullable=True) # "chatbot" | "aura"
+    runtime_id      = Column(String(100), nullable=True) # ID of the runtime
 
     # Logged-in customer who owns this conversation (see app/models/chatbot_user.py).
     # NULL = anonymous session (URL-id access, today's default behavior).
@@ -89,8 +92,10 @@ class ChatSession(Base):
         return {
             "id":              str(self.id),
             "session_id":      str(self.id),   # alias for API consumers
-            "space_id":          str(self.space_id),
+            "space_id":        str(self.space_id),
             "chatbot_id":      str(self.chatbot_id) if self.chatbot_id else None,
+            "runtime_type":    self.runtime_type,
+            "runtime_id":      self.runtime_id,
             "chatbot_user_id": str(self.chatbot_user_id) if self.chatbot_user_id else None,
             "title":           self.title,
             "agent_slug":      self.agent_slug,
@@ -125,6 +130,8 @@ class MessageThought(Base):
     chatbot_id       = Column(UUID(as_uuid=True),
                               ForeignKey("chatbots.id", ondelete="SET NULL"),
                               nullable=True)
+    runtime_type     = Column(String(20), nullable=True)
+    runtime_id       = Column(String(100), nullable=True)
     agent_slug       = Column(String(80), nullable=True)
     # Future-proof: "reasoning" today, could become "plan"/"reflection" later.
     role             = Column(String(20), nullable=False, default="reasoning")
@@ -139,6 +146,8 @@ class MessageThought(Base):
             "message_id":       str(self.message_id),
             "session_id":       self.session_id,
             "chatbot_id":       str(self.chatbot_id) if self.chatbot_id else None,
+            "runtime_type":     self.runtime_type,
+            "runtime_id":       self.runtime_id,
             "agent_slug":       self.agent_slug,
             "role":             self.role,
             "content":          self.content,

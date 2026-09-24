@@ -15,7 +15,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, Integer,
-    String, Text, ForeignKey, Index,
+    String, Text, ForeignKey, Index, CheckConstraint, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
@@ -34,7 +34,8 @@ class Space(Base):
 
     id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     owner_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    slug         = Column(String(80), unique=True, nullable=False, index=True)
+    slug         = Column(String(80), nullable=False, index=True)
+    product      = Column(String(20), nullable=False, default="support247")
     display_name = Column(String(200), nullable=False)
     email        = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
@@ -70,7 +71,13 @@ class Space(Base):
     # NULL inherits the platform-wide Data Sources capability setting.
     datasources_enabled = Column(Boolean, nullable=True)
 
-    onboarding_complete = Column(Boolean, default=False, nullable=False)
+    # Onboarding draft lifecycle
+    status             = Column(String(20), default="live", nullable=False) # "draft" | "live"
+    purpose            = Column(String(50), nullable=True) # "personal" | "work" | "business" | "organization"
+    current_step       = Column(String(20), default="choose", nullable=False) # "choose" | "claim" | "teach" | "preview"
+    context_version    = Column(Integer, default=1, nullable=False)
+    preview_context_version = Column(Integer, default=0, nullable=False)
+    handle_reserved_until = Column(DateTime, nullable=True)
 
     created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -99,11 +106,21 @@ class Space(Base):
                                           cascade="all, delete-orphan")
     knowledge_bases        = relationship("KnowledgeBase", back_populates="space",
                                           cascade="all, delete-orphan")
+    onboarding_sources     = relationship("SpaceSource", back_populates="space",
+                                          cascade="all, delete-orphan")
+    yullo_config           = relationship("YulloConfig", back_populates="space",
+                                          uselist=False, cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("product", "slug", name="uq_space_product_slug"),
+        CheckConstraint("product IN ('support247', 'yullo')", name="ck_spaces_product"),
+    )
 
     def to_dict(self) -> dict:
         return {
             "id":           str(self.id),
             "slug":         self.slug,
+            "product":      self.product,
             "display_name": self.display_name,
             "email":        self.email,
             "logo_url":     self.logo_url,
@@ -114,7 +131,42 @@ class Space(Base):
             "max_chatbots":         self.max_chatbots,
             "datasources_enabled":  self.datasources_enabled,
             "onboarding_complete":  self.onboarding_complete,
+            "status":               self.status,
+            "purpose":              self.purpose,
+            "current_step":         self.current_step,
             "created_at":           self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ── SpaceSource ───────────────────────────────────────────────────────────────
+
+class SpaceSource(Base):
+    """Sources ingested during the onboarding Teach step."""
+    
+    __tablename__ = "space_sources"
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    space_id     = Column(UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    source_type  = Column(String(20), nullable=False) # "website" | "instagram" | "linkedin" | "youtube" | "other" | "upload" | "text"
+    content_ref  = Column(Text, nullable=False) # URL, file path, or actual pasted text
+    
+    status       = Column(String(20), default="queued", nullable=False) # "queued" | "processing" | "ready" | "limited" | "failed"
+    error_msg    = Column(Text, nullable=True)
+    
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    space = relationship("Space", back_populates="onboarding_sources")
+
+    def to_dict(self) -> dict:
+        return {
+            "id":          str(self.id),
+            "space_id":    str(self.space_id),
+            "source_type": self.source_type,
+            "content_ref": self.content_ref,
+            "status":      self.status,
+            "created_at":  self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -173,6 +225,8 @@ class ConversationLog(Base):
                              nullable=False, index=True)
     chatbot_id    = Column(UUID(as_uuid=True), ForeignKey("chatbots.id", ondelete="SET NULL"),
                              nullable=True, index=True)
+    runtime_type  = Column(String(20), nullable=True) # "chatbot" | "aura"
+    runtime_id    = Column(String(100), nullable=True) # ID of the runtime
     session_id      = Column(String(100), nullable=False, index=True)
 
     role            = Column(String(20), nullable=False)   # "user" | "assistant"

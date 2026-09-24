@@ -87,9 +87,9 @@ async def _get_kb(kb_id: UUID, space: Space, db: AsyncSession) -> KnowledgeBase:
     return kb
 
 
-async def _get_fact(fact_id: UUID, kb_id: UUID, db: AsyncSession) -> KBFact:
+async def _get_fact(fact_id: UUID, kb_id: UUID, space: Space, db: AsyncSession) -> KBFact:
     fact = (await db.execute(
-        select(KBFact).where(KBFact.id == fact_id, KBFact.kb_id == kb_id)
+        select(KBFact).where(KBFact.id == fact_id, KBFact.kb_id == kb_id, KBFact.space_id == space.id)
     )).scalar_one_or_none()
     if not fact:
         raise HTTPException(404, "Fact not found.")
@@ -119,7 +119,7 @@ async def list_facts(
 ):
     await _get_kb(kb_id, space, db)
     rows = (await db.execute(
-        select(KBFact).where(KBFact.kb_id == kb_id)
+        select(KBFact).where(KBFact.kb_id == kb_id, KBFact.space_id == space.id)
         # Unconfirmed first: they are the ones needing action, and burying them
         # under confirmed rows is how an extraction run gets forgotten.
         .order_by(KBFact.verified.asc(), KBFact.subject.asc(), KBFact.label.asc())
@@ -152,6 +152,7 @@ async def create_fact(
         source_filename=req.source_filename,
         source_page=req.source_page,
         verified=req.verified,
+        review_status="owner_confirmed" if req.verified else "extracted",
     )
     db.add(fact)
     await db.commit()
@@ -189,6 +190,7 @@ async def extract(
     owns = (await db.execute(
         select(KnowledgeBaseItem).where(
             KnowledgeBaseItem.kb_id == kb_id,
+            KnowledgeBaseItem.space_id == space.id,
             KnowledgeBaseItem.doc_id == req.doc_id,
         )
     )).scalar_one_or_none()
@@ -205,13 +207,13 @@ async def extract(
         norm = lambda s: "".join(ch for ch in (s or "").lower() if ch.isalnum())
         return (norm(subject), norm(value))
 
-    rows = (await db.execute(select(KBFact).where(KBFact.kb_id == kb_id))).scalars().all()
+    rows = (await db.execute(select(KBFact).where(KBFact.kb_id == kb_id, KBFact.space_id == space.id))).scalars().all()
 
     # Clear this document's previous unreviewed proposals; confirmed facts and
     # other documents' proposals are untouched.
     dropped = 0
     for f in rows:
-        if not f.verified and f.source_doc_id == req.doc_id:
+        if f.review_status == 'extracted' and f.source_doc_id == req.doc_id:
             await db.delete(f)
             dropped += 1
 
@@ -234,7 +236,7 @@ async def extract(
         if key in existing:
             continue
         existing.add(key)
-        fact = KBFact(kb_id=kb_id, space_id=space.id, verified=False, **p)
+        fact = KBFact(kb_id=kb_id, space_id=space.id, verified=False, review_status='extracted', **p)
         db.add(fact)
         created.append(fact)
 
@@ -259,14 +261,20 @@ async def update_fact(
     from app.utils.slug import slugify
 
     await _get_kb(kb_id, space, db)
-    fact = await _get_fact(fact_id, kb_id, db)
+    fact = await _get_fact(fact_id, kb_id, space, db)
 
     if req.subject  is not None: fact.subject  = req.subject.strip()
     if req.label    is not None: fact.label    = req.label.strip()
     if req.value    is not None: fact.value    = req.value.strip()
     if req.note     is not None: fact.note     = req.note.strip() or None
     if req.topic    is not None: fact.topic    = slugify(req.topic) or None
-    if req.verified is not None: fact.verified = req.verified
+    if req.verified is not None: 
+        fact.verified = req.verified
+        # Transition unverified->verified via UI moves it to owner_confirmed
+        if req.verified and fact.review_status == 'extracted':
+            fact.review_status = 'owner_confirmed'
+        elif not req.verified and fact.review_status in ('owner_confirmed', 'source_authoritative'):
+            fact.review_status = 'extracted'
 
     await db.commit()
     await db.refresh(fact)
@@ -282,7 +290,7 @@ async def delete_fact(
     db:      AsyncSession = Depends(get_db),
 ):
     await _get_kb(kb_id, space, db)
-    fact = await _get_fact(fact_id, kb_id, db)
+    fact = await _get_fact(fact_id, kb_id, space, db)
     await db.delete(fact)
     await db.commit()
     _invalidate(space)

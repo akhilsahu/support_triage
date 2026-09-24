@@ -23,6 +23,13 @@ class AiUsageEvent(Base):
     kb_id        = Column(UUID(as_uuid=True), nullable=True, index=True)
     session_id   = Column(UUID(as_uuid=True), nullable=True, index=True)
     message_id   = Column(UUID(as_uuid=True), nullable=True)
+    
+    # Attribution
+    product      = Column(String(30), nullable=True)
+    runtime_kind = Column(String(30), nullable=True)
+    aura_id      = Column(UUID(as_uuid=True), nullable=True)
+    aura_version_id = Column(UUID(as_uuid=True), nullable=True)
+    aura_run_id  = Column(UUID(as_uuid=True), nullable=True)
     # chat | embedding | rerank | ingestion | evaluation | suggestion | assignment
     kind         = Column(String(30), nullable=False, index=True)
     provider     = Column(String(40), nullable=False)

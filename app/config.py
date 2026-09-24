@@ -73,7 +73,9 @@ class Settings(BaseSettings):
     # collide with a frontend route or backend proxy prefix. Override via env:
     #   RESERVED_SLUGS=app,api,login,custom-word   (comma-separated or JSON list)
     RESERVED_SLUGS: Annotated[List[str], NoDecode] = Field(default=[
-        "app", "s", "api", "org", "space",
+        "app", "auth", "s", "api", "org", "space", "spaces",
+        "aura", "auras", "link", "links", "network", "settings",
+        "user", "users", "support", "help", "www",
         "about", "what-we-do", "how-it-works", "features", "pricing",
         "privacy", "terms", "cookies", "contact", "security",
         "login", "dashboard", "admin", "super-admin", "widget", "widget.js",
@@ -126,6 +128,36 @@ class Settings(BaseSettings):
     # RAG Ingestion Contextual AI Enrichment
     ENABLE_CONTEXTUAL_ENRICHMENT: bool = True
 
+    # ── Pluggable SMS Gateways ───────────────────────────────────────────────────
+    SMS_PROVIDER_GLOBAL: str = "mock"    # "twilio" | "mock"
+    SMS_PROVIDER_INDIA: str = "fast2sms" # "fast2sms" | "msg91" | "twilio" | "mock"
+
+    # Gateway API Keys
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+    TWILIO_PHONE_NUMBER: Optional[str] = None
+
+    FAST2SMS_API_KEY: Optional[str] = None
+    FAST2SMS_OTP_ID: Optional[str] = None
+    MSG91_AUTH_KEY: Optional[str] = None
+
+    # ── Per-Domain SMTP Email Credentials (yullo.co vs support247.chat) ─────────
+    # Yullo Domain Credentials (yullo.co)
+    YULLO_SMTP_HOST: str = "smtp.zoho.com"
+    YULLO_SMTP_PORT: int = 587
+    YULLO_SMTP_USER: Optional[str] = None
+    YULLO_SMTP_PASSWORD: Optional[str] = None
+    YULLO_EMAIL_FROM: str = "Yullo Auth <auth@yullo.co>"
+    YULLO_SMS_SENDER_ID: str = "YULLO"
+
+    # Support247 Domain Credentials (support247.chat)
+    SUPPORT247_SMTP_HOST: str = "smtp.zoho.com"
+    SUPPORT247_SMTP_PORT: int = 587
+    SUPPORT247_SMTP_USER: Optional[str] = None
+    SUPPORT247_SMTP_PASSWORD: Optional[str] = None
+    SUPPORT247_EMAIL_FROM: str = "Support247 Auth <auth@support247.chat>"
+    SUPPORT247_SMS_SENDER_ID: str = "SUP247"
+
 
     # OpenRouter — a single API key/endpoint that proxies many providers'
     # models (OpenAI, Anthropic, etc). Model id format is "<provider>/<model>",
@@ -145,6 +177,19 @@ class Settings(BaseSettings):
     # Optional override strictly for fact extraction model
     FACT_FINDER_MODEL: Optional[str] = None
     FACT_VERIFIER_MODEL: Optional[str] = None
+
+    # Yullo Grounded About Generation
+    YULLO_ABOUT_ENABLED: bool = True
+    YULLO_ABOUT_PROVIDER: str = "openai"
+    YULLO_ABOUT_MODEL: str = "gpt-5.4-mini"
+    YULLO_ABOUT_REASONING_EFFORT: str = "none"
+    YULLO_ABOUT_PROMPT_VERSION: str = "v1"
+    YULLO_ABOUT_MAX_CHARACTERS: int = 280
+    YULLO_ABOUT_MAX_EXCERPTS: int = 6
+    YULLO_ABOUT_MAX_CONTEXT_CHARACTERS: int = 6000
+    YULLO_ABOUT_TIMEOUT_SECONDS: int = 12
+    YULLO_ABOUT_REPAIR_ATTEMPTS: int = 0
+    YULLO_ABOUT_AUTO_SUGGEST: bool = False
 
     # Anthropic
     ANTHROPIC_API_KEY: Optional[str] = None
@@ -343,6 +388,13 @@ class Settings(BaseSettings):
 
     # Password reset token TTL in minutes
     PASSWORD_RESET_TTL_MINUTES: int = 30
+
+    # ── Yullo Aura Operational Controls ──────────────────────────────────────────
+    YULLO_AURA_ENABLED: bool = False
+    YULLO_AURA_PUBLIC_ENABLED: bool = False
+    YULLO_RESOURCE_UI_ENABLED: bool = False
+    YULLO_AURA_EVALUATIONS_ENABLED: bool = False
+    YULLO_PUBLICATION_GATE_ENABLED: bool = False
 
     @property
     def database_url_sync(self) -> str:

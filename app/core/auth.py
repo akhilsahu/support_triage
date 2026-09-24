@@ -136,3 +136,36 @@ async def current_space_optional(
         return await current_space(creds, db)
     except Exception:
         return None
+
+from fastapi import Request
+from app.models.user import User
+
+from app.yullo.services.auth.session_service import resolve_yullo_session, validate_yullo_csrf
+
+async def current_user(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Dependency that extracts the token from the strict Yullo HTTP-only session cookie.
+    Validates it against the `YulloUserSession` table and ensures CSRF match on mutating requests.
+    """
+    result = await resolve_yullo_session(db, request)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Cookie"},
+        )
+        
+    user, session = result
+    
+    # Require CSRF validation for mutating requests (POST, PUT, DELETE, PATCH)
+    if request.method in ["POST", "PUT", "DELETE", "PATCH"]:
+        if not validate_yullo_csrf(request, session):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid CSRF token",
+            )
+            
+    return user

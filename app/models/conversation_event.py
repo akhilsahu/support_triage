@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.core.database import Base
@@ -25,8 +25,10 @@ class ConversationEvent(Base):
     chatbot_id = Column(
         UUID(as_uuid=True),
         ForeignKey("chatbots.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
+    runtime_type = Column(String(20), nullable=True) # "chatbot" | "aura"
+    runtime_id = Column(String(100), nullable=True) # ID of the runtime
     session_id = Column(UUID(as_uuid=True), nullable=False)
     conversation_id = Column(String(100), nullable=False)
     customer_id = Column(UUID(as_uuid=True), nullable=True)
@@ -45,6 +47,7 @@ class ConversationEvent(Base):
     reasoning_effort = Column(String(20), nullable=True)
     source_count = Column(Integer, nullable=True)
     error_code = Column(String(80), nullable=True)
+    dedupe_key = Column(String(180), nullable=True)
     event_metadata = Column(JSONB, nullable=False, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -52,13 +55,16 @@ class ConversationEvent(Base):
         Index("ix_conversation_events_space_created", "space_id", "created_at"),
         Index("ix_conversation_events_session_created", "session_id", "created_at"),
         Index("ix_conversation_events_type_created", "event_type", "created_at"),
+        Index("uix_conversation_events_space_dedupe", "space_id", "dedupe_key", unique=True, postgresql_where=text("dedupe_key IS NOT NULL")),
     )
 
     def to_dict(self) -> dict:
         return {
             "id": str(self.id),
             "space_id": str(self.space_id),
-            "chatbot_id": str(self.chatbot_id),
+            "chatbot_id": str(self.chatbot_id) if self.chatbot_id else None,
+            "runtime_type": self.runtime_type,
+            "runtime_id": self.runtime_id,
             "session_id": str(self.session_id),
             "conversation_id": self.conversation_id,
             "customer_id": str(self.customer_id) if self.customer_id else None,

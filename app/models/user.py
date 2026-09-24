@@ -34,6 +34,8 @@ class User(Base):
     # Relationships
     identities = relationship("AuthIdentity", back_populates="user", cascade="all, delete-orphan")
     spaces = relationship("Space", back_populates="owner_user")
+    yullo_sessions = relationship("YulloUserSession", back_populates="user", cascade="all, delete-orphan")
+    yullo_preference = relationship("YulloUserPreference", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
     def to_dict(self):
         return {

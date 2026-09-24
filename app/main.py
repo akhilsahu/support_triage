@@ -14,9 +14,25 @@ import structlog
 from app.config import settings
 from app.core.database import init_db, close_db, check_db_connection
 from app.core.redis import redis_client
-from app.api.v1 import agents, workflows, tasks, documents, admin, datasources, datasource_tools, mock_orders, suggestions
-from app.api.v1 import space_agents, chat_sessions, chatbots, training, evaluations
+from app.api.v1 import (
+    chat_sessions,
+    chatbots,
+    agents,
+    workflows,
+    tasks,
+    documents,
+    admin,
+    datasources,
+    datasource_tools,
+    mock_orders,
+    space_agents,
+    suggestions,
+    training,
+
+
+)
 from app.api.v1 import usage as ai_usage
+from app.yullo.api import public as yullo_public
 from app.api.v1.space_agents import kb_router
 from app.api.v1 import knowledge_base
 from app.api.v1 import facts as kb_facts
@@ -24,7 +40,7 @@ from app.api.v1 import fact_extraction
 from app.api import chat, auth, customer, space, chatbot_user
 from app.api.v1 import dashboard, superadmin
 from app.api.v1.inbox import staff_auth, sessions, escalation, stream, canned_replies
-from app.api.v1 import yullo_auth
+from app.api.v1 import yullo_auth, yullo_onboarding
 from app.api.v1 import widget as widget_api
 # CopilotKit setup removed (unused dependency)
 
@@ -383,7 +399,13 @@ async def root():
 
 
 # Include API routers
+from app.yullo.api import home as yullo_home
+from app.yullo.api import space_forms as yullo_space_forms
+
 app.include_router(yullo_auth.router, prefix="/api/v1", tags=["Yullo Auth"])
+app.include_router(yullo_onboarding.router, prefix="/api/v1", tags=["Yullo Onboarding"])
+app.include_router(yullo_home.router, prefix="/api/v1", tags=["Yullo Home"])
+app.include_router(yullo_space_forms.router, prefix="/api/v1", tags=["Yullo Space Forms"])
 app.include_router(auth.router, prefix="/api/v1", tags=["Auth"])
 app.include_router(chat.router, tags=["Chat"])
 app.include_router(agents.router, prefix="/api/v1", tags=["Agents"])
@@ -405,8 +427,10 @@ app.include_router(suggestions.router, prefix="/api/v1", tags=["Suggestions"])
 app.include_router(chat_sessions.router, prefix="/api/v1", tags=["Chat Sessions"])
 app.include_router(chatbots.router,      prefix="/api/v1", tags=["Chatbots"])
 app.include_router(training.router,      prefix="/api/v1")
-app.include_router(evaluations.router,   prefix="/api/v1")
+
 app.include_router(ai_usage.router,      prefix="/api/v1")
+app.include_router(yullo_public.router,  prefix="/api/v1/yullo/public", tags=["Yullo Public"])
+
 app.include_router(space.router, prefix="/api/v1")
 app.include_router(customer.router)
 app.include_router(chatbot_user.router)

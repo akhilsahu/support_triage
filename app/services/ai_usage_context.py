@@ -16,6 +16,13 @@ class AiUsageContext:
     kb_id: Optional[UUID] = None
     session_id: Optional[UUID] = None
     message_id: Optional[UUID] = None
+    
+    # Aura Attribution
+    product: Optional[str] = None
+    runtime_kind: Optional[str] = None
+    aura_id: Optional[UUID] = None
+    aura_version_id: Optional[UUID] = None
+    aura_run_id: Optional[UUID] = None
 
 
 _current: ContextVar[Optional[AiUsageContext]] = ContextVar("ai_usage_ctx", default=None)

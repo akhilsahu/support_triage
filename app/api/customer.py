@@ -118,6 +118,10 @@ async def _get_brand(slug: str, chatbot_slug: Optional[str] = None):
     unknown) it falls back to the default chatbot so old /{slug} links and
     unrecognised bot slugs keep working. Raises 404/503 if nothing resolves.
     """
+    from app.utils.reserved_slugs import is_reserved_slug
+    if is_reserved_slug(slug):
+        raise HTTPException(404, f"Brand '{slug}' not found.")
+
     from app.core.database import AsyncSessionLocal
     db = AsyncSessionLocal()
     result = await db.execute(

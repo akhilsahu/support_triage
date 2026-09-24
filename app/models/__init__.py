@@ -20,11 +20,21 @@ from app.models.task import Task, TaskStatus
 from app.models.execution import Execution, ExecutionStatus
 from app.models.conversation import Conversation, Message
 from app.models.conversation_event import ConversationEvent
-from app.models.evaluation import EvaluationSuite, EvaluationCase, EvaluationRun, EvaluationResult
+
 from app.models.inbox import SessionWaitingQueue, SessionAssignmentHistory, SpaceAssignmentRule, CannedReply
 from app.models.staff import StaffMember
 from app.models.training_feedback import TrainingFeedback
 from app.models.ai_usage import AiUsageEvent
+from app.models.yullo_config import YulloConfig
+from app.models.yullo_space import YulloSpace
+
+from app.models.yullo_source import YulloSource
+from app.models.yullo_user_session import YulloUserSession
+from app.models.yullo_user_preference import YulloUserPreference
+
+from app.models.conversation_turn import ConversationTurn
+from app.models.yullo_home_event import YulloHomeEvent
+from app.models.yullo_space_entity import YulloSpaceEntity, YulloSpaceEntityEvidence
 
 __all__ = [
     "User", "AuthIdentity",
@@ -48,6 +58,15 @@ __all__ = [
     "StaffMember",
     "TrainingFeedback",
     "AiUsageEvent",
+    "YulloConfig",
+    "YulloSpace",
+    "YulloSource",
+    "YulloUserSession",
+    "YulloUserPreference",
+    "ConversationTurn",
+    "YulloHomeEvent",
+    "YulloSpaceEntity",
+    "YulloSpaceEntityEvidence",
 ]
 
 # Made with Bob
