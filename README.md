@@ -70,6 +70,8 @@ code, files, routes, components, and identifiers must use `space`:
 > (served by `space_agents.py`), and `/api/v1/orgs` (super-admin). These paths are
 > still called by the frontend and are pending a future rename.
 
+**For Yullo product-specific terminology (Link, Aura, Home, Space, Network), see [YULLO_TERMINOLOGY.md](docs/YULLO_TERMINOLOGY.md).**
+
 ## 📋 Prerequisites
 
 - Python 3.11+
