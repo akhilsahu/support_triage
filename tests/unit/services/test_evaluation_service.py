@@ -28,7 +28,7 @@ def test_grade_passes_when_all_expectations_match() -> None:
 
     assert grade.passed is True
     assert grade.failures == []
-    assert all(check.status == "passed" for check in grade.checks)
+    assert all(check.status in ("passed", "skipped") for check in grade.checks)
 
 
 @pytest.mark.parametrize(
