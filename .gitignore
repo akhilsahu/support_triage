@@ -120,6 +120,7 @@ data/
 uploads/
 
 # UI Node modules and build
+node_modules/
 ui/node_modules/
 ui/dist/
 ui/build/
