@@ -349,6 +349,17 @@ class SourceService:
                 # records that were already sanitised at write-time is harmless.
                 preview_txt = sanitize_extracted_text(preview_txt)
 
+            source_assets = dict(meta.get("assets") or {})
+            if (not source_assets.get("images") or not source_assets.get("links")) and preview_txt:
+                from app.yullo.services.sources.asset_extractor import extract_markdown_assets
+                md_assets = extract_markdown_assets(preview_txt, item.source_locator or "")
+                if md_assets.get("images") and not source_assets.get("images"):
+                    source_assets["images"] = md_assets["images"]
+                if md_assets.get("links") and not source_assets.get("links"):
+                    source_assets["links"] = md_assets["links"]
+                if md_assets.get("documents") and not source_assets.get("documents"):
+                    source_assets["documents"] = md_assets["documents"]
+
             sources.append(SpaceSourceResponse(
                 id=item.id,
                 source_type=item.item_type,
@@ -372,9 +383,9 @@ class SourceService:
                 fact_extraction_error=meta.get("fact_extraction_error"),
                 entity_extraction_status=meta.get("entity_extraction_status"),
                 entity_extraction_error=meta.get("entity_extraction_error"),
-                favicon_url=meta.get("favicon_url") or (meta.get("assets", {}).get("favicon_url") if isinstance(meta.get("assets"), dict) else None),
-                preview_image_url=meta.get("preview_image_url") or (meta.get("assets", {}).get("preview_image_url") if isinstance(meta.get("assets"), dict) else None),
-                assets=meta.get("assets"),
+                favicon_url=meta.get("favicon_url") or (source_assets.get("favicon_url") if isinstance(source_assets, dict) else None),
+                preview_image_url=meta.get("preview_image_url") or (source_assets.get("preview_image_url") if isinstance(source_assets, dict) else None) or (source_assets.get("images", [{}])[0].get("url") if source_assets.get("images") else None),
+                assets=source_assets,
                 created_at=item.created_at
             ))
             

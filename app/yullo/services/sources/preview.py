@@ -239,27 +239,17 @@ async def extract_and_persist_link_preview(
                     clean_text = deep_text
                     provenance = "scraper_deep_existing"
 
-                    # If quick scrape didn't find content images, extract markdown images from deep render
-                    if not page_assets.get("images"):
-                        md_images = re.findall(r'!\[(.*?)\]\((https?://[^\s\)]+)\)', deep_text)
-                        for alt, img_url in md_images[:10]:
-                            page_assets["images"].append({
-                                "url": img_url,
-                                "alt": alt or title,
-                                "caption": None,
-                                "context_text": title,
-                                "section": "Overview",
-                            })
-
-                    if not page_assets.get("links"):
-                        md_links = re.findall(r'(?<!\!)\[(.*?)\]\((https?://[^\s\)]+)\)', deep_text)
-                        for link_title, link_url in md_links[:15]:
-                            page_assets.setdefault("links", []).append({
-                                "url": link_url,
-                                "title": link_title,
-                                "context_text": link_title,
-                                "section": "Overview",
-                            })
+                    # Extract rich images, links, and documents from deep rendered markdown
+                    from app.yullo.services.sources.asset_extractor import extract_markdown_assets
+                    deep_assets = extract_markdown_assets(deep_text, target_url)
+                    if not page_assets.get("images") and deep_assets.get("images"):
+                        page_assets["images"] = deep_assets["images"]
+                    if not page_assets.get("documents") and deep_assets.get("documents"):
+                        page_assets["documents"] = deep_assets["documents"]
+                    if not page_assets.get("links") and deep_assets.get("links"):
+                        page_assets["links"] = deep_assets["links"]
+                    if not page_assets.get("preview_image_url") and page_assets["images"]:
+                        page_assets["preview_image_url"] = page_assets["images"][0]["url"]
         except Exception as deep_err:
             logger.warning(f"Existing deep scraper fallback failed for '{target_url}': {deep_err}")
 
@@ -269,12 +259,37 @@ async def extract_and_persist_link_preview(
         if len(meta_desc) >= 30:
             clean_text = meta_desc
 
-    # 5. Determine final status
+    # 5. Extract grounded page facts using LLM provider abstraction
     facts: List[Dict[str, str]] = []
-    
     if clean_text and len(clean_text) >= 30:
-        # The scrape itself is the reviewable preview. Full
-        # parsing, indexing, facts and entities start only after owner consent.
+        logger.info(
+            "preview.fact_extraction.starting",
+            target_url=target_url,
+            clean_text_len=len(clean_text),
+            space_id=str(space_id),
+            item_id=str(item_id),
+        )
+        try:
+            facts = await _run_llm_fact_extraction(target_url, title, clean_text)
+            logger.info(
+                "preview.fact_extraction.completed",
+                target_url=target_url,
+                extracted_count=len(facts),
+            )
+        except Exception as fact_err:
+            logger.error(
+                "preview.fact_extraction.failed",
+                target_url=target_url,
+                error=str(fact_err),
+                exc_info=True,
+            )
+
+    # 6. Determine final status
+    # When facts are successfully extracted, the source is ready for owner review.
+    # If text is present but 0 facts were found, it is ready_to_review so the owner can inspect the excerpt.
+    if facts and len(facts) >= 1:
+        status = "ready"
+    elif clean_text and len(clean_text) >= 30:
         status = "ready_to_review"
     elif status != "unavailable":
         status = "insufficient_context"
@@ -309,10 +324,47 @@ async def extract_and_persist_link_preview(
         else (title or domain)
     )
     kb_item.title = persisted_title
-    kb_item.extracted_facts = facts
+    kb_item.extracted_facts = facts[:4]
     kb_item.source_metadata = source_metadata
     kb_item.ingestion_status = status
     db.add(kb_item)
+
+    # Persist extracted preview facts to KBFact table so they are immediately available
+    # in the SourceReviewSheet for human verification/confirmation without waiting for full ingestion.
+    if facts:
+        from app.models.kb_fact import KBFact
+        from sqlalchemy import select as sa_select
+
+        # Check existing facts for this source item to avoid inserting duplicates on re-preview
+        existing_facts = (
+            await db.scalars(
+                sa_select(KBFact).where(
+                    KBFact.source_item_id == kb_item.id,
+                    KBFact.space_id == space_id,
+                )
+            )
+        ).all()
+        existing_values = {ef.value.strip().casefold() for ef in existing_facts if ef.value}
+
+        for f in facts[:4]:
+            val = (f.get("text") or "").strip()
+            if val and val.casefold() not in existing_values:
+                kbf = KBFact(
+                    kb_id=kb_item.kb_id,
+                    space_id=kb_item.space_id,
+                    subject=persisted_title,
+                    label="Overview",
+                    value=val,
+                    note=(f.get("evidence_excerpt") or "").strip(),
+                    review_status="extracted",
+                    verified=False,
+                    source_item_id=kb_item.id,
+                    source_filename=persisted_title,
+                    source_version=kb_item.source_version or 1,
+                )
+                db.add(kbf)
+                existing_values.add(val.casefold())
+
     await db.commit()
 
     return {

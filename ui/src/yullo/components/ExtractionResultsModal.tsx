@@ -29,10 +29,15 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
   spaceId,
   onOpenReviewSheet,
 }) => {
+  const [currentSource, setCurrentSource] = useState<SourceItem | null>(source);
   const [activeTab, setActiveTab] = useState<ExtractionTab>('connected-assets');
   const [facts, setFacts] = useState<SourceFact[]>([]);
   const [entities, setEntities] = useState<SourceEntity[]>([]);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+
+  useEffect(() => {
+    setCurrentSource(source);
+  }, [source]);
 
   useEffect(() => {
     if (!isOpen || !source?.id || !spaceId) return;
@@ -41,10 +46,14 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
     setIsLoadingDetails(true);
 
     Promise.all([
+      yulloOnboardingApi.getSource(source.id).catch(() => null),
       yulloOnboardingApi.getSourceFacts(spaceId, source.id).catch(() => []),
       entitiesApi.listSourceEntities(spaceId, source.id).catch(() => []),
-    ]).then(([fetchedFacts, fetchedEntities]) => {
+    ]).then(([freshSource, fetchedFacts, fetchedEntities]) => {
       if (isMounted) {
+        if (freshSource) {
+          setCurrentSource(freshSource);
+        }
         setFacts(fetchedFacts);
         setEntities(fetchedEntities);
         setIsLoadingDetails(false);
@@ -58,13 +67,14 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
 
   if (!isOpen || !source) return null;
 
-  const rawTitle = source.title || source.content_ref || 'Source';
+  const activeSource = currentSource || source;
+  const rawTitle = activeSource.title || activeSource.content_ref || 'Source';
   const displayTitle = (rawTitle.includes('/') ? rawTitle.split('/').pop() || rawTitle : rawTitle)
     .replace(/^file_[a-f0-9]+_/i, '')
     .replace(/^https?:\/\//, '')
     .replace(/\/$/, '');
 
-  const assets = source.assets;
+  const assets = activeSource.assets;
   const images = assets?.images || [];
   const documents = assets?.documents || [];
   const links = (assets as any)?.links || [];
@@ -94,10 +104,10 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
               </div>
 
               <div className="flex items-center gap-3">
-                {source.source_type === 'url' && source.favicon_url ? (
+                {activeSource.source_type === 'url' && activeSource.favicon_url ? (
                   <div className="w-7 h-7 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] flex items-center justify-center shrink-0 overflow-hidden">
                     <img 
-                      src={source.favicon_url} 
+                      src={activeSource.favicon_url} 
                       alt="" 
                       className="w-4 h-4 object-contain rounded-xs" 
                       onError={(e) => { e.currentTarget.style.display = 'none'; }}
@@ -113,9 +123,9 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
                 </h2>
               </div>
 
-              {source.content_ref && source.content_ref !== displayTitle && (
+              {activeSource.content_ref && activeSource.content_ref !== displayTitle && (
                 <p className="text-[12px] text-[var(--text-secondary)] font-mono truncate mt-1">
-                  {source.content_ref}
+                  {activeSource.content_ref}
                 </p>
               )}
             </div>
@@ -344,7 +354,7 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
               </div>
 
               {/* Social / OpenGraph Preview Banner if available */}
-              {source.preview_image_url && (
+              {activeSource.preview_image_url && (
                 <div className="space-y-2">
                   <h4 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-2">
                     <Globe className="w-4 h-4 text-cyan-600" />
@@ -353,7 +363,7 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
                   <div className="rounded-xl border border-[var(--border)] overflow-hidden bg-[var(--surface-soft)]/40 flex flex-col sm:flex-row items-center">
                     <div className="w-full sm:w-64 h-36 shrink-0 bg-[var(--surface-soft)] overflow-hidden">
                       <img 
-                        src={source.preview_image_url} 
+                        src={activeSource.preview_image_url} 
                         alt="Preview" 
                         className="w-full h-full object-cover" 
                         onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }}
@@ -364,10 +374,10 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
                         {displayTitle}
                       </p>
                       <p className="text-[13px] text-[var(--text-secondary)] mt-1 line-clamp-2">
-                        {assets?.description || source.preview_excerpt || 'Website preview card image.'}
+                        {assets?.description || activeSource.preview_excerpt || 'Website preview card image.'}
                       </p>
                       <a 
-                        href={source.preview_image_url} 
+                        href={activeSource.preview_image_url} 
                         target="_blank" 
                         rel="noreferrer" 
                         className="inline-flex items-center gap-1 text-[12px] text-[var(--accent-ink)] hover:underline mt-2 font-medium"

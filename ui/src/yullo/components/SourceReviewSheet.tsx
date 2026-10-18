@@ -417,6 +417,35 @@ export const SourceReviewSheet: React.FC<SourceReviewSheetProps> = ({
                       </div>
                     </div>
                   )}
+
+                  {/* Contextual Links */}
+                  {Boolean((source.assets as any)?.links?.length) && (
+                    <div className="mt-5 space-y-3">
+                      <h4 className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+                        Contextual Links ({(source.assets as any)!.links!.length})
+                      </h4>
+                      <div className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)] bg-[var(--surface-soft)]/40 overflow-hidden">
+                        {(source.assets as any)!.links!.map((link: any, idx: number) => (
+                          <div key={idx} className="p-3 flex items-center justify-between gap-3 text-[13px]">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium text-[var(--text-primary)] truncate font-[Satoshi]">{link.title || link.url}</p>
+                              {link.context_text && (
+                                <p className="text-[11px] text-[var(--text-muted)] italic truncate">"{link.context_text}"</p>
+                              )}
+                            </div>
+                            <a
+                              href={link.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[12px] font-medium text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors shrink-0"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5 text-[var(--text-secondary)]" /> Visit
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </section>
               )}
             </>

@@ -323,3 +323,88 @@ def extract_page_assets(raw_html: bytes | str, base_url: str) -> Dict[str, Any]:
         len(results["links"]),
     )
     return results
+
+
+def extract_markdown_assets(markdown_text: str, base_url: str) -> Dict[str, Any]:
+    """
+    Extracts images, links, and documents from Markdown content (e.g. from Firecrawl or deep scrapers).
+    Maintains semantic relationship with surrounding context and nearest preceding section headings.
+    """
+    results: Dict[str, Any] = {
+        "images": [],
+        "documents": [],
+        "links": [],
+    }
+    if not markdown_text:
+        return results
+
+    lines = markdown_text.splitlines()
+    current_section = "Overview"
+    seen_image_urls = set()
+    seen_link_urls = set()
+    seen_doc_urls = set()
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        # Track Markdown headings (# Heading, ## Subheading)
+        if stripped.startswith("#"):
+            current_section = stripped.lstrip("#").strip()
+            continue
+
+        # 1. Extract Markdown Images: ![alt](url)
+        for alt, raw_url in re.findall(r'!\[(.*?)\]\((https?://[^\s\)]+)\)', line):
+            resolved = _safe_resolve_url(base_url, raw_url)
+            if not resolved or resolved in seen_image_urls:
+                continue
+
+            results["images"].append({
+                "url": resolved,
+                "alt": alt.strip() or current_section,
+                "caption": None,
+                "context_text": stripped if len(stripped) > 10 else f"Image in {current_section}",
+                "section": current_section,
+            })
+            seen_image_urls.add(resolved)
+            if len(results["images"]) >= 12:
+                break
+
+        # 2. Extract Markdown Links: [title](url)
+        for title, raw_url in re.findall(r'(?<!\!)\[(.*?)\]\((https?://[^\s\)]+)\)', line):
+            resolved = _safe_resolve_url(base_url, raw_url)
+            if not resolved or resolved == base_url or resolved.endswith("#"):
+                continue
+
+            parsed_href = urlparse(resolved)
+            path = parsed_href.path.lower()
+            doc_type = None
+            for ext, kind in _DOC_EXTENSIONS.items():
+                if path.endswith(ext):
+                    doc_type = kind
+                    break
+
+            if doc_type:
+                if resolved in seen_doc_urls:
+                    continue
+                filename = path.rsplit("/", 1)[-1] if "/" in path else path
+                results["documents"].append({
+                    "url": resolved,
+                    "title": title.strip() or filename or "Document",
+                    "file_type": doc_type,
+                    "filename": filename,
+                    "context_text": stripped,
+                    "section": current_section,
+                })
+                seen_doc_urls.add(resolved)
+            elif len(results["links"]) < 12 and resolved not in seen_link_urls:
+                results["links"].append({
+                    "url": resolved,
+                    "title": title.strip(),
+                    "context_text": stripped,
+                    "section": current_section,
+                })
+                seen_link_urls.add(resolved)
+
+    return results
