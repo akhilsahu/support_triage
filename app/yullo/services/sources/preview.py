@@ -259,35 +259,74 @@ async def extract_and_persist_link_preview(
         if len(meta_desc) >= 30:
             clean_text = meta_desc
 
-    # 5. Extract grounded page facts using LLM provider abstraction
+    # 5. Extract grounded page facts and structured entities (Useful links, Contact details, Services)
     facts: List[Dict[str, str]] = []
+    entity_candidates = []
     if clean_text and len(clean_text) >= 30:
         logger.info(
-            "preview.fact_extraction.starting",
+            "preview.extraction.starting",
             target_url=target_url,
             clean_text_len=len(clean_text),
             space_id=str(space_id),
             item_id=str(item_id),
         )
-        try:
-            facts = await _run_llm_fact_extraction(target_url, title, clean_text)
-            logger.info(
-                "preview.fact_extraction.completed",
-                target_url=target_url,
-                extracted_count=len(facts),
-            )
-        except Exception as fact_err:
-            logger.error(
-                "preview.fact_extraction.failed",
-                target_url=target_url,
-                error=str(fact_err),
-                exc_info=True,
-            )
+
+        async def _extract_facts_safe() -> List[Dict[str, str]]:
+            try:
+                res = await _run_llm_fact_extraction(target_url, title, clean_text)
+                logger.info(
+                    "preview.fact_extraction.completed",
+                    target_url=target_url,
+                    extracted_count=len(res),
+                )
+                return res
+            except Exception as fact_err:
+                logger.error(
+                    "preview.fact_extraction.failed",
+                    target_url=target_url,
+                    error=str(fact_err),
+                    exc_info=True,
+                )
+                return []
+
+        async def _extract_entities_safe() -> list:
+            from app.config import settings
+            if not settings.YULLO_ENTITY_EXTRACTION_ENABLED:
+                return []
+            try:
+                from app.yullo.services.entities.provider import LLMEntityExtractionProvider
+                from app.yullo.services.entities.extraction import extract_entity_candidates
+                provider = LLMEntityExtractionProvider()
+                cands = await extract_entity_candidates(
+                    source_item_id=kb_item.id,
+                    source_version=kb_item.source_version or 1,
+                    provider=provider,
+                    source_text=clean_text,
+                )
+                logger.info(
+                    "preview.entity_extraction.completed",
+                    target_url=target_url,
+                    extracted_count=len(cands),
+                )
+                return cands
+            except Exception as entity_err:
+                logger.error(
+                    "preview.entity_extraction.failed",
+                    target_url=target_url,
+                    error=str(entity_err),
+                    exc_info=True,
+                )
+                return []
+
+        facts, entity_candidates = await asyncio.gather(
+            _extract_facts_safe(),
+            _extract_entities_safe(),
+        )
 
     # 6. Determine final status
-    # When facts are successfully extracted, the source is ready for owner review.
-    # If text is present but 0 facts were found, it is ready_to_review so the owner can inspect the excerpt.
-    if facts and len(facts) >= 1:
+    # When facts or structured entities are successfully extracted, the source is ready for owner review.
+    # If text is present but 0 facts/entities were found, it is ready_to_review so the owner can inspect the excerpt.
+    if (facts and len(facts) >= 1) or (entity_candidates and len(entity_candidates) >= 1):
         status = "ready"
     elif clean_text and len(clean_text) >= 30:
         status = "ready_to_review"
@@ -314,6 +353,7 @@ async def extract_and_persist_link_preview(
         "preview_image_url": preview_image_url,
         "logo_url": logo_url,
         "assets": page_assets,
+        "entity_extraction_status": "done" if entity_candidates else ("no_entities_found" if clean_text else None),
     })
 
     # Keep an owner-supplied label. When the initial title is only the URL,
@@ -364,6 +404,16 @@ async def extract_and_persist_link_preview(
                 )
                 db.add(kbf)
                 existing_values.add(val.casefold())
+
+    # Persist extracted structured entity candidates into YulloSpaceEntity & YulloSpaceEntityEvidence
+    if entity_candidates:
+        from app.yullo.services.entities.extraction import persist_entity_candidates
+        await persist_entity_candidates(
+            db,
+            source_item_id=kb_item.id,
+            source_version=kb_item.source_version or 1,
+            candidates=entity_candidates,
+        )
 
     await db.commit()
 

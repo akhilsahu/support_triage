@@ -641,49 +641,82 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
                 </p>
               ) : (
                 <div className="grid grid-cols-1 gap-3">
-                  {entities.map((entity) => (
-                    <div 
-                      key={entity.id} 
-                      className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)]/50 space-y-2"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)]">
-                            {entity.entity_type.replace('_', ' ')}
+                  {entities.map((entity) => {
+                    const label = (
+                      entity.entity_type === 'action' ? 'Useful links' :
+                      entity.entity_type === 'contact_channel' ? 'Contact details' :
+                      entity.entity_type === 'offering' ? 'Services and capabilities' :
+                      entity.entity_type === 'portfolio_item' ? 'Portfolio' :
+                      entity.entity_type === 'location' ? 'Locations' :
+                      entity.entity_type === 'person' ? 'People' :
+                      entity.entity_type === 'event' ? 'Events' :
+                      entity.entity_type.replace('_', ' ')
+                    );
+                    const title = (
+                      entity.payload_json?.name || 
+                      entity.payload_json?.title || 
+                      entity.payload_json?.label || 
+                      'Detail'
+                    );
+                    const linkUrl = (
+                      entity.payload_json?.destination_url || 
+                      (typeof entity.payload_json?.value === 'string' && entity.payload_json.value.startsWith('http') ? entity.payload_json.value : null)
+                    );
+
+                    return (
+                      <div 
+                        key={entity.id} 
+                        className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)]/50 space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[var(--surface)] border border-[var(--border)] text-[var(--accent-ink)]">
+                              {label}
+                            </span>
+                            <h4 className="font-semibold text-[15px] text-[var(--text-primary)] font-[Satoshi]">
+                              {title}
+                            </h4>
+                          </div>
+                          <span className="text-[12px] font-mono text-[var(--text-muted)]">
+                            rev {entity.revision}
                           </span>
-                          <h4 className="font-semibold text-[15px] text-[var(--text-primary)] font-[Satoshi]">
-                            {entity.payload_json?.name || entity.payload_json?.title || entity.payload_json?.label || 'Detail'}
-                          </h4>
                         </div>
-                        <span className="text-[12px] font-mono text-[var(--text-muted)]">
-                          rev {entity.revision}
-                        </span>
+
+                        {/* Organization / Purpose info */}
+                        {(entity.payload_json?.organization || entity.payload_json?.purpose) && (
+                          <p className="text-[12px] font-medium text-[var(--text-secondary)]">
+                            {[entity.payload_json.organization, entity.payload_json.purpose].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+
+                        {entity.payload_json?.description && (
+                          <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
+                            {entity.payload_json.description}
+                          </p>
+                        )}
+
+                        {/* Entity price or link if available */}
+                        {entity.payload_json?.price_amount && (
+                          <p className="text-[13px] font-semibold text-emerald-600">
+                            {entity.payload_json.currency || '$'}{entity.payload_json.price_amount}
+                          </p>
+                        )}
+
+                        {linkUrl && (
+                          <div className="pt-1">
+                            <a 
+                              href={linkUrl} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="inline-flex items-center gap-1.5 text-[12px] text-[var(--accent-ink)] hover:underline font-mono"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" /> {linkUrl}
+                            </a>
+                          </div>
+                        )}
                       </div>
-
-                      {entity.payload_json?.description && (
-                        <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
-                          {entity.payload_json.description}
-                        </p>
-                      )}
-
-                      {/* Entity price or link if available */}
-                      {entity.payload_json?.price_amount && (
-                        <p className="text-[13px] font-semibold text-emerald-600">
-                          {entity.payload_json.currency || '$'}{entity.payload_json.price_amount}
-                        </p>
-                      )}
-                      {entity.payload_json?.destination_url && (
-                        <a 
-                          href={entity.payload_json.destination_url} 
-                          target="_blank" 
-                          rel="noreferrer" 
-                          className="inline-flex items-center gap-1 text-[12px] text-[var(--accent-ink)] hover:underline font-mono"
-                        >
-                          {entity.payload_json.destination_url} <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
