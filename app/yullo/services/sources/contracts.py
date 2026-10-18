@@ -10,6 +10,7 @@ class TextSourceInput(BaseModel):
 class UrlSourceInput(BaseModel):
     source_type: Literal["url"] = "url"
     url: str
+    title: Optional[str] = None
 
 class FileSourceInput(BaseModel):
     source_type: Literal["file"] = "file"
@@ -23,4 +24,4 @@ class SourceAccepted(BaseModel):
     item_id: UUID
     job_id: UUID
     source_version: int
-    status: Literal["queued"] = "queued"
+    status: Literal["queued", "uploaded"] = "uploaded"

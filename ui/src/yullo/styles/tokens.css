@@ -1,0 +1,297 @@
+/* Yullo Isolated Design Tokens */
+/* Scoped entirely to .yullo-app to prevent Support247 bleed */
+
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap');
+@import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap');
+
+html {
+  transition:
+    background-color 220ms ease,
+    color 220ms ease;
+}
+
+.yullo-app {
+  --font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-satoshi: 'Satoshi', var(--font-sans);
+
+  /* Core Foundation - Light (Default) */
+  --canvas: #F3F4F1;
+  --surface: #FCFCFA;
+  --surface-soft: #F4F6F5;
+  
+  --text-primary: #151B27;
+  --text-secondary: #697382;
+  --text-muted: rgba(21, 27, 39, 0.4);
+  
+  --border: rgba(21, 27, 39, 0.11);
+  --border-hover: rgba(21, 27, 39, 0.2);
+  --mosaic-hairline: rgba(0, 0, 0, 0.06);
+  --mosaic-field: rgba(255, 255, 255, 0.4);
+  --mosaic-band-soft: rgba(0, 0, 0, 0.02);
+  --mosaic-divider: rgba(0, 0, 0, 0.08);
+  --anchor-attention: var(--attention);
+  --pulse-connector: rgba(100, 112, 128, 0.20);
+  
+      
+  --ambient-cyan: #27849A;
+  --ambient-violet: #6758B8;
+  --ambient-particle: rgba(102, 113, 127, 0.3);
+  
+  --critical: #DC2626;
+  --attention: #F59E0B;
+  
+  --focus: #4EA6CF;
+  --focus-soft: rgba(78, 166, 207, 0.16);
+  
+  --ambient-path-opacity: 0.32;
+  --ambient-glow: rgba(243,220,57,0.15);
+  
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  
+  --shadow-soft: 0 1px 2px rgba(0,0,0,0.05);
+
+  --easing-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 150ms;
+  --duration-base: 300ms;
+  --duration-slow: 500ms;
+
+  background-color: var(--canvas);
+  color: var(--text-primary);
+  --anchor-for-you: #344054;
+  --anchor-spaces: #F6B91A;
+  --anchor-insight: #6695FF;
+  --network-cyan: #167891;
+  --network-violet: #6758B8;
+  --network-cyan-trace: rgba(39, 132, 154, 0.32);
+  --network-violet-trace: rgba(103, 88, 184, 0.30);
+  --network-structural: rgba(100, 112, 128, 0.20);
+  --network-particles: rgba(102, 113, 127, 0.30);
+
+  font-family: var(--font-sans);
+}
+
+/* ---------------------------------
+   ACCENT MATRIX
+   --------------------------------- */
+[data-accent="yullo"] .yullo-app, .yullo-app {
+  --accent-base: 250, 204, 21; /* #FACC15 */
+  --accent-base-dark: 133, 77, 14; /* #854D0E */
+  --accent-base-light: 253, 224, 71; /* #FDE047 */
+  --accent-on-solid-base: #151B27;
+}
+[data-accent="cyan"] .yullo-app {
+  --accent-base: 6, 182, 212; /* #06B6D4 */
+  --accent-base-dark: 8, 145, 178; /* #0891B2 */
+  --accent-base-light: 103, 232, 249; /* #67E8F9 */
+  --accent-on-solid-base: #FFFFFF;
+}
+[data-accent="blue"] .yullo-app {
+  --accent-base: 59, 130, 246; /* #3B82F6 */
+  --accent-base-dark: 29, 78, 216; /* #1D4ED8 */
+  --accent-base-light: 147, 197, 253; /* #93C5FD */
+  --accent-on-solid-base: #FFFFFF;
+}
+[data-accent="violet"] .yullo-app {
+  --accent-base: 139, 92, 246; /* #8B5CF6 */
+  --accent-base-dark: 109, 40, 217; /* #6D28D9 */
+  --accent-base-light: 196, 181, 253; /* #C4B5FD */
+  --accent-on-solid-base: #FFFFFF;
+}
+[data-accent="coral"] .yullo-app {
+  --accent-base: 244, 63, 94; /* #F43F5E */
+  --accent-base-dark: 190, 18, 60; /* #BE123C */
+  --accent-base-light: 253, 164, 175; /* #FDA4AF */
+  --accent-on-solid-base: #FFFFFF;
+}
+[data-accent="forest"] .yullo-app {
+  --accent-base: 16, 185, 129; /* #10B981 */
+  --accent-base-dark: 4, 120, 87; /* #047857 */
+  --accent-base-light: 110, 231, 183; /* #6EE7B7 */
+  --accent-on-solid-base: #FFFFFF;
+}
+[data-accent="graphite"] .yullo-app {
+  --accent-base: 51, 65, 85; /* #334155 */
+  --accent-base-dark: 15, 23, 42; /* #0F172A */
+  --accent-base-light: 148, 163, 184; /* #94A3B8 */
+  --accent-on-solid-base: #FFFFFF;
+}
+[data-accent="plum"] .yullo-app {
+  --accent-base: 217, 70, 239; /* #D946EF */
+  --accent-base-dark: 162, 28, 175; /* #A21CAF */
+  --accent-base-light: 240, 171, 252; /* #F0ABFC */
+  --accent-on-solid-base: #FFFFFF;
+}
+
+/* ---------------------------------
+   SURFACE THEMES
+   --------------------------------- */
+
+/* Light Mode Theme (Base Overrides just in case) */
+[data-theme="light"] .yullo-app {
+  --canvas: #F6F7F8;
+  --surface: #FFFFFF;
+  --surface-soft: #EEF1F4;
+  --text-primary: #151B27;
+  --text-secondary: #697382;
+  --text-muted: rgba(21, 27, 39, 0.4);
+  --border: rgba(21, 27, 39, 0.11);
+  
+  
+  --accent-solid: rgb(var(--accent-base));
+  --accent-on-solid: var(--accent-on-solid-base);
+  --accent-ink: rgb(var(--accent-base-dark));
+  --accent-soft: rgba(var(--accent-base), 0.15);
+  --accent-border: rgba(var(--accent-base), 0.3);
+  --accent-ring: rgba(var(--accent-base), 0.5);
+  
+  --focus: var(--accent-solid);
+  --focus-soft: var(--accent-soft);
+}
+
+/* Warm Mode Theme */
+[data-theme="warm"] .yullo-app {
+  --canvas: #F3EFE6;
+  --surface: #FCF9F2;
+  --surface-soft: #EEE8DC;
+  
+  --text-primary: #25221D;
+  --text-secondary: #756F65;
+  --text-muted: #B4A59A;
+  
+  --border: rgba(50,43,33,.09);
+  --mosaic-hairline: rgba(50, 43, 33, 0.08);
+  --mosaic-band-soft: rgba(50, 43, 33, 0.02);
+  --mosaic-divider: rgba(50, 43, 33, 0.08);
+
+  --pulse-connector: rgba(50, 43, 33, 0.15);
+  
+  --ambient-cyan: #459EAD;
+  --ambient-violet: #A28DC3;
+  --ambient-particle: rgba(37, 34, 29, 0.2);
+  
+  --critical: #C2410C; 
+  --attention: #D97706; /* Darker amber */
+  
+  --ambient-path-opacity: 0.07;
+  --ambient-glow: rgba(243,220,57,0.08);
+  
+  
+  --accent-solid: color-mix(in srgb, rgb(var(--accent-base)) 90%, #8A7258);
+  --accent-on-solid: var(--accent-on-solid-base);
+  --accent-ink: color-mix(in srgb, rgb(var(--accent-base-dark)) 85%, #54402C);
+  --accent-soft: color-mix(in srgb, rgba(var(--accent-base), 0.18) 80%, #D6C4AD);
+  --accent-border: color-mix(in srgb, rgba(var(--accent-base), 0.35) 80%, #D6C4AD);
+  --accent-ring: rgba(var(--accent-base), 0.5);
+  
+  --focus: var(--accent-solid);
+  --focus-soft: var(--accent-soft);
+}
+
+/* Dark Mode Theme */
+[data-theme="dark"] .yullo-app {
+  --canvas: #101319;
+  --surface: #171B22;
+  --surface-soft: #20252E;
+  
+  --text-primary: #F3F4F6;
+  --text-secondary: #9AA1AD;
+  --text-muted: #4B5563;
+  
+  --border: rgba(255,255,255,.08);
+  --mosaic-hairline: rgba(255, 255, 255, 0.08);
+  --mosaic-band-soft: rgba(255, 255, 255, 0.02);
+  --mosaic-divider: rgba(255, 255, 255, 0.1);
+  --network-cyan: #4CD8FF;
+  --network-violet: #A98CFF;
+  --network-cyan-trace: rgba(76, 216, 255, 0.15);
+  --network-violet-trace: rgba(169, 140, 255, 0.15);
+  --network-structural: rgba(255, 255, 255, 0.1);
+  --network-particles: rgba(255, 255, 255, 0.2);
+
+  --pulse-connector: rgba(255, 255, 255, 0.08);
+  
+  --ambient-cyan: #65BCD9;
+  --ambient-violet: #9586E8;
+  --ambient-particle: rgba(255, 255, 255, 0.15);
+  
+  --critical: #EF4444; 
+  --attention: #FBBF24;
+  
+  --ambient-path-opacity: 0.10;
+  --ambient-glow: rgba(241,219,61,0.12);
+  
+  
+  --accent-solid: color-mix(in srgb, rgb(var(--accent-base)) 85%, black);
+  --accent-on-solid: #FFFFFF;
+  --accent-ink: rgb(var(--accent-base-light));
+  --accent-soft: rgba(var(--accent-base), 0.15);
+  --accent-border: rgba(var(--accent-base), 0.3);
+  --accent-ring: rgba(var(--accent-base), 0.5);
+  
+  --focus: var(--accent-solid);
+  --focus-soft: var(--accent-soft);
+}
+
+
+
+/* Dark Warm Mode Theme */
+[data-theme="dark-warm"] .yullo-app {
+  --canvas: #261F19;
+  --surface: #2C241E;
+  --surface-soft: #332A23;
+  
+  --text-primary: #FAF5EE;
+  --text-secondary: #D4C3B3;
+  --text-muted: #7D6858;
+  
+  --border: rgba(235, 224, 213, 0.08);
+  --mosaic-hairline: rgba(235, 224, 213, 0.08);
+  --mosaic-band-soft: rgba(235, 224, 213, 0.02);
+  --mosaic-divider: rgba(235, 224, 213, 0.1);
+  --network-cyan: #4CD8FF;
+  --network-violet: #A98CFF;
+  --network-cyan-trace: rgba(76, 216, 255, 0.15);
+  --network-violet-trace: rgba(169, 140, 255, 0.15);
+  --network-structural: rgba(235, 224, 213, 0.1);
+  --network-particles: rgba(235, 224, 213, 0.2);
+
+  --pulse-connector: rgba(235, 224, 213, 0.08);
+  
+  --ambient-cyan: #65BCD9;
+  --ambient-violet: #9586E8;
+  --ambient-particle: rgba(235, 224, 213, 0.15);
+  
+  --critical: #EF4444; 
+  --attention: #FBBF24;
+  
+  --ambient-path-opacity: 0.10;
+  --ambient-glow: rgba(241,219,61,0.12);
+  
+  --accent-solid: color-mix(in srgb, rgb(var(--accent-base)) 80%, #3D2C1C);
+  --accent-on-solid: #FFFFFF;
+  --accent-ink: color-mix(in srgb, rgb(var(--accent-base-light)) 90%, #E2D5C3);
+  --accent-soft: color-mix(in srgb, rgba(var(--accent-base), 0.15) 80%, #473B31);
+  --accent-border: color-mix(in srgb, rgba(var(--accent-base), 0.3) 80%, #473B31);
+  --accent-ring: rgba(var(--accent-base), 0.5);
+  
+  --focus: var(--accent-solid);
+  --focus-soft: var(--accent-soft);
+}
+@keyframes space-wake {
+  0% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.8; }
+}
+
+@keyframes network-trace {
+  0% { transform: scaleX(0); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+
+@keyframes live-breathing {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+

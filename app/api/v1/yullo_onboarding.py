@@ -1,7 +1,10 @@
 import uuid
 import re
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+import asyncio
+import json
+from sse_starlette.sse import EventSourceResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -10,6 +13,10 @@ from app.core.database import get_db
 from app.core.auth import current_user
 from app.models.user import User
 from app.models.space import Space
+from app.models.yullo_space import YulloSpace
+from app.models.yullo_config import YulloConfig
+from app.models.knowledge_base import KnowledgeBaseItem
+from app.models.ingestion_job import IngestionJob
 from app.schemas.yullo_onboarding import (
     DraftSpaceResponse,
     OnboardingDraftCreate,
@@ -18,13 +25,14 @@ from app.schemas.yullo_onboarding import (
     HandleValidateResponse,
     SourceUrlRequest,
     SourceTextRequest,
+    SourceUpdateRequest,
     PreviewRequest,
     SpaceSourceResponse,
     GenerateSummaryRequest,
     GenerateSummaryResponse
 )
 from app.yullo.services.sources.service import SourceService
-from app.yullo.services.sources.contracts import UrlSourceInput, TextSourceInput, SourceAccepted
+from app.yullo.services.sources.contracts import FileSourceInput, UrlSourceInput, TextSourceInput
 from app.yullo.services.spaces.creation import create_or_resolve_yullo_space
 from app.yullo.services.spaces.publication import publish_space
 from app.yullo.services.spaces.handles import validate_handle_format_and_availability
@@ -32,11 +40,29 @@ from app.yullo.services.about_generation import suggest_about
 
 router = APIRouter(prefix="/yullo/onboarding", tags=["yullo-onboarding"])
 
+
+async def _resolve_source_space(db: AsyncSession, *, user_id: uuid.UUID, space_id: uuid.UUID | None) -> Space:
+    query = select(Space).where(Space.owner_user_id == user_id, Space.product == "yullo")
+    if space_id is None:
+        query = query.where(Space.status == "draft")
+    else:
+        query = query.where(Space.id == space_id)
+    space = (await db.execute(query)).scalars().first()
+    if not space:
+        raise HTTPException(status_code=404, detail="Yullo space not found or not owned by user")
+    return space
+
+
+def _enqueue_ingestion(job_id: uuid.UUID) -> None:
+    from app.orchestra.ai.ingestion.jobs import get_job_runner
+
+    get_job_runner().enqueue("ingest_knowledge_item", job_id=str(job_id))
+
 @router.get("/draft", response_model=DraftSpaceResponse)
 async def get_draft(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Space)
-        .where(Space.owner_user_id == user.id, Space.status == "draft")
+        .where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft")
     )
     draft = result.scalars().first()
     if not draft:
@@ -53,7 +79,7 @@ async def reset_draft(user: User = Depends(current_user), db: AsyncSession = Dep
     and initializes a clean, empty draft space.
     """
     result = await db.execute(
-        select(Space).where(Space.owner_user_id == user.id, Space.status == "draft")
+        select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft")
     )
     existing = result.scalars().first()
     if existing:
@@ -114,7 +140,7 @@ async def create_draft(req: OnboardingDraftCreate, user: User = Depends(current_
     # Idempotency: check if one already exists
     result = await db.execute(
         select(Space)
-        .where(Space.owner_user_id == user.id, Space.status == "draft")
+        .where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft")
     )
     existing = result.scalars().first()
     if existing:
@@ -151,7 +177,7 @@ async def create_draft(req: OnboardingDraftCreate, user: User = Depends(current_
 async def update_draft(req: OnboardingDraftUpdate, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Space)
-        .where(Space.owner_user_id == user.id, Space.status == "draft")
+        .where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft")
     )
     draft = result.scalars().first()
     if not draft:
@@ -201,7 +227,7 @@ async def reserve_handle(req: HandleValidateRequest, user: User = Depends(curren
     clean_handle = req.handle.strip().lower()
     
     result = await db.execute(
-        select(Space).where(Space.owner_user_id == user.id, Space.status == "draft")
+        select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft")
     )
     draft = result.scalars().first()
     if not draft:
@@ -237,22 +263,13 @@ async def reserve_handle(req: HandleValidateRequest, user: User = Depends(curren
 
 @router.post("/sources/url", response_model=SpaceSourceResponse)
 async def add_source_url(req: SourceUrlRequest, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    space_id = req.space_id
-    if not space_id:
-        result = await db.execute(select(Space).where(Space.owner_user_id == user.id, Space.status == "draft"))
-        draft = result.scalars().first()
-    else:
-        result = await db.execute(select(Space).where(Space.id == space_id, Space.owner_user_id == user.id, Space.status == "draft"))
-        draft = result.scalars().first()
-
-    if not draft:
-        raise HTTPException(status_code=404, detail="Active draft space not found or not owned by user.")
+    draft = await _resolve_source_space(db, user_id=user.id, space_id=req.space_id)
         
     target_url = req.url.strip()
     if not target_url.startswith(("http://", "https://")):
         target_url = f"https://{target_url}"
 
-    command = UrlSourceInput(url=target_url)
+    command = UrlSourceInput(url=target_url, title=req.title)
     service = SourceService()
     try:
         accepted = await service.accept_source(
@@ -273,6 +290,15 @@ async def add_source_url(req: SourceUrlRequest, user: User = Depends(current_use
             url=target_url
         )
 
+        # A URL preview is already available from the lightweight scraper.
+        # Hold the prepared ingestion job until the owner selects Add to Aura;
+        # this prevents indexing/fact extraction before explicit confirmation.
+        preview_job = await db.get(IngestionJob, accepted.job_id)
+        if preview_job and (preview_job.status or "").lower() == "queued":
+            preview_job.status = "awaiting_confirmation"
+            preview_job.stage_detail = "Preview ready"
+            await db.commit()
+
         return {
             "id": accepted.item_id,
             "source_type": "url",
@@ -281,34 +307,25 @@ async def add_source_url(req: SourceUrlRequest, user: User = Depends(current_use
             "title": preview_res.get("title", target_url),
             "facts": preview_res.get("facts", []),
             "target_badges": preview_res.get("target_badges", ["About", "Category", "Aura knowledge"]),
-            "raw_text": preview_res.get("raw_text", ""),
+            "preview_excerpt": preview_res.get("raw_text", ""),
             "is_confirmed": preview_res.get("is_confirmed", False),
             "prompt_version": preview_res.get("prompt_version", "v1"),
             "source_version": preview_res.get("source_version", 1),
             "error_msg": None,
-            "created_at": datetime.utcnow()
+            "created_at": datetime.utcnow(),
+            "favicon_url": preview_res.get("favicon_url"),
+            "preview_image_url": preview_res.get("preview_image_url"),
+            "assets": preview_res.get("assets"),
         }
     except Exception as e:
         await db.rollback()
         raise e
-    except Exception as e:
-        await db.rollback()
-        raise e
 
-@router.post("/sources/text", response_model=SourceAccepted)
+@router.post("/sources/text", response_model=SpaceSourceResponse)
 async def add_source_text(req: SourceTextRequest, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    space_id = req.space_id
-    if not space_id:
-        result = await db.execute(select(Space).where(Space.owner_user_id == user.id, Space.status == "draft"))
-        draft = result.scalars().first()
-    else:
-        result = await db.execute(select(Space).where(Space.id == space_id, Space.owner_user_id == user.id, Space.status == "draft"))
-        draft = result.scalars().first()
-
-    if not draft:
-        raise HTTPException(status_code=404, detail="Active draft space not found or not owned by user.")
+    draft = await _resolve_source_space(db, user_id=user.id, space_id=req.space_id)
         
-    command = TextSourceInput(title="Pasted Text", text=req.text)
+    command = TextSourceInput(title=req.title or "Pasted Text", text=req.text)
     service = SourceService()
     try:
         # Use a stable hash of the text for idempotency
@@ -322,10 +339,149 @@ async def add_source_text(req: SourceTextRequest, user: User = Depends(current_u
             idempotency_key=uuid.UUID(text_hash.ljust(32, '0')[:32])
         )
         await db.commit()
-        return accepted
+        _enqueue_ingestion(accepted.job_id)
+        return await service.get_source(db, user_id=user.id, source_id=accepted.item_id)
     except Exception as e:
         await db.rollback()
         raise e
+
+
+@router.post("/sources/file", response_model=SpaceSourceResponse)
+async def add_source_file(
+    file: UploadFile = File(...),
+    space_id: uuid.UUID | None = Form(None),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    space = await _resolve_source_space(db, user_id=user.id, space_id=space_id)
+    original_filename = (file.filename or "document").replace("\\", "/").split("/")[-1].strip()
+    filename = re.sub(r"[^A-Za-z0-9._-]+", "_", original_filename)[:200] or "document"
+    extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    allowed_extensions = {"pdf", "docx", "txt", "md", "markdown"}
+    if extension not in allowed_extensions:
+        raise HTTPException(status_code=400, detail="Use a PDF, DOCX, TXT, or Markdown file")
+
+    body = await file.read()
+    max_bytes = 20 * 1024 * 1024
+    if not body:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty")
+    if len(body) > max_bytes:
+        raise HTTPException(status_code=400, detail="File is larger than 20 MB")
+
+    from app.orchestra.ai.ingestion.storage import put as storage_put
+
+    blob_key = await storage_put(
+        space_id=space.id,
+        key=f"file_{uuid.uuid4().hex}_{filename}",
+        body=body,
+        content_type=file.content_type or "application/octet-stream",
+    )
+    service = SourceService()
+    accepted = await service.accept_source(
+        db=db,
+        user_id=user.id,
+        space_id=space.id,
+        command=FileSourceInput(
+            title=filename,
+            blob_key=blob_key,
+            mime_type=file.content_type or "application/octet-stream",
+        ),
+        idempotency_key=uuid.uuid4(),
+    )
+    await db.commit()
+    _enqueue_ingestion(accepted.job_id)
+    return await service.get_source(db, user_id=user.id, source_id=accepted.item_id)
+
+
+@router.get("/spaces/{space_id}/sources", response_model=list[SpaceSourceResponse])
+async def list_space_sources(
+    space_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _resolve_source_space(db, user_id=user.id, space_id=space_id)
+    return await SourceService().get_space_sources(db, space_id)
+
+
+@router.get("/spaces/{space_id}/sources/stream")
+async def stream_space_sources(
+    space_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(current_user),
+):
+    async def event_generator():
+        while True:
+            if await request.is_disconnected():
+                break
+            
+            async for db in get_db():
+                try:
+                    await _resolve_source_space(db, user_id=user.id, space_id=space_id)
+                    sources = await SourceService().get_space_sources(db, space_id)
+                    data = [s.model_dump(mode="json") for s in sources]
+                    yield {
+                        "event": "update",
+                        "data": json.dumps(data)
+                    }
+                except Exception as e:
+                    yield {"event": "error", "data": str(e)}
+                    break
+            
+            await asyncio.sleep(4.0)
+
+    return EventSourceResponse(event_generator())
+
+
+@router.get("/sources/{source_id}", response_model=SpaceSourceResponse)
+async def get_source(
+    source_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await SourceService().get_source(db, user_id=user.id, source_id=source_id)
+
+
+@router.get("/sources/{source_id}/content")
+async def get_source_content(
+    source_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = SourceService()
+    await service.get_source(db, user_id=user.id, source_id=source_id)
+    item = await db.get(KnowledgeBaseItem, source_id)
+    metadata = item.source_metadata or {}
+    blob_key = metadata.get("extracted_text_blob_key")
+    if blob_key:
+        from app.orchestra.ai.ingestion.storage import materialize
+
+        async with materialize(blob_key) as path:
+            content = path.read_text(encoding="utf-8", errors="replace")
+    else:
+        content = metadata.get("raw_text") or metadata.get("preview_excerpt") or ""
+    return Response(content=content, media_type="text/plain; charset=utf-8")
+
+
+@router.patch("/sources/{source_id}", response_model=SpaceSourceResponse)
+async def update_source(
+    source_id: uuid.UUID,
+    req: SourceUpdateRequest,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = SourceService()
+    job_id = None
+    if req.is_confirmed is not None:
+        job_id = await service.set_source_confirmation(
+            db,
+            user_id=user.id,
+            source_id=source_id,
+            is_confirmed=req.is_confirmed,
+        )
+    await db.commit()
+    if job_id:
+        _enqueue_ingestion(job_id)
+    return await service.get_source(db, user_id=user.id, source_id=source_id)
 
 @router.delete("/sources/{source_id}")
 async def delete_source(source_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
@@ -335,7 +491,7 @@ async def delete_source(source_id: uuid.UUID, user: User = Depends(current_user)
 
 @router.post("/preview")
 async def generate_preview(req: PreviewRequest, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Space).where(Space.owner_user_id == user.id, Space.status == "draft"))
+    result = await db.execute(select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft"))
     draft = result.scalars().first()
     if not draft:
         raise HTTPException(status_code=404, detail="No active draft found.")
@@ -349,11 +505,11 @@ async def generate_preview(req: PreviewRequest, user: User = Depends(current_use
 @router.post("/launch")
 async def launch_space(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Space).where(Space.owner_user_id == user.id, Space.status == "draft")
+        select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft")
     )
     draft = result.scalars().first()
     if not draft:
-        already_live = await db.execute(select(Space).where(Space.owner_user_id == user.id, Space.status == "live"))
+        already_live = await db.execute(select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "live"))
         if already_live.scalars().first():
             return {"ok": True, "message": "Already launched."}
         raise HTTPException(status_code=404, detail="No active draft found.")
@@ -384,6 +540,10 @@ async def generate_summary(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    if req.space_id:
+        space = await db.scalar(select(Space).where(Space.id == req.space_id, Space.owner_user_id == user.id, Space.product == "yullo"))
+        if not space:
+            raise HTTPException(status_code=403, detail="Not authorized")
     result = await suggest_about(
         db,
         user_id=user.id,
@@ -402,3 +562,30 @@ async def generate_summary(
 
 
 
+
+@router.post("/spaces/{space_id}/sources/{source_id}/retry", response_model=SpaceSourceResponse)
+async def retry_space_source(
+    space_id: uuid.UUID,
+    source_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    item = await db.get(KnowledgeBaseItem, source_id)
+    if not item or item.space_id != space_id:
+        raise HTTPException(status_code=404, detail="Source not found")
+        
+    space_check = await db.scalar(select(Space).where(Space.id == item.space_id, Space.owner_user_id == user.id, Space.product == "yullo"))
+    if not space_check:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    accepted = await SourceService().retry_source(
+        db,
+        user_id=user.id,
+        space_id=item.space_id,
+        item_id=item.id,
+        idempotency_key=uuid.uuid4(),
+    )
+    item.ingestion_status = "processing"
+    await db.commit()
+    _enqueue_ingestion(accepted.job_id)
+    return await SourceService().get_source(db, user_id=user.id, source_id=item.id)

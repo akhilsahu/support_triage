@@ -66,22 +66,9 @@ async def _run_llm_fact_extraction(target_url: str, title: str, clean_text: str)
         return facts
 
     snippet = clean_text[:4000].strip()
-    system_prompt = (
-        "You are a strict factual context extractor for an AI space preview.\n"
-        "Rules:\n"
-        "1. Extract 3 to 4 concise bullet facts strictly present in the text snippet.\n"
-        "2. NEVER infer or guess business category, services, location, audience or contact info not explicitly written.\n"
-        "3. Every fact MUST include the exact supporting text phrase or sentence copied verbatim from the snippet ('evidence_excerpt') and source locator ('source_locator').\n"
-        "4. Return ONLY a valid JSON object matching this schema:\n"
-        "{\n"
-        "  \"facts\": [\n"
-        "    {\n"
-        "      \"text\": \"Factual statement\",\n"
-        "      \"evidence_excerpt\": \"Exact phrase or sentence copied verbatim from text\",\n"
-        "      \"source_locator\": \"URL or page section\"\n"
-        "    }\n"
-        "  ]\n"
-        "}"
+    from app.yullo.prompts.sources import (
+        PREVIEW_FACT_EXTRACTION_SYSTEM_PROMPT as system_prompt,
+        build_preview_fact_extraction_user_prompt,
     )
 
     try:
@@ -91,7 +78,7 @@ async def _run_llm_fact_extraction(target_url: str, title: str, clean_text: str)
             logger.warning("No LLM providers configured/available for preview fact extraction.")
             return facts
 
-        user_msg = f"Target URL: {target_url}\nScraped Title: {title}\nClean Content:\n{snippet}"
+        user_msg = build_preview_fact_extraction_user_prompt(target_url, title, snippet)
 
         for provider_name, client, model_name in providers:
             try:
@@ -209,12 +196,24 @@ async def extract_and_persist_link_preview(
     provenance = "scraper_llm_grounded"
 
     # 2. Fetch and clean page content using quick scraper mode
+    page_assets: Dict[str, Any] = {
+        "favicon_url": None,
+        "preview_image_url": None,
+        "logo_url": None,
+        "description": None,
+        "images": [],
+        "documents": [],
+    }
     try:
         from app.orchestra.ai.ingestion.scraper import fetch_url
         page = await fetch_url(target_url, mode="quick")
         if page.title:
             title = page.title.strip()
         if page.raw:
+            # Extract brand assets, preview images, and downloadable media
+            from app.yullo.services.sources.asset_extractor import extract_page_assets
+            page_assets = extract_page_assets(page.raw, target_url)
+
             soup = BeautifulSoup(page.raw, "html.parser")
             if (not title or title == domain) and soup.title and soup.title.string:
                 title = soup.title.string.strip()
@@ -226,54 +225,25 @@ async def extract_and_persist_link_preview(
         logger.warning(f"Quick scraper fetch failed for '{target_url}': {e}")
         status = "unavailable"
 
-    facts: List[Dict[str, str]] = []
-
-    # 3. Process LLM fact extraction on quick scraper results
-    if clean_text and len(clean_text) >= 30:
-        facts = await _run_llm_fact_extraction(target_url, title, clean_text)
-
-    # 4. Firecrawl Fallback: If quick mode yields 0 grounded facts, fallback to mode="deep" (Firecrawl)
-    if not facts:
-        logger.info(f"Quick scraper yielded 0 grounded facts for '{target_url}'. Attempting Firecrawl deep fallback...")
-        try:
-            from app.orchestra.ai.ingestion.scraper import fetch_url
-            deep_page = await fetch_url(target_url, mode="deep")
-            if deep_page.title and (not title or title == domain):
-                title = deep_page.title.strip()
-
-            deep_clean_text = ""
-            if deep_page.raw:
-                try:
-                    deep_soup = BeautifulSoup(deep_page.raw, "html.parser")
-                    for element in deep_soup(["script", "style", "svg", "noscript", "iframe"]):
-                        element.extract()
-                    deep_clean_text = deep_soup.get_text(separator=" ", strip=True)
-                except Exception:
-                    deep_clean_text = deep_page.raw.decode("utf-8", errors="ignore") if isinstance(deep_page.raw, bytes) else str(deep_page.raw)
-            elif deep_page.markdown:
-                deep_clean_text = deep_page.markdown
-
-            if deep_clean_text and len(deep_clean_text) >= 30:
-                clean_text = deep_clean_text
-                fc_facts = await _run_llm_fact_extraction(target_url, title, clean_text)
-                if fc_facts:
-                    facts = fc_facts
-                    provenance = "firecrawl_llm_grounded"
-                    logger.info(f"Firecrawl fallback successfully extracted {len(facts)} grounded facts for '{target_url}'")
-        except Exception as fc_err:
-            logger.warning(f"Firecrawl deep fallback failed for '{target_url}': {fc_err}")
+    # LLM extraction is deferred to the full ingestion pipeline (after user confirmation)
+    # Preview is now fast and cheap, just returning the scraped title and a snippet.
 
     # 5. Determine final status
-    if facts and len(facts) >= 1:
-        status = "ready"
-    elif clean_text and len(clean_text) >= 30:
+    facts: List[Dict[str, str]] = []
+    
+    if clean_text and len(clean_text) >= 30:
+        # The lightweight scrape itself is the reviewable preview. Full
+        # parsing, indexing, facts and entities start only after owner consent.
+        status = "ready_to_review"
+    elif status != "unavailable":
         status = "insufficient_context"
-    else:
-        if status != "unavailable":
-            status = "insufficient_context"
 
     target_badges = ["About", "Category", "Aura knowledge"]
     raw_text_snippet = clean_text[:1200] if clean_text else f"Source URL: {target_url}"
+
+    favicon_url = page_assets.get("favicon_url")
+    preview_image_url = page_assets.get("preview_image_url")
+    logo_url = page_assets.get("logo_url")
 
     source_metadata = kb_item.source_metadata or {}
     source_metadata.update({
@@ -283,26 +253,38 @@ async def extract_and_persist_link_preview(
         "raw_text": raw_text_snippet,
         "target_badges": target_badges,
         "is_confirmed": False,
-        "provenance": provenance
+        "provenance": provenance,
+        "favicon_url": favicon_url,
+        "preview_image_url": preview_image_url,
+        "logo_url": logo_url,
+        "assets": page_assets,
     })
 
-    # Persist to database
-    kb_item.title = title or domain
-    kb_item.extracted_facts = facts[:4]
+    # Keep an owner-supplied label. When the initial title is only the URL,
+    # replace it with the scraped page title for a friendlier source list.
+    persisted_title = (
+        kb_item.title
+        if kb_item.title and kb_item.title != target_url
+        else (title or domain)
+    )
+    kb_item.title = persisted_title
+    kb_item.extracted_facts = facts
     kb_item.source_metadata = source_metadata
-    if status == "ready":
-        kb_item.ingestion_status = "ready"
+    kb_item.ingestion_status = status
     db.add(kb_item)
     await db.commit()
 
     return {
         "status": status,
-        "title": title or domain,
-        "facts": facts[:4],
+        "title": persisted_title,
+        "facts": facts,
         "target_badges": target_badges,
         "raw_text": raw_text_snippet,
         "is_confirmed": False,
         "prompt_version": PROMPT_VERSION,
-        "source_version": kb_item.source_version or 1
+        "source_version": kb_item.source_version or 1,
+        "favicon_url": favicon_url,
+        "preview_image_url": preview_image_url,
+        "logo_url": logo_url,
+        "assets": page_assets,
     }
-

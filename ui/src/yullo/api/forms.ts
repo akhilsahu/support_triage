@@ -1,0 +1,83 @@
+import { yulloApiClient } from './client';
+
+export interface IdentityFormResponse {
+  space_id?: string;
+  purpose: 'person' | 'creator' | 'business' | 'organization';
+  display_name: string;
+  slug: string;
+  logo_url?: string;
+  description?: string;
+  description_source?: 'owner' | 'aura' | null;
+  description_prompt_version?: string | null;
+  description_input_fingerprint?: string | null;
+  category?: string;
+  presence?: 'online' | 'physical' | 'both' | 'mobile';
+  website?: string;
+  revision: number;
+}
+
+export interface IdentityFormUpdate {
+  purpose?: 'person' | 'creator' | 'business' | 'organization';
+  display_name?: string;
+  logo_url?: string | null;
+  description?: string | null;
+  description_source?: 'owner' | 'aura' | null;
+  description_prompt_version?: string | null;
+  description_input_fingerprint?: string | null;
+  category?: string | null;
+  presence?: 'online' | 'physical' | 'both' | 'mobile' | null;
+  website?: string | null;
+  expected_revision: number;
+}
+
+export interface HandleCheckResponse {
+  valid: boolean;
+  reason?: string;
+}
+
+export interface CreateSpacePayload {
+  display_name?: string;
+  slug?: string;
+  purpose?: 'person' | 'creator' | 'business' | 'organization';
+  description?: string;
+  category?: string;
+  presence?: 'online' | 'physical' | 'both' | 'mobile';
+  website?: string;
+}
+
+export const formsApi = {
+  createSpace: async (data?: CreateSpacePayload): Promise<IdentityFormResponse> => {
+    const response = await yulloApiClient.post('/spaces', data || { display_name: 'Unnamed Space' });
+    return response.data;
+  },
+
+
+  getIdentity: async (spaceId: string): Promise<IdentityFormResponse> => {
+    const response = await yulloApiClient.get(`/spaces/${spaceId}/forms/identity`);
+    return response.data;
+  },
+
+  updateIdentity: async (spaceId: string, data: IdentityFormUpdate): Promise<IdentityFormResponse> => {
+    const response = await yulloApiClient.put(`/spaces/${spaceId}/forms/identity`, data);
+    return response.data;
+  },
+
+  checkHandle: async (spaceId: string, handle: string): Promise<HandleCheckResponse> => {
+    const response = await yulloApiClient.post(`/spaces/${spaceId}/forms/identity/check-handle`, { handle });
+    return response.data;
+  },
+
+  changeHandle: async (spaceId: string, handle: string, expected_revision: number): Promise<IdentityFormResponse> => {
+    const response = await yulloApiClient.post(`/spaces/${spaceId}/forms/identity/change-handle`, {
+      handle,
+      expected_revision,
+    });
+    return response.data;
+  },
+
+  archiveOrDelete: async (spaceId: string, action: 'archive' | 'delete' = 'archive') => {
+    const response = await yulloApiClient.delete(`/onboarding/spaces/${spaceId}?action=${action}`);
+    return response.data;
+  }
+};
+

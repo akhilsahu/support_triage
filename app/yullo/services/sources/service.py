@@ -1,7 +1,10 @@
 import hashlib
 import json
 import logging
+import re
+import uuid
 from datetime import datetime
+from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -15,6 +18,7 @@ from app.models.yullo_config import YulloConfig
 from app.models.yullo_space import YulloSpace
 from app.models.space import Space
 from app.orchestra.ai.ingestion.storage import put as storage_put
+from app.orchestra.ai.ingestion.text_sanitize import sanitize_extracted_text
 from app.yullo.services.sources.contracts import SourceInput, SourceAccepted, TextSourceInput, UrlSourceInput, FileSourceInput
 from app.schemas.yullo_onboarding import SpaceSourceResponse
 
@@ -23,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 class SourceService:
     @staticmethod
-    async def _resolve_primary_kb(db: AsyncSession, space_id: UUID) -> UUID:
+    async def _resolve_primary_kb(db: AsyncSession, space_id: UUID, create_if_missing: bool = True) -> UUID | None:
         """
         Resolve or create the primary knowledge base for the Yullo Space.
         Assumes the YulloSpace is already locked by the caller.
@@ -32,6 +36,8 @@ class SourceService:
         stmt = select(YulloConfig).where(YulloConfig.space_id == space_id)
         config = await db.scalar(stmt)
         if not config:
+            if not create_if_missing:
+                return None
             config = YulloConfig(space_id=space_id, settings={})
             db.add(config)
             await db.flush()
@@ -48,6 +54,9 @@ class SourceService:
             kb = await db.scalar(stmt)
             if kb and kb.active:
                 return kb.id
+                
+        if not create_if_missing:
+            return None
                 
         # Create new KB
         new_kb = KnowledgeBase(
@@ -133,16 +142,16 @@ class SourceService:
                 item_id=existing_item.id,
                 job_id=existing_job.id,
                 source_version=existing_item.source_version or 1,
-                status="queued"
+                status="uploaded"
             )
 
         # 4. Insert KnowledgeBaseItem
-        title = command.title if hasattr(command, 'title') else command.url
+        title = command.title or command.url
         new_item = KnowledgeBaseItem(
             space_id=space_id,
             kb_id=primary_kb_id,
             title=title,
-            ingestion_status="queued",
+            ingestion_status="uploaded",
             source_version=1,
             content_hash=request_hash,
             creation_key=creation_key
@@ -179,9 +188,10 @@ class SourceService:
             source_version=1,
             attempt=1,
             idempotency_key=creation_key,
-            status="QUEUED",
+            status="queued",
             retry_payload=retry_payload,
-            dispatch_attempts=0
+            dispatch_attempts=0,
+            dispatch_after=datetime.utcnow(),
         )
         db.add(new_job)
         
@@ -197,7 +207,7 @@ class SourceService:
             item_id=new_item.id,
             job_id=new_job.id,
             source_version=new_item.source_version,
-            status="queued"
+            status="uploaded"
         )
         
     async def retry_source(
@@ -261,9 +271,10 @@ class SourceService:
             source_version=item.source_version,
             attempt=next_attempt,
             idempotency_key=str(idempotency_key),
-            status="QUEUED",
+            status="queued",
             retry_payload=retry_payload,
-            dispatch_attempts=0
+            dispatch_attempts=0,
+            dispatch_after=datetime.utcnow(),
         )
         db.add(new_job)
         await db.flush()
@@ -279,7 +290,9 @@ class SourceService:
         """
         List all canonical sources for a space.
         """
-        primary_kb_id = await self._resolve_primary_kb(db, space_id)
+        primary_kb_id = await self._resolve_primary_kb(db, space_id, create_if_missing=False)
+        if not primary_kb_id:
+            return []
         
         # Load KnowledgeBaseItems for this KB
         stmt = select(KnowledgeBaseItem).where(
@@ -297,37 +310,188 @@ class SourceService:
             latest_job = (await db.execute(job_stmt)).scalars().first()
             
             error_msg = None
-            if latest_job and latest_job.status == 'FAILED':
+            job_status = (latest_job.status or "").lower() if latest_job else None
+            if latest_job and job_status == 'failed':
                 error_msg = latest_job.error
                 
             status_val = item.ingestion_status
-            if latest_job and latest_job.status == 'QUEUED':
+            if latest_job and job_status == 'queued':
                 status_val = 'queued'
-            elif latest_job and latest_job.status == 'RUNNING':
+            elif latest_job and job_status == 'running':
                 status_val = 'running'
+            elif latest_job and job_status in ('failed', 'cancelled'):
+                # A fresh lightweight URL preview may be reviewable even when
+                # an older full-ingestion attempt failed. Preserve that newer
+                # preview state until the owner confirms it for another run.
+                if status_val not in ('ready', 'ready_to_review'):
+                    status_val = 'failed'
+                if not error_msg and job_status == 'cancelled':
+                    error_msg = "Job was unexpectedly cancelled. Please try again."
                 
             meta = item.source_metadata or {}
+            
+            raw_title = item.title or item.source_locator or "Document"
+            clean_title = raw_title.split("/")[-1] if "/" in raw_title else raw_title
+            clean_title = re.sub(r"^file_[a-f0-9]+_", "", clean_title, flags=re.IGNORECASE)
+
+            raw_ref = item.source_locator or ""
+            if raw_ref.startswith("http://") or raw_ref.startswith("https://"):
+                clean_ref = raw_ref
+            else:
+                clean_ref = raw_ref.split("/")[-1] if "/" in raw_ref else raw_ref
+                clean_ref = re.sub(r"^file_[a-f0-9]+_", "", clean_ref, flags=re.IGNORECASE)
+
+            preview_txt = meta.get("preview_excerpt", meta.get("raw_text", ""))
+            if preview_txt and isinstance(preview_txt, str):
+                # Read-time safety net — sanitise font-encoding artefacts
+                # and control chars for records written before write-time
+                # sanitisation was deployed.  Idempotent, so double-cleaning
+                # records that were already sanitised at write-time is harmless.
+                preview_txt = sanitize_extracted_text(preview_txt)
+
             sources.append(SpaceSourceResponse(
                 id=item.id,
                 source_type=item.item_type,
-                content_ref=item.source_locator or "",
-                status=meta.get("status", status_val),
-                title=item.title or item.source_locator,
+                content_ref=clean_ref,
+                status=status_val,
+                title=clean_title,
                 facts=item.extracted_facts or [],
                 target_badges=meta.get("target_badges", ["About", "Category", "Aura knowledge"]),
-                raw_text=meta.get("raw_text", ""),
+                preview_excerpt=preview_txt,
+                page_count=meta.get("page_count"),
+                chunk_count=meta.get("chunk_count"),
                 is_confirmed=meta.get("is_confirmed", False),
+                is_scanned=meta.get("is_scanned", False),
                 prompt_version=meta.get("prompt_version", "v1"),
                 source_version=item.source_version or 1,
                 error_msg=error_msg,
+                progress=latest_job.progress if latest_job else None,
+                stage=latest_job.stage_detail if latest_job else None,
+                eta_seconds=latest_job.eta_seconds if latest_job else None,
+                fact_extraction_status=meta.get("fact_extraction_status"),
+                fact_extraction_error=meta.get("fact_extraction_error"),
+                entity_extraction_status=meta.get("entity_extraction_status"),
+                entity_extraction_error=meta.get("entity_extraction_error"),
+                favicon_url=meta.get("favicon_url") or (meta.get("assets", {}).get("favicon_url") if isinstance(meta.get("assets"), dict) else None),
+                preview_image_url=meta.get("preview_image_url") or (meta.get("assets", {}).get("preview_image_url") if isinstance(meta.get("assets"), dict) else None),
+                assets=meta.get("assets"),
                 created_at=item.created_at
             ))
             
         return sources
 
+    async def get_source(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        source_id: UUID,
+    ) -> SpaceSourceResponse:
+        item = await db.scalar(select(KnowledgeBaseItem).where(KnowledgeBaseItem.id == source_id))
+        if not item:
+            raise HTTPException(status_code=404, detail="Source not found")
+        owned_space = await db.scalar(select(Space.id).where(
+            Space.id == item.space_id,
+            Space.owner_user_id == user_id,
+            Space.product == "yullo",
+        ))
+        if not owned_space:
+            raise HTTPException(status_code=403, detail="Not authorized to access this source")
+        sources = await self.get_space_sources(db, item.space_id)
+        source = next((candidate for candidate in sources if candidate.id == source_id), None)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+        return source
+
+    async def set_source_confirmation(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        source_id: UUID,
+        is_confirmed: bool,
+    ) -> UUID | None:
+        """Enable/disable a source and queue full ingestion when it is enabled."""
+        item = await db.scalar(
+            select(KnowledgeBaseItem)
+            .join(Space, Space.id == KnowledgeBaseItem.space_id)
+            .where(
+                KnowledgeBaseItem.id == source_id,
+                Space.owner_user_id == user_id,
+                Space.product == "yullo",
+            )
+            .with_for_update(of=KnowledgeBaseItem)
+        )
+        if not item:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        metadata = dict(item.source_metadata or {})
+        was_confirmed = bool(metadata.get("is_confirmed", False))
+        metadata["is_confirmed"] = is_confirmed
+        item.source_metadata = metadata
+
+        if is_confirmed:
+            if was_confirmed and item.ingestion_status in ("queued", "processing", "ready"):
+                return None
+
+            # URL previews prepare a durable job without dispatching it. Reuse
+            # that exact job after confirmation instead of creating a duplicate.
+            pending_jobs = (await db.execute(select(IngestionJob).where(
+                IngestionJob.kb_item_id == item.id,
+                IngestionJob.status.in_(("awaiting_confirmation", "queued")),
+            ).order_by(IngestionJob.created_at.desc()))).scalars().all()
+
+            item.ingestion_status = "queued"
+            if pending_jobs:
+                reusable_job = pending_jobs[0]
+                reusable_job.status = "queued"
+                reusable_job.progress = 0
+                reusable_job.eta_seconds = None
+                reusable_job.stage_detail = "Queued"
+                reusable_job.dispatch_attempts = 0
+                reusable_job.dispatch_after = datetime.utcnow()
+                for duplicate_job in pending_jobs[1:]:
+                    duplicate_job.status = "cancelled"
+                return reusable_job.id
+
+            accepted = await self.retry_source(
+                db,
+                user_id=user_id,
+                space_id=item.space_id,
+                item_id=item.id,
+                idempotency_key=uuid.uuid4(),
+            )
+            return accepted.job_id
+
+        # Stopping a source immediately removes its extracted entities from the
+        # public page. The indexed source and provenance remain available for a
+        # future resume/review operation.
+        from app.models.yullo_space_entity import YulloSpaceEntity, YulloSpaceEntityEvidence
+
+        affected_ids = (await db.execute(select(YulloSpaceEntityEvidence.entity_id).where(
+            YulloSpaceEntityEvidence.space_id == item.space_id,
+            YulloSpaceEntityEvidence.source_item_id == item.id,
+        ).distinct())).scalars().all()
+        if affected_ids:
+            entities = (await db.execute(select(YulloSpaceEntity).where(
+                YulloSpaceEntity.space_id == item.space_id,
+                YulloSpaceEntity.id.in_(affected_ids),
+                YulloSpaceEntity.origin_type == "extracted",
+            ))).scalars().all()
+            for entity in entities:
+                if entity.is_public:
+                    entity.is_public = False
+                    entity.revision += 1
+
+        yullo_space = await db.scalar(select(YulloSpace).where(YulloSpace.space_id == item.space_id))
+        if yullo_space:
+            yullo_space.context_version += 1
+        return None
+
     async def delete_source(self, db: AsyncSession, *, user_id: UUID, space_id: Optional[UUID], source_id: UUID) -> None:
         """
-        Delete a source and logically remove it from the KB.
+        Delete a source, purge vector chunks from vector storage, deactivate extracted entities,
+        and remove the KnowledgeBaseItem.
         """
         stmt = select(KnowledgeBaseItem).where(KnowledgeBaseItem.id == source_id)
         item = await db.scalar(stmt)
@@ -338,6 +502,61 @@ class SourceService:
         space = await db.scalar(space_stmt)
         if not space:
             raise HTTPException(status_code=403, detail="Not authorized to modify this space")
+            
+        # 1. Purge vector chunks from vector store
+        doc_id_to_delete = item.indexed_doc_id or item.doc_id
+        if doc_id_to_delete:
+            try:
+                from app.rag.vector_store import get_vector_store
+                get_vector_store().delete_doc(str(item.space_id), doc_id_to_delete)
+            except Exception as vec_err:
+                logger.warning(f"Failed to delete vector chunks for item {source_id}: {vec_err}")
+                
+        # 1.5 Purge original blob file from storage
+        if item.source_locator and item.item_type != "url":
+            try:
+                from app.orchestra.ai.ingestion.storage import delete as storage_delete
+                await storage_delete(item.source_locator)
+            except Exception as blob_err:
+                logger.warning(f"Failed to delete original blob for item {source_id}: {blob_err}")
+                
+        # 1.6 Purge extracted text blob if present
+        meta = item.source_metadata or {}
+        extracted_text_blob = meta.get("extracted_text_blob_key")
+        if extracted_text_blob:
+            try:
+                from app.orchestra.ai.ingestion.storage import delete as storage_delete
+                # Handle old paths that might not have space_id prefix in the key
+                if "/" not in extracted_text_blob:
+                    extracted_text_blob = f"{item.space_id}/{extracted_text_blob}"
+                await storage_delete(extracted_text_blob)
+            except Exception as blob_err:
+                logger.warning(f"Failed to delete extracted text blob for item {source_id}: {blob_err}")
+
+        # 2. Deactivate entities whose provenance traces back to this source.
+        #    The source_item_id link lives on YulloSpaceEntityEvidence (the
+        #    provenance table), not on YulloSpaceEntity itself.  Find affected
+        #    entity IDs via evidence, then mark those entities inactive.
+        from app.models.yullo_space_entity import YulloSpaceEntity, YulloSpaceEntityEvidence
+        evidence_stmt = select(YulloSpaceEntityEvidence.entity_id).where(
+            and_(
+                YulloSpaceEntityEvidence.space_id == item.space_id,
+                YulloSpaceEntityEvidence.source_item_id == item.id,
+            )
+        ).distinct()
+        affected_entity_ids = (await db.execute(evidence_stmt)).scalars().all()
+
+        if affected_entity_ids:
+            entity_stmt = select(YulloSpaceEntity).where(
+                and_(
+                    YulloSpaceEntity.space_id == item.space_id,
+                    YulloSpaceEntity.id.in_(affected_entity_ids),
+                )
+            )
+            entities = (await db.execute(entity_stmt)).scalars().all()
+            for ent in entities:
+                ent.is_active = False
+                ent.review_status = "superseded"
             
         await db.delete(item)
         
