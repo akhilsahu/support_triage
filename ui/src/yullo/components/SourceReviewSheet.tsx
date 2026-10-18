@@ -216,6 +216,27 @@ export const SourceReviewSheet: React.FC<SourceReviewSheetProps> = ({
           )}
 
           {reviewError && <p role="alert" className="mt-5 rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-[13px] text-rose-600">{reviewError}</p>}
+
+          {/* Top Summary Metrics Strip for extracted items */}
+          <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="p-3 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)]/60">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] block">Facts</span>
+              <span className="text-[18px] font-bold font-[Satoshi] text-[var(--text-primary)]">{facts.length}</span>
+            </div>
+            <div className="p-3 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)]/60">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] block">Entities</span>
+              <span className="text-[18px] font-bold font-[Satoshi] text-[var(--text-primary)]">{entities.length}</span>
+            </div>
+            <div className="p-3 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)]/60">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] block">Images</span>
+              <span className="text-[18px] font-bold font-[Satoshi] text-[var(--text-primary)]">{source.assets?.images?.length || 0}</span>
+            </div>
+            <div className="p-3 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)]/60">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] block">Documents</span>
+              <span className="text-[18px] font-bold font-[Satoshi] text-[var(--text-primary)]">{source.assets?.documents?.length || 0}</span>
+            </div>
+          </div>
+
           {isLoadingReview ? (
             <div className="flex min-h-48 items-center justify-center text-[14px] text-[var(--text-secondary)]"><RotateCw className="mr-2 h-4 w-4 animate-spin" /> Loading extracted details…</div>
           ) : (

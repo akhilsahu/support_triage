@@ -189,6 +189,150 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
 
         {/* Scrollable Body Content */}
         <div className="flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-7 space-y-6">
+          {/* Top Summary Metrics Strip for all extracted data categories */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between text-[12px] text-[var(--text-secondary)]">
+              <span className="font-semibold uppercase tracking-wider text-[11px] text-[var(--text-muted)] flex items-center gap-1.5">
+                <SlidersHorizontal className="w-3 h-3 text-[var(--accent-solid)]" /> Extraction Summary
+              </span>
+              <span className="font-mono text-[11px]">
+                {images.length + links.length + documents.length + facts.length + entities.length} total items extracted
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+              {/* Images */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('connected-assets')}
+                className={`p-3 rounded-xl border transition-all text-left group cursor-pointer flex flex-col justify-between ${
+                  activeTab === 'connected-assets'
+                    ? 'border-violet-500/50 bg-violet-500/5 dark:bg-violet-500/10 shadow-xs'
+                    : 'border-[var(--border)] bg-[var(--surface-soft)]/60 hover:bg-[var(--surface-soft)] hover:border-violet-500/30'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] group-hover:text-[var(--text-primary)]">
+                    Images
+                  </span>
+                  <div className="w-5 h-5 rounded-md bg-violet-500/15 flex items-center justify-center">
+                    <ImageIcon className="w-3 h-3 text-violet-500" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <span className="text-[20px] font-bold font-[Satoshi] text-[var(--text-primary)] block leading-tight">
+                    {images.length}
+                  </span>
+                  <span className="text-[11px] text-[var(--text-secondary)]">with context</span>
+                </div>
+              </button>
+
+              {/* Links */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('connected-assets')}
+                className={`p-3 rounded-xl border transition-all text-left group cursor-pointer flex flex-col justify-between ${
+                  activeTab === 'connected-assets'
+                    ? 'border-cyan-500/50 bg-cyan-500/5 dark:bg-cyan-500/10 shadow-xs'
+                    : 'border-[var(--border)] bg-[var(--surface-soft)]/60 hover:bg-[var(--surface-soft)] hover:border-cyan-500/30'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] group-hover:text-[var(--text-primary)]">
+                    Links
+                  </span>
+                  <div className="w-5 h-5 rounded-md bg-cyan-500/15 flex items-center justify-center">
+                    <LinkIcon className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <span className="text-[20px] font-bold font-[Satoshi] text-[var(--text-primary)] block leading-tight">
+                    {links.length}
+                  </span>
+                  <span className="text-[11px] text-[var(--text-secondary)]">contextual</span>
+                </div>
+              </button>
+
+              {/* Documents */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('connected-assets')}
+                className={`p-3 rounded-xl border transition-all text-left group cursor-pointer flex flex-col justify-between ${
+                  activeTab === 'connected-assets'
+                    ? 'border-amber-500/50 bg-amber-500/5 dark:bg-amber-500/10 shadow-xs'
+                    : 'border-[var(--border)] bg-[var(--surface-soft)]/60 hover:bg-[var(--surface-soft)] hover:border-amber-500/30'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] group-hover:text-[var(--text-primary)]">
+                    Docs & Files
+                  </span>
+                  <div className="w-5 h-5 rounded-md bg-amber-500/15 flex items-center justify-center">
+                    <FileText className="w-3 h-3 text-amber-500" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <span className="text-[20px] font-bold font-[Satoshi] text-[var(--text-primary)] block leading-tight">
+                    {documents.length}
+                  </span>
+                  <span className="text-[11px] text-[var(--text-secondary)]">downloadable</span>
+                </div>
+              </button>
+
+              {/* Facts */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('facts')}
+                className={`p-3 rounded-xl border transition-all text-left group cursor-pointer flex flex-col justify-between ${
+                  activeTab === 'facts'
+                    ? 'border-emerald-500/50 bg-emerald-500/5 dark:bg-emerald-500/10 shadow-xs'
+                    : 'border-[var(--border)] bg-[var(--surface-soft)]/60 hover:bg-[var(--surface-soft)] hover:border-emerald-500/30'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] group-hover:text-[var(--text-primary)]">
+                    Facts
+                  </span>
+                  <div className="w-5 h-5 rounded-md bg-emerald-500/15 flex items-center justify-center">
+                    <Sparkles className="w-3 h-3 text-emerald-500" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <span className="text-[20px] font-bold font-[Satoshi] text-[var(--text-primary)] block leading-tight">
+                    {isLoadingDetails ? '...' : facts.length}
+                  </span>
+                  <span className="text-[11px] text-[var(--text-secondary)]">grounded</span>
+                </div>
+              </button>
+
+              {/* Entities */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('entities')}
+                className={`p-3 rounded-xl border transition-all text-left group cursor-pointer flex flex-col justify-between ${
+                  activeTab === 'entities'
+                    ? 'border-indigo-500/50 bg-indigo-500/5 dark:bg-indigo-500/10 shadow-xs'
+                    : 'border-[var(--border)] bg-[var(--surface-soft)]/60 hover:bg-[var(--surface-soft)] hover:border-indigo-500/30'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] group-hover:text-[var(--text-primary)]">
+                    Entities
+                  </span>
+                  <div className="w-5 h-5 rounded-md bg-indigo-500/15 flex items-center justify-center">
+                    <Layers className="w-3 h-3 text-indigo-500" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <span className="text-[20px] font-bold font-[Satoshi] text-[var(--text-primary)] block leading-tight">
+                    {isLoadingDetails ? '...' : entities.length}
+                  </span>
+                  <span className="text-[11px] text-[var(--text-secondary)]">structured</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
           {/* TAB 1: CONNECTED ASSETS (Images, Links, Documents with related context text) */}
           {activeTab === 'connected-assets' && (
             <div className="space-y-7">
