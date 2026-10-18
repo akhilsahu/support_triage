@@ -24,7 +24,7 @@ from app.core.database import Base
 
 # Terminal states — a job in one of these will never change again, so the
 # frontend can stop polling once every job it cares about is here.
-TERMINAL_STATUSES = ("done", "failed")
+TERMINAL_STATUSES = ("done", "failed", "cancelled")
 
 
 class IngestionJob(Base):
@@ -44,7 +44,7 @@ class IngestionJob(Base):
     # Matches the KnowledgeBaseItem.item_type the job will create.
     source       = Column(String(20), nullable=False, default="file")
 
-    status       = Column(String(20), nullable=False, default="queued")
+    status       = Column(String(50), nullable=False, default="queued")
     progress     = Column(Integer, nullable=False, default=0)      # 0-100
     stage_detail = Column(String(200), nullable=True)              # e.g. "page 12 / 21"
 
@@ -90,7 +90,7 @@ class IngestionJob(Base):
 
     @property
     def is_terminal(self) -> bool:
-        return self.status in TERMINAL_STATUSES
+        return (self.status or "").lower() in TERMINAL_STATUSES
 
     def to_dict(self) -> dict:
         return {
@@ -113,4 +113,3 @@ class IngestionJob(Base):
             "created_at":       self.created_at.isoformat() if self.created_at else None,
             "updated_at":       self.updated_at.isoformat() if self.updated_at else None,
         }
-

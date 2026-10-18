@@ -295,7 +295,7 @@ async def add_source_url(req: SourceUrlRequest, user: User = Depends(current_use
         # this prevents indexing/fact extraction before explicit confirmation.
         preview_job = await db.get(IngestionJob, accepted.job_id)
         if preview_job and (preview_job.status or "").lower() == "queued":
-            preview_job.status = "awaiting_confirmation"
+            preview_job.status = "pending_confirm"
             preview_job.stage_detail = "Preview ready"
             await db.commit()
 

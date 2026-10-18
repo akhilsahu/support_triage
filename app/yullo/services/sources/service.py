@@ -438,7 +438,7 @@ class SourceService:
             # that exact job after confirmation instead of creating a duplicate.
             pending_jobs = (await db.execute(select(IngestionJob).where(
                 IngestionJob.kb_item_id == item.id,
-                IngestionJob.status.in_(("awaiting_confirmation", "queued")),
+                IngestionJob.status.in_(("pending_confirm", "awaiting_confirmation", "queued")),
             ).order_by(IngestionJob.created_at.desc()))).scalars().all()
 
             item.ingestion_status = "queued"
