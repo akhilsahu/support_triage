@@ -223,16 +223,57 @@ async def extract_and_persist_link_preview(
             clean_text = soup.get_text(separator=" ", strip=True)
     except Exception as e:
         logger.warning(f"Quick scraper fetch failed for '{target_url}': {e}")
-        status = "unavailable"
+        clean_text = ""
 
-    # LLM extraction is deferred to the full ingestion pipeline (after user confirmation)
-    # Preview is now fast and cheap, just returning the scraped title and a snippet.
+    # If quick scrape yielded insufficient text (e.g. client-rendered SPAs like SpaceX, React apps, or bot challenges),
+    # fall back to the existing ingestion deep scraper (Firecrawl / headless browser).
+    if len(clean_text) < 30:
+        logger.info(f"Quick scrape yielded sparse text ({len(clean_text)} chars) for '{target_url}'. Falling back to existing deep scraper.")
+        try:
+            deep_page = await fetch_url(target_url, mode="deep")
+            if deep_page.title and (not title or title == domain):
+                title = deep_page.title.strip()
+            if deep_page.raw:
+                deep_text = deep_page.raw.decode("utf-8", errors="ignore").strip()
+                if len(deep_text) >= 30:
+                    clean_text = deep_text
+                    provenance = "scraper_deep_existing"
+
+                    # If quick scrape didn't find content images, extract markdown images from deep render
+                    if not page_assets.get("images"):
+                        md_images = re.findall(r'!\[(.*?)\]\((https?://[^\s\)]+)\)', deep_text)
+                        for alt, img_url in md_images[:10]:
+                            page_assets["images"].append({
+                                "url": img_url,
+                                "alt": alt or title,
+                                "caption": None,
+                                "context_text": title,
+                                "section": "Overview",
+                            })
+
+                    if not page_assets.get("links"):
+                        md_links = re.findall(r'(?<!\!)\[(.*?)\]\((https?://[^\s\)]+)\)', deep_text)
+                        for link_title, link_url in md_links[:15]:
+                            page_assets.setdefault("links", []).append({
+                                "url": link_url,
+                                "title": link_title,
+                                "context_text": link_title,
+                                "section": "Overview",
+                            })
+        except Exception as deep_err:
+            logger.warning(f"Existing deep scraper fallback failed for '{target_url}': {deep_err}")
+
+    # If clean_text is still under 30 chars, fall back to meta description if available
+    if len(clean_text) < 30 and page_assets.get("description"):
+        meta_desc = page_assets["description"].strip()
+        if len(meta_desc) >= 30:
+            clean_text = meta_desc
 
     # 5. Determine final status
     facts: List[Dict[str, str]] = []
     
     if clean_text and len(clean_text) >= 30:
-        # The lightweight scrape itself is the reviewable preview. Full
+        # The scrape itself is the reviewable preview. Full
         # parsing, indexing, facts and entities start only after owner consent.
         status = "ready_to_review"
     elif status != "unavailable":
