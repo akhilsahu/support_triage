@@ -8,6 +8,7 @@
 - If the user requests planning only or step-by-step approval, respect that boundary. Ask concise questions only for material ambiguities, destructive actions or decisions not already authorized.
 - Implement one selected form/feature at a time, including its required backend and frontend integration. Do not expand into unrelated plans.
 - Verify the actual behavior with focused checks. Distinguish implemented code from verified integration and database migrations from applied migrations.
+- **Preserve working functionality and prevent regressions**: When introducing new features or refactoring, inspect existing pipelines and preserve all working capabilities. Never silently disable, stub out, or bypass existing functions (such as fact extraction, entity extraction, or review flows). If a change could alter, replace, or potentially degrade an existing step or feature, explicitly alert the user during analysis with the potential impacts, explain why, and suggest safer alternatives before proceeding.
 - Update the selected plan with completion status, files/endpoints changed, verification and pending work so the next session can continue without chat history.
 - Do not commit, push, deploy or modify production data unless explicitly authorized. Existing authorization remains valid within its stated scope; do not ask again unnecessarily.
 
