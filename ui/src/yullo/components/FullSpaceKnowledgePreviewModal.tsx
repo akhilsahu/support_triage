@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  X, Eye, Sparkles, Globe, FileText, CheckCircle2, ChevronDown, ChevronUp, 
-  Layers, Info, Calendar, ShieldCheck, Tag, ExternalLink, ArrowRight, User, Briefcase, Building
+  X, Sparkles, Globe, FileText, CheckCircle2, ChevronDown, ChevronUp, 
+  Layers, ShieldCheck, Tag, ArrowRight, MapPin
 } from 'lucide-react';
 import { SourceItem, FactItem } from './SourceUnderstandingCard';
 
@@ -18,6 +18,59 @@ export interface FullSpaceKnowledgePreviewModalProps {
   description?: string;
   logoUrl?: string;
   sources: SourceItem[];
+}
+
+export interface NormalizedFact {
+  text: string;
+  subject?: string;
+  label?: string;
+  value?: string;
+  note?: string;
+  evidence_excerpt?: string;
+  source_locator?: string;
+}
+
+export function formatFactDisplay(f: any, defaultLocator?: string): NormalizedFact {
+  if (!f) {
+    return { text: '', source_locator: defaultLocator };
+  }
+  if (typeof f === 'string') {
+    return { text: f, source_locator: defaultLocator };
+  }
+
+  const subject = f.subject ? String(f.subject).trim() : undefined;
+  const label = f.label ? String(f.label).trim() : undefined;
+  const value = f.value !== undefined && f.value !== null ? String(f.value).trim() : undefined;
+  const note = f.note ? String(f.note).trim() : undefined;
+  const evidence_excerpt = f.evidence_excerpt ? String(f.evidence_excerpt).trim() : undefined;
+  const source_locator = f.source_locator || f.source_doc_id || defaultLocator;
+
+  let text = '';
+  if (typeof f.text === 'string' && f.text.trim()) {
+    text = f.text.trim();
+  } else if (typeof f.claim === 'string' && f.claim.trim()) {
+    text = f.claim.trim();
+  } else if (typeof f.statement === 'string' && f.statement.trim()) {
+    text = f.statement.trim();
+  } else if (typeof f.fact === 'string' && f.fact.trim()) {
+    text = f.fact.trim();
+  } else if (label && value) {
+    text = subject ? `${subject} — ${label}: ${value}` : `${label}: ${value}`;
+  } else if (value) {
+    text = value;
+  } else if (label) {
+    text = label;
+  }
+
+  return {
+    text,
+    subject,
+    label,
+    value,
+    note,
+    evidence_excerpt,
+    source_locator
+  };
 }
 
 export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewModalProps> = ({
@@ -87,63 +140,62 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
   const getSourceIcon = (sourceType: string) => {
     switch (sourceType) {
       case 'url':
-        return <Globe className="w-4 h-4 text-cyan-500 shrink-0" />;
+        return <Globe className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0" />;
       case 'document':
       case 'file':
-        return <FileText className="w-4 h-4 text-purple-400 shrink-0" />;
+        return <FileText className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />;
       default:
-        return <FileText className="w-4 h-4 text-blue-400 shrink-0" />;
+        return <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />;
     }
   };
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-md flex flex-col justify-start items-center p-4 sm:p-6 lg:p-10 font-[Instrument_Sans]">
+      <div className="yullo-app fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-md flex flex-col justify-start items-center p-3 sm:p-6 lg:p-8 font-[Instrument_Sans]">
         <motion.div
-          initial={{ opacity: 0, scale: 0.96, y: 15 }}
+          initial={{ opacity: 0, scale: 0.97, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 15 }}
-          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-          className="w-full max-w-5xl bg-[var(--surface,rgba(18,24,38,0.95))] border border-[var(--border,rgba(255,255,255,0.1))] rounded-2xl shadow-2xl flex flex-col overflow-hidden text-[var(--text-primary,#ffffff)] my-auto max-h-[92vh]"
+          exit={{ opacity: 0, scale: 0.97, y: 12 }}
+          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          className="w-full max-w-5xl bg-[var(--surface)] border border-[var(--border)] rounded-2xl shadow-2xl flex flex-col overflow-hidden text-[var(--text-primary)] my-auto max-h-[92vh]"
         >
           {/* Modal Header */}
-          <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border,rgba(255,255,255,0.1))] bg-[var(--surface-soft,rgba(255,255,255,0.03))] shrink-0">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent-border)] flex items-center justify-center shrink-0">
-                <Sparkles className="w-5 h-5 text-[var(--accent-ink)]" />
+          <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border)] bg-[var(--surface-soft)] shrink-0">
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-[var(--accent-solid)] text-[var(--accent-on-solid)] flex items-center justify-center shrink-0 shadow-xs">
+                <Sparkles className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-[20px] font-bold font-[Satoshi] tracking-tight truncate">
-                    {spaceName} — Full Knowledge Preview
-                  </h2>
-                </div>
-                <p className="text-[13px] text-[var(--text-secondary,rgba(255,255,255,0.6))] truncate">
-                  {slug ? `@${slug}` : 'Onboarding Draft'} · {totalSources} Source{totalSources !== 1 ? 's' : ''} · {totalFacts} Grounded Fact{totalFacts !== 1 ? 's' : ''}
+                <h2 className="text-[19px] sm:text-[21px] font-bold font-[Satoshi] tracking-tight text-[var(--text-primary)] truncate">
+                  {spaceName} — Full Knowledge Preview
+                </h2>
+                <p className="text-[13px] text-[var(--text-secondary)] truncate">
+                  {slug ? `@${slug}` : 'Space Knowledge'} · {totalSources} Source{totalSources !== 1 ? 's' : ''} · {totalFacts} Grounded Fact{totalFacts !== 1 ? 's' : ''}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-2.5 shrink-0">
               <button
                 type="button"
                 onClick={expandAll}
-                className="hidden sm:inline-flex text-[12px] font-medium hover: px-2.5 py-1 rounded-lg border-transparent hover: transition-colors cursor-pointer bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90"
+                className="hidden sm:inline-flex text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors cursor-pointer"
               >
                 Expand all
               </button>
               <button
                 type="button"
                 onClick={collapseAll}
-                className="hidden sm:inline-flex text-[12px] font-medium hover: px-2.5 py-1 rounded-lg border-transparent hover: transition-colors cursor-pointer bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90"
+                className="hidden sm:inline-flex text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors cursor-pointer"
               >
                 Collapse all
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="w-9 h-9 rounded-xl flex items-center justify-center hover: transition-colors cursor-pointer bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90"
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)] border border-[var(--border)] transition-colors cursor-pointer"
                 title="Close preview (ESC)"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -151,69 +203,71 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
           </div>
 
           {/* Scrollable Body */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-8">
+          <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-7">
             
             {/* 1. Space Identity & Grounded Overview */}
-            <div className="bg-[var(--surface-soft,rgba(255,255,255,0.03))] border border-[var(--border,rgba(255,255,255,0.08))] rounded-xl p-5 space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-[var(--border,rgba(255,255,255,0.08))]">
+            <div className="bg-[var(--surface-soft)] border border-[var(--border)] rounded-2xl p-5 sm:p-6 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
                 <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-[var(--accent-ink)]" />
-                  <h3 className="text-[14px] font-semibold tracking-wide uppercase text-[var(--text-secondary)] font-[Satoshi]">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <h3 className="text-[13px] font-bold tracking-wider uppercase text-[var(--text-secondary)] font-[Satoshi]">
                     Space Identity & Aura Summary
                   </h3>
                 </div>
                 {confirmedSources > 0 && (
-                  <span className="text-[12px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
+                  <span className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
                     {confirmedSources} active confirmed source{confirmedSources !== 1 ? 's' : ''}
                   </span>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 {/* Logo & Basic Info */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3.5">
                   {logoUrl ? (
-                    <img src={logoUrl} alt="Logo" className="w-12 h-12 rounded-xl object-cover border border-[var(--border)] shrink-0" />
+                    <img src={logoUrl} alt="Logo" className="w-12 h-12 rounded-xl object-cover border border-[var(--border)] shrink-0 bg-[var(--surface)]" />
                   ) : (
-                    <div className="w-12 h-12 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent-solid)] flex items-center justify-center text-[18px] font-bold font-[Satoshi] text-[var(--accent-ink)] shrink-0">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--accent-solid)] to-amber-400 text-[var(--accent-on-solid)] flex items-center justify-center text-[18px] font-bold font-[Satoshi] shrink-0 shadow-xs">
                       {spaceName.charAt(0)}
                     </div>
                   )}
                   <div className="min-w-0">
-                    <h4 className="text-[15px] font-semibold text-[var(--text-primary)] truncate">{spaceName}</h4>
-                    <p className="text-[13px] text-[var(--text-muted)] truncate">{slug ? `yullo.com/${slug}` : 'Draft Space'}</p>
+                    <h4 className="text-[15px] font-bold text-[var(--text-primary)] truncate font-[Satoshi]">{spaceName}</h4>
+                    <p className="text-[13px] text-[var(--text-secondary)] truncate font-mono">{slug ? `yullo.com/${slug}` : 'Draft Space'}</p>
                   </div>
                 </div>
 
                 {/* Attributes */}
-                <div className="flex flex-col justify-center space-y-1 text-[13px]">
+                <div className="flex flex-col justify-center space-y-1.5 text-[13px]">
                   {purpose && (
                     <div className="flex items-center gap-2 text-[var(--text-secondary)]">
                       <span className="font-semibold text-[var(--text-primary)]">Purpose:</span>
-                      <span className="capitalize">{purpose}</span>
+                      <span className="capitalize text-[var(--text-primary)]">{purpose}</span>
                     </div>
                   )}
                   {category && (
                     <div className="flex items-center gap-2 text-[var(--text-secondary)]">
                       <span className="font-semibold text-[var(--text-primary)]">Category:</span>
-                      <span>{category}</span>
+                      <span className="text-[var(--text-primary)]">{category}</span>
                     </div>
                   )}
                 </div>
 
                 {/* Website & Presence */}
-                <div className="flex flex-col justify-center space-y-1 text-[13px]">
+                <div className="flex flex-col justify-center space-y-1.5 text-[13px]">
                   {presence && (
                     <div className="flex items-center gap-2 text-[var(--text-secondary)]">
+                      <MapPin className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                       <span className="font-semibold text-[var(--text-primary)]">Presence:</span>
-                      <span className="capitalize">{presence}</span>
+                      <span className="capitalize text-[var(--text-primary)]">{presence}</span>
                     </div>
                   )}
                   {website && (
                     <div className="flex items-center gap-2 text-[var(--text-secondary)] truncate">
+                      <Globe className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
                       <span className="font-semibold text-[var(--text-primary)]">Website:</span>
                       <a href={website} target="_blank" rel="noreferrer" className="text-[var(--accent-ink)] hover:underline truncate">
-                        {website}
+                        {website.replace(/^https?:\/\//i, '').replace(/\/$/, '')}
                       </a>
                     </div>
                   )}
@@ -221,9 +275,11 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
               </div>
 
               {description && (
-                <div className="pt-3 border-t border-[var(--border,rgba(255,255,255,0.06))]">
-                  <span className="text-[12px] font-semibold text-[var(--text-muted)] uppercase block mb-1">About Description:</span>
-                  <p className="text-[14px] leading-relaxed text-[var(--text-primary)] font-[Instrument_Sans]">
+                <div className="pt-3.5 border-t border-[var(--border)]">
+                  <span className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider block mb-1">
+                    About Description:
+                  </span>
+                  <p className="text-[14px] leading-relaxed text-[var(--text-primary)]">
                     {description}
                   </p>
                 </div>
@@ -233,12 +289,12 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
             {/* 2. Source-Wise Data Section */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-[15px] font-semibold font-[Satoshi] tracking-wide text-[var(--text-primary)] flex items-center gap-2">
+                <h3 className="text-[16px] font-bold font-[Satoshi] tracking-tight text-[var(--text-primary)] flex items-center gap-2">
                   <Layers className="w-4 h-4 text-[var(--accent-ink)]" />
                   Source-Wise Knowledge ({totalSources})
                 </h3>
-                <span className="text-[13px] text-[var(--text-muted)]">
-                  Click any source card to expand or collapse details
+                <span className="text-[12px] text-[var(--text-muted)] hidden sm:inline">
+                  Click any source to expand or collapse facts
                 </span>
               </div>
 
@@ -247,20 +303,21 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
                   No knowledge sources added yet.
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {sources.map((source, index) => {
                     const isExpanded = !!expandedSources[source.id];
                     const isRawOpen = !!showRawContent[source.id];
-                    const factsList: FactItem[] = (source.facts || []).map(f =>
-                      typeof f === 'string' ? { text: f, evidence_excerpt: '', source_locator: source.content_ref } : f
-                    );
+                    
+                    // Normalize every fact whether it's a structured object, string, or claim
+                    const factsList: NormalizedFact[] = (source.facts || []).map(f =>
+                      formatFactDisplay(f, source.content_ref)
+                    ).filter(f => f.text || f.label || f.value);
 
                     const titleText = source.title || source.content_ref || `Source #${index + 1}`;
                     const isConfirmed = !!source.is_confirmed;
                     const rawTextPayload = source.preview_excerpt || '';
 
-                    // Detect binary / corrupt content that slipped through
-                    // the backend sanitisation layer.
+                    // Detect binary content
                     const sampleSlice = rawTextPayload.slice(0, 200);
                     const nonPrintable = (sampleSlice.match(/[\x00-\x08\x0E-\x1F]/g) || []).length;
                     const isBinaryContent =
@@ -272,45 +329,43 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
                       ? '[Binary document content — extracted facts are shown above]'
                       : rawTextPayload;
 
-
-
                     const charCount = displayRawText.length;
 
                     return (
                       <div
                         key={source.id}
-                        className={`border rounded-xl overflow-hidden transition-all shadow-sm ${
+                        className={`rounded-2xl border transition-all overflow-hidden ${
                           isConfirmed 
-                            ? 'bg-[var(--surface-soft,rgba(255,255,255,0.04))] border-emerald-500/30' 
-                            : 'bg-[var(--surface-soft,rgba(255,255,255,0.02))] border-[var(--border,rgba(255,255,255,0.08))]'
+                            ? 'bg-[var(--surface)] border-emerald-500/30 shadow-xs' 
+                            : 'bg-[var(--surface)] border-[var(--border)] shadow-xs'
                         }`}
                       >
                         {/* Source Header Row */}
                         <div
                           onClick={() => toggleExpand(source.id)}
-                          className="flex items-center justify-between p-4 cursor-pointer hover:bg-[var(--border,rgba(255,255,255,0.05))] transition-colors"
+                          className="flex items-center justify-between p-4 sm:p-5 cursor-pointer hover:bg-[var(--surface-soft)]/60 transition-colors"
                         >
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className="w-8 h-8 rounded-lg bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center shrink-0">
+                          <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                            <div className="w-9 h-9 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] flex items-center justify-center shrink-0">
                               {getSourceIcon(source.source_type)}
                             </div>
 
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <h4 className="text-[15px] font-semibold text-[var(--text-primary)] truncate">
+                                <h4 className="text-[15px] font-bold text-[var(--text-primary)] truncate font-[Satoshi]">
                                   {titleText}
                                 </h4>
                                 {isConfirmed ? (
-                                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
                                     In Active Grounding
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30">
                                     Stored / Unconfirmed
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[12px] text-[var(--text-muted)] truncate mt-0.5">
+                              <p className="text-[12px] text-[var(--text-secondary)] truncate mt-0.5 font-mono">
                                 Type: <span className="capitalize">{source.source_type}</span> · {factsList.length} Grounded Fact{factsList.length !== 1 ? 's' : ''} {charCount > 0 ? `· ${charCount.toLocaleString()} chars raw` : ''}
                               </p>
                             </div>
@@ -318,22 +373,22 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
 
                           <div className="flex items-center gap-3 shrink-0">
                             {isConfirmed ? (
-                              <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
-                                <CheckCircle2 className="w-3.5 h-3.5" /> Active Source
+                              <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Active Source
                               </span>
                             ) : source.status === 'ready' ? (
-                              <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full">
+                              <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 px-3 py-1 rounded-full">
                                 Ready (Passive)
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2.5 py-0.5 rounded-full">
+                              <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-500/10 border border-blue-500/30 px-3 py-1 rounded-full">
                                 Processing...
                               </span>
                             )}
 
-                            <button type="button" className="text-[var(--text-muted)] hover: p-1 bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)] border border-[var(--border)] transition-colors">
                               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </button>
+                            </div>
                           </div>
                         </div>
 
@@ -345,61 +400,91 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
                               animate={{ height: 'auto', opacity: 1 }}
                               exit={{ height: 0, opacity: 0 }}
                               transition={{ duration: 0.2 }}
-                              className="border-t border-[var(--border,rgba(255,255,255,0.06))] p-4 bg-[var(--surface,rgba(0,0,0,0.1))] space-y-4"
+                              className="border-t border-[var(--border)] p-4 sm:p-5 bg-[var(--surface-soft)]/40 space-y-4"
                             >
                               {/* Usage / Target Badges Section */}
-                              <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-[var(--border,rgba(255,255,255,0.06))]">
+                              <div className="flex items-center justify-between flex-wrap gap-2 pb-3.5 border-b border-[var(--border)]">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-[12px] font-medium text-[var(--text-muted)] flex items-center gap-1">
+                                  <span className="text-[12px] font-semibold text-[var(--text-secondary)] flex items-center gap-1">
                                     <Tag className="w-3.5 h-3.5" /> Grounding Usage:
                                   </span>
                                   {source.target_badges && source.target_badges.length > 0 ? (
                                     source.target_badges.map((b, bIdx) => (
-                                      <span key={bIdx} className="text-[11px] font-medium text-[var(--accent-ink)] bg-[var(--accent-soft)] border border-[var(--accent-soft)] px-2 py-0.5 rounded-md">
+                                      <span key={bIdx} className="text-[11px] font-semibold text-[var(--text-primary)] bg-[var(--surface)] border border-[var(--border)] px-2.5 py-0.5 rounded-md shadow-2xs">
                                         Target: {b}
                                       </span>
                                     ))
                                   ) : (
-                                    <span className="text-[11px] font-medium text-slate-400 bg-slate-500/10 border border-slate-500/20 px-2 py-0.5 rounded-md">
+                                    <span className="text-[11px] font-semibold text-[var(--text-secondary)] bg-[var(--surface)] border border-[var(--border)] px-2.5 py-0.5 rounded-md shadow-2xs">
                                       Target: Knowledge Base Retrieval
                                     </span>
                                   )}
                                 </div>
 
-                                <div className="text-[11px] text-[var(--text-muted)] font-mono">
-                                  Status: <span className="uppercase">{source.status}</span>
+                                <div className="text-[11px] text-[var(--text-secondary)] font-mono">
+                                  Status: <span className="uppercase font-semibold text-[var(--text-primary)]">{source.status}</span>
                                 </div>
                               </div>
 
                               {/* Grounded Facts List (Marked by active vs passive) */}
                               <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <h5 className="text-[12px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                                <div className="flex items-center justify-between mb-2.5">
+                                  <h5 className="text-[12px] font-bold text-[var(--text-secondary)] uppercase tracking-wider font-[Satoshi]">
                                     Extracted Facts ({factsList.length}):
                                   </h5>
-                                  <span className="text-[11px] text-[var(--text-muted)]">
+                                  <span className="text-[12px] font-medium text-[var(--text-secondary)]">
                                     {isConfirmed ? '✓ Fact active in space identity' : '• Fact stored in knowledge index'}
                                   </span>
                                 </div>
 
                                 {factsList.length > 0 ? (
-                                  <ul className="space-y-2.5 pl-1">
+                                  <ul className="space-y-2.5">
                                     {factsList.map((fact, fIdx) => (
-                                      <li key={fIdx} className="flex items-start gap-2.5 text-[13px] leading-relaxed text-[var(--text-primary)] bg-[var(--surface-soft)] p-3 rounded-lg border border-[var(--border)]">
-                                        <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${isConfirmed ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                                        <div className="flex-1 space-y-1">
-                                          <div className="flex items-start justify-between gap-2">
-                                            <span className="font-medium text-[var(--text-primary)]">{fact.text}</span>
-                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 uppercase tracking-wider ${
+                                      <li 
+                                        key={fIdx} 
+                                        className="flex items-start gap-3 text-[13px] leading-relaxed text-[var(--text-primary)] bg-[var(--surface)] hover:bg-[var(--surface-soft)] p-3.5 rounded-xl border border-[var(--border)] transition-colors shadow-2xs"
+                                      >
+                                        <span className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${isConfirmed ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                        
+                                        <div className="flex-1 min-w-0 space-y-1">
+                                          <div className="flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap">
+                                            
+                                            {/* Fact Content Text */}
+                                            <div className="text-[13px] text-[var(--text-primary)] flex-1 min-w-0">
+                                              {fact.label && fact.value ? (
+                                                <div>
+                                                  {fact.subject && (
+                                                    <span className="inline-block font-mono text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider px-2 py-0.5 rounded bg-[var(--surface-soft)] border border-[var(--border)] mr-2 mb-1">
+                                                      {fact.subject}
+                                                    </span>
+                                                  )}
+                                                  <span className="font-bold text-[var(--text-primary)]">{fact.label}: </span>
+                                                  <span className="font-normal text-[var(--text-primary)]">{fact.value}</span>
+                                                  {fact.note && (
+                                                    <span className="text-[12px] text-[var(--text-secondary)] italic block mt-0.5">
+                                                      ({fact.note})
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                <span className="font-medium text-[var(--text-primary)] break-words">
+                                                  {fact.text}
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            {/* Active Claim Badge */}
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 uppercase tracking-wider font-mono border ${
                                               isConfirmed 
-                                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' 
-                                                : 'bg-slate-500/15 text-slate-400 border border-slate-500/30'
+                                                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30' 
+                                                : 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/30'
                                             }`}>
                                               {isConfirmed ? 'Active Claim' : 'Stored Fact'}
                                             </span>
                                           </div>
+
                                           {fact.evidence_excerpt && (
-                                            <p className="text-[12px] text-[var(--text-muted)] italic bg-black/20 p-2 rounded border border-white/5 mt-1 font-mono">
+                                            <p className="text-[12px] text-[var(--text-secondary)] italic bg-[var(--surface-soft)] p-2.5 rounded-lg border border-[var(--border)] mt-1.5 font-mono leading-relaxed">
                                               Excerpt: "{fact.evidence_excerpt}"
                                             </p>
                                           )}
@@ -408,9 +493,9 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
                                     ))}
                                   </ul>
                                 ) : (
-                                  <p className="text-[13px] text-[var(--text-muted)] italic bg-[var(--surface-soft)] p-3 rounded-lg border border-[var(--border)]">
+                                  <div className="text-[13px] text-[var(--text-secondary)] italic bg-[var(--surface)] p-3.5 rounded-xl border border-[var(--border)]">
                                     No grounded facts extracted yet. Source text is stored for retrieval.
-                                  </p>
+                                  </div>
                                 )}
                               </div>
 
@@ -420,18 +505,20 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
                                   <button
                                     type="button"
                                     onClick={() => toggleRawText(source.id)}
-                                    className="text-[12px] font-medium text-[var(--accent-ink)] hover:underline flex items-center gap-1 cursor-pointer font-semibold"
+                                    className="text-[12px] font-semibold text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1.5 cursor-pointer"
                                   >
-                                    {isRawOpen ? 'Hide extracted preview excerpt' : `View extracted preview excerpt (${charCount.toLocaleString()} chars)`}
+                                    <span>
+                                      {isRawOpen ? 'Hide extracted preview excerpt' : `View extracted preview excerpt (${charCount.toLocaleString()} chars)`}
+                                    </span>
                                   </button>
 
                                   {isRawOpen && (
-                                    <div className="mt-2 space-y-1">
+                                    <div className="mt-2.5 space-y-1.5">
                                       <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] px-1 font-mono">
                                         <span>[Extracted Preview Excerpt]</span>
                                         <span>{charCount.toLocaleString()} characters</span>
                                       </div>
-                                      <pre className="p-3 bg-[var(--surface-soft)] border border-[var(--border)] rounded-lg text-[12px] text-[var(--text-secondary)] whitespace-pre-wrap max-h-[50vh] overflow-y-auto font-mono leading-relaxed select-text">
+                                      <pre className="p-4 bg-[var(--surface)] border border-[var(--border)] rounded-xl text-[12px] text-[var(--text-primary)] whitespace-pre-wrap max-h-[50vh] overflow-y-auto font-mono leading-relaxed select-text shadow-2xs">
                                         {displayRawText}
                                       </pre>
                                     </div>
@@ -444,13 +531,13 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
                               )}
 
                               {/* Ingestion & Version Metadata */}
-                              <div className="pt-3 border-t border-[var(--border,rgba(255,255,255,0.06))] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)]">
+                              <div className="pt-3.5 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-secondary)]">
                                 <div>
-                                  Pipeline: <span className="font-mono text-[var(--text-primary)]">{source.status}</span> · Version: <span className="font-mono text-[var(--text-primary)]">v{source.source_version || 1}</span> · Prompt: <span className="font-mono text-[var(--text-primary)]">{source.prompt_version || 'identity-v2'}</span>
+                                  Pipeline: <span className="font-mono font-semibold text-[var(--text-primary)]">{source.status}</span> · Version: <span className="font-mono font-semibold text-[var(--text-primary)]">v{source.source_version || 1}</span> · Prompt: <span className="font-mono font-semibold text-[var(--text-primary)]">{source.prompt_version || 'identity-v2'}</span>
                                 </div>
                                 {source.content_ref && (
-                                  <div className="truncate max-w-xs">
-                                    Locator: <span className="font-mono text-[var(--text-primary)]">{source.content_ref}</span>
+                                  <div className="truncate max-w-xs font-mono">
+                                    Locator: <span className="text-[var(--text-primary)]">{source.content_ref}</span>
                                   </div>
                                 )}
                               </div>
@@ -467,14 +554,14 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
           </div>
 
           {/* Modal Footer */}
-          <div className="p-4 border-t border-[var(--border,rgba(255,255,255,0.1))] bg-[var(--surface-soft,rgba(255,255,255,0.03))] flex items-center justify-between shrink-0">
-            <span className="text-[13px] text-[var(--text-muted)]">
-              Press <kbd className="px-1.5 py-0.5 bg-[var(--border)] rounded text-[11px]">ESC</kbd> to close
+          <div className="p-4 sm:px-6 border-t border-[var(--border)] bg-[var(--surface-soft)] flex items-center justify-between shrink-0">
+            <span className="text-[13px] text-[var(--text-secondary)]">
+              Press <kbd className="px-2 py-0.5 bg-[var(--surface)] border border-[var(--border)] rounded text-[11px] font-mono shadow-2xs">ESC</kbd> to close
             </span>
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2 bg-[var(--text-primary,#ffffff)] text-[var(--surface,#121826)] text-[14px] font-semibold rounded-xl hover:opacity-90 transition-opacity cursor-pointer bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90"
+              className="px-5 py-2.5 bg-[var(--accent-solid)] text-[var(--accent-on-solid)] text-[14px] font-semibold rounded-xl hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
             >
               Close Preview
             </button>

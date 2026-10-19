@@ -59,10 +59,28 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
 }) => {
   const [showDetails, setShowDetails] = useState(false);
   
-  // Strictly rely on backend facts — NO frontend dummy fallbacks
-  const initialFacts: FactItem[] = (source.facts || []).map(f => 
-    typeof f === 'string' ? { text: f, evidence_excerpt: '', source_locator: source.content_ref } : f
-  );
+  // Format fact text whether structured object, string, or claim
+  const initialFacts: FactItem[] = (source.facts || []).map((rawF: any) => {
+    if (typeof rawF === 'string') {
+      return { text: rawF, evidence_excerpt: '', source_locator: source.content_ref };
+    }
+    const f = rawF || {};
+    let text = '';
+    if (typeof f.text === 'string' && f.text.trim()) {
+      text = f.text.trim();
+    } else if (typeof f.claim === 'string' && f.claim.trim()) {
+      text = f.claim.trim();
+    } else if (f.label && f.value) {
+      text = f.subject ? `${f.subject} — ${f.label}: ${f.value}` : `${f.label}: ${f.value}`;
+    } else if (f.value) {
+      text = String(f.value);
+    }
+    return {
+      text: text || f.text || '',
+      evidence_excerpt: f.evidence_excerpt || '',
+      source_locator: f.source_locator || f.source_doc_id || source.content_ref,
+    };
+  });
 
   const [facts, setFacts] = useState<FactItem[]>(initialFacts);
   const [isConfirmed, setIsConfirmed] = useState(source.is_confirmed || false);
@@ -247,7 +265,7 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
             <button
               type="button"
               onClick={handleToggleConfirm}
-              className="px-3.5 py-1.5 bg-[var(--surface)] hover: border-transparent text-[12px] font-medium rounded-xl transition-all cursor-pointer flex items-center gap-1.5 font-[Instrument_Sans] bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90"
+              className="px-3.5 py-1.5 bg-[var(--surface-soft)] hover:bg-[var(--border)] border border-[var(--border)] text-[var(--text-primary)] text-[12px] font-medium rounded-xl transition-all cursor-pointer flex items-center gap-1.5 font-[Instrument_Sans]"
               title="Stop using this source for Aura suggestions"
             >
               <XCircle className="w-3.5 h-3.5 text-amber-500" />
