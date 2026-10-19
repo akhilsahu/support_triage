@@ -350,7 +350,10 @@ export function AssetPickerModal({
                           </div>
                         )}
                         <div className="asset-card-caption">
-                          <span className="truncate">{asset.filename}</span>
+                          <span className="truncate flex-1">{asset.filename}</span>
+                          {asset.sourceType === 'extracted' && (
+                            <span className="asset-source-tag">Source</span>
+                          )}
                         </div>
                       </button>
                     )

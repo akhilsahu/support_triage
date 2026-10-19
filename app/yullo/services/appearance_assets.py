@@ -55,11 +55,96 @@ async def _require_owned_space(db: AsyncSession, *, user_id: UUID, space_id: UUI
         raise HTTPException(status_code=404, detail="Yullo Space not found")
 
 
+from urllib.parse import urlparse
+
+from app.models.knowledge_base import KnowledgeBaseItem
+from app.yullo.services.sources.asset_extractor import extract_markdown_assets
+
+
+async def list_source_extracted_assets(
+    db: AsyncSession, *, space_id: UUID
+) -> list[AppearanceAssetResponse]:
+    """Collect image assets extracted during 'What Aura Knows' source ingestion."""
+    items = (
+        await db.scalars(
+            select(KnowledgeBaseItem)
+            .where(KnowledgeBaseItem.space_id == space_id)
+            .order_by(KnowledgeBaseItem.created_at.asc())
+        )
+    ).all()
+
+    seen_urls: set[str] = set()
+    extracted: list[AppearanceAssetResponse] = []
+
+    for item in items:
+        meta = item.source_metadata or {}
+        source_assets = dict(meta.get("assets") or {})
+
+        # If assets.images is empty, attempt fallback extraction from markdown preview
+        preview_txt = meta.get("preview_excerpt")
+        if not source_assets.get("images") and preview_txt:
+            md_assets = extract_markdown_assets(preview_txt, item.source_locator or "")
+            if md_assets.get("images"):
+                source_assets["images"] = md_assets["images"]
+
+        # Collect preview_image_url and images
+        images = list(source_assets.get("images") or [])
+        preview_img = meta.get("preview_image_url") or source_assets.get("preview_image_url")
+        if preview_img and not any(isinstance(img, dict) and img.get("url") == preview_img for img in images):
+            images.insert(0, {"url": preview_img, "alt": f"{item.title or 'Source'} Preview"})
+
+        for img in images:
+            if not isinstance(img, dict):
+                continue
+            url = (img.get("url") or "").strip()
+            if not url or not url.startswith(("http://", "https://")):
+                continue
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+
+            # Clean filename
+            parsed = urlparse(url)
+            raw_filename = parsed.path.split("/")[-1] if parsed.path else ""
+            clean_filename = raw_filename.split("?")[0] if raw_filename else f"source_image_{len(extracted) + 1}.jpg"
+            if not any(clean_filename.lower().endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"]):
+                clean_filename = f"{clean_filename}.jpg"
+
+            ext = clean_filename.lower().split(".")[-1]
+            mime = (
+                "image/png" if ext == "png"
+                else "image/webp" if ext == "webp"
+                else "image/gif" if ext == "gif"
+                else "image/svg+xml" if ext == "svg"
+                else "image/jpeg"
+            )
+
+            alt = img.get("alt") or img.get("title") or (f"{item.title} Image" if item.title else clean_filename)
+            asset_id = uuid.uuid5(uuid.NAMESPACE_URL, url)
+
+            extracted.append(
+                AppearanceAssetResponse(
+                    id=asset_id,
+                    filename=clean_filename,
+                    mimeType=mime,
+                    byteSize=1024,
+                    width=1200,
+                    height=800,
+                    altText=alt,
+                    url=url,
+                    thumbnailUrl=url,
+                    sourceType="extracted",
+                )
+            )
+
+    return extracted
+
+
 async def list_assets(
     db: AsyncSession, *, user_id: UUID, space_id: UUID
 ) -> list[AppearanceAssetResponse]:
     await _require_owned_space(db, user_id=user_id, space_id=space_id)
-    assets = (
+    uploaded = (
         await db.scalars(
             select(YulloAppearanceAsset)
             .where(
@@ -69,7 +154,13 @@ async def list_assets(
             .order_by(YulloAppearanceAsset.created_at.desc())
         )
     ).all()
-    return [asset_response(asset) for asset in assets]
+    uploaded_responses = [asset_response(asset) for asset in uploaded]
+
+    extracted_responses = await list_source_extracted_assets(db, space_id=space_id)
+    uploaded_urls = {a.url for a in uploaded_responses}
+    filtered_extracted = [a for a in extracted_responses if a.url not in uploaded_urls]
+
+    return uploaded_responses + filtered_extracted
 
 
 async def upload_asset(

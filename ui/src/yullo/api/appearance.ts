@@ -30,6 +30,7 @@ export interface AppearanceAsset {
   altText?: string | null
   width: number
   height: number
+  sourceType?: 'upload' | 'extracted'
 }
 
 export interface AppearanceCandidate {

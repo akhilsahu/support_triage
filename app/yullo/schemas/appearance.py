@@ -163,6 +163,7 @@ class AppearanceAssetResponse(StrictModel):
     alt_text: str | None = Field(default=None, alias="altText")
     url: str
     thumbnail_url: str = Field(alias="thumbnailUrl")
+    source_type: Literal["upload", "extracted"] = Field(default="upload", alias="sourceType")
 
 
 class AppearanceAssetUpdateRequest(StrictModel):

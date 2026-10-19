@@ -42,7 +42,16 @@ export function AssetManager({
             <button type="button" onClick={() => onSelect(asset)} aria-label={`Use ${asset.filename} as hero image`} aria-pressed={selectedId === asset.id}>
               <img src={asset.thumbnailUrl || asset.url} alt={asset.altText || ''} />
             </button>
-            <button type="button" className="appearance-asset-remove" onClick={() => onRemove(asset)} aria-label={`Remove ${asset.filename}`}><Trash2 size={13} /></button>
+            {asset.sourceType !== 'extracted' && (
+              <button
+                type="button"
+                className="appearance-asset-remove"
+                onClick={() => onRemove(asset)}
+                aria-label={`Remove ${asset.filename}`}
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
           </div>
         ))}
         {onOpenPicker ? (
