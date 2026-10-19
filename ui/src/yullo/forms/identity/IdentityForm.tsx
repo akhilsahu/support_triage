@@ -1,22 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { TextField } from '../core/TextField';
-import { TextAreaField } from '../core/TextAreaField';
-import { SelectField } from '../core/SelectField';
 import { yulloOnboardingApi, AboutSuggestionResponse } from '../../api/onboarding';
 import { 
-  Sparkles, Upload, Trash2, Link as LinkIcon, FileText, Info,
-  User as UserIcon, Briefcase, Building, Globe, Check, Pencil, X, Loader2
+  Sparkles, Upload, Trash2, Globe, Link as LinkIcon,
+  User as UserIcon, Briefcase, Building, Check, Pencil,
+  Loader2, ArrowRight, Eye, ShieldCheck, MapPin, AlertCircle
 } from 'lucide-react';
-import { SourceUnderstandingCard, SourceItem } from '../../components/SourceUnderstandingCard';
-import { ProcessingLoaderSystem, ProcessingState } from '../../components/ProcessingLoaderSystem';
+import { SourceItem } from '../../components/SourceUnderstandingCard';
 
 export const identitySchema = z.object({
   purpose: z.enum(['business', 'creator', 'person', 'organization'] as const, { message: 'Purpose is required' }),
   display_name: z.string().min(1, 'Display name is required').max(200),
-  description: z.string().max(280).optional().nullable(),
+  description: z.string().max(280, 'Maximum 280 characters').optional().nullable(),
   description_source: z.enum(['owner', 'aura']).optional().nullable(),
   description_prompt_version: z.string().optional().nullable(),
   description_input_fingerprint: z.string().optional().nullable(),
@@ -33,16 +30,25 @@ export const identitySchema = z.object({
 export type IdentityFormValues = z.infer<typeof identitySchema>;
 
 const PURPOSES = [
-  { id: 'person', title: 'Myself', shortTitle: 'Myself', desc: 'A personal space for your thoughts & AI.', icon: UserIcon },
-  { id: 'creator', title: 'My work / Creator', shortTitle: 'Creator', desc: 'Portfolio, resume, and professional work.', icon: Briefcase },
-  { id: 'business', title: 'A business or brand', shortTitle: 'Business', desc: 'Engage customers & provide support.', icon: Building },
-  { id: 'organization', title: 'A community or organization', shortTitle: 'Community', desc: 'A hub for your group or club.', icon: Globe },
+  { id: 'person', title: 'Myself', shortTitle: 'Myself', desc: 'Personal portfolio, thoughts & AI companion.', icon: UserIcon },
+  { id: 'creator', title: 'Creator', shortTitle: 'Creator', desc: 'Work, projects, creative resume & media.', icon: Briefcase },
+  { id: 'business', title: 'Business', shortTitle: 'Business', desc: 'Brand identity, customer engagement & support.', icon: Building },
+  { id: 'organization', title: 'Community', shortTitle: 'Community', desc: 'Hub for organizations, teams or clubs.', icon: Globe },
+] as const;
+
+const PRESENCE_OPTIONS = [
+  { value: '', label: 'Select presence type...' },
+  { value: 'online', label: 'Online only' },
+  { value: 'physical', label: 'Physical location' },
+  { value: 'both', label: 'Online & physical location' },
+  { value: 'mobile', label: 'Mobile / Pop-up service' },
 ] as const;
 
 interface IdentityFormProps {
   form: UseFormReturn<IdentityFormValues>;
   spaceId?: string;
   slug?: string;
+  isLive?: boolean;
   onChangeHandle?: () => void;
   onSubmit: (data: IdentityFormValues) => void;
   isSubmitting?: boolean;
@@ -58,45 +64,27 @@ export function IdentityForm({
   form, 
   spaceId, 
   slug, 
+  isLive = false,
   onChangeHandle, 
   onSubmit, 
-  sources = [],
-  onAddLink,
-  onUploadFile,
-  onAddText,
-  onRemoveSource,
-  onToggleConfirm
 }: IdentityFormProps) {
   const [suggestion, setSuggestion] = useState<AboutSuggestionResponse | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [showLogoUrlInput, setShowLogoUrlInput] = useState(false);
-
-  // Source Modals & ETA Processing System
-  const [showLinkModal, setShowLinkModal] = useState(false);
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showTextModal, setShowTextModal] = useState(false);
-  const [inputUrl, setInputUrl] = useState('');
-  const [inputText, setInputText] = useState('');
-  const [addingSource, setAddingSource] = useState(false);
-  const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null);
-
-  const [processingState, setProcessingState] = useState<ProcessingState>({
-    active: false,
-    title: '',
-    subtitle: '',
-    estimatedSeconds: 5
-  });
-
-  // Editable Name & Handle state
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const shouldReduceMotion = useReducedMotion();
   const transition = shouldReduceMotion ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const };
 
+  // Watch form fields for live feedback and preview
   const currentDisplayName = form.watch('display_name');
   const currentPurpose = form.watch('purpose');
+  const currentCategory = form.watch('category');
+  const currentPresence = form.watch('presence');
+  const currentDescription = form.watch('description');
+  const currentWebsite = form.watch('website');
   const currentLogoUrl = form.watch('logo_url');
   const categorySource = form.watch('category_source');
 
@@ -105,7 +93,7 @@ export function IdentityForm({
     try {
       const res = await yulloOnboardingApi.generateSummary({
         spaceId: spaceId,
-        name: currentDisplayName,
+        name: currentDisplayName || 'Space',
       });
       setSuggestion(res);
       setDismissed(false);
@@ -122,14 +110,13 @@ export function IdentityForm({
       }
     } catch (e) {
       console.warn('Failed to fetch Aura identity suggestion:', e);
-      setSuggestion({ status: 'unavailable', clarification: 'Generation service is currently unavailable.' });
+      setSuggestion({ status: 'unavailable', clarification: 'AI suggestion is currently unavailable. Please enter details manually.' });
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileUpload = (file: File) => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -141,239 +128,262 @@ export function IdentityForm({
     reader.readAsDataURL(file);
   };
 
-  const handleAddLinkSubmit = async () => {
-    if (!inputUrl.trim() || !onAddLink) return;
-    const urlToAdd = inputUrl.trim();
-    setInputUrl('');
-    setShowLinkModal(false);
-    setAddingSource(true);
-    setProcessingState({
-      active: true,
-      title: 'Analyzing Link & Scraping Content',
-      subtitle: `Fetching ${urlToAdd} and verifying grounded facts...`,
-      estimatedSeconds: 6
-    });
-    try {
-      await onAddLink(urlToAdd);
-    } catch (err) {
-      console.error('Failed to add link:', err);
-    } finally {
-      setAddingSource(false);
-      setProcessingState(prev => ({ ...prev, active: false }));
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      handleFileUpload(file);
     }
   };
 
-  const handleAddTextSubmit = async () => {
-    if (!inputText.trim() || !onAddText) return;
-    const textToAdd = inputText.trim();
-    setInputText('');
-    setShowTextModal(false);
-    setAddingSource(true);
-    setProcessingState({
-      active: true,
-      title: 'Analyzing Text Note',
-      subtitle: 'Indexing note content & extracting facts for Aura...',
-      estimatedSeconds: 4
-    });
-    try {
-      await onAddText(textToAdd);
-    } catch (err) {
-      console.error('Failed to add note:', err);
-    } finally {
-      setAddingSource(false);
-      setProcessingState(prev => ({ ...prev, active: false }));
+  const normalizeUrl = (val: string) => {
+    const trimmed = val.trim();
+    if (!trimmed) return '';
+    if (!/^https?:\/\//i.test(trimmed)) {
+      return `https://${trimmed}`;
     }
+    return trimmed;
   };
 
-  const handleUploadFileSubmit = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !onUploadFile) return;
-    setShowUploadModal(false);
-    setAddingSource(true);
-    setProcessingState({
-      active: true,
-      title: 'Parsing & Indexing Document',
-      subtitle: `Extracting text & facts from ${file.name}...`,
-      estimatedSeconds: 7
-    });
-    try {
-      await onUploadFile(file);
-    } catch (err) {
-      console.error('Failed to upload file:', err);
-    } finally {
-      setAddingSource(false);
-      setProcessingState(prev => ({ ...prev, active: false }));
-    }
-  };
-
-  const handleRemoveSourceWithLoader = async (sourceId: string) => {
-    if (!onRemoveSource) return;
-    setDeletingSourceId(sourceId);
-    try {
-      await onRemoveSource(sourceId);
-    } catch (err) {
-      console.error('Failed to remove source:', err);
-    } finally {
-      setDeletingSourceId(null);
-    }
-  };
-
-  const logoLabel = (currentPurpose === 'person' || currentPurpose === 'creator') ? 'Photo' : 'Logo or photo';
+  const currentPurposeObj = PURPOSES.find(p => p.id === currentPurpose) || PURPOSES[0];
+  const presenceLabel = PRESENCE_OPTIONS.find(p => p.value === currentPresence)?.label;
 
   return (
-    <form id="identity-form" onSubmit={form.handleSubmit(onSubmit)} className="flex-1 flex flex-col relative pb-8">
+    <form id="identity-form" onSubmit={form.handleSubmit(onSubmit)} className="w-full flex flex-col font-[Instrument_Sans]">
       
-      {/* Top Header: Editable Name & Address */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 pb-6 border-b border-[var(--border)]">
-        <div>
-          {isEditingTitle ? (
-            <div className="flex items-center gap-2 max-w-md">
-              <input
-                type="text"
-                {...form.register('display_name')}
-                onBlur={() => setIsEditingTitle(false)}
-                onKeyDown={(e) => { if (e.key === 'Enter') setIsEditingTitle(false); }}
-                className="text-[clamp(24px,3vw,36px)] leading-tight font-[Satoshi] font-semibold tracking-tight bg-transparent text-[var(--text-primary)] border-b-2 border-[var(--accent)] px-0 py-1 outline-none w-full"
-                placeholder="Enter space name..."
-                autoFocus
-              />
-              <Check className="w-6 h-6 text-emerald-500 shrink-0 cursor-pointer" onClick={() => setIsEditingTitle(false)} />
-            </div>
-          ) : (
-            <div
-              onClick={() => setIsEditingTitle(true)}
-              className="group flex items-center gap-3 cursor-pointer py-1 px-2 -ml-2 rounded-xl hover:bg-[var(--surface-soft)] transition-colors w-fit"
-              title="Click to edit space name"
-            >
-              <h1 className="text-[clamp(24px,3vw,36px)] leading-tight font-[Satoshi] font-semibold tracking-tight text-[var(--text-primary)]">
-                {currentDisplayName || 'Unnamed Space'}
-              </h1>
-              <Pencil className="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--accent-ink)] opacity-60 transition-opacity" />
-            </div>
-          )}
-        </div>
-
-        {slug && (
-          <div 
-            onClick={onChangeHandle}
-            className="group flex items-center gap-2.5 min-h-[44px] px-4 rounded-[12px] bg-[var(--surface-soft)] border border-[var(--border)] hover:border-[var(--accent)] cursor-pointer transition-colors w-fit"
-            title="Click to edit Yullo address"
-          >
-            <span className="text-[15px] font-mono text-[var(--text-primary)]">
-              yullo.com/{slug}
-            </span>
-            <Pencil className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--accent-ink)] opacity-60 transition-opacity" />
-          </div>
-        )}
-      </div>
-
-      {/* 2-COLUMN GRID (Matching Add Space design) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+      {/* 2-Column Responsive Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
         
-        {/* COLUMN 1: IDENTITY */}
-        <section className="space-y-6">
-          <div className="border-b border-[var(--border)] pb-2 flex items-center justify-between">
-            <h2 className="text-[18px] font-semibold text-[var(--text-primary)] flex items-center">
-              <span className="text-[14px] font-normal text-[var(--text-muted)] font-mono mr-3">01</span>
-              Identity
-            </h2>
-          </div>
+        {/* ========================================================================= */}
+        {/* LEFT COLUMN: FORM CONTROLS (7 of 12 cols on desktop)                      */}
+        {/* ========================================================================= */}
+        <div className="lg:col-span-7 space-y-8">
 
-          {/* Purpose Selector - 4 columns sitting in 1 row */}
-          <div>
-            <label className="block text-[14px] font-medium text-[var(--text-primary)] mb-2.5">
-              Space Purpose
-            </label>
-            <div className="grid grid-cols-4 gap-2">
+          {/* Section 1: Core Space Identity */}
+          <section className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 sm:p-7 shadow-xs space-y-6">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
+              <h2 className="text-[17px] font-semibold text-[var(--text-primary)] font-[Satoshi] flex items-center gap-2.5">
+                <span className="text-[12px] font-mono px-2 py-0.5 rounded-md bg-[var(--surface-soft)] text-[var(--text-secondary)] border border-[var(--border)]">
+                  01
+                </span>
+                Identity & Handle
+              </h2>
+              <span className="text-xs text-[var(--text-muted)] font-mono">Required details</span>
+            </div>
+
+            {/* Space Name */}
+            <div>
+              <label className="block text-[14px] font-semibold text-[var(--text-primary)] mb-2">
+                Space Name <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  {...form.register('display_name')}
+                  placeholder="e.g. SpaceX"
+                  className="w-full px-4 py-3 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)] focus:ring-2 focus:ring-[var(--focus-soft)] transition-all font-[Instrument_Sans]"
+                />
+              </div>
+              {form.formState.errors.display_name && (
+                <p className="mt-1.5 text-xs text-rose-500 font-medium flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  {form.formState.errors.display_name.message}
+                </p>
+              )}
+            </div>
+
+            {/* Space Handle / Slug */}
+            <div>
+              <label className="block text-[14px] font-semibold text-[var(--text-primary)] mb-2">
+                Public Yullo Address
+              </label>
+              <div className="flex items-center justify-between gap-3 p-3 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl">
+                <div className="flex items-center min-w-0 font-mono text-[14px] truncate">
+                  <span className="text-[var(--text-muted)] select-none">yullo.com/</span>
+                  <span className="font-semibold text-[var(--text-primary)] truncate">{slug || 'your-space'}</span>
+                </div>
+                {onChangeHandle && (
+                  <button
+                    type="button"
+                    onClick={onChangeHandle}
+                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--surface)] hover:bg-[var(--border)] text-[var(--text-primary)] border border-[var(--border)] transition-colors cursor-pointer"
+                  >
+                    <Pencil className="w-3 h-3 text-[var(--accent-ink)]" />
+                    <span>Change address</span>
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                This is the unique URL visitors use to access your public Space.
+              </p>
+            </div>
+          </section>
+
+          {/* Section 2: Space Purpose */}
+          <section className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 sm:p-7 shadow-xs space-y-5">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
+              <h2 className="text-[17px] font-semibold text-[var(--text-primary)] font-[Satoshi] flex items-center gap-2.5">
+                <span className="text-[12px] font-mono px-2 py-0.5 rounded-md bg-[var(--surface-soft)] text-[var(--text-secondary)] border border-[var(--border)]">
+                  02
+                </span>
+                Space Purpose
+              </h2>
+              <span className="text-xs text-[var(--text-muted)]">Select one</span>
+            </div>
+
+            <p className="text-[13px] text-[var(--text-secondary)]">
+              Helps visitors understand who this Space represents and tunes Aura's persona.
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               {PURPOSES.map((p) => {
                 const Icon = p.icon;
                 const isSelected = currentPurpose === p.id;
                 return (
-                  <div key={p.id} className="relative group/tooltip w-full">
-                    <button
-                      type="button"
-                      onClick={() => form.setValue('purpose', p.id as any, { shouldDirty: true })}
-                      className={`w-full min-h-[44px] px-2 py-2 rounded-xl border text-[13px] font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => form.setValue('purpose', p.id as any, { shouldDirty: true })}
+                    className={`relative p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between min-h-[96px] group ${
+                      isSelected 
+                        ? 'border-[var(--accent)] bg-[var(--surface-soft)] shadow-xs ring-1 ring-[var(--accent)]' 
+                        : 'border-[var(--border)] hover:border-[var(--text-secondary)] bg-[var(--surface)] hover:bg-[var(--surface-soft)]/50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
                         isSelected 
-                          ? 'border-[var(--accent)] bg-[var(--surface-soft)] text-[var(--text-primary)] shadow-sm font-semibold' 
-                          : 'border-[var(--border)] hover:border-[var(--text-secondary)] bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                      }`}
-                    >
-                      <Icon className={`w-4 h-4 shrink-0 ${isSelected ? 'text-[var(--accent-ink)]' : 'text-[var(--text-muted)]'}`} />
-                      <span className="truncate text-center">{p.shortTitle}</span>
-                    </button>
-
-                    {/* Tooltip */}
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+8px)] hidden group-hover/tooltip:flex flex-col items-center z-30 pointer-events-none w-56">
-                      <div className="bg-[var(--surface)] border border-[var(--border)] text-[var(--text-primary)] text-[12px] font-[Instrument_Sans] px-3.5 py-2 rounded-xl shadow-xl text-center leading-snug">
-                        <span className="font-semibold block mb-0.5">{p.title}</span>
+                          ? 'bg-[var(--accent-solid)] text-[var(--accent-on-solid)]' 
+                          : 'bg-[var(--surface-soft)] text-[var(--text-muted)] group-hover:text-[var(--text-primary)]'
+                      }`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      {isSelected && (
+                        <div className="w-4 h-4 rounded-full bg-[var(--accent-solid)] text-[var(--accent-on-solid)] flex items-center justify-center">
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <div className={`text-[13px] font-semibold leading-tight ${isSelected ? 'text-[var(--text-primary)]' : 'text-[var(--text-primary)]'}`}>
+                        {p.shortTitle}
+                      </div>
+                      <div className="text-[11px] text-[var(--text-secondary)] mt-0.5 line-clamp-1 leading-normal">
                         {p.desc}
                       </div>
-                      <div className="w-2.5 h-2.5 bg-[var(--surface)] border-b border-r border-[var(--border)] rotate-45 -mt-1" />
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
-          </div>
+          </section>
 
-          {/* Category & Presence */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[14px] font-medium text-[var(--text-primary)]">
-                  Category
-                </label>
-                {categorySource === 'aura' && (
-                  <span className="text-[12px] font-semibold text-[var(--accent-ink)] flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" /> Suggested by Aura
-                  </span>
-                )}
-              </div>
-              <TextField
-                label=""
-                placeholder="e.g. Design studio"
-                registration={form.register('category', {
-                  onChange: () => {
-                    form.setValue('category_source', 'owner');
-                  }
-                })}
-                error={form.formState.errors.category?.message}
-              />
+          {/* Section 3: Classification & Presence */}
+          <section className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 sm:p-7 shadow-xs space-y-5">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
+              <h2 className="text-[17px] font-semibold text-[var(--text-primary)] font-[Satoshi] flex items-center gap-2.5">
+                <span className="text-[12px] font-mono px-2 py-0.5 rounded-md bg-[var(--surface-soft)] text-[var(--text-secondary)] border border-[var(--border)]">
+                  03
+                </span>
+                Classification & Online Presence
+              </h2>
             </div>
-            <div>
-              <div className="mb-1.5">
-                <label className="text-[14px] font-medium text-[var(--text-primary)]">
-                  Presence
-                </label>
-              </div>
-              <SelectField
-                label=""
-                control={form.control as any}
-                name="presence"
-                error={form.formState.errors.presence?.message}
-                options={[
-                  { value: '', label: 'Select...' },
-                  { value: 'online', label: 'Online' },
-                  { value: 'physical', label: 'Physical' },
-                  { value: 'both', label: 'Online and physical' },
-                  { value: 'mobile', label: 'Mobile' },
-                ]}
-              />
-            </div>
-          </div>
 
-          {/* About Description */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[14px] font-medium text-[var(--text-primary)]">
-                About this Space
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Category */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[13px] font-semibold text-[var(--text-primary)]">
+                    Category
+                  </label>
+                  {categorySource === 'aura' && (
+                    <span className="text-[11px] font-semibold text-[var(--accent-ink)] flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" /> Aura suggestion
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  {...form.register('category', {
+                    onChange: () => form.setValue('category_source', 'owner', { shouldDirty: true })
+                  })}
+                  placeholder="e.g. Space technology company"
+                  className="w-full px-4 py-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)] transition-all font-[Instrument_Sans]"
+                />
+              </div>
+
+              {/* Presence */}
+              <div>
+                <label className="block text-[13px] font-semibold text-[var(--text-primary)] mb-1.5">
+                  Presence Type
+                </label>
+                <div className="relative">
+                  <select
+                    {...form.register('presence')}
+                    className="w-full px-4 py-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-[14px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)] transition-all font-[Instrument_Sans] appearance-none cursor-pointer pr-10"
+                  >
+                    {PRESENCE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value} className="bg-[var(--surface)] text-[var(--text-primary)]">
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-muted)]">
+                    <ArrowRight className="w-3.5 h-3.5 rotate-90" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Official Website */}
+            <div>
+              <label className="block text-[13px] font-semibold text-[var(--text-primary)] mb-1.5">
+                Official Website
               </label>
+              <div className="relative">
+                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">
+                  <Globe className="w-4 h-4" />
+                </div>
+                <input
+                  type="text"
+                  {...form.register('website', {
+                    onBlur: (e) => {
+                      const normalized = normalizeUrl(e.target.value);
+                      form.setValue('website', normalized, { shouldDirty: true });
+                    }
+                  })}
+                  placeholder="https://spacex.com"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)] transition-all font-[Instrument_Sans]"
+                />
+              </div>
+              {form.formState.errors.website && (
+                <p className="mt-1.5 text-xs text-rose-500 font-medium flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  {form.formState.errors.website.message}
+                </p>
+              )}
+            </div>
+          </section>
+
+          {/* Section 4: About Description */}
+          <section className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 sm:p-7 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-[12px] font-mono px-2 py-0.5 rounded-md bg-[var(--surface-soft)] text-[var(--text-secondary)] border border-[var(--border)]">
+                  04
+                </span>
+                <h2 className="text-[17px] font-semibold text-[var(--text-primary)] font-[Satoshi]">
+                  About this Space
+                </h2>
+              </div>
+
+              {/* Suggest with Aura Pill Button */}
               <button
                 type="button"
                 onClick={fetchAuraSuggestion}
                 disabled={isGenerating}
-                className="flex items-center gap-1.5 text-[12px] font-medium text-[var(--focus)] hover:text-[var(--focus-soft)] disabled:opacity-50 transition-colors cursor-pointer bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[var(--surface-soft)] hover:bg-[var(--surface)] text-[var(--text-primary)] border border-[var(--border)] hover:border-[var(--accent)] shadow-xs transition-all cursor-pointer disabled:opacity-50"
               >
                 {isGenerating ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent-ink)]" />
@@ -384,17 +394,26 @@ export function IdentityForm({
               </button>
             </div>
 
-            <TextAreaField
-              label=""
-              placeholder="What should visitors know about this Space?"
-              registration={form.register('description', {
-                onChange: () => {
-                  form.setValue('description_source', 'owner');
-                }
-              })}
-              error={form.formState.errors.description?.message}
-            />
+            <p className="text-[13px] text-[var(--text-secondary)]">
+              A concise summary explaining what this space does, what visitors can explore, or who you are.
+            </p>
 
+            <div className="relative">
+              <textarea
+                {...form.register('description', {
+                  onChange: () => form.setValue('description_source', 'owner', { shouldDirty: true })
+                })}
+                rows={4}
+                maxLength={280}
+                placeholder="SpaceX designs, manufactures and launches advanced rockets and spacecraft..."
+                className="w-full p-4 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)] transition-all font-[Instrument_Sans] resize-none leading-relaxed"
+              />
+              <div className="absolute right-3 bottom-3 text-[11px] font-mono text-[var(--text-muted)]">
+                {(currentDescription || '').length}/280
+              </div>
+            </div>
+
+            {/* Aura Suggestion Banner */}
             <AnimatePresence>
               {suggestion && !dismissed && (
                 <motion.div 
@@ -402,17 +421,17 @@ export function IdentityForm({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
                   transition={transition}
-                  className="mt-3 p-4 bg-[var(--surface-soft)] rounded-xl border border-[var(--border)]"
+                  className="p-4 bg-[var(--surface-soft)] rounded-xl border border-[var(--accent)]/40 shadow-xs space-y-2"
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[13px] font-semibold text-[var(--accent-ink)] tracking-wide flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5" /> Suggested by Aura
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] font-semibold text-[var(--accent-ink)] flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" /> Aura Generated Suggestion
                     </span>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <button 
                         type="button" 
                         onClick={() => setDismissed(true)} 
-                        className="text-[13px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                        className="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer px-2 py-1"
                       >
                         Dismiss
                       </button>
@@ -430,7 +449,7 @@ export function IdentityForm({
                             }
                             setDismissed(true);
                           }} 
-                          className="text-[13px] font-medium text-[var(--focus)] hover:text-[var(--focus-soft)] cursor-pointer"
+                          className="px-3 py-1 rounded-lg text-xs font-semibold bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
                         >
                           Use suggestion
                         </button>
@@ -439,106 +458,286 @@ export function IdentityForm({
                   </div>
 
                   {suggestion.status === 'needs_clarification' && suggestion.clarification && (
-                    <p className="text-[14px] text-amber-300 font-medium leading-relaxed">
+                    <p className="text-[13px] text-amber-500 font-medium">
                       {suggestion.clarification}
                     </p>
                   )}
 
                   {suggestion.status === 'ready' && (
-                    <div className="space-y-1">
+                    <div className="text-[13px] text-[var(--text-primary)] space-y-1">
                       {suggestion.category && (
-                        <p className="text-[13px] text-[var(--text-secondary)] font-medium">
-                          Category: <span className="text-[var(--text-primary)] font-semibold">{suggestion.category}</span>
-                        </p>
+                        <div>Category: <span className="font-semibold">{suggestion.category}</span></div>
                       )}
                       {suggestion.description && (
-                        <p className="text-[14px] text-[var(--text-primary)] leading-relaxed">
-                          {suggestion.description}
-                        </p>
+                        <p className="leading-relaxed opacity-90">{suggestion.description}</p>
                       )}
                     </div>
                   )}
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
+          </section>
 
-          {/* Logo / Photo */}
-          <div className="flex flex-col gap-2 pt-2">
-            <label className="text-[13px] font-semibold text-[var(--text-secondary)]">
-              {logoLabel}
-            </label>
+          {/* Section 5: Logo / Photo Branding */}
+          <section className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 sm:p-7 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
+              <h2 className="text-[17px] font-semibold text-[var(--text-primary)] font-[Satoshi] flex items-center gap-2.5">
+                <span className="text-[12px] font-mono px-2 py-0.5 rounded-md bg-[var(--surface-soft)] text-[var(--text-secondary)] border border-[var(--border)]">
+                  05
+                </span>
+                Logo or Photo
+              </h2>
+              <span className="text-xs text-[var(--text-muted)] font-mono">Avatar & Icon</span>
+            </div>
+
             {currentLogoUrl ? (
-              <div className="flex items-center gap-4 p-3 bg-[var(--surface-soft)] rounded-xl border border-[var(--border)]">
-                <img
-                  src={currentLogoUrl}
-                  alt={logoLabel}
-                  className="w-14 h-14 rounded-lg object-cover border border-[var(--border)] shrink-0 bg-[var(--surface)]"
-                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
-                />
-                <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-                  <span className="text-[13px] font-medium text-[var(--text-primary)] truncate">
-                    {currentLogoUrl.startsWith('data:') ? 'Uploaded image' : currentLogoUrl}
-                  </span>
-                  <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4 p-4 bg-[var(--surface-soft)] rounded-xl border border-[var(--border)]">
+                <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--surface)] shrink-0 shadow-xs">
+                  <img
+                    src={currentLogoUrl}
+                    alt="Space Logo"
+                    className="w-full h-full object-cover"
+                    onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-semibold text-[var(--text-primary)] truncate">
+                    {currentLogoUrl.startsWith('data:') ? 'Uploaded custom photo' : 'Remote image asset'}
+                  </div>
+                  <div className="text-xs text-[var(--text-muted)] mt-0.5 truncate">
+                    Displays on public header and metadata cards
+                  </div>
+                  <div className="flex items-center gap-3 mt-2.5">
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="text-[12px] font-medium text-[var(--focus)] cursor-pointer"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)] hover:underline cursor-pointer"
                     >
-                      Change photo
+                      <Upload className="w-3.5 h-3.5 text-[var(--accent-ink)]" /> Replace photo
                     </button>
                     <button
                       type="button"
                       onClick={() => form.setValue('logo_url', '', { shouldDirty: true })}
-                      className="text-[12px] font-medium text-[#ef4444] cursor-pointer flex items-center gap-1"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-rose-500 hover:text-rose-600 cursor-pointer"
                     >
-                      <Trash2 className="w-3 h-3" /> Remove
+                      <Trash2 className="w-3.5 h-3.5" /> Remove
                     </button>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-[var(--surface-soft)] hover:bg-[var(--border)] text-[var(--text-primary)] border border-[var(--border)] rounded-xl text-[13px] font-medium transition-colors cursor-pointer"
-                >
-                  <Upload className="w-4 h-4 text-[var(--focus)]" />
-                  Upload photo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowLogoUrlInput(!showLogoUrlInput)}
-                  className="text-[13px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
-                >
-                  {showLogoUrlInput ? 'Hide URL' : 'Or paste URL'}
-                </button>
+              <div 
+                onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }}
+                onDragLeave={() => setIsDraggingFile(false)}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${
+                  isDraggingFile 
+                    ? 'border-[var(--accent)] bg-[var(--surface-soft)]' 
+                    : 'border-[var(--border)] hover:border-[var(--text-secondary)] bg-[var(--surface-soft)]/50 hover:bg-[var(--surface-soft)]'
+                }`}
+              >
+                <div className="w-10 h-10 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--accent-ink)] shadow-xs">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-[13px] font-semibold text-[var(--text-primary)]">
+                    Click to upload or drag image here
+                  </span>
+                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                    Supports PNG, JPG, WebP, SVG up to 5MB
+                  </p>
+                </div>
               </div>
             )}
 
-            {showLogoUrlInput && !currentLogoUrl && (
-              <TextField
-                label=""
-                placeholder="https://example.com/logo.png"
-                registration={form.register('logo_url')}
-                error={form.formState.errors.logo_url?.message}
-              />
-            )}
+            {/* Toggle Image URL Input */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowLogoUrlInput(!showLogoUrlInput)}
+                className="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <LinkIcon className="w-3.5 h-3.5" />
+                {showLogoUrlInput ? 'Hide image URL input' : 'Or paste an image URL instead'}
+              </button>
+
+              {showLogoUrlInput && (
+                <div className="mt-2.5">
+                  <input
+                    type="text"
+                    {...form.register('logo_url')}
+                    placeholder="https://example.com/logo.png"
+                    className="w-full px-4 py-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)] font-[Instrument_Sans]"
+                  />
+                </div>
+              )}
+            </div>
 
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              onChange={handleFileUpload}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFileUpload(file);
+              }}
               className="hidden"
             />
+          </section>
+
+        </div>
+
+        {/* ========================================================================= */}
+        {/* RIGHT COLUMN: REAL-TIME LIVE SPACE CARD PREVIEW (5 of 12 cols)            */}
+        {/* ========================================================================= */}
+        <div className="lg:col-span-5 sticky top-6 space-y-4">
+          
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <Eye className="w-4 h-4 text-[var(--accent-ink)]" />
+              <span className="text-[13px] font-semibold text-[var(--text-primary)] font-[Satoshi]">
+                Live Public Preview
+              </span>
+            </div>
+            <span className="text-[11px] font-mono text-[var(--text-muted)] uppercase tracking-wider">
+              Real-time
+            </span>
           </div>
 
-        </section>
+          {/* Interactive Card Container */}
+          <div className="relative rounded-2xl bg-[var(--surface)] border border-[var(--border)] shadow-xl overflow-hidden transition-all duration-300">
+            
+            {/* Ambient Accent Mesh Header */}
+            <div className="h-28 bg-gradient-to-r from-[var(--surface-soft)] via-[var(--surface)] to-[var(--surface-soft)] relative border-b border-[var(--border)] overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-tr from-[var(--accent-solid)]/15 via-transparent to-cyan-500/10 pointer-events-none" />
+              <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                {isLive ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shadow-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Live
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[var(--surface)]/80 text-[var(--text-secondary)] border border-[var(--border)] backdrop-blur-xs">
+                    <span className="w-1.5 h-1.5 rounded-full border border-current" />
+                    Private
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Avatar & Title Overhang */}
+            <div className="px-6 pb-6 pt-0 relative">
+              <div className="-mt-12 mb-3.5 flex items-end justify-between">
+                <div className="w-20 h-20 rounded-2xl border-4 border-[var(--surface)] bg-[var(--surface-soft)] overflow-hidden shadow-md flex items-center justify-center shrink-0">
+                  {currentLogoUrl ? (
+                    <img 
+                      src={currentLogoUrl} 
+                      alt="Space Logo" 
+                      className="w-full h-full object-cover" 
+                      onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center font-[Satoshi] font-bold text-2xl bg-gradient-to-br from-[var(--accent-solid)] to-amber-400 text-[var(--accent-on-solid)]">
+                      {(currentDisplayName || 'S').slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mb-1 text-right">
+                  <div className="inline-flex items-center gap-1 text-[12px] font-mono text-[var(--text-secondary)] bg-[var(--surface-soft)] px-2.5 py-1 rounded-lg border border-[var(--border)]">
+                    yullo.com/{slug || 'spacex'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Space Name & Badges */}
+              <div className="space-y-1.5">
+                <h3 className="text-[22px] font-[Satoshi] font-bold text-[var(--text-primary)] tracking-tight leading-snug">
+                  {currentDisplayName || 'Space Name'}
+                </h3>
+                
+                {/* Metadata Pills */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[var(--surface-soft)] text-[var(--text-secondary)] border border-[var(--border)]">
+                    <currentPurposeObj.icon className="w-3 h-3 text-[var(--accent-ink)]" />
+                    {currentPurposeObj.shortTitle}
+                  </span>
+
+                  {currentCategory && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[var(--surface-soft)] text-[var(--text-secondary)] border border-[var(--border)]">
+                      {currentCategory}
+                    </span>
+                  )}
+
+                  {presenceLabel && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[var(--surface-soft)] text-[var(--text-secondary)] border border-[var(--border)]">
+                      <MapPin className="w-3 h-3 text-[var(--text-muted)]" />
+                      {presenceLabel}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Bio Excerpt */}
+              <div className="mt-4 pt-4 border-t border-[var(--border)]">
+                <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed line-clamp-3">
+                  {currentDescription || (
+                    <span className="italic text-[var(--text-muted)]">
+                      No description yet. Use "Suggest with Aura" or write a short bio to describe this Space.
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              {/* Official Website Link */}
+              {currentWebsite && (
+                <div className="mt-3.5 pt-3 border-t border-[var(--border)] flex items-center justify-between text-xs">
+                  <span className="text-[var(--text-muted)]">Website</span>
+                  <a
+                    href={currentWebsite}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1"
+                  >
+                    <Globe className="w-3 h-3" />
+                    {currentWebsite.replace(/^https?:\/\//i, '').replace(/\/$/, '')}
+                    <ArrowRight className="w-3 h-3 -rotate-45" />
+                  </a>
+                </div>
+              )}
+
+              {/* Mock AI Conversation Prompt */}
+              <div className="mt-5 p-3.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] flex items-center justify-between gap-2 shadow-2xs">
+                <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] truncate">
+                  <Sparkles className="w-3.5 h-3.5 text-[var(--accent-ink)] shrink-0" />
+                  <span className="truncate">Ask Aura anything about {currentDisplayName || 'this Space'}...</span>
+                </div>
+                <div className="w-6 h-6 rounded-lg bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] shrink-0">
+                  <ArrowRight className="w-3 h-3" />
+                </div>
+              </div>
+
+            </div>
+
+            {/* Subtle Footer Note */}
+            <div className="px-6 py-2.5 bg-[var(--surface-soft)]/50 border-t border-[var(--border)] flex items-center justify-between text-[11px] text-[var(--text-muted)]">
+              <span>Public Space Card</span>
+              <span className="flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> Grounded with Aura
+              </span>
+            </div>
+
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[var(--surface-soft)]/50 border border-[var(--border)] text-xs text-[var(--text-secondary)] leading-relaxed">
+            💡 <strong>Tip:</strong> Changes you make to the Space Name, category, and bio will immediately reflect on your public Yullo Link once saved.
+          </div>
+
+        </div>
 
       </div>
+
     </form>
   );
 }

@@ -9,7 +9,7 @@ import { useAppStore } from '../../../store/useAppStore';
 import { motion, useReducedMotion } from 'motion/react';
 import { FormActions } from '../../forms/core/FormActions';
 import { IdentityForm, identitySchema, IdentityFormValues } from '../../forms/identity/IdentityForm';
-import { X, Trash2, ArrowRight, Loader2 } from 'lucide-react';
+import { X, Trash2, ArrowRight, Loader2, Check } from 'lucide-react';
 
 export function IdentityFormScreen() {
   const { spaceId } = useParams<{ spaceId: string }>();
@@ -34,12 +34,6 @@ export function IdentityFormScreen() {
   const { data: identity, isLoading, error } = useQuery({
     queryKey: ['identity', spaceId],
     queryFn: () => formsApi.getIdentity(spaceId!),
-    enabled: !!spaceId,
-  });
-
-  const { data: sources = [] } = useQuery({
-    queryKey: ['sources', spaceId],
-    queryFn: () => yulloOnboardingApi.getSpaceSources(spaceId!),
     enabled: !!spaceId,
   });
 
@@ -88,7 +82,7 @@ export function IdentityFormScreen() {
       setSaveStatus('saved');
       setTimeout(() => {
         navigate(`/yullo/spaces/${spaceId}`);
-      }, 300);
+      }, 350);
     },
     onError: (err: any) => {
       setSaveStatus('idle');
@@ -145,51 +139,36 @@ export function IdentityFormScreen() {
     }
   };
 
-  const handleAddLink = async (url: string) => {
-    if (!spaceId) return;
-    await yulloOnboardingApi.addSourceUrl(url, 'url', spaceId);
-    queryClient.invalidateQueries({ queryKey: ['sources', spaceId] });
-  };
-
-  const handleAddText = async (text: string) => {
-    if (!spaceId) return;
-    await yulloOnboardingApi.addSourceText(text, spaceId);
-    queryClient.invalidateQueries({ queryKey: ['sources', spaceId] });
-  };
-
-  const handleUploadFile = async (file: File) => {
-    if (!spaceId) return;
-    await yulloOnboardingApi.addSourceFile(file, spaceId);
-    queryClient.invalidateQueries({ queryKey: ['sources', spaceId] });
-  };
-
-  const handleRemoveSource = async (sourceId: string) => {
-    if (!spaceId) return;
-    await yulloOnboardingApi.deleteSource(sourceId);
-    queryClient.invalidateQueries({ queryKey: ['sources', spaceId] });
-  };
-
-  const handleToggleConfirmSource = async (sourceId: string, nextState: boolean) => {
-    if (!spaceId) return;
-    await yulloOnboardingApi.updateSource(sourceId, { is_confirmed: nextState });
-    queryClient.invalidateQueries({ queryKey: ['sources', spaceId] });
-  };
-
   if (isLoading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-8 shadow-2xl flex flex-col items-center gap-4 text-center max-w-sm w-full">
+        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-8 shadow-2xl flex flex-col items-center gap-4 text-center max-w-sm w-full font-[Instrument_Sans]">
           <Loader2 className="w-10 h-10 text-[var(--accent-ink)] animate-spin" />
           <div className="flex flex-col gap-1">
             <h3 className="font-[Satoshi] font-semibold text-[18px] text-[var(--text-primary)]">Loading space details...</h3>
-            <p className="text-[13px] text-[var(--text-secondary)]">Fetching identity and knowledge sources</p>
+            <p className="text-[13px] text-[var(--text-secondary)]">Fetching identity and profile metadata</p>
           </div>
         </div>
       </div>
     );
   }
 
-  if (error) return <div className="p-8 text-red-500 font-medium">Error loading identity. Please refresh and try again.</div>;
+  if (error) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="bg-[var(--surface)] border border-rose-500/20 rounded-2xl p-6 shadow-2xl text-center max-w-md w-full">
+          <p className="text-rose-500 font-medium mb-4">Error loading space identity. Please refresh and try again.</p>
+          <button 
+            onClick={() => navigate(`/yullo/spaces/${spaceId}`)}
+            className="px-4 py-2 bg-[var(--surface-soft)] text-[var(--text-primary)] rounded-xl text-sm font-medium hover:bg-[var(--border)] transition-colors cursor-pointer"
+          >
+            Back to Space
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!identity) return null;
 
   const onSubmit = (data: IdentityFormValues) => {
@@ -198,58 +177,68 @@ export function IdentityFormScreen() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end max-[899px]:top-0 max-[899px]:h-full min-[900px]:top-[72px] min-[900px]:h-[calc(100dvh-72px)]">
-      {/* Backdrop */}
+    <div className="fixed inset-0 z-50 flex justify-end max-[899px]:top-0 max-[899px]:h-full min-[900px]:top-[72px] min-[900px]:h-[calc(100dvh-72px)] font-[Instrument_Sans]">
+      
+      {/* Dark Frosted Backdrop */}
       <div 
-        className="absolute inset-0 bg-[var(--canvas)] opacity-40 transition-opacity cursor-pointer duration-300"
+        className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity cursor-pointer duration-300"
         onClick={() => navigate(`/yullo/spaces/${spaceId}`)}
       />
       
-      {/* Sheet */}
+      {/* Slide-in Sheet Drawer */}
       <motion.div 
-        initial={{ x: 24, opacity: 0 }}
+        initial={{ x: 32, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={transition}
-        className="relative z-10 w-full h-full max-[899px]:w-full max-[899px]:h-full max-[899px]:rounded-none min-[900px]:w-[min(1080px,85vw)] bg-[var(--surface)] shadow-2xl flex flex-col min-[900px]:rounded-l-2xl overflow-hidden"
+        className="yullo-app relative z-10 w-full h-full max-[899px]:w-full max-[899px]:rounded-none min-[900px]:w-[min(1160px,94vw)] bg-[var(--canvas)] shadow-2xl flex flex-col min-[900px]:rounded-l-2xl overflow-hidden border-l border-[var(--border)]"
         style={{ color: 'var(--text-primary)' }}
       >
         <div className="flex-1 overflow-y-auto flex flex-col">
-          <div className="px-5 min-[900px]:px-8 py-6 flex-1 flex flex-col">
+          <div className="px-5 sm:px-8 lg:px-10 py-7 flex-1 flex flex-col">
             
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-              <h1 className="text-[32px] font-[Satoshi] font-semibold tracking-tight text-[var(--text-primary)] leading-none">Edit space</h1>
+            {/* Editorial Drawer Header */}
+            <div className="flex items-start justify-between mb-8 pb-6 border-b border-[var(--border)]">
+              <div>
+                <div className="text-[11px] font-mono uppercase tracking-widest text-[var(--text-muted)] mb-1">
+                  Space Configuration
+                </div>
+                <h1 className="text-[28px] sm:text-[32px] font-[Satoshi] font-bold tracking-tight text-[var(--text-primary)] leading-tight">
+                  Edit space
+                </h1>
+                <p className="text-[14px] text-[var(--text-secondary)] mt-1">
+                  Shape your public space profile, visual branding, and online presence.
+                </p>
+              </div>
+
               <button 
                 onClick={() => navigate(`/yullo/spaces/${spaceId}`)}
-                className="p-2 rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors cursor-pointer"
+                className="p-2.5 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)] border border-transparent hover:border-[var(--border)] transition-all cursor-pointer"
                 aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {/* 2-Column Form with Live Preview */}
             <IdentityForm
               form={form}
               spaceId={spaceId}
               slug={identity.slug}
+              isLive={identity.status === 'live'}
               onChangeHandle={() => {
                 setNewHandle(identity.slug);
                 setShowHandleModal(true);
               }}
               onSubmit={onSubmit}
               isSubmitting={saveStatus === 'saving' || saveStatus === 'saved'}
-              sources={sources}
-              onAddLink={handleAddLink}
-              onAddText={handleAddText}
-              onUploadFile={handleUploadFile}
-              onRemoveSource={handleRemoveSource}
-              onToggleConfirm={handleToggleConfirmSource}
             />
 
           </div>
+
+          {/* Sticky Bottom Actions */}
           <FormActions 
             form="identity-form"
-            className="px-5 min-[900px]:px-8"
+            className="px-5 sm:px-8 lg:px-10 py-4 shadow-lg bg-[var(--surface)]"
             onCancel={() => navigate(`/yullo/spaces/${spaceId}`)}
             onDelete={() => setShowDeleteModal(true)}
             isSubmitting={saveStatus === 'saving' || saveStatus === 'saved' || isDeleting}
@@ -260,42 +249,53 @@ export function IdentityFormScreen() {
 
       {/* Handle Change Modal */}
       {showHandleModal && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4">
-            <h3 className="text-[18px] font-[Satoshi] font-semibold text-[var(--text-primary)]">Change Yullo address</h3>
-            <p className="text-[13px] text-[var(--text-secondary)]">
-              Changing your handle updates your space URL.
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 sm:p-7 max-w-md w-full shadow-2xl flex flex-col gap-4 font-[Instrument_Sans] animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="text-[19px] font-[Satoshi] font-semibold text-[var(--text-primary)]">
+              Change Yullo Address
+            </h3>
+            <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
+              Changing your handle updates the public URL visitors use to access this Space. Old links may stop working.
             </p>
-            <div className="flex items-center bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl px-3 py-2">
-              <span className="text-[14px] font-mono text-[var(--text-muted)]">yullo.com/</span>
+            
+            <div className="flex items-center bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl px-3.5 py-2.5 focus-within:border-[var(--accent)] transition-colors">
+              <span className="text-[14px] font-mono text-[var(--text-muted)] select-none">yullo.com/</span>
               <input
                 type="text"
                 value={newHandle}
                 onChange={(e) => handleHandleChange(e.target.value)}
-                className="bg-transparent font-mono text-[14px] text-[var(--text-primary)] outline-none flex-1 ml-1"
+                className="bg-transparent font-mono text-[14px] font-semibold text-[var(--text-primary)] outline-none flex-1 ml-1"
                 placeholder="new-handle"
+                autoFocus
               />
             </div>
+
             {isCheckingHandle && (
               <div className="flex items-center gap-2 text-[13px] text-[var(--text-secondary)] font-medium">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent-ink)]" />
                 <span>Checking address availability...</span>
               </div>
             )}
+            
             {!isCheckingHandle && handleCheck && (
               <div className="text-[13px] font-medium">
                 {handleCheck.valid ? (
-                  <span className="text-emerald-500">✓ Address is available</span>
+                  <span className="text-emerald-500 flex items-center gap-1.5">
+                    <Check className="w-4 h-4 stroke-[2.5]" /> Address is available
+                  </span>
                 ) : (
-                  <span className="text-red-400">✕ {handleCheck.reason || 'Unavailable'}</span>
+                  <span className="text-rose-500 flex items-center gap-1.5">
+                    ✕ {handleCheck.reason || 'Address is unavailable'}
+                  </span>
                 )}
               </div>
             )}
-            <div className="flex items-center justify-end gap-3 pt-2">
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--border)]">
               <button 
                 type="button"
                 onClick={() => { setShowHandleModal(false); setHandleCheck(null); }}
-                className="px-4 py-2 text-[14px] text-[var(--text-secondary)] cursor-pointer"
+                className="px-4 py-2 text-[14px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -303,25 +303,25 @@ export function IdentityFormScreen() {
                 type="button"
                 onClick={handleHandleSubmit}
                 disabled={isChangingHandle || !handleCheck?.valid}
-                className="flex items-center gap-2 px-5 py-2 text-[14px] bg-[var(--accent-solid)] text-[var(--accent-on-solid)] rounded-xl font-medium disabled:opacity-50 cursor-pointer"
+                className="flex items-center gap-2 px-5 py-2.5 text-[14px] bg-[var(--accent-solid)] text-[var(--accent-on-solid)] rounded-xl font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer shadow-xs"
               >
                 {isChangingHandle && <Loader2 className="w-4 h-4 animate-spin" />}
-                <span>{isChangingHandle ? 'Saving...' : 'Change address'}</span>
+                <span>{isChangingHandle ? 'Updating...' : 'Change address'}</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Archive or Complete Delete Modal */}
+      {/* Archive or Delete Space Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowDeleteModal(false)}>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setShowDeleteModal(false)}>
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-[var(--surface)] border border-[var(--border)] p-6 rounded-2xl shadow-2xl text-[var(--text-primary)] font-[Instrument_Sans]"
+            className="w-full max-w-md bg-[var(--surface)] border border-[var(--border)] p-6 sm:p-7 rounded-2xl shadow-2xl text-[var(--text-primary)] font-[Instrument_Sans] animate-in fade-in zoom-in-95 duration-200"
           >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 bg-[var(--surface-soft)] rounded-xl text-[#ef4444]">
+            <div className="flex items-center gap-3.5 mb-3.5">
+              <div className="p-2.5 bg-rose-500/10 text-rose-500 rounded-xl border border-rose-500/20">
                 <Trash2 className="w-5 h-5" />
               </div>
               <h3 className="font-[Satoshi] text-[20px] font-semibold text-[var(--text-primary)]">
@@ -329,8 +329,8 @@ export function IdentityFormScreen() {
               </h3>
             </div>
 
-            <p className="text-[15px] text-[var(--text-secondary)] leading-relaxed mb-6">
-              Choose whether to archive this Space (hides it from your Home dashboard while preserving data) or delete it completely.
+            <p className="text-[14px] text-[var(--text-secondary)] leading-relaxed mb-6">
+              Choose whether to archive this Space (hides it from your Home dashboard while preserving knowledge & data) or delete it permanently.
             </p>
 
             <div className="flex flex-col gap-3">
@@ -348,11 +348,11 @@ export function IdentityFormScreen() {
                     setIsDeleting(false);
                   }
                 }}
-                className="w-full py-3 px-4 bg-[var(--surface-soft)] hover:bg-[var(--border)] text-[var(--text-primary)] font-medium text-[15px] rounded-xl transition-colors text-left flex items-center justify-between group cursor-pointer"
+                className="w-full py-3.5 px-4 bg-[var(--surface-soft)] hover:bg-[var(--border)] text-[var(--text-primary)] font-medium text-[14px] rounded-xl transition-colors text-left flex items-center justify-between group cursor-pointer border border-[var(--border)]"
               >
                 <div>
-                  <div className="font-semibold text-[15px] text-[var(--text-primary)]">Archive Space</div>
-                  <div className="text-[13px] text-[var(--text-secondary)] font-normal">Disappears from your Home dashboard</div>
+                  <div className="font-semibold text-[14px]">Archive Space</div>
+                  <div className="text-[12px] text-[var(--text-secondary)] font-normal">Hides from home dashboard while saving all data</div>
                 </div>
                 {isDeleting ? <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" /> : <ArrowRight className="w-4 h-4 opacity-60 group-hover:opacity-100 transition-opacity" />}
               </button>
@@ -371,11 +371,11 @@ export function IdentityFormScreen() {
                     setIsDeleting(false);
                   }
                 }}
-                className="w-full py-3 px-4 bg-[#ef4444]/10 hover:bg-[#ef4444]/20 text-[#ef4444] font-medium text-[15px] rounded-xl transition-colors text-left flex items-center justify-between border border-[#ef4444]/20 cursor-pointer"
+                className="w-full py-3.5 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 font-medium text-[14px] rounded-xl transition-colors text-left flex items-center justify-between border border-rose-500/20 cursor-pointer"
               >
                 <div>
-                  <div className="font-semibold text-[15px]">Delete Completely</div>
-                  <div className="text-[13px] opacity-80 font-normal">Permanently removes all space data</div>
+                  <div className="font-semibold text-[14px]">Delete Completely</div>
+                  <div className="text-[12px] opacity-80 font-normal">Permanently removes space and all connected knowledge</div>
                 </div>
                 {isDeleting ? <Loader2 className="w-4 h-4 animate-spin opacity-80" /> : <Trash2 className="w-4 h-4 opacity-80" />}
               </button>
