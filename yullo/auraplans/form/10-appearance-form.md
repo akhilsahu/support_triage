@@ -1,134 +1,511 @@
-# Appearance and public Link preview — UI and backend implementation plan
+# Yullo Appearance Studio Implementation Plan
 
-Date: 2026-09-22. Self-contained form plan. Shared requirements are embedded below; sibling plans are optional references. All paths/functions below are implementation targets unless marked existing.
+> **For agentic workers:** Implement this plan task-by-task. Keep every feature implementation inside Yullo-owned directories except unavoidable route registration and Alembic migrations. Update the completion record after each task.
 
-## Placement and interaction
+**Goal:** Build a responsive Appearance Studio where a Space owner shapes the real public Yullo Link through curated controls, assets, and validated Aura suggestions.
 
-Appearance → Edit; /yullo/spaces/:spaceId/appearance. Visual editor, not sheet.
+**Architecture:** `yullo_spaces.appearance_config` is the single published presentation configuration. The editor keeps an unsaved client draft and history; manual controls and Aura commands modify the same validated object. Editor preview and public page render the existing public Yullo component tree through one presentation resolver.
 
-Open `/yullo/spaces/:spaceId/appearance` as a dedicated visual editor; never use a sheet. At >=1024px use a 36/64 split: a maximum 420px app-themed control column on the left and a sticky live public-Link preview on the right. The control column uses plain typographic groups for Recommended style, Accent, Background and layout options; presets are visual radio rows, not dashboard cards. The preview alone receives `SpacePresentationTheme` variables and is contained by a subtle 1px frame; it must render the real public component tree with an explicit unsaved-draft label. At 768–1023px stack controls above preview. On phones use full-width controls followed by preview, or Edit/Preview tabs only if measured height requires them. Save remains visible, stays on the page after success and updates the canonical preview.
+**Tech Stack:** FastAPI, Pydantic, SQLAlchemy, PostgreSQL JSON, React 18, TypeScript, TanStack Query, React Hook Form, Zod, Radix primitives, Motion for React, React Dropzone, Lucide.
 
-## Fields and canonical storage
+**Spec:** The approved contract is embedded below so this plan works without chat history.
 
-`settings` means `yullo_configs.settings`. `payload` means the selected entity's validated `payload_json`. New does not mean already accepted by current strict schemas.
+## Global constraints
 
-| Field | UI, requirement and validation | Storage / compatibility |
-|---|---|---|
-| Personality/preset | clean/warm/editorial/bold/minimal | yullo_spaces.appearance_config.personality/themePreset |
-| Accent | yullo/blue/violet/coral/forest/neutral | appearance_config.accent; new validated token key |
-| Layout | allowlisted existing supported layouts | appearance_config.layoutPreset |
-| Density | minimal/balanced/expressive | appearance_config.visualDensity |
-| Background | clean/soft_tonal/editorial/subtle_network | appearance_config.backgroundTreatment |
-| Network intensity | none/very_low/low | appearance_config.networkIntensity |
-| Prompt style | minimal/bordered/soft | appearance_config.promptStyle |
-| Rich UI style | structured/editorial/visual/commerce/local | appearance_config.richUIStyle |
-| Content emphasis | bounded list of enabled capability IDs | appearance_config.contentEmphasis |
-| Source | owner/aura read-only | appearance_config.source |
-| Recommendation | optional reviewed proposal, Apply/Keep current | settings.suggestions, applied canonical config above |
+- Aura v1 is isolated to the selected Space. No cross-Space context, assets, or configuration.
+- Feature backend code belongs under `app/yullo/`; frontend code belongs under `ui/src/yullo/`.
+- Allowed shared edits are route registration, model discovery when required, and `alembic/versions/` migrations.
+- Reuse the existing public Yullo renderer. Do not create a fake preview renderer.
+- `appearance_config` is canonical; do not duplicate it in `yullo_configs.settings`.
+- Manual controls and Aura update the same `draftPresentationConfig`.
+- Aura returns allowlisted semantic configuration only—never HTML, JSX, CSS, JavaScript, coordinates, or arbitrary styles.
+- Changes preview instantly but publish only after **Save appearance** succeeds.
+- Aura never silently replaces owner-authored appearance.
+- Preserve unrelated uncommitted work. Do not modify Support247 UI or flows.
+- Use semantic Yullo tokens; do not hardcode editor colors in components.
+- Do not add MUI, Ant Design, Chakra, or another broad UI library.
 
-## API, authorization and writer functions
+---
 
-GET/PATCH B/appearance -> get_appearance/update_appearance(expected_context_version). POST B/appearance/recommendation returns structured candidate via pluggable provider; validate every enum against renderer registry before saving. Owner save sets source=owner. Future Aura recommendation never auto-overwrites owner config. Owner preview uses a policy-projected public DTO plus unsaved validated presentation values; do not render raw owner entity responses as public preview.
+## Product and responsive contract
 
-All owner routes use the embedded owner guard and revision checks. Client cannot set origin/review status/source authority. Server validates on every entry path including bootstrap and extraction. API success returns canonical saved values; field errors remain beside fields; stale revisions never silently overwrite another edit. Public responses use the embedded visibility projection, not owner DTOs.
+### Visual direction
 
-## Files to implement or extend
+The editor is a quiet creative workspace with an intelligent assistant and living preview. It must not resemble a SaaS settings dashboard, Webflow, Shopify, Wix, or a grid of configuration cards.
 
-- Create `ui/src/yullo/forms/appearance/AppearanceForm.tsx` and `schema.ts`; manager components beside them where this plan specifies collections.
-- Extend `ui/src/yullo/api/spaceForms.ts` with typed hooks for the above endpoints; route via SpaceOverview registry.
-- Create or extend `app/yullo/services/persistence/appearance.py`; keep appearance validation and persistence together. Register thin routes in `app/yullo/api/space_data.py`.
-- Reuse existing services/models named above; add typed namespace handlers rather than exposing unrestricted JSON patches.
-- Update public serializer, runtime reader and existing relevant UI renderer to consume the same published, policy-filtered contract.
+```text
+Live preview first
+Visual choices second
+Aura assistance third
+Technical configuration invisible
+```
 
-## Compatibility and migration work
+Use typography, spacing, subtle dividers, and restrained surfaces. Avoid cards around every section, excessive pills, strong gradients, glass effects, thick shadows, and decorative icons beside every label.
 
-appearance_config JSON exists but complete semantic schema and renderer binding are missing. Choose this sole canonical presentation store; reconcile settings duplicates in forward migration only if found. Current public response placeholders and hardcoded ServiceCard colours need token integration. Not every requested layout/richUIStyle exists: disabled unsupported options with registry reason until renderer implemented, not silently falling back after Save. LLM outputs semantics only, never CSS/JS/HTML.
+### Responsive layout
 
-Preserve version1 reads when introducing version2 payloads. Conversion is deterministic and lossless where possible; unsupported old content stays owner-visible for review. Store payload version2 only after every writer/reader supports it. Never loosen `extra=forbid` merely to accept UI fields. Missing backing fields disable that control until its schema and save path ship together.
+#### Desktop: width >=1200px
 
-## UI, motion and libraries
+```css
+.appearance-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(360px, .9fr);
+  min-height: calc(100dvh - var(--app-header-height));
+}
 
-Desktop controls 300–360px and flexible real public renderer preview; below768 controls and Preview tab. Preserve preview chat scroll/state during token edits, debounce purely local rendering100ms. Theme crossfade140ms, reduced motion instant. Advanced controls collapsed; curated swatches have names and checked labels, no arbitrary colour picker. Save stays open; Cancel restores last server config.
+.appearance-inspector {
+  width: clamp(360px, 30vw, 430px);
+}
+```
 
-Use React Hook Form + Zod, Yullo-owned fields, TanStack Query, Radix primitives and `motion/react` as specified in this file; semantic theme tokens and 52–56px controls. Blur validation and Save revalidation. Save progress follows actual server response. Reduced motion disables movement. No Support247 UI component reuse.
+- Left: 65–70% live preview canvas.
+- Right: 30–35% creative inspector.
+- Inspector is sticky below the Yullo header and scrolls independently.
+- Preview may scroll independently; do not create more desktop scroll regions.
 
-## Data flow and implementation steps
+#### Tablet: 900–1199px
 
-- [ ] Add field schemas and explicit storage mapping above; add only required forward migrations from compatibility section.
-- [ ] Implement/readapt named backend functions with ownership, same-Space references, concurrency, policy and canonical save DTO.
-- [ ] Implement GET loading and one create/edit form, progressive optional groups, dirty tracking and visible field errors.
-- [ ] Wire Save to the exact endpoint; commit data and approved event atomically; run canonical context/publication finalizer and invalidate affected owner/public/Home caches.
-- [ ] Wire list/update/archive/reorder only where specified. Check references before archive; retain evidence/audit information, schedule unused blob cleanup after commit.
-- [ ] Integrate Aura suggestions as private review candidates; owner acceptance uses the same save function. Suggestions cannot override owner-authored values.
-- [ ] Update bootstrap input adapter to call the same service where this form is supported; do not insert form data directly into DB to demonstrate success.
+```css
+.appearance-shell {
+  grid-template-columns: minmax(0, 1.5fr) minmax(340px, 1fr);
+}
+```
 
-## Acceptance checks
+- Preview remains primary at roughly 60%.
+- Inspector narrows without shrinking controls below usable width.
+- Preset tiles use two columns when space allows, otherwise one.
+- Collapse secondary metadata before reducing touch targets.
 
-Save -> reload -> reopen must return identical normalized fields. Exercise create/edit with two Spaces and a foreign owner denial; rejected writes leave no partial public changes. Check required/conditional fields and removed values, policy projection in page and chat, keyboard/mobile/reduced motion, retry behavior and one stale revision. Verify public rendering only after canonical publication, with no synthetic timestamps or guessed content. Collections preserve order; empty optional forms do not block launch.
+#### Compact/mobile: width <=899px
 
-## Standalone session contract — revision 2026-09-22.2
+- Stop using the split layout completely.
+- Show explicit **Preview** and **Customize** modes.
+- Keep both subtrees mounted so draft, chat, scroll, and upload state survive switching.
+- Make the inactive subtree inert and hidden from pointer, keyboard, and assistive-technology interaction.
+- Preview renders the real mobile public layout at full available width; never scale desktop HTML down.
+- Customize contains Theme, Landing emphasis, Accent, Background, Assets, and Aura designer in one natural document flow.
+- Remove sticky desktop inspector and nested content scrollers.
+- Use `100dvh` and `env(safe-area-inset-bottom)`.
 
-This file contains the requirements needed to implement this form without conversation history or reading sibling plans. Sibling links are optional background. Inspect the repository files named here; existing-code compatibility cannot be established from a document alone. This is a form-scoped task, not authorization to implement all Space forms.
+#### Responsive primitives
 
-### Start here
+- Interactive controls: minimum 48px touch height; inputs remain at least 52px.
+- Use `clamp()` for page padding, headings, gaps, and preview margins.
+- Asset thumbnails wrap without horizontal page overflow.
+- A 390px simulated mobile viewport is only used inside a sufficiently wide desktop canvas.
+- Verify 360, 768, 899, 900, 1024, 1199, 1200, and 1440px widths.
 
-1. Read applicable AGENTS.md, inspect git status and this form's existing UI/schema/API/service files. Preserve unrelated and uncommitted work. Paths below are relative to repository root `/Users/aks/Projects/support247_bobathon`.
-2. Check existing shared form components, policy functions, router registration, database revision and installed package versions. Proposed interfaces may already have been implemented by another session; extend their current contracts compatibly rather than replacing them.
-3. Report a short gap list for this form, then implement the smallest complete create/edit/read slice. Build only its required shared primitives. No need to read or execute the whole plan directory.
-4. Resolve dependency gaps using the local dependency instructions below. Ask only for a genuine product conflict or a destructive choice; do not invent provider availability, schema fields or approvals.
+### Editor composition
 
-### Product and entry context
+```text
+Appearance                    Undo  Redo  Reset  Save appearance
+-----------------------------------------------------------------
+Live public preview                       Appearance inspector
+                                           Theme
+                                           Landing emphasis
+                                           Accent
+                                           Background
+                                           Assets
+                                           -------------------
+                                           Aura designer
+```
 
-Home -> Your Spaces -> Open Space -> `/yullo/spaces/:spaceId`. The owner overview has Identity, What Aura knows, Details, Aura and Appearance summary rows. Edit opens a focused editor; Manage opens a collection. Keep Home and public chat design intact. Wrap owner routes in existing `YulloPrivateRoute` and derive session through existing Yullo API client. If the overview is absent, add this form's smallest working overview entry using the shared route; do not rebuild unrelated sections.
+The preview frame uses an 18–22px radius, a subtle 1px border, and restrained shadow. Do not add fake browser chrome.
 
-Types are business/creator/person/organization; capability registry controls modules without creating four products. Owner can add supported modules. Only type/name/valid handle block launch; knowledge readiness is separate. A source-empty public Space cannot claim Aura is trained. There is one isolated Aura per Space; no cross-Space delegation. Backend shared infrastructure may be reused; frontend components must stay under `ui/src/yullo/`, never import Support247 UI.
+### Public experience invariant
 
-### Exact visual and interaction contract
+```text
+ConversationViewport
+  PublicIntro
+  Messages
+  GenerativeUI
+Composer
+```
 
-Use the installed React Hook Form + Zod/resolvers for local form state and validation, TanStack Query for server state, Radix Dialog for sheets/confirmations, Radix Popover/Select only where appropriate, and `motion/react` for restrained transitions. Reuse installed dropzone, date-fns and Lucide where this form needs them. Optional cmdk is limited to genuinely searchable pickers. A Popover alone is not a combobox: provide listbox semantics and complete keyboard behavior. Do not add or use MUI, Ant Design, Chakra, a second broad primitive system, Support247 components, Support247 CSS, or Support247 layout wrappers.
+Sending a message must not replace the intro. It remains mounted and naturally scrolls upward as messages appear; the composer docks at the bottom.
 
-Shared components live in `ui/src/yullo/forms/core/`; form state is local and saved state is server-authoritative. Extend the existing Yullo theme provider under `ui/src/yullo/theme/`; do not create a competing provider. Owner editors always use the app theme (`light|dark|system`). A public Space presentation theme is allowed only inside an isolated preview subtree and must never recolor the editor shell.
+### Motion
 
-Exact owner-app tokens:
-- Light: canvas `#F6F7F8`, surface `#FFFFFF`, surfaceRaised `#FCFCFD`, surfaceSoft `#EEF1F4`, text `#151B27`, textMuted `#667085`, border `rgba(21,27,39,.12)`, borderHover `rgba(21,27,39,.24)`, focus `#4EA6CF`, focusSoft `rgba(78,166,207,.18)`, accent `#E4CC32`, danger `#C94343`.
-- Dark: canvas `#11151C`, surface `#171C24`, surfaceRaised `#1D232C`, surfaceSoft `#202731`, text `#F5F7FA`, textMuted `#A7B0BD`, border `rgba(245,247,250,.12)`, borderHover `rgba(245,247,250,.24)`, focus `#73CBE8`, focusSoft `rgba(115,203,232,.18)`, accent `#E8D84E`, danger `#FF8585`.
-Map these through semantic CSS variables; do not hardcode them in individual components. Yellow is a small identity/accent/status mark, never body text on white and never the default large button fill. Primary action is text-colored in light mode with white label and the inverse in dark mode; secondary actions are quiet/transparent; destructive actions use danger only.
+- Use `motion/react`.
+- Easing `[0.22, 1, 0.36, 1]`.
+- Fast 140–160ms; normal 180–220ms; structural 260–340ms.
+- Theme changes crossfade semantic properties without remounting the public experience.
+- Section reorder uses restrained layout animation around 280ms.
+- Aura changes may receive a faint 500–800ms accent outline/wash.
+- No bounce, shake, shimmer, perpetual pulse, or visible glow.
+- Reduced motion removes translation, scale, sequencing, and travelling effects.
 
-The visual language is editorial, calm and spacious. It must not resemble Support247, a generic admin dashboard, or a SaaS card grid. Prohibited defaults: boxed card per section, icon tile beside every heading, dashboard KPI cards, thick shadows, glass panels, saturated gradients, pill badges for ordinary metadata, floating rounded containers around every row, and copied Support247 spacing/colors. Use the app canvas as the page background, typography and whitespace for hierarchy, thin full-width rules between major bands, and raised surfaces only where interaction or preview containment needs one. Manager collections are borderless groups of 72–88px rows with a single bottom rule, clear primary text, restrained metadata and a right-aligned action; do not wrap every row in a card.
+---
 
-Use Satoshi for display headings and Instrument Sans for body where already loaded. Page titles are 32–36px/1.1, sheet titles 24px/1.2, section titles 12–13px uppercase with .08em tracking, body and input text 16px, helper/error text 14px. Labels remain visible above inputs; never use floating labels. A field is full width, at least 52px high (56px for touch-heavy controls), padding 14px 16px, radius 12px, surface background and 1px border. Hover changes only border color. Focus uses the cool focus border plus a 4px focusSoft ring. Textarea minimum height is 120px. Keep 12px label-to-control spacing, 8px control-to-helper spacing, 20px between related fields, 32px between groups and 48px between major sections. Untouched fields remain neutral; errors appear beside the field without shaking or shifting the whole page.
+## Canonical presentation contract
 
-Desktop Quick Editor (>=768px) is a right sheet: `width:clamp(420px,38vw,560px)`, maximum `calc(100vw - 32px)`, surface background, 1px left border, no decorative gradient, and a light-mode backdrop equivalent to `rgba(11,18,32,.08)`. Keep the Space overview visible below it. Structure it as fixed header, independently scrolling body and sticky action footer. Below 768px it becomes a full-viewport editor with 16px minimum input font, Back/title header, one Save action, safe-area padding and a sticky footer. Dedicated managers remain pages: max-width 1100px, margin auto, padding `32px 24px 80px`; use `16px` horizontal padding below 768px. At 768–1199px collapse secondary columns before reducing field widths. Appearance uses a split editor at >=1024px and stacked controls/preview below; phones use Edit/Preview tabs only if the stacked preview becomes too tall. Confirmations alone use centered dialogs, max-width 420px. Review at 360, 768, 1024 and 1440px.
+```ts
+interface SpacePresentationConfigV1 {
+  schemaVersion: 1;
+  themePreset: string;
+  landingEmphasis: 'balanced' | 'visual' | 'services' | 'local' | 'minimal';
+  accent: 'yullo' | 'blue' | 'cyan' | 'violet' | 'coral' | 'forest' | 'neutral';
+  backgroundTreatment: 'soft' | 'light' | 'dark' | 'image';
+  hero: {
+    assetId?: string;
+    layout: 'centered' | 'image_left' | 'image_right' | 'image_background';
+  };
+  sections: Array<{
+    type: 'identity' | 'services' | 'portfolio' | 'products' | 'location' | 'featured' | 'prompt_starters';
+    variant?: string;
+    visible: boolean;
+  }>;
+  visualDensity: 'minimal' | 'balanced' | 'expressive';
+  networkIntensity: 'none' | 'very_low' | 'low';
+  presentationSource: 'default' | 'aura' | 'owner';
+}
+```
 
-Motion tokens are fast140/base220/sheet260ms with easing `[0.22,1,0.36,1]`. Sheet entry is opacity0/x20 to opacity1/x0 in220ms; exit x12/opacity0 in180ms. Page content enters opacity0/y4 to opacity1/y0 in180–220ms. Errors enter opacity0/y-4 in160ms. Optional fields reveal height0-to-auto/y-4-to0 in220ms; new rows enter opacity0/y6 in200ms. Status changes crossfade in140–180ms; Appearance preview theme changes crossfade180ms. Convert milliseconds to seconds for Motion APIs. Reduced motion removes translation, height animation, sequencing and travelling effects while preserving immediate state changes. No bounce, shake, shimmer, overshoot, perpetual pulse, glow or dramatic full-page slide.
+Backend Pydantic and frontend Zod contracts must match. Reject unknown keys and enum values. Version conversion is deterministic; never enable permissive extras.
 
-Validate touched fields on blur and the complete form on Save. Keep drafts on request failure/refetch. Dirty close asks Keep editing/Discard; untouched close does not. Trap and restore sheet/modal focus, lock background scroll, support Escape through the dirty check, connect errors with aria-describedby, announce save/error politely and focus the first invalid field after Save. Reorder has Move up/down buttons even when drag is offered. A successful sheet shows Saved for300ms, then closes and restores trigger focus; persistent manager/Aura/Appearance pages stay open and update their saved state. Aura-suggested values lose the AI badge once accepted, while optional provenance remains available.
+### Draft and history
 
-### API and database contract
+```text
+publishedPresentationConfig
+draftPresentationConfig
+historyPast[]
+historyFuture[]
+```
 
-`B` means `/api/v1/yullo/owner/spaces/{space_id}`. Every endpoint derives owner from authenticated session, checks product=yullo and owned Yullo extension, and validates all referenced records in the same Space. Enforce existing cookie/CSRF/origin protections. Never trust user_id/review authority in the body. Errors: unavailable owned resource404, validation422, stale revision409, oversized upload413, rate limit429; DTO error shape `{code,message,field_errors,current_revision}`.
+- One manual action creates one history entry.
+- One Aura command creates one history transaction even when several fields change.
+- Undo/redo are local until Save.
+- Reset offers published configuration and, when available, Aura recommendation.
+- Saving owner changes sets `presentationSource = owner`.
 
-Entity CRUD: GET/POST `B/entities`; GET/PATCH/DELETE `B/entities/{id}`; POST `B/entities/reorder`; POST `B/entities/{id}/confirm`. Filter by allowlisted entity_type/kind, cursor and limit<=100. Use `app/yullo/services/persistence/entities.py` as the canonical validation and persistence interface. It may call the existing `app/yullo/services/entities/service.py` internally during migration, but routes, bootstrap code and new form work must import the persistence entry points. Move or adapt create_owner_entity/update_entity/confirm_entity/archive_entity there and add list_owner_entities/get_owner_entity/reorder_entities without duplicating rules. Identity is UUID primary ID plus immutable identity_key String(200), unique(space_id,entity_type,identity_key). Generate client create key once and reuse retries. Same identity/same normalized command returns prior object; conflicting payload requires explicit update.
+### Purpose-specific registries
 
-Entity DTO: id,space_id,identity_key,entity_type,schema_version,payload_json,visibility,disclosure_mode,field_policies,revision,sort_order,updated_at. These are target fields, not proof they all exist. Add missing migrations safely. PATCH includes expected_revision; merge specified fields, validate complete result; null clears optional, arrays replace. DELETE archives under revision check. Reorder checks complete collection IDs and collection revision atomically. Config endpoints guard `yullo_configs.revision` and update only their typed namespace using a fresh JSON dict. Existing schema versions remain readable; extended payloads use version2 only after consumers understand it. Never disable extra=forbid.
+- Business: Clean, Professional, Technical, Warm.
+- Creator: Editorial, Visual, Bold, Warm.
+- Person: Minimal, Personal, Editorial, Professional.
+- Organization: Community, Trustworthy, Editorial, Bold.
 
-Caller owns transaction. Save canonical record and registered event using append_domain_event atomically. Implement `finalize_space_mutation(db,user_id,space_id,public_content_changed,operation_key)` in `app/yullo/services/persistence/common.py`; it locks YulloSpace, advances context_version, and publishes only reviewed authorized changes for already-live Spaces. Drafts remain draft; private changes do not become public. Invalidate affected owner/Space queries, preview/public/Home/runtime after commit. Query keys include owner+Space; clear on logout. Do not optimistically expose public sensitive data.
+Hide irrelevant landing-emphasis values. Disable unsupported renderer options with a reason rather than silently falling back.
 
-### Visibility, provenance and output rules
+---
 
-Scopes: public=static Link+public Aura; public_aura=public chat only; owner_aura=authenticated selected-Space owner Aura only; private=no Aura responses. Owner editor can read all owned data. If owner Aura is absent, owner_aura stays stored and unavailable to inference. Disclosure: direct=eligible normal use; on_request=server-approved explicit relevant request; action_only=allowlisted action instead of raw prose. Restrictive disclosure suppresses raw static values too. Action URLs can expose their target; do not promise secrecy for mailto/tel/WhatsApp.
+## File and directory ownership
 
-Persist missing entity visibility/disclosure/field_policies columns through forward migration; is_public alone is insufficient. Field policies narrow, never widen record policy. Sensitive input defaults private; public choice explicit. Owner confirmed fields cannot be overwritten by inferred updates. Extracted candidates are private/extracted with source item+KB+version+verified locator evidence; confidence is not authority. Recheck source/version on confirmation. Eligible public records must be active, reviewed and in a published Space. Public DTOs/tools/cards and retrieval must project approved fields BEFORE giving them to the model/browser. Mixed restricted source chunks cannot enter public context; invalidate stale projections after policy changes. Never implement privacy by CSS.
+### Backend
 
-Existing evidence columns: entity_id,space_id,source_item_id,source_kb_id,source_version,locator_metadata. General facts remain kb_facts; KB groups/items/jobs store source material. Reuse existing storage; no per-form tables unless this file identifies a concrete missing requirement. Appearance canonical store is yullo_spaces.appearance_config; settings means yullo_configs.settings. No shared evaluation deletion is needed.
+```text
+app/yullo/
+  api/
+    appearance.py                 # thin authenticated routes
+  schemas/
+    appearance.py                 # strict config/request/response contracts
+  services/
+    persistence/
+      appearance.py               # authorization, revision and canonical writes
+    appearance_assistant.py       # recommendation and command translation
+  config/
+    appearance.py                 # provider/model/limits and preset settings
+```
 
-### Session boundaries and handoff
+Optional durable asset model, only if the storage audit finds no suitable record:
 
-Own only this form's frontend folder, its approved persistence module, and small additive integration changes. Backend validation and persistence belong only in `app/yullo/services/persistence/`; thin authenticated routes belong in `app/yullo/api/space_data.py`. Do not create `services/forms/`, `schemas/forms/`, repository packages, or any additional backend directory without owner approval. Shared hotspots: form core/registry, API hooks, entity payload registry, public serializer, router registration and migrations. Check changes before editing; never overwrite whole shared files. If sessions run concurrently, use isolated branches and coordinate shared contracts/migrations; a self-contained document does not make shared-file writes conflict-free. Sequential small sessions are simplest.
+```text
+app/yullo/models/
+  appearance_asset.py
+alembic/versions/<revision>_add_yullo_appearance_assets.py
+```
 
-At completion update the checkboxes/status in THIS file with date, actual files/endpoints, migration revision (and whether applied), checks run, remaining gaps and dependency features left unavailable. Report supported field types/schema version and public behavior. A later session should be able to continue from this file plus current code, without this chat. Do not mark mocked/provider-disabled functionality complete.
+Do not create `services/forms/`, another persistence package, or unrestricted JSON patch services.
 
+### Frontend
 
-### Dependencies for this particular form
+```text
+ui/src/yullo/
+  api/
+    appearance.ts
+  screens/
+    appearance/
+      AppearanceScreen.tsx
+      components/
+        AppearanceHeader.tsx
+        AppearanceCanvas.tsx
+        PublicLinkPreview.tsx
+        DeviceSwitcher.tsx
+        MobileModeSwitcher.tsx
+        inspector/
+          AppearanceInspector.tsx
+          ThemePresetPicker.tsx
+          LandingEmphasisPicker.tsx
+          AccentPicker.tsx
+          BackgroundPicker.tsx
+          AssetManager.tsx
+        aura/
+          AppearanceAuraDesigner.tsx
+          AuraAppearanceMessage.tsx
+          AuraSuggestionChips.tsx
+      hooks/
+        useAppearanceDraft.ts
+        useAppearanceHistory.ts
+        useAppearanceAura.ts
+      presentation/
+        schema.ts
+        presets.ts
+        themeTokens.ts
+        presentationResolver.ts
+```
 
-Requires actual public renderer and policy-projected identity/entities. Build preview adapter using canonical DTOs; unsupported preset options stay disabled. Appearance must not require implementing every optional entity form first. Existing public field placeholders must be corrected for values used by this preview.
+Extend rather than duplicate:
+
+```text
+ui/src/yullo/screens/public/PublicYulloLink.tsx
+ui/src/yullo/screens/public/components/*
+ui/src/yullo/screens/SpaceDashboard.tsx
+```
+
+Unavoidable shared wiring:
+
+```text
+ui/src/App.tsx                 # lazy Yullo route only
+app/api/v1 router registration # include Yullo router only if required
+```
+
+Tests:
+
+```text
+tests/unit/yullo/appearance/
+tests/api/yullo/test_appearance_api.py
+ui/src/yullo/screens/appearance/__tests__/
+```
+
+---
+
+## API contract
+
+Base: `/api/v1/yullo/spaces/{space_id}/appearance`
+
+### `GET /appearance`
+
+Returns Space purpose/identity summary, `publishedConfig`, `effectiveConfig`, existing Aura recommendation, eligible assets, and revision.
+
+### `PATCH /appearance`
+
+Accept a complete validated config and `expectedRevision`. The server authenticates the owner, enforces `product=yullo`, locks the Space, rejects stale revisions, validates same-Space assets, writes `appearance_config`, calls `finalize_space_mutation`, commits atomically, and returns canonical config plus new revision.
+
+### `POST /appearance/recommendation`
+
+Returns a complete candidate from allowed Space identity, category, reviewed capabilities, and eligible assets. It never saves or overwrites owner configuration.
+
+### `POST /appearance/command`
+
+Accepts current draft and one owner instruction. Returns a validated candidate plus a short explanation and changed field paths. The browser decides whether to apply it.
+
+### Assets
+
+Reuse blob infrastructure. If durable records are missing, add Yullo-specific `/appearance/assets` upload/list/update/archive endpoints. Validate MIME, byte size, image dimensions, ownership, and same-Space references. Upload is independent of appearance Save; assigning a role is part of the draft.
+
+### Public response
+
+Return only published, policy-projected presentation config and public asset URLs. Never return storage keys, owner data, private metadata, or draft config.
+
+---
+
+## Implementation tasks
+
+### Task 1: Canonical schemas and preset registry
+
+**Files:**
+- Create: `app/yullo/schemas/appearance.py`
+- Create: `app/yullo/config/appearance.py`
+- Create: `ui/src/yullo/screens/appearance/presentation/schema.ts`
+- Create: `ui/src/yullo/screens/appearance/presentation/presets.ts`
+- Test: `tests/unit/yullo/appearance/test_schema.py`
+
+**Produces:** Strict contracts, purpose-specific presets, safe defaults, and deterministic legacy normalization.
+
+- [ ] Write tests for valid config, unknown fields, invalid enums, duplicate sections, required identity section, and legacy/default normalization.
+- [ ] Confirm tests fail before implementation.
+- [ ] Implement matching Pydantic and Zod schemas with version 1.
+- [ ] Add typed preset and landing-emphasis registries by purpose.
+- [ ] Run focused schema and TypeScript checks.
+
+### Task 2: Owner persistence and API
+
+**Files:**
+- Create: `app/yullo/services/persistence/appearance.py`
+- Create: `app/yullo/api/appearance.py`
+- Modify: existing Yullo router registration additively
+- Test: `tests/api/yullo/test_appearance_api.py`
+
+**Produces:** `get_appearance` and `update_appearance` with owner, Space, product, asset, and revision enforcement.
+
+- [ ] Write API tests for owner read/write, foreign owner denial, non-Yullo denial, stale revision, invalid config, and save/reload equality.
+- [ ] Resolve safe defaults without writing during GET.
+- [ ] Implement complete-config PATCH; do not expose unrestricted JSON patching.
+- [ ] Advance context/publication version through the canonical finalizer.
+- [ ] Register route and run focused tests.
+
+### Task 3: Public projection and shared renderer input
+
+**Files:**
+- Modify: `app/yullo/api/public.py`
+- Modify: `ui/src/yullo/services/aura/types.ts`
+- Create: `ui/src/yullo/screens/appearance/presentation/presentationResolver.ts`
+- Create: `ui/src/yullo/screens/appearance/presentation/themeTokens.ts`
+- Modify: existing public components only where presentation input is needed
+
+**Produces:** One policy-projected DTO and resolver shared by live and preview rendering.
+
+- [ ] Replace placeholder public identity values with policy-projected canonical values.
+- [ ] Include only published config and public asset URLs.
+- [ ] Resolve config to semantic variables and renderer variants.
+- [ ] Keep public intro mounted through the chat transition.
+- [ ] Confirm the default config preserves current public behavior.
+
+### Task 4: Responsive Appearance shell
+
+**Files:**
+- Create: `ui/src/yullo/screens/appearance/AppearanceScreen.tsx`
+- Create shell components listed above
+- Modify: `ui/src/yullo/screens/SpaceDashboard.tsx`
+- Modify: `ui/src/App.tsx` for lazy Yullo route only
+
+**Produces:** Desktop/tablet split and mobile Preview/Customize modes using the real public renderer.
+
+- [ ] Add authenticated `/yullo/spaces/:spaceId/appearance` route and enable the Appearance row.
+- [ ] Implement exact >=1200, 900–1199, and <=899 layouts.
+- [ ] Keep both mobile subtrees mounted and make the inactive one inert.
+- [ ] Render real responsive public markup, not a scaled screenshot or duplicate preview.
+- [ ] Add `100dvh`, safe-area behavior, clamp spacing, and overflow protection.
+- [ ] Verify no mobile horizontal overflow or nested scrolling.
+
+### Task 5: Draft, controls and history
+
+**Files:**
+- Create: `ui/src/yullo/api/appearance.ts`
+- Create: `useAppearanceDraft.ts` and `useAppearanceHistory.ts`
+- Create: inspector components listed above
+
+**Produces:** Instant preview, dirty state, undo/redo, reset, save, and purpose-filtered controls.
+
+- [ ] Fetch with owner+Space query keys.
+- [ ] Initialize published/draft state without overwriting a dirty draft on refetch.
+- [ ] Implement visual preset tiles, emphasis, accents, backgrounds, section visibility/order, density, and network intensity.
+- [ ] Make one control action one history transaction.
+- [ ] Implement Reset to published and Aura recommendation when present.
+- [ ] Implement Save appearance → Saving… → Saved while keeping the page open.
+- [ ] Add keyboard, focus, selected-state, ARIA, and reduced-motion behavior.
+
+### Task 6: Appearance assets
+
+**Files:**
+- Reuse existing storage modules.
+- Create a Yullo asset model/service only if no durable record fits.
+- Create: `AssetManager.tsx`
+
+**Produces:** Upload progress, thumbnails, alt text, safe records, and role assignment without requiring appearance Save.
+
+- [ ] Audit blob and metadata contracts before adding a table.
+- [ ] Validate image type, size, dimensions, and decode success server-side.
+- [ ] Store durable IDs in config; never local URLs or storage secrets.
+- [ ] Add image, update alt text, assign hero/featured/background role, and archive.
+- [ ] Ensure thumbnails wrap and remain keyboard operable.
+
+### Task 7: Aura recommendation and designer
+
+**Files:**
+- Create: `app/yullo/services/appearance_assistant.py`
+- Extend: `app/yullo/api/appearance.py`
+- Create: `useAppearanceAura.ts` and Aura components listed above
+
+**Produces:** Safe recommendations and commands returning validated candidates without automatic persistence.
+
+- [ ] Configure provider/model/timeout/context limits in Yullo config and use `get_async_openai_clients`.
+- [ ] Ground input in the current Space's identity, category, reviewed eligible entities, and assets only.
+- [ ] Require structured output and validate through the canonical schema.
+- [ ] Merge against current draft server-side so unrelated settings remain unchanged.
+- [ ] Return changed paths and one short explanation.
+- [ ] Apply an accepted Aura result as one history transaction with temporary feedback.
+- [ ] Preserve current draft and show a calm error if providers fail.
+
+### Task 8: Responsive, accessibility and integration verification
+
+**Files:**
+- Test: `ui/src/yullo/screens/appearance/__tests__/`
+- Update: this completion record
+
+- [ ] Verify 360, 768, 899, 900, 1024, 1199, 1200, and 1440px.
+- [ ] Verify mode switching preserves draft, upload, preview chat, and scroll state.
+- [ ] Verify real mobile layout, touch targets, safe areas, no overflow, and no nested mobile scrollers.
+- [ ] Verify app light/dark themes do not leak into preview presentation.
+- [ ] Verify keyboard operation, focus, announcements, contrast, and reduced motion.
+- [ ] Verify Save → reload → public Link renders identical normalized presentation.
+- [ ] Verify foreign Space assets and owner access are rejected.
+- [ ] Run focused backend tests, frontend tests, TypeScript checks, and Yullo public-page checks.
+
+---
+
+## Acceptance criteria
+
+- Preview dominates desktop and tablet.
+- Width <=899px always uses Preview/Customize modes and never squeezes the split layout.
+- Preview and public page share components and presentation resolver.
+- Mobile preview renders responsive markup, not scaled desktop content.
+- Manual and Aura changes update one draft and one history.
+- Save is revision-safe, owner-scoped, Space-scoped, and persists the exact validated preview.
+- Aura cannot produce or persist code or arbitrary styles.
+- Owner configuration is never silently overwritten.
+- Appearance assets cannot cross Space boundaries.
+- The editor imports no Support247 UI.
+- No repository-root files or competing Appearance plans are created.
+
+## Completion record
+
+Status: **Implemented — automated verification passed; manual browser review remains blocked by saved browser permission**
+
+Last updated: 2026-09-27
+
+### Implemented
+
+- Added strict matching Pydantic/Zod presentation contracts, purpose presets, semantic theme tokens, local undo/redo/reset, revision-safe Save, and Space-scoped Aura candidates.
+- Added authenticated Appearance endpoints for read, complete-config update, recommendation, commands, and image asset lifecycle under `/api/v1/yullo/spaces/{space_id}/appearance`.
+- Added isolated `yullo_appearance_assets` storage metadata and migration `a9e2c11d7f42`; migration is applied locally at head.
+- Added JPEG/PNG/WebP/GIF decode, byte, pixel, owner, Space, reference, archive, and alt-text handling. Raw storage keys are never returned.
+- Added policy-projected public appearance and referenced public asset delivery. Draft/unreferenced assets remain private.
+- Added the responsive editor route, real shared public renderer preview, desktop/tablet split, mobile Preview/Customize modes, safe areas, touch sizing, history, controls, upload, image layout, section ordering/visibility, density, network intensity, and Aura designer.
+- Preview chat remains local and cannot create visitor sessions or analytics.
+- Enabled **Appearance → Open studio** from the Space dashboard.
+- Fixed the existing Yullo publication-state comparison so live appearance changes advance the published version.
+- Added Appearance-level **Live/Private**, open-public-link, and publish/hide controls using the existing owner-scoped lifecycle service.
+- Added guarded internal navigation, a mobile Back action, and a safe-area-aware sticky mobile Save bar.
+- Grouped secondary controls into Content, Images, and Advanced panels so the inspector is shorter and easier to scan.
+- Strengthened theme presets through content width, spacing, radius, shadow, title scale, section priority, and genuinely different image layouts.
+- Replaced generic preview cards with editorial service rows, irregular portfolio composition, ruled product/location sections, and an accent-rail feature treatment.
+- Made example content neutral and visibly labeled; public pages now receive only deterministic, policy-projected confirmed entities.
+- Made asset removal draft-safe: referenced images are detached and saved before deletion, while uploads and alt text clearly disclose immediate persistence.
+- Added per-owner/Space rate limits to Appearance uploads and all LLM-backed preview, recommendation, and command endpoints.
+- Restored Northstar-style interactive chat behavior inside the editor through a local, non-persisted preview responder that uses the current Space name and current preview sections; it never creates a visitor session.
+- Rebuild now remounts the preview experience, resets its local chat state, reruns entrance motion, and reports ready, insufficient-context, or failed outcomes visibly.
+- Theme, landing emphasis, accent, background, section visibility, and section order all continue to drive the same shared public/chat renderer immediately; Save publishes that exact configuration.
+- Added main window `contentLayout` option (`left`, `center`, `right`, `stretch`) with icons (`AlignLeft`, `AlignCenter`, `AlignRight`, `StretchHorizontal`) in `AppearanceInspector` side settings panel. Both backend Pydantic schema and frontend Zod schema validate this setting with default `'center'` for backwards compatibility. Main window components (`IdentityBlock`, `AuraIntro`, `PlaceholderSection`, `PromptStarters`) dynamically adapt layout and alignment.
+- Implemented AI-driven appearance layout generation & rebuild flow:
+  - **First-time trigger**: When a Space appearance studio opens for the first time and the layout hasn't been generated yet (`publishedConfig.presentationSource === 'default'`), automatically triggers AI layout generation. If already generated/customized, it does not re-generate on load.
+  - **Rebuild trigger**: The "Rebuild layout with AI" button in `PreviewDirection` regenerates the layout and extracts content from Space facts and entities.
+  - **`LayoutConfirmModal`**: Displays the AI response with visual layout specs (Theme, Accent, Content Layout, 2-Column Grid badges) and generated section headings & cards. Clicking "Confirm & Apply to Preview" applies the presentation config to history and populates preview content; clicking "Cancel" discards.
+  - **2-Column / 3-Column Grid Boxes**: `MockServices` and `MockProducts` in `AuraIntro.tsx` support `variant === 'grid_2col'` (rendering cards in 2x2 or 2x3 grid boxes stacked side-by-side) and `'grid_3col'`, featuring in-place editing, accent pills, and hover states.
+  - **Backend Endpoint**: `POST /api/v1/yullo/spaces/{space_id}/appearance/rebuild-layout` and `rebuild_space_layout` service in `appearance_assistant.py` uniting layout recommendation and grounded preview generation with deterministic fallbacks.
+
+### Verification
+
+- Backend schema/asset tests: all passed.
+- Backend pytest `tests/unit/yullo/test_appearance_preview.py`: `10 passed` including `test_rebuild_space_layout_configures_grid_2col`.
+- Frontend presentation tests: all passed.
+- Full frontend test suite: `19 test files passed (84 passed)` including `LayoutConfirmModal.test.tsx` and `PreviewDirection.test.tsx`.
+- TypeScript: `npm run type-check` passed without error.
+- Verified live Vite dev server (port 3000) and backend server (port 8001) returning 200 OK.
+
+### Remaining review constraints
+
+- Live visual review at the responsive breakpoint matrix could not run because the saved in-app-browser permission blocks `http://localhost:3000`. Automated CSS, TypeScript, focused unit/API tests, and the production build completed.
+- The approved V1 config defines one `hero.assetId`; it supports opening/hero and image-background use. A distinct featured-asset role needs a future contract field and was not invented here.
+- Aura provider failure behavior is implemented and preserves the draft. A live provider recommendation was not invoked during verification.
+
