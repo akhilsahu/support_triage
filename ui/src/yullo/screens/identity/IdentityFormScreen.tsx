@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import * as Dialog from '@radix-ui/react-dialog';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,7 +10,7 @@ import { useAppStore } from '../../../store/useAppStore';
 import { motion, useReducedMotion } from 'motion/react';
 import { FormActions } from '../../forms/core/FormActions';
 import { IdentityForm, identitySchema, IdentityFormValues } from '../../forms/identity/IdentityForm';
-import { X, Trash2, ArrowRight, Loader2, Check } from 'lucide-react';
+import { X, Trash2, ArrowRight, Loader2, Check, AlertTriangle } from 'lucide-react';
 
 export function IdentityFormScreen() {
   const { spaceId } = useParams<{ spaceId: string }>();
@@ -21,6 +22,7 @@ export function IdentityFormScreen() {
   const [showHandleModal, setShowHandleModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [newHandle, setNewHandle] = useState('');
   const [isCheckingHandle, setIsCheckingHandle] = useState(false);
   const [handleCheck, setHandleCheck] = useState<{ valid: boolean; reason?: string } | null>(null);
@@ -176,6 +178,27 @@ export function IdentityFormScreen() {
     updateMutation.mutate(data);
   };
 
+  const handleArchiveOrDelete = async (action: 'archive' | 'delete') => {
+    if (!spaceId) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await formsApi.archiveOrDelete(spaceId, action);
+      queryClient.invalidateQueries({ queryKey: ['yullo-home'] });
+      queryClient.removeQueries({ queryKey: ['identity', spaceId] });
+      queryClient.removeQueries({ queryKey: ['yullo-entities', spaceId] });
+      setShowDeleteModal(false);
+      navigate('/yullo/home');
+    } catch (err: any) {
+      console.error(`Failed to ${action} space:`, err);
+      const detail = err.response?.data?.detail || err.message || `Failed to ${action} space. Please try again.`;
+      setDeleteError(detail);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end max-[899px]:top-0 max-[899px]:h-full min-[900px]:top-[72px] min-[900px]:h-[calc(100dvh-72px)] font-[Instrument_Sans]">
       
@@ -314,83 +337,86 @@ export function IdentityFormScreen() {
       )}
 
       {/* Archive or Delete Space Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setShowDeleteModal(false)}>
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-[var(--surface)] border border-[var(--border)] p-6 sm:p-7 rounded-2xl shadow-2xl text-[var(--text-primary)] font-[Instrument_Sans] animate-in fade-in zoom-in-95 duration-200"
-          >
-            <div className="flex items-center gap-3.5 mb-3.5">
-              <div className="p-2.5 bg-rose-500/10 text-rose-500 rounded-xl border border-rose-500/20">
-                <Trash2 className="w-5 h-5" />
+      <Dialog.Root
+        open={showDeleteModal}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) {
+            setShowDeleteModal(false);
+            setDeleteError(null);
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-xs transition-opacity" />
+          <Dialog.Content asChild onOpenAutoFocus={(e) => e.preventDefault()}>
+            <div className="fixed inset-0 z-[121] flex items-center justify-center p-4 outline-none">
+              <div 
+                className="w-full max-w-md bg-[var(--surface)] border border-[var(--border)] p-6 sm:p-7 rounded-2xl shadow-2xl text-[var(--text-primary)] font-[Instrument_Sans] animate-in fade-in zoom-in-95 duration-200"
+              >
+                <div className="flex items-center gap-3.5 mb-3.5">
+                  <div className="p-2.5 bg-rose-500/10 text-rose-500 rounded-xl border border-rose-500/20">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <Dialog.Title className="font-[Satoshi] text-[20px] font-semibold text-[var(--text-primary)]">
+                    Remove "{identity.display_name}"?
+                  </Dialog.Title>
+                </div>
+
+                <Dialog.Description className="text-[14px] text-[var(--text-secondary)] leading-relaxed mb-5">
+                  Choose whether to archive this Space (hides it from your Home dashboard while preserving knowledge & data) or delete it permanently.
+                </Dialog.Description>
+
+                {deleteError && (
+                  <div role="alert" className="p-3 mb-4 rounded-xl border border-rose-500/25 bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[13px] flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{deleteError}</span>
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-3">
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => handleArchiveOrDelete('archive')}
+                    className="w-full py-3.5 px-4 bg-[var(--surface-soft)] hover:bg-[var(--border)] text-[var(--text-primary)] font-medium text-[14px] rounded-xl transition-colors text-left flex items-center justify-between group cursor-pointer border border-[var(--border)] disabled:opacity-50"
+                  >
+                    <div>
+                      <div className="font-semibold text-[14px]">Archive Space</div>
+                      <div className="text-[12px] text-[var(--text-secondary)] font-normal">Hides from home dashboard while saving all data</div>
+                    </div>
+                    {isDeleting ? <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" /> : <ArrowRight className="w-4 h-4 opacity-60 group-hover:opacity-100 transition-opacity" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => handleArchiveOrDelete('delete')}
+                    className="w-full py-3.5 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 font-medium text-[14px] rounded-xl transition-colors text-left flex items-center justify-between border border-rose-500/20 cursor-pointer disabled:opacity-50"
+                  >
+                    <div>
+                      <div className="font-semibold text-[14px]">Delete Completely</div>
+                      <div className="text-[12px] opacity-80 font-normal">Permanently removes space and all connected knowledge</div>
+                    </div>
+                    {isDeleting ? <Loader2 className="w-4 h-4 animate-spin opacity-80" /> : <Trash2 className="w-4 h-4 opacity-80" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => {
+                      setShowDeleteModal(false);
+                      setDeleteError(null);
+                    }}
+                    className="w-full py-2.5 px-4 text-[14px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors mt-1 text-center cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
-              <h3 className="font-[Satoshi] text-[20px] font-semibold text-[var(--text-primary)]">
-                Remove "{identity.display_name}"?
-              </h3>
             </div>
-
-            <p className="text-[14px] text-[var(--text-secondary)] leading-relaxed mb-6">
-              Choose whether to archive this Space (hides it from your Home dashboard while preserving knowledge & data) or delete it permanently.
-            </p>
-
-            <div className="flex flex-col gap-3">
-              <button
-                disabled={isDeleting}
-                onClick={async () => {
-                  setIsDeleting(true);
-                  try {
-                    await formsApi.archiveOrDelete(spaceId!, 'archive');
-                    queryClient.invalidateQueries({ queryKey: ['yullo-home'] });
-                    navigate('/yullo/home');
-                  } catch (err) {
-                    console.error('Failed to archive space:', err);
-                  } finally {
-                    setIsDeleting(false);
-                  }
-                }}
-                className="w-full py-3.5 px-4 bg-[var(--surface-soft)] hover:bg-[var(--border)] text-[var(--text-primary)] font-medium text-[14px] rounded-xl transition-colors text-left flex items-center justify-between group cursor-pointer border border-[var(--border)]"
-              >
-                <div>
-                  <div className="font-semibold text-[14px]">Archive Space</div>
-                  <div className="text-[12px] text-[var(--text-secondary)] font-normal">Hides from home dashboard while saving all data</div>
-                </div>
-                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" /> : <ArrowRight className="w-4 h-4 opacity-60 group-hover:opacity-100 transition-opacity" />}
-              </button>
-
-              <button
-                disabled={isDeleting}
-                onClick={async () => {
-                  setIsDeleting(true);
-                  try {
-                    await formsApi.archiveOrDelete(spaceId!, 'delete');
-                    queryClient.invalidateQueries({ queryKey: ['yullo-home'] });
-                    navigate('/yullo/home');
-                  } catch (err) {
-                    console.error('Failed to delete space:', err);
-                  } finally {
-                    setIsDeleting(false);
-                  }
-                }}
-                className="w-full py-3.5 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 font-medium text-[14px] rounded-xl transition-colors text-left flex items-center justify-between border border-rose-500/20 cursor-pointer"
-              >
-                <div>
-                  <div className="font-semibold text-[14px]">Delete Completely</div>
-                  <div className="text-[12px] opacity-80 font-normal">Permanently removes space and all connected knowledge</div>
-                </div>
-                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin opacity-80" /> : <Trash2 className="w-4 h-4 opacity-80" />}
-              </button>
-
-              <button
-                disabled={isDeleting}
-                onClick={() => setShowDeleteModal(false)}
-                className="w-full py-2.5 px-4 text-[14px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors mt-1 text-center cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }

@@ -14,6 +14,7 @@ export interface IdentityFormResponse {
   presence?: 'online' | 'physical' | 'both' | 'mobile';
   website?: string;
   revision: number;
+  status?: string;
 }
 
 export interface IdentityFormUpdate {
@@ -76,7 +77,20 @@ export const formsApi = {
   },
 
   archiveOrDelete: async (spaceId: string, action: 'archive' | 'delete' = 'archive') => {
-    const response = await yulloApiClient.delete(`/onboarding/spaces/${spaceId}?action=${action}`);
+    try {
+      const response = await yulloApiClient.delete(`/spaces/${spaceId}?action=${action}`);
+      return response.data;
+    } catch (err: any) {
+      if (err.response?.status === 404 || err.response?.status === 405) {
+        const fallback = await yulloApiClient.delete(`/onboarding/spaces/${spaceId}?action=${action}`);
+        return fallback.data;
+      }
+      throw err;
+    }
+  },
+
+  toggleLive: async (spaceId: string, live: boolean): Promise<IdentityFormResponse> => {
+    const response = await yulloApiClient.post(`/spaces/${spaceId}/forms/identity/toggle-live`, { live });
     return response.data;
   }
 };

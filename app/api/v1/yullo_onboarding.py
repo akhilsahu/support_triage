@@ -589,3 +589,15 @@ async def retry_space_source(
     await db.commit()
     _enqueue_ingestion(accepted.job_id)
     return await SourceService().get_source(db, user_id=user.id, source_id=item.id)
+
+
+@router.delete("/spaces/{space_id}")
+async def delete_onboarding_space_endpoint(
+    space_id: uuid.UUID,
+    action: str = "archive",
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    from app.yullo.services.persistence.identity import delete_or_archive_space
+    return await delete_or_archive_space(db, space_id, user.id, action)
+

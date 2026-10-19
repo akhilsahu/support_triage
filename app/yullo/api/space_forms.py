@@ -12,15 +12,18 @@ from app.yullo.schemas.forms.identity import (
     HandleCheckRequest,
     HandleCheckResponse,
     HandleChangeRequest,
-    SpaceCreateRequest
+    SpaceCreateRequest,
+    ToggleLiveRequest
 )
 from app.yullo.services.persistence.identity import (
     get_identity,
     update_identity,
     check_handle,
     change_handle,
-    create_space
+    create_space,
+    delete_or_archive_space
 )
+from app.yullo.services.spaces.publication import publish_space, unpublish_space
 
 router = APIRouter(prefix="/yullo/spaces", tags=["yullo-forms"])
 
@@ -85,3 +88,29 @@ async def perform_change_handle(
     db: AsyncSession = Depends(get_db)
 ):
     return await change_handle(db, space_id, user.id, data)
+
+@router.post("/{space_id}/forms/identity/toggle-live", response_model=IdentityFormResponse)
+async def toggle_space_live_status(
+    space_id: uuid.UUID,
+    data: ToggleLiveRequest,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if data.live:
+        await publish_space(db, space_id=space_id, owner_user_id=user.id)
+    else:
+        await unpublish_space(db, space_id=space_id, owner_user_id=user.id)
+    await db.commit()
+    return await get_identity(db, space_id, user.id)
+
+
+@router.delete("/{space_id}")
+async def delete_space_endpoint(
+    space_id: uuid.UUID,
+    action: str = "archive",
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    return await delete_or_archive_space(db, space_id, user.id, action)
+
+

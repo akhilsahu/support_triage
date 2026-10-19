@@ -17,6 +17,7 @@ from app.yullo.schemas.forms.identity import (
     SpacePurpose
 )
 from app.yullo.services.spaces.handles import validate_handle_format_and_availability
+from app.yullo.services.spaces.creation import create_or_resolve_yullo_space
 from app.yullo.services.entities.service import create_owner_entity, update_entity
 from app.yullo.services.entities.contracts import EntityCommand, EntityPatch
 from app.yullo.services.persistence.common import finalize_space_mutation
@@ -75,6 +76,18 @@ async def get_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.UUID
     if website_entity:
         website = website_entity.payload_json.get("value")
     
+    if not website:
+        if identity_settings.get("website"):
+            website = identity_settings.get("website")
+        # NOTE: We no longer auto-derive the website from URL knowledge sources.
+        # The public website must be explicitly set by the owner through
+        # the identity settings UI. Knowledge source URLs are for Aura's
+        # context only, not for public display.
+
+    description = identity_settings.get("description")
+    if not description:
+        description = getattr(space, "description", None)
+
     expected_revision = yullo_space.context_version
     safe_purpose = normalize_purpose(yullo_space.purpose)
     
@@ -87,14 +100,16 @@ async def get_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.UUID
         display_name=space.display_name,
         slug=space.slug,
         logo_url=space.logo_url,
-        description=identity_settings.get("description"),
+        description=description,
         description_source=identity_settings.get("description_source"),
         description_prompt_version=identity_settings.get("description_prompt_version"),
         description_input_fingerprint=identity_settings.get("description_input_fingerprint"),
         category=category_val,
+        category_source=identity_settings.get("category_source"),
         presence=identity_settings.get("presence"),
         website=website,
-        revision=expected_revision
+        revision=expected_revision,
+        status=yullo_space.lifecycle_status
     )
 
 async def update_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.UUID, data: IdentityFormUpdate) -> IdentityFormResponse:
@@ -145,8 +160,30 @@ async def update_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.U
         
     if data.category is not None:
         identity_settings["category"] = data.category.strip() if data.category else None
+        if data.category_source is not None:
+            identity_settings["category_source"] = data.category_source
+        elif data.category and data.category.strip():
+            identity_settings["category_source"] = "owner"
         # Remove legacy subtype key on new writes
         identity_settings.pop("subtype", None)
+
+    # Ensure category is populated if blank
+    if not identity_settings.get("category") or not str(identity_settings.get("category")).strip():
+        from app.yullo.services.about_generation import suggest_about
+        gen_res = await suggest_about(db, user_id=user_id, space_id=space_id)
+        suggested_cat = gen_res.get("category")
+        if suggested_cat and suggested_cat.strip():
+            identity_settings["category"] = suggested_cat.strip()
+            identity_settings["category_source"] = "aura"
+        else:
+            fallback_map = {
+                "person": "Personal space",
+                "creator": "Creator portfolio",
+                "business": "Business & brand space",
+                "organization": "Community organization"
+            }
+            identity_settings["category"] = fallback_map.get(space.purpose or "business", "Business & brand space")
+            identity_settings["category_source"] = "aura"
         
     if data.presence is not None:
         identity_settings["presence"] = data.presence.value if data.presence else None
@@ -261,31 +298,79 @@ async def create_space(
         title=display_name
     )
 
-    if description or category or presence or website:
-        yullo_config = await db.scalar(select(YulloConfig).where(YulloConfig.space_id == created.space.id))
-        if not yullo_config:
-            yullo_config = YulloConfig(space_id=created.space.id, settings={})
-            db.add(yullo_config)
-            
-        settings = dict(yullo_config.settings) if yullo_config.settings else {}
-        identity_settings = dict(settings.get("identity", {}))
-        if description: identity_settings["description"] = description
-        if category: identity_settings["category"] = category.strip()
-        if presence: identity_settings["presence"] = presence
-        settings["identity"] = identity_settings
-        yullo_config.settings = settings
+    yullo_config = await db.scalar(select(YulloConfig).where(YulloConfig.space_id == created.space.id))
+    if not yullo_config:
+        yullo_config = YulloConfig(space_id=created.space.id, settings={})
+        db.add(yullo_config)
         
-        if website and website.strip():
-            website_val = website.strip()
-            payload = {"label": "Website", "channel": "website", "value": website_val}
-            await create_owner_entity(db, user_id=user_id, space_id=created.space.id, command=EntityCommand(
-                identity_key=WEBSITE_IDENTITY_KEY,
-                entity_type="contact_channel",
-                payload_json=payload,
-                is_public=True
-            ))
+    settings = dict(yullo_config.settings) if yullo_config.settings else {}
+    identity_settings = dict(settings.get("identity", {}))
+    if description: identity_settings["description"] = description
+    if category and category.strip():
+        identity_settings["category"] = category.strip()
+        identity_settings["category_source"] = "owner"
+    else:
+        from app.yullo.services.about_generation import suggest_about
+        gen_res = await suggest_about(db, user_id=user_id, space_id=created.space.id)
+        suggested_cat = gen_res.get("category")
+        if suggested_cat and suggested_cat.strip():
+            identity_settings["category"] = suggested_cat.strip()
+            identity_settings["category_source"] = "aura"
+        else:
+            fallback_map = {
+                "person": "Personal space",
+                "creator": "Creator portfolio",
+                "business": "Business & brand space",
+                "organization": "Community organization"
+            }
+            identity_settings["category"] = fallback_map.get(canonical_p, "Business & brand space")
+            identity_settings["category_source"] = "aura"
+
+    if presence: identity_settings["presence"] = presence
+    settings["identity"] = identity_settings
+    yullo_config.settings = settings
+    
+    if website and website.strip():
+        website_val = website.strip()
+        payload = {"label": "Website", "channel": "website", "value": website_val}
+        await create_owner_entity(db, user_id=user_id, space_id=created.space.id, command=EntityCommand(
+            identity_key=WEBSITE_IDENTITY_KEY,
+            entity_type="contact_channel",
+            payload_json=payload,
+            is_public=True
+        ))
 
     await db.commit()
     return await get_identity(db, created.space.id, user_id)
+
+
+async def delete_or_archive_space(
+    db: AsyncSession,
+    space_id: uuid.UUID,
+    user_id: uuid.UUID,
+    action: str = "archive"
+) -> Dict[str, Any]:
+    """
+    Archives or permanently deletes a Yullo space owned by the user.
+    - 'archive': sets status='archived' and active=False, hiding from Home dashboard while preserving data.
+    - 'delete': permanently removes the Space and cascading rows from the database.
+    """
+    stmt = select(Space).where(Space.id == space_id, Space.owner_user_id == user_id, Space.product == "yullo")
+    space = await db.scalar(stmt)
+    if not space:
+        raise HTTPException(status_code=404, detail="Yullo space not found or not authorized")
+
+    if action == "delete":
+        await db.delete(space)
+        await db.commit()
+        return {"status": "ok", "action": "delete", "space_id": str(space_id)}
+    elif action == "archive":
+        space.status = "archived"
+        space.active = False
+        await db.commit()
+        return {"status": "ok", "action": "archive", "space_id": str(space_id)}
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid action '{action}'. Must be 'archive' or 'delete'.")
+
 
 
