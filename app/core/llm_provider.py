@@ -8,6 +8,11 @@ logger = logging.getLogger(__name__)
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
+def _is_openai_model(model: str) -> bool:
+    m = model.lower()
+    return m.startswith(("gpt-", "o1-", "o3-", "chatgpt-", "text-embedding-"))
+
+
 def get_async_openai_clients(
     override_model: Optional[str] = None,
     **client_kwargs
@@ -31,6 +36,8 @@ def get_async_openai_clients(
     
     for provider in order:
         if provider == "openai":
+            if override_model and (override_model.startswith("accounts/") or "llama" in override_model.lower() or "hierarchy" in override_model.lower()):
+                continue
             api_key = client_kwargs.get("api_key") or getattr(settings, "OPENAI_API_KEY", None)
             if api_key:
                 model = override_model or getattr(settings, "OPENAI_MODEL", "gpt-4o-mini")
@@ -62,6 +69,8 @@ def get_async_openai_clients(
                 logger.debug("Skipping OpenRouter fallback: OPENROUTER_API_KEY not set")
                 
         elif provider == "anyscale":
+            if override_model and _is_openai_model(override_model):
+                continue
             api_key = client_kwargs.get("api_key") or getattr(settings, "ANYSCALE_API_KEY", None)
             if api_key:
                 model = override_model or getattr(settings, "ANYSCALE_MODEL", "meta-llama/Meta-Llama-3-70B-Instruct")
@@ -77,9 +86,11 @@ def get_async_openai_clients(
                 logger.debug("Skipping Anyscale fallback: ANYSCALE_API_KEY not set")
                 
         elif provider == "together":
+            if override_model and _is_openai_model(override_model):
+                continue
             api_key = client_kwargs.get("api_key") or getattr(settings, "TOGETHER_API_KEY", None)
             if api_key:
-                model = override_model or getattr(settings, "TOGETHER_MODEL", "meta-llama/Meta-Llama-3-70B-Instruct-Turbo")
+                model = override_model or getattr(settings, "TOGETHER_MODEL", None) or "meta-llama/Meta-Llama-3-70B-Instruct-Turbo"
                 
                 kwargs = client_kwargs.copy()
                 kwargs["api_key"] = api_key
@@ -92,10 +103,14 @@ def get_async_openai_clients(
                 logger.debug("Skipping Together fallback: TOGETHER_API_KEY not set")
                 
         elif provider == "fireworks":
+            if override_model and _is_openai_model(override_model):
+                continue
             api_key = client_kwargs.get("api_key") or getattr(settings, "FIREWORKS_API_KEY", None)
             if api_key:
                 # Use correct Fireworks model string: accounts/fireworks/models/llama-v3-1-70b-instruct instead of llama-v3p1-70b-instruct to prevent 404
                 model = override_model or getattr(settings, "FIREWORKS_MODEL", "accounts/fireworks/models/llama-v3-1-70b-instruct")
+                if "v3p1" in model:
+                    model = model.replace("v3p1", "v3-1")
                 
                 kwargs = client_kwargs.copy()
                 kwargs["api_key"] = api_key
@@ -108,12 +123,17 @@ def get_async_openai_clients(
                 logger.debug("Skipping Fireworks fallback: FIREWORKS_API_KEY not set")
                 
         elif provider == "modal":
+            modal_default_model = getattr(settings, "MODAL_MODEL", "akhilles3/llama-3-8b-hierarchy-extractor")
+            if override_model and (_is_openai_model(override_model) or ("hierarchy" not in override_model.lower() and override_model != modal_default_model)):
+                logger.debug("Skipping Modal: cannot serve requested model %s", override_model)
+                continue
+
             # For a custom modal deployment serving an OpenAI-compatible API
             api_key = client_kwargs.get("api_key") or getattr(settings, "MODAL_API_KEY", "dummy-key-for-modal")
             base_url = client_kwargs.get("base_url") or getattr(settings, "MODAL_BASE_URL", None)
             
             if base_url:
-                model = override_model or getattr(settings, "MODAL_MODEL", "akhilles3/llama-3-8b-hierarchy-extractor")
+                model = override_model or modal_default_model
                 
                 kwargs = client_kwargs.copy()
                 kwargs["api_key"] = api_key

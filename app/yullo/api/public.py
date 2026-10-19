@@ -283,7 +283,7 @@ async def stream_aura_chat(
     space_id: uuid.UUID,
     session_id: uuid.UUID,
     request: AuraInferenceRequest,
-    raw_request: Request,
+    raw_request: Request = None,
     db: AsyncSession = Depends(get_db),
     runtime: YulloAuraRuntime = Depends(get_aura_runtime)
 ):
@@ -298,14 +298,15 @@ async def stream_aura_chat(
         
     request.model = "gpt-4o-mini"
     
-    from app.core.rate_limit import enforce_rate_limit
-    client_ip = raw_request.client.host if raw_request.client else "unknown"
-    await enforce_rate_limit(
-        bucket="public_aura_chat",
-        identifier=f"{space_id}_{client_ip}",
-        limit=10,
-        window_sec=60
-    )
+    if raw_request:
+        from app.core.rate_limit import enforce_rate_limit
+        client_ip = raw_request.client.host if raw_request.client else "unknown"
+        await enforce_rate_limit(
+            bucket="public_aura_chat",
+            identifier=f"{space_id}_{client_ip}",
+            limit=10,
+            window_sec=60
+        )
 
     await _require_public_space(db, space_id)
 
