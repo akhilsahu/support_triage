@@ -147,23 +147,47 @@ export function useAppearancePreview(
   }, [])
 
   const updateItemImage = useCallback(
-    (sectionType: PreviewSectionType, itemKey: string, imageUrl: string, assetId?: string) => {
+    (
+      sectionType: PreviewSectionType,
+      itemKey: string,
+      imageUrl: string,
+      assetId?: string,
+      fallbackSection?: AppearancePreviewSection,
+    ) => {
       setState((current) => {
-        if (!current.content) return current
+        const sections = current.content?.sections ? [...current.content.sections] : []
+        const existingIdx = sections.findIndex((s) => s.type === sectionType)
+        if (existingIdx >= 0) {
+          const hasItem = sections[existingIdx].items.some((item) => item.key === itemKey)
+          if (hasItem) {
+            sections[existingIdx] = {
+              ...sections[existingIdx],
+              items: sections[existingIdx].items.map((item) =>
+                item.key === itemKey ? { ...item, imageUrl, assetId } : item,
+              ),
+            }
+          } else if (fallbackSection) {
+            const fallbackItem = fallbackSection.items.find((item) => item.key === itemKey)
+            if (fallbackItem) {
+              sections[existingIdx] = {
+                ...sections[existingIdx],
+                items: [...sections[existingIdx].items, { ...fallbackItem, imageUrl, assetId }],
+              }
+            }
+          }
+        } else if (fallbackSection) {
+          sections.push({
+            ...fallbackSection,
+            items: fallbackSection.items.map((item) =>
+              item.key === itemKey ? { ...item, imageUrl, assetId } : item,
+            ),
+          })
+        }
         return {
           ...current,
           content: {
-            ...current.content,
-            sections: current.content.sections.map((section) => {
-              if (section.type !== sectionType) return section
-              return {
-                ...section,
-                items: section.items.map((item) => {
-                  if (item.key !== itemKey) return item
-                  return { ...item, imageUrl, assetId }
-                }),
-              }
-            }),
+            schemaVersion: 1,
+            sections,
           },
           lastUpdate: Date.now(),
         }

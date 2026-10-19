@@ -19,7 +19,7 @@ from app.yullo.schemas.appearance import (
     SpacePresentationConfig,
     default_presentation_config,
 )
-from app.yullo.services.appearance_assets import list_assets
+from app.yullo.services.appearance_assets import list_assets, list_source_extracted_assets
 from app.yullo.services.persistence.common import finalize_space_mutation
 
 logger = logging.getLogger(__name__)
@@ -133,7 +133,9 @@ async def update_appearance(
             )
         )
         if not asset_exists:
-            raise HTTPException(status_code=422, detail="Selected appearance image is unavailable")
+            extracted = await list_source_extracted_assets(db, space_id=space_id)
+            if not any(ext.id == config.hero.asset_id for ext in extracted):
+                raise HTTPException(status_code=422, detail="Selected appearance image is unavailable")
     yullo_space.appearance_config = config.model_dump(mode="json", by_alias=True)
     await db.flush()
     await finalize_space_mutation(

@@ -170,14 +170,16 @@ export function AppearanceScreen() {
       try {
         const asset = await appearanceApi.uploadAsset(spaceId, file)
         if (asset?.url) {
-          updateItemImage(sectionType, itemKey, asset.url, asset.id)
+          const currentSection = previewContent?.sections.find((s) => s.type === sectionType)
+          updateItemImage(sectionType, itemKey, asset.url, asset.id, currentSection)
+          setModifiedSectionTypes((prev) => new Set(prev).add(sectionType))
           queryClient.invalidateQueries({ queryKey: ['yullo', 'appearance', spaceId] })
         }
       } catch (err) {
         console.error('Failed to upload image for item', err)
       }
     },
-    [spaceId, updateItemImage, queryClient],
+    [spaceId, updateItemImage, queryClient, previewContent],
   )
 
   const handleUpdateSectionHeading = useCallback(
@@ -362,16 +364,21 @@ export function AppearanceScreen() {
       if (imagePickerTarget.itemKey === 'hero') {
         history.apply({
           ...history.draft,
-          hero: { ...history.draft.hero, assetId: asset.id },
+          hero: {
+            ...history.draft.hero,
+            assetId: asset.id,
+            layout: history.draft.hero.layout === 'centered' ? 'image_right' : history.draft.hero.layout,
+          },
           backgroundTreatment: history.draft.backgroundTreatment === 'image' ? 'image' : history.draft.backgroundTreatment,
         })
       } else {
-        updateItemImage(imagePickerTarget.sectionType, imagePickerTarget.itemKey, asset.url, asset.id)
+        const currentSection = previewContent?.sections.find((s) => s.type === imagePickerTarget.sectionType)
+        updateItemImage(imagePickerTarget.sectionType, imagePickerTarget.itemKey, asset.url, asset.id, currentSection)
         setModifiedSectionTypes((prev) => new Set(prev).add(imagePickerTarget.sectionType))
       }
       setImagePickerTarget(null)
     },
-    [imagePickerTarget, history, updateItemImage],
+    [imagePickerTarget, history, updateItemImage, previewContent],
   )
 
   const handleUploadModalFile = useCallback(
@@ -396,11 +403,12 @@ export function AppearanceScreen() {
         backgroundTreatment: history.draft.backgroundTreatment === 'image' ? 'soft' : history.draft.backgroundTreatment,
       })
     } else {
-      updateItemImage(imagePickerTarget.sectionType, imagePickerTarget.itemKey, '', undefined)
+      const currentSection = previewContent?.sections.find((s) => s.type === imagePickerTarget.sectionType)
+      updateItemImage(imagePickerTarget.sectionType, imagePickerTarget.itemKey, '', undefined, currentSection)
       setModifiedSectionTypes((prev) => new Set(prev).add(imagePickerTarget.sectionType))
     }
     setImagePickerTarget(null)
-  }, [imagePickerTarget, history, updateItemImage])
+  }, [imagePickerTarget, history, updateItemImage, previewContent])
 
   if (query.isLoading) return <div className="yullo-app min-h-screen bg-[var(--canvas)]"><YulloAppHeader spaceId={spaceId} /><div className="p-8 text-sm text-[var(--text-secondary)]">Loading appearance…</div></div>
   if (query.isError || !query.data) return <div className="yullo-app min-h-screen bg-[var(--canvas)]"><YulloAppHeader spaceId={spaceId} /><div className="p-8"><p>Could not load appearance.</p><button className="mt-4 underline" onClick={() => navigate(-1)}>Go back</button></div></div>

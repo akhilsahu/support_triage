@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import current_user
@@ -30,6 +30,7 @@ from app.yullo.schemas.appearance_preview import (
 from app.yullo.services.appearance_assets import (
     archive_asset,
     get_owned_asset,
+    list_source_extracted_assets,
     update_asset,
     upload_asset,
 )
@@ -94,17 +95,24 @@ async def read_appearance_asset_content(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    asset = await get_owned_asset(
-        db, user_id=user.id, space_id=space_id, asset_id=asset_id
-    )
-    async with materialize_blob(asset.storage_key) as path:
-        return FileResponse(
-            path,
-            media_type=asset.mime_type,
-            filename=asset.filename,
-            content_disposition_type="inline",
-            headers={"Cache-Control": "private, max-age=300"},
+    try:
+        asset = await get_owned_asset(
+            db, user_id=user.id, space_id=space_id, asset_id=asset_id
         )
+        async with materialize_blob(asset.storage_key) as path:
+            return FileResponse(
+                path,
+                media_type=asset.mime_type,
+                filename=asset.filename,
+                content_disposition_type="inline",
+                headers={"Cache-Control": "private, max-age=300"},
+            )
+    except HTTPException:
+        extracted = await list_source_extracted_assets(db, space_id=space_id)
+        for ext in extracted:
+            if ext.id == asset_id:
+                return RedirectResponse(url=ext.url, status_code=307)
+        raise
 
 
 @router.patch(

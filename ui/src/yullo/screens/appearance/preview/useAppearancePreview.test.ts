@@ -71,3 +71,57 @@ it('accumulates multiple section drafts without unsetting previously built secti
   expect(result.current.state.content?.sections[0].type).toBe('products')
 })
 
+it('updates an item image using fallback section when content is initially null', () => {
+  const { result } = renderHook(() => useAppearancePreview('space', defaultPresentationConfig()))
+  expect(result.current.state.content).toBeNull()
+
+  const fallbackSection = {
+    type: 'portfolio' as const,
+    heading: 'Selected work',
+    items: [
+      { key: 'work-1', title: 'Orbital Flight', source: 'example' as const },
+      { key: 'work-2', title: 'Starship Booster', source: 'example' as const },
+    ],
+  }
+
+  act(() => {
+    result.current.updateItemImage(
+      'portfolio',
+      'work-1',
+      'https://example.com/flight.jpg',
+      'asset-123',
+      fallbackSection,
+    )
+  })
+
+  expect(result.current.state.content?.sections).toHaveLength(1)
+  const portfolioSection = result.current.state.content?.sections[0]
+  expect(portfolioSection?.type).toBe('portfolio')
+  expect(portfolioSection?.items[0].imageUrl).toBe('https://example.com/flight.jpg')
+  expect(portfolioSection?.items[0].assetId).toBe('asset-123')
+  expect(portfolioSection?.items[1].imageUrl).toBeUndefined()
+})
+
+it('updates an item image when section already exists in content', async () => {
+  const mock = vi.mocked(appearanceApi.generatePreview)
+  mock.mockResolvedValueOnce(ready)
+
+  const { result } = renderHook(() => useAppearancePreview('space', defaultPresentationConfig()))
+  await act(() => result.current.generatePreview(false, 'services'))
+
+  expect(result.current.state.content?.sections[0].items[0].imageUrl).toBeUndefined()
+
+  act(() => {
+    result.current.updateItemImage(
+      'services',
+      'cargo',
+      'https://example.com/cargo.jpg',
+      'asset-456',
+    )
+  })
+
+  expect(result.current.state.content?.sections[0].items[0].imageUrl).toBe('https://example.com/cargo.jpg')
+  expect(result.current.state.content?.sections[0].items[0].assetId).toBe('asset-456')
+})
+
+
