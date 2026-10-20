@@ -54,5 +54,5 @@
 - Keep UI copy simple; do not expose implementation jargon or internal errors to users. Respect reduced motion and keyboard operation.
 - Add concise comments for non-obvious decisions and constraints, not comments on every line.
 - Add structured logs at meaningful boundaries and failures, with safe identifiers. Never log credentials, tokens, private source content or complete sensitive request bodies.
-- Run focused tests/checks appropriate to the changed behavior; do not add redundant tests solely to mirror implementation. Report failures and unverified paths honestly.
+- Run focused tests/checks appropriate to the changed behavior; do not add redundant tests solely to mirror implementation. Do NOT write new/unnecessary unit test cases without explicit user approval; after implementation is completed, ask user for approval whether to run or write tests. Report failures and unverified paths honestly.
 - Use an isolated test database/blob/index namespace for integration tests that create durable data. Do not run destructive tests or bootstrap against a live user implicitly.
