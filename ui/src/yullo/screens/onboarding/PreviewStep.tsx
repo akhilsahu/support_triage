@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { yulloOnboardingApi } from '../../api/onboarding'
 import { DraftSpace } from './YulloOnboarding'
-import { Sparkles, Rocket, ArrowLeft, ArrowRight, Copy, Check, ExternalLink } from 'lucide-react'
+import { Rocket, ArrowLeft, ArrowRight, Copy, Check, ExternalLink } from 'lucide-react'
 import { SpaceRenderer } from '../../components/SpaceRenderer'
 
 export function PreviewStep({ draft, token, onComplete, onBack, onLiveStatusChange }: { draft: DraftSpace, token: string, onComplete: () => void, onBack: () => void, onLiveStatusChange?: (live: boolean) => void }) {
@@ -17,7 +17,7 @@ export function PreviewStep({ draft, token, onComplete, onBack, onLiveStatusChan
     try {
       // Run the launch API and a minimum 600ms animation delay concurrently
       await Promise.all([
-        yulloOnboardingApi.launch(token),
+        yulloOnboardingApi.launch(),
         new Promise(resolve => setTimeout(resolve, 600))
       ])
       setIsLive(true)

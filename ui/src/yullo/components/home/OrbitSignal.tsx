@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { ArrowRight, X, MapPin, Users, Activity, Sparkles } from 'lucide-react';
+import { ArrowRight, X, MapPin, Users, Activity } from 'lucide-react';
 import { OrbitSignal } from '../../home/types';
 
 interface OrbitSignalProps {
@@ -170,7 +170,7 @@ export default function OrbitSignalCard({ signal, onHoverStart, onHoverEnd, onDi
           <div className="p-6 flex flex-col h-full relative">
             <div className="flex items-start justify-between mb-6 relative z-10">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4" style={{ color }} />
+                <Activity className="w-4 h-4" style={{ color }} />
                 <span className="text-[13px] font-medium text-[var(--text-secondary)] uppercase tracking-wider">
                   {signal.relevance}
                 </span>

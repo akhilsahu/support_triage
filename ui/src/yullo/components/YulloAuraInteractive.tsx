@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Sparkles, Check, ArrowUpRight } from 'lucide-react'
+import { Check, ArrowUpRight } from 'lucide-react'
 
 import { yulloConfig } from '../config'
 

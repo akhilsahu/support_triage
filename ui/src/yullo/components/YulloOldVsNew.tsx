@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowRight, Check, Sparkles, Layers } from 'lucide-react'
+import { ArrowRight, Check } from 'lucide-react'
 
 import { yulloConfig } from '../config'
 

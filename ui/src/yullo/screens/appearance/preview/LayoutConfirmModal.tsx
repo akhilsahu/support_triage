@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Loader2, Sparkles, X, LayoutGrid, Palette, AlignCenter, AlertCircle } from 'lucide-react'
+import { Check, Loader2, X, LayoutGrid, Palette, AlignCenter, AlertCircle } from 'lucide-react'
 import type { SpacePresentationConfig } from '../presentation/schema'
 import type { AppearancePreviewContent, PreviewSectionType } from './types'
 
@@ -86,7 +86,7 @@ export function LayoutConfirmModal({
           ) : isFailed ? (
             <AlertCircle size={24} className="text-[var(--danger, #e11d48)]" />
           ) : (
-            <Sparkles size={24} strokeWidth={1.7} />
+            <LayoutGrid size={24} strokeWidth={1.7} />
           )}
         </div>
 

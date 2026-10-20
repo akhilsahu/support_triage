@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  X, CheckCircle2, Sparkles, Globe, FileText, ExternalLink, Download, 
+  X, CheckCircle2, ListChecks, Globe, FileText, ExternalLink, Download, 
   Image as ImageIcon, Link as LinkIcon, Quote, Layers, CheckCheck, 
   SlidersHorizontal, ChevronRight, Eye
 } from 'lucide-react';
@@ -11,6 +11,7 @@ import type { SourceFact } from '../api/onboarding';
 import type { SourceEntity } from '../api/entities';
 import { yulloOnboardingApi } from '../api/onboarding';
 import { entitiesApi } from '../api/entities';
+import { ColouredIcon, getBrandIconFromUrl } from './ColouredIcon';
 
 interface ExtractionResultsModalProps {
   isOpen: boolean;
@@ -81,121 +82,132 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
   const totalAssetsCount = images.length + documents.length + links.length;
 
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6 bg-black/50 backdrop-blur-[4px] animate-in fade-in duration-200 font-[Instrument_Sans]">
-      {/* Backdrop */}
-      <div className="absolute inset-0" onClick={onClose} />
+    <div className="yullo-app" style={{ display: 'contents' }}>
+      <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6 bg-black/50 backdrop-blur-[4px] animate-in fade-in duration-200 font-[Instrument_Sans]">
+        {/* Backdrop */}
+        <div className="absolute inset-0" onClick={onClose} />
 
-      {/* Modal Dialog Window */}
-      <div 
-        className="relative flex flex-col w-full max-w-4xl max-h-[90vh] bg-[var(--surface)] border border-[var(--border)] rounded-2xl shadow-2xl z-10 overflow-hidden animate-in zoom-in-95 duration-200"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Sticky Header */}
-        <div className="sticky top-0 bg-[var(--surface)] border-b border-[var(--border)] px-6 py-5 sm:px-8 sm:py-6 z-20 shrink-0">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] font-semibold bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Extraction Complete
-                </span>
-                <span className="text-[12px] text-[var(--text-muted)] font-mono">
-                  Ready for Aura
-                </span>
-              </div>
+        {/* Modal Dialog Window */}
+        <div 
+          className="relative flex flex-col w-full max-w-4xl max-h-[90vh] bg-[var(--surface)] border border-[var(--border)] rounded-2xl shadow-2xl z-10 overflow-hidden animate-in zoom-in-95 duration-200"
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Sticky Header */}
+          <div className="sticky top-0 bg-[var(--surface)] border-b border-[var(--border)] px-6 py-5 sm:px-8 sm:py-6 z-20 shrink-0">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] font-semibold bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Extraction Complete
+                  </span>
+                  <span className="text-[12px] text-[var(--text-muted)] font-mono">
+                    Ready for Aura
+                  </span>
+                </div>
 
-              <div className="flex items-center gap-3">
-                {activeSource.source_type === 'url' && activeSource.favicon_url ? (
-                  <div className="w-7 h-7 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] flex items-center justify-center shrink-0 overflow-hidden">
-                    <img 
-                      src={activeSource.favicon_url} 
-                      alt="" 
-                      className="w-4 h-4 object-contain rounded-xs" 
-                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                    />
-                  </div>
-                ) : (
-                  <div className="w-7 h-7 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] flex items-center justify-center shrink-0">
-                    <Globe className="w-4 h-4 text-cyan-600" />
-                  </div>
+                <div className="flex items-center gap-3">
+                  {(() => {
+                    const brand = activeSource.source_type === 'url' ? getBrandIconFromUrl(activeSource.content_ref || activeSource.title) : null;
+                    if (activeSource.source_type === 'url' && activeSource.favicon_url) {
+                      return (
+                        <div className="w-7 h-7 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] flex items-center justify-center shrink-0 overflow-hidden">
+                          <img 
+                            src={activeSource.favicon_url} 
+                            alt="" 
+                            className="w-4 h-4 object-contain rounded-xs" 
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          />
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="w-7 h-7 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] flex items-center justify-center shrink-0">
+                        {brand ? (
+                          <ColouredIcon name={brand} className="w-4 h-4" />
+                        ) : (
+                          <Globe className="w-4 h-4 text-cyan-600" />
+                        )}
+                      </div>
+                    );
+                  })()}
+                  <h2 className="font-[Satoshi] text-[20px] sm:text-[24px] font-bold text-[var(--text-primary)] tracking-tight truncate">
+                    {displayTitle}
+                  </h2>
+                </div>
+
+                {activeSource.content_ref && activeSource.content_ref !== displayTitle && (
+                  <p className="text-[12px] text-[var(--text-secondary)] font-mono truncate mt-1">
+                    {activeSource.content_ref}
+                  </p>
                 )}
-                <h2 className="font-[Satoshi] text-[20px] sm:text-[24px] font-bold text-[var(--text-primary)] tracking-tight truncate">
-                  {displayTitle}
-                </h2>
               </div>
 
-              {activeSource.content_ref && activeSource.content_ref !== displayTitle && (
-                <p className="text-[12px] text-[var(--text-secondary)] font-mono truncate mt-1">
-                  {activeSource.content_ref}
-                </p>
-              )}
+              <button
+                onClick={onClose}
+                aria-label="Close modal"
+                className="p-2 rounded-xl hover:bg-[var(--surface-soft)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer shrink-0 -mr-2"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <button
-              onClick={onClose}
-              aria-label="Close modal"
-              className="p-2 rounded-xl hover:bg-[var(--surface-soft)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer shrink-0 -mr-2"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {/* Navigation Tabs */}
+            <div className="flex items-center gap-2 mt-5 border-b border-[var(--border)] -mb-5 pb-2 overflow-x-auto scrollbar-none">
+              <button
+                type="button"
+                onClick={() => setActiveTab('connected-assets')}
+                className={`px-3.5 py-2 rounded-xl text-[13px] font-semibold transition-all flex items-center gap-2 cursor-pointer ${
+                  activeTab === 'connected-assets'
+                    ? 'bg-[var(--text-primary)] text-[var(--surface)] shadow-xs'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)]'
+                }`}
+              >
+                <ImageIcon className="w-4 h-4" />
+                Connected Media & Links
+                <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
+                  activeTab === 'connected-assets' ? 'bg-white/20 text-current' : 'bg-[var(--surface-soft)] border border-[var(--border)] text-[var(--text-muted)]'
+                }`}>
+                  {totalAssetsCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('facts')}
+                className={`px-3.5 py-2 rounded-xl text-[13px] font-semibold transition-all flex items-center gap-2 cursor-pointer ${
+                  activeTab === 'facts'
+                    ? 'bg-[var(--text-primary)] text-[var(--surface)] shadow-xs'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)]'
+                }`}
+              >
+                <ListChecks className="w-4 h-4" />
+                Detected Facts
+                <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
+                  activeTab === 'facts' ? 'bg-white/20 text-current' : 'bg-[var(--surface-soft)] border border-[var(--border)] text-[var(--text-muted)]'
+                }`}>
+                  {facts.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('entities')}
+                className={`px-3.5 py-2 rounded-xl text-[13px] font-semibold transition-all flex items-center gap-2 cursor-pointer ${
+                  activeTab === 'entities'
+                    ? 'bg-[var(--text-primary)] text-[var(--surface)] shadow-xs'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)]'
+                }`}
+              >
+                <Layers className="w-4 h-4" />
+                Structured Details
+                <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
+                  activeTab === 'entities' ? 'bg-white/20 text-current' : 'bg-[var(--surface-soft)] border border-[var(--border)] text-[var(--text-muted)]'
+                }`}>
+                  {entities.length}
+                </span>
+              </button>
+            </div>
           </div>
-
-          {/* Navigation Tabs */}
-          <div className="flex items-center gap-2 mt-5 border-b border-[var(--border)] -mb-5 pb-2 overflow-x-auto scrollbar-none">
-            <button
-              type="button"
-              onClick={() => setActiveTab('connected-assets')}
-              className={`px-3.5 py-2 rounded-xl text-[13px] font-semibold transition-all flex items-center gap-2 cursor-pointer ${
-                activeTab === 'connected-assets'
-                  ? 'bg-[var(--accent-solid)] text-[var(--accent-on-solid)] shadow-xs'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)]'
-              }`}
-            >
-              <ImageIcon className="w-4 h-4" />
-              Connected Media & Links
-              <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
-                activeTab === 'connected-assets' ? 'bg-white/20' : 'bg-[var(--surface-soft)] border border-[var(--border)]'
-              }`}>
-                {totalAssetsCount}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('facts')}
-              className={`px-3.5 py-2 rounded-xl text-[13px] font-semibold transition-all flex items-center gap-2 cursor-pointer ${
-                activeTab === 'facts'
-                  ? 'bg-[var(--accent-solid)] text-[var(--accent-on-solid)] shadow-xs'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)]'
-              }`}
-            >
-              <Sparkles className="w-4 h-4" />
-              Detected Facts
-              <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
-                activeTab === 'facts' ? 'bg-white/20' : 'bg-[var(--surface-soft)] border border-[var(--border)]'
-              }`}>
-                {facts.length}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('entities')}
-              className={`px-3.5 py-2 rounded-xl text-[13px] font-semibold transition-all flex items-center gap-2 cursor-pointer ${
-                activeTab === 'entities'
-                  ? 'bg-[var(--accent-solid)] text-[var(--accent-on-solid)] shadow-xs'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)]'
-              }`}
-            >
-              <Layers className="w-4 h-4" />
-              Structured Details
-              <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
-                activeTab === 'entities' ? 'bg-white/20' : 'bg-[var(--surface-soft)] border border-[var(--border)]'
-              }`}>
-                {entities.length}
-              </span>
-            </button>
-          </div>
-        </div>
 
         {/* Scrollable Body Content */}
         <div className="flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-7 space-y-6">
@@ -304,7 +316,7 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
                     Facts
                   </span>
                   <div className="w-5 h-5 rounded-md bg-emerald-500/15 flex items-center justify-center">
-                    <Sparkles className="w-3 h-3 text-emerald-500" />
+                    <ListChecks className="w-3 h-3 text-emerald-500" />
                   </div>
                 </div>
                 <div className="mt-2">
@@ -365,6 +377,8 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
                       <img 
                         src={activeSource.preview_image_url} 
                         alt="Preview" 
+                        referrerPolicy="no-referrer"
+                        loading="lazy"
                         className="w-full h-full object-cover" 
                         onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }}
                       />
@@ -422,6 +436,8 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
                             <img 
                               src={img.url} 
                               alt={img.alt || 'Extracted image'} 
+                              referrerPolicy="no-referrer"
+                              loading="lazy"
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" 
                               onError={(e) => {
                                 (e.currentTarget.parentElement as HTMLElement).innerHTML = '<div class="p-2 text-center text-[10px] text-[var(--text-muted)] flex items-center justify-center h-full">No image</div>';
@@ -754,6 +770,7 @@ export const ExtractionResultsModal: React.FC<ExtractionResultsModalProps> = ({
           </div>
         </div>
       </div>
+    </div>
     </div>,
     document.body
   );

@@ -1,5 +1,5 @@
 import { motion } from 'motion/react'
-import { ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
+import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import type { AppearanceAsset, AppearanceCandidate } from '../../../../api/appearance'
 import type { SpacePurpose } from '../../presentation/presets'
 import type { SpacePresentationConfig } from '../../presentation/schema'
@@ -55,7 +55,7 @@ function SectionRow({ section, index, config, update, moveSection, previewConten
               title={`Pull data for ${section.type}`}
               aria-label={`Pull data for ${section.type}`}
             >
-              <Sparkles size={13} />
+              <RefreshCw size={13} />
             </button>
           )}
           <button type="button" onClick={() => moveSection(index, -1)} disabled={index === 0} aria-label={`Move ${section.type} up`}><ChevronUp size={15} /></button>

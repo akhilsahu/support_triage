@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, AlignLeft, Check, CheckCheck, CheckCircle2, Clock, Download, ExternalLink, FileText, Globe, Image as ImageIcon, MinusCircle, RotateCw, Sparkles, StopCircle, Trash2, X } from 'lucide-react';
+import { AlertCircle, AlignLeft, Check, CheckCheck, CheckCircle2, Clock, Download, ExternalLink, FileText, Globe, Image as ImageIcon, MessageSquareText, MinusCircle, RotateCw, StopCircle, Trash2, X } from 'lucide-react';
 import { SourceItem } from './SourceUnderstandingCard';
 import { DeleteSourceConfirmDialog } from './DeleteSourceConfirmDialog';
 import { SourceEntityCandidate } from './SourceEntityCandidate';
 import { SourceFact, yulloOnboardingApi } from '../api/onboarding';
 import { entitiesApi, SourceEntity } from '../api/entities';
+import { ColouredIcon, getBrandIconFromUrl } from './ColouredIcon';
 
 interface SourceReviewSheetProps {
   isOpen: boolean;
@@ -91,13 +92,16 @@ export const SourceReviewSheet: React.FC<SourceReviewSheetProps> = ({
     ? source.content_ref
     : (source.content_ref?.split('/').pop() || source.content_ref || '').replace(/^file_[a-f0-9]+_/i, '');
 
-  const sourceIcon = source.source_type === 'url'
-    ? <Globe className="h-5 w-5 text-cyan-700 dark:text-cyan-400" />
-    : ['document', 'file'].includes(source.source_type)
-      ? <FileText className="h-5 w-5 text-violet-700 dark:text-violet-400" />
-      : source.source_type === 'qna'
-        ? <Sparkles className="h-5 w-5 text-amber-700 dark:text-amber-400" />
-        : <AlignLeft className="h-5 w-5 text-blue-700 dark:text-blue-400" />;
+  const brandIcon = source.source_type === 'url' ? getBrandIconFromUrl(source.content_ref || source.title) : null;
+  const sourceIcon = brandIcon
+    ? <ColouredIcon name={brandIcon} className="h-5 w-5" />
+    : source.source_type === 'url'
+      ? <Globe className="h-5 w-5 text-cyan-700 dark:text-cyan-400" />
+      : ['document', 'file'].includes(source.source_type)
+        ? <FileText className="h-5 w-5 text-violet-700 dark:text-violet-400" />
+        : source.source_type === 'qna'
+          ? <MessageSquareText className="h-5 w-5 text-amber-700 dark:text-amber-400" />
+          : <AlignLeft className="h-5 w-5 text-blue-700 dark:text-blue-400" />;
 
   const handleReExtract = async () => {
     if (!onRetrySource) return;
@@ -328,12 +332,14 @@ export const SourceReviewSheet: React.FC<SourceReviewSheetProps> = ({
                   </div>
 
                   {/* Brand & Social Preview Card */}
-                  {source.preview_image_url && (
+                  {(source.preview_image_url || source.assets?.images?.[0]?.url) && (
                     <div className="mt-4 rounded-xl border border-[var(--border)] overflow-hidden bg-[var(--surface-soft)]/50">
                       <div className="relative aspect-video max-h-52 w-full overflow-hidden bg-[var(--surface-soft)]">
                         <img
-                          src={source.preview_image_url}
+                          src={source.preview_image_url || source.assets?.images?.[0]?.url}
                           alt="Social preview"
+                          referrerPolicy="no-referrer"
+                          loading="lazy"
                           className="h-full w-full object-cover"
                           onError={(e) => { ((e.currentTarget as HTMLElement).parentElement as HTMLElement).style.display = 'none'; }}
                         />
@@ -341,7 +347,7 @@ export const SourceReviewSheet: React.FC<SourceReviewSheetProps> = ({
                       <div className="p-3 text-[12px] text-[var(--text-secondary)] flex items-center justify-between">
                         <span>Page preview / social banner</span>
                         <a
-                          href={source.preview_image_url}
+                          href={source.preview_image_url || source.assets?.images?.[0]?.url}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 text-[var(--accent-ink)] hover:underline"
@@ -371,6 +377,8 @@ export const SourceReviewSheet: React.FC<SourceReviewSheetProps> = ({
                               <img
                                 src={img.url}
                                 alt={img.alt || 'Extracted content image'}
+                                referrerPolicy="no-referrer"
+                                loading="lazy"
                                 className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
                                 onError={(e) => {
                                   ((e.currentTarget as HTMLElement).parentElement as HTMLElement).innerHTML = '<div class="p-2 text-center text-[10px] text-[var(--text-muted)]">Image unavailable</div>';

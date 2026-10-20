@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  X, Sparkles, Globe, FileText, CheckCircle2, ChevronDown, ChevronUp, 
+  X, Globe, FileText, CheckCircle2, ChevronDown, ChevronUp, 
   Layers, ShieldCheck, Tag, ArrowRight, MapPin
 } from 'lucide-react';
 import { SourceItem, FactItem } from './SourceUnderstandingCard';
@@ -163,7 +163,7 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
           <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border)] bg-[var(--surface-soft)] shrink-0">
             <div className="flex items-center gap-3.5 min-w-0">
               <div className="w-10 h-10 rounded-xl bg-[var(--accent-solid)] text-[var(--accent-on-solid)] flex items-center justify-center shrink-0 shadow-xs">
-                <Sparkles className="w-5 h-5" />
+                <Layers className="w-5 h-5" />
               </div>
               <div className="min-w-0">
                 <h2 className="text-[19px] sm:text-[21px] font-bold font-[Satoshi] tracking-tight text-[var(--text-primary)] truncate">

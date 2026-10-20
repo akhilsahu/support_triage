@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { motion, useReducedMotion } from 'motion/react';
 import { useQueryClient } from '@tanstack/react-query';
-import { X, Calendar, Globe, AlertCircle, Sparkles, ExternalLink } from 'lucide-react';
+import { X, Calendar, Globe, AlertCircle, Eye, ExternalLink } from 'lucide-react';
 import { useCreateEntity, useUpdateEntity } from '../api/entityQueries';
 import type { SpaceEntity } from '../api/entities';
 import { TextField } from './core/TextField';
@@ -234,7 +234,7 @@ export function BookingForm({ spaceId, spaceName, entity, onClose, onSaved }: {
                 {/* Live Visitor Button Preview Card */}
                 <div className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] flex flex-col gap-2">
                   <div className="text-[11px] font-mono uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-[var(--accent-ink)]" />
+                    <Eye className="w-3.5 h-3.5 text-[var(--accent-ink)]" />
                     <span>Live Public Visitor Preview</span>
                   </div>
                   <div className="pt-1">

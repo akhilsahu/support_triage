@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Sparkles, Trash2, ChevronDown, ChevronUp, X, Globe, FileText, CheckCircle2, AlertCircle, Loader2, XCircle } from 'lucide-react';
+import { Check, Trash2, ChevronDown, ChevronUp, X, Globe, FileText, CheckCircle2, AlertCircle, Loader2, XCircle } from 'lucide-react';
+import { ColouredIcon, getBrandIconFromUrl } from './ColouredIcon';
 
 export interface FactItem {
   text: string;
@@ -113,29 +114,32 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
       <div className="flex items-center justify-between gap-3 pb-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <div className="w-8 h-8 rounded-lg bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center shrink-0 overflow-hidden">
-            {source.source_type === 'url' ? (
-              source.favicon_url ? (
-                <img
-                  src={source.favicon_url}
-                  alt=""
-                  className="w-4 h-4 object-contain rounded-xs"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    if (e.currentTarget.nextElementSibling) {
-                      (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block';
-                    }
-                  }}
-                />
-              ) : null
-            ) : null}
-            {source.source_type === 'url' ? (
-              <Globe
-                className="w-4 h-4 text-[var(--accent-ink)]"
-                style={source.favicon_url ? { display: 'none' } : undefined}
-              />
-            ) : (
-              <FileText className="w-4 h-4 text-purple-400" />
-            )}
+            {(() => {
+              const brand = source.source_type === 'url' ? getBrandIconFromUrl(source.content_ref || source.title) : null;
+              if (source.source_type === 'url') {
+                if (source.favicon_url) {
+                  return (
+                    <img
+                      src={source.favicon_url}
+                      alt=""
+                      className="w-4 h-4 object-contain rounded-xs"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        if (e.currentTarget.nextElementSibling) {
+                          (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block';
+                        }
+                      }}
+                    />
+                  );
+                }
+                return brand ? (
+                  <ColouredIcon name={brand} className="w-4 h-4" />
+                ) : (
+                  <Globe className="w-4 h-4 text-[var(--accent-ink)]" />
+                );
+              }
+              return <FileText className="w-4 h-4 text-purple-400" />;
+            })()}
           </div>
           <div className="min-w-0 flex-1">
             <h4 className="text-[14px] font-semibold text-[var(--text-primary)] truncate font-[Instrument_Sans]">
@@ -278,7 +282,7 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
               disabled={!isUsable}
               className="px-3.5 py-1.5 bg-[var(--accent-solid)] text-[var(--accent-on-solid)] text-[12px] font-medium rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center gap-1.5 font-[Instrument_Sans]"
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Check className="w-3.5 h-3.5" />
               <span>Use source</span>
             </button>
           )}

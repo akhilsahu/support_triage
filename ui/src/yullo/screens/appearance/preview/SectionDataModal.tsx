@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Check, Loader2, Sparkles, X, AlertCircle } from 'lucide-react'
+import { Check, Loader2, Layers, X, AlertCircle } from 'lucide-react'
 import type { AppearancePreviewSection, PreviewSectionType } from './types'
 
 export interface SectionDataModalProps {
@@ -80,7 +80,7 @@ export function SectionDataModal({
           ) : isFailed ? (
             <AlertCircle size={24} className="text-[var(--danger, #e11d48)]" />
           ) : (
-            <Sparkles size={24} strokeWidth={1.7} />
+            <Layers size={24} strokeWidth={1.7} />
           )}
         </div>
 

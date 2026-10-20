@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, X, Maximize2, Loader2 } from 'lucide-react';
+import { Bot, X, Maximize2, Loader2 } from 'lucide-react';
 
 export interface ProcessingState {
   active: boolean;
@@ -61,7 +61,7 @@ export function ProcessingLoaderSystem({ state, onCancel }: ProcessingLoaderSyst
             <div className="relative w-16 h-16 mb-5 flex items-center justify-center">
               <div className="absolute inset-0 rounded-full border-4 border-[var(--border)] opacity-30" />
               <div className="absolute inset-0 rounded-full border-4 border-[var(--accent,#FACC15)] border-t-transparent animate-spin" />
-              <Sparkles className="w-7 h-7 text-[var(--accent,#FACC15)] animate-pulse" />
+              <Bot className="w-7 h-7 text-[var(--accent,#FACC15)] animate-pulse" />
             </div>
 
             {/* Title & Subtitle */}

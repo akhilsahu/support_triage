@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { yulloOnboardingApi, AboutSuggestionResponse } from '../../api/onboarding';
 import { 
-  Sparkles, Upload, Trash2, Globe, Link as LinkIcon,
+  Bot, Upload, Trash2, Globe, Link as LinkIcon,
   User as UserIcon, Briefcase, Building, Check, Pencil,
   Loader2, ArrowRight, Eye, ShieldCheck, MapPin, AlertCircle,
   MessageSquare, Send, X
@@ -469,8 +469,8 @@ interface IdentityChatMessage {
                     Category
                   </label>
                   {categorySource === 'aura' && (
-                    <span className="text-[11px] font-semibold text-[var(--accent-ink)] flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" /> Aura suggestion
+                    <span className="text-[11px] font-semibold text-[var(--accent-ink)] flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" /> Aura suggestion
                     </span>
                   )}
                 </div>
@@ -635,7 +635,7 @@ interface IdentityChatMessage {
                 {isGenerating ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent-ink)]" />
                 ) : (
-                  <Sparkles className="w-3.5 h-3.5 text-[var(--accent-ink)]" />
+                  <Bot className="w-3.5 h-3.5 text-[var(--accent-ink)]" />
                 )}
                 <span>{isGenerating ? 'Generating...' : 'Suggest with Aura'}</span>
               </button>
@@ -668,7 +668,7 @@ interface IdentityChatMessage {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-[12px] font-semibold text-[var(--accent-ink)] flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5" /> {suggestion.status === 'ready' ? 'Aura Generated Suggestion' : 'Aura Note'}
+                      <Bot className="w-3.5 h-3.5" /> {suggestion.status === 'ready' ? 'Aura Generated Suggestion' : 'Aura Note'}
                     </span>
                     <div className="flex items-center gap-2">
                       <button 
@@ -1049,7 +1049,7 @@ interface IdentityChatMessage {
               <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] bg-[var(--surface-soft)]">
                 <div className="flex items-center gap-2.5">
                   <div className="p-2 rounded-xl bg-[var(--accent)]/15 text-[var(--accent-ink)]">
-                    <Sparkles className="w-4 h-4" />
+                    <Bot className="w-4 h-4" />
                   </div>
                   <div>
                     <h3 className="font-[Satoshi] font-semibold text-[16px] text-[var(--text-primary)] leading-tight">
@@ -1080,7 +1080,7 @@ interface IdentityChatMessage {
                     <div className="flex items-center gap-1.5 text-[11px] font-mono text-[var(--text-muted)] px-1">
                       {msg.role === 'aura' ? (
                         <span className="flex items-center gap-1 text-[var(--accent-ink)] font-semibold">
-                          <Sparkles className="w-3 h-3" /> Aura
+                          <Bot className="w-3 h-3" /> Aura
                         </span>
                       ) : (
                         <span>You</span>

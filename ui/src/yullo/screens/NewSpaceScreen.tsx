@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { yulloOnboardingApi } from '../api/onboarding';
 import { useAppStore } from '../../store/useAppStore';
 import { 
-  Pencil, Check, Sparkles, User as UserIcon, Briefcase, 
+  Pencil, Check, Bot, User as UserIcon, Briefcase, 
   Building, Globe, Link as LinkIcon, Upload, FileText, X, ChevronRight, Info, Eye
 } from 'lucide-react';
 
@@ -13,6 +13,7 @@ import { YulloAppHeader } from '../components/YulloAppHeader';
 import { SourceUnderstandingCard } from '../components/SourceUnderstandingCard';
 import { ProcessingLoaderSystem } from '../components/ProcessingLoaderSystem';
 import { FullSpaceKnowledgePreviewModal } from '../components/FullSpaceKnowledgePreviewModal';
+import { ColouredIcon } from '../components/ColouredIcon';
 
 const PURPOSES = [
   { id: 'person', title: 'Myself', shortTitle: 'Myself', desc: 'A personal space for your thoughts & AI.', icon: UserIcon },
@@ -64,7 +65,7 @@ function ProcessingLoaderModal({
         <div className="relative w-16 h-16 mb-5 flex items-center justify-center">
           <div className="absolute inset-0 rounded-full border-4 border-[var(--border)] opacity-30" />
           <div className="absolute inset-0 rounded-full border-4 border-[var(--accent)] border-t-transparent animate-spin" />
-          <Sparkles className="w-7 h-7 text-[var(--accent-ink)] animate-pulse" />
+          <Bot className="w-7 h-7 text-[var(--accent-ink)] animate-pulse" />
         </div>
 
         {/* Title & Subtitle */}
@@ -208,14 +209,12 @@ export function NewSpaceScreen() {
           purpose: purpose,
           description: aboutState.source === 'owner' && aboutState.value.trim() ? aboutState.value.trim() : undefined,
           category: categoryState.source === 'owner' && categoryState.value.trim() ? categoryState.value.trim() : undefined,
-        }, activeToken);
+        });
       }
 
       // Call identity generation endpoint with persisted values
       const res = await yulloOnboardingApi.generateSummary(
-        { spaceId: draftId || undefined, name: displayName }, 
-        activeToken
-      );
+        { spaceId: draftId || undefined, name: displayName });
 
       if (res.status === 'ready') {
         setClarification(null);
@@ -259,7 +258,7 @@ export function NewSpaceScreen() {
     if (!handle) return;
     const timer = setTimeout(async () => {
       try {
-        const res = await yulloOnboardingApi.validateHandle(handle, activeToken);
+        const res = await yulloOnboardingApi.validateHandle(handle);
         setHandleStatus({ valid: res.valid, reason: res.reason });
       } catch (err) {
         setHandleStatus({ valid: false, reason: 'Check failed' });
@@ -272,7 +271,7 @@ export function NewSpaceScreen() {
   useEffect(() => {
     const initDraft = async () => {
       try {
-        const freshDraft = await yulloOnboardingApi.resetDraft(activeToken);
+        const freshDraft = await yulloOnboardingApi.resetDraft();
         setDraftId(freshDraft.id);
         setDisplayName('');
         setHandle(freshDraft.handle || '');
@@ -298,7 +297,7 @@ export function NewSpaceScreen() {
           purpose: purpose,
           description: aboutState.value.trim() || undefined,
           description_source: aboutState.source
-        }, activeToken);
+        });
       } catch (err) {
         console.warn('Auto-save draft failed:', err);
       }
@@ -321,11 +320,11 @@ export function NewSpaceScreen() {
     try {
       let activeDraftId = draftId;
       if (!activeDraftId) {
-        const d = await yulloOnboardingApi.createDraft(purpose, activeToken);
+        const d = await yulloOnboardingApi.createDraft(purpose);
         activeDraftId = d.id;
         setDraftId(d.id);
       }
-      const accepted = await yulloOnboardingApi.addSourceUrl(urlToAdd, 'url', activeDraftId || undefined, activeToken);
+      const accepted = await yulloOnboardingApi.addSourceUrl(urlToAdd, 'url', activeDraftId || undefined);
       
       // If title was default 'My Space', auto-update title from scraped link title
       if (accepted.title && (displayName === 'My Space' || !displayName.trim())) {
@@ -339,7 +338,7 @@ export function NewSpaceScreen() {
             .substring(0, 40) || 'space';
           setHandle(generatedSlug);
         }
-        await yulloOnboardingApi.updateDraft({ name: scrapedTitle }, activeToken);
+        await yulloOnboardingApi.updateDraft({ name: scrapedTitle });
       }
 
       setSources(prev => [...prev, {
@@ -377,21 +376,18 @@ export function NewSpaceScreen() {
     try {
       let activeDraftId = draftId;
       if (!activeDraftId) {
-        const d = await yulloOnboardingApi.createDraft(purpose, activeToken);
+        const d = await yulloOnboardingApi.createDraft(purpose);
         activeDraftId = d.id;
         setDraftId(d.id);
       }
-      const accepted = await yulloOnboardingApi.addSourceText(textToAdd, activeDraftId || undefined, activeToken);
+      const accepted = await yulloOnboardingApi.addSourceText(textToAdd, activeDraftId || undefined);
       setSources(prev => [...prev, {
         id: accepted.id || accepted.item_id || accepted.source_id,
         source_type: 'text',
         content_ref: textToAdd.substring(0, 40) + '...',
         status: accepted.status || 'ready',
         title: 'Pasted text note',
-        facts: [
-          'User pasted notes and custom context',
-          'Domain rules and background information'
-        ],
+        facts: [],
         target_badges: ['About', 'Aura knowledge'],
         raw_text: textToAdd,
         is_confirmed: false
@@ -419,11 +415,11 @@ export function NewSpaceScreen() {
     try {
       let activeDraftId = draftId;
       if (!activeDraftId) {
-        const d = await yulloOnboardingApi.createDraft(purpose, activeToken);
+        const d = await yulloOnboardingApi.createDraft(purpose);
         activeDraftId = d.id;
         setDraftId(d.id);
       }
-      const newSource = await yulloOnboardingApi.addSourceFile(file, activeDraftId || undefined, activeToken);
+      const newSource = await yulloOnboardingApi.addSourceFile(file, activeDraftId || undefined);
       setSources(prev => [...prev, newSource]);
       setShowGeneratePrompt(true);
     } catch (err: any) {
@@ -436,7 +432,7 @@ export function NewSpaceScreen() {
 
   const handleDeleteSource = async (id: string) => {
     try {
-      await yulloOnboardingApi.deleteSource(id, activeToken);
+      await yulloOnboardingApi.deleteSource(id);
       setSources(prev => prev.filter(s => s.id !== id));
     } catch (err) {
       console.error(err);
@@ -455,19 +451,17 @@ export function NewSpaceScreen() {
     });
 
     try {
-      await yulloOnboardingApi.updateDraft({ name: nameToUse }, activeToken);
-      await yulloOnboardingApi.reserveHandle(handle, activeToken);
+      await yulloOnboardingApi.updateDraft({ name: nameToUse });
+      await yulloOnboardingApi.reserveHandle(handle);
 
       // Auto-populate Category silently if user hasn't set one manually
       if (!categoryState.value.trim()) {
         try {
           const res = await yulloOnboardingApi.generateSummary(
-            { spaceId: draftId || undefined, name: nameToUse }, 
-            activeToken
-          );
+            { spaceId: draftId || undefined, name: nameToUse });
           if (res.status === 'ready' && res.category) {
             setCategoryState({ value: res.category, source: 'aura' });
-            await yulloOnboardingApi.updateDraft({ category: res.category, category_source: 'aura' }, activeToken);
+            await yulloOnboardingApi.updateDraft({ category: res.category, category_source: 'aura' });
           }
         } catch (silentGenErr) {
           console.warn('Silent auto-category generation skipped:', silentGenErr);
@@ -475,7 +469,7 @@ export function NewSpaceScreen() {
       }
 
       setPayoffState('creating');
-      const res = await yulloOnboardingApi.launch(activeToken);
+      const res = await yulloOnboardingApi.launch();
       queryClient.invalidateQueries({ queryKey: ['home'] });
 
       const targetSpaceId = res.space_id || draftId;
@@ -716,7 +710,7 @@ export function NewSpaceScreen() {
                 {showGeneratePrompt && (
                   <div className="mb-3.5 p-3.5 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl flex items-center justify-between gap-3">
                     <span className="text-[13px] font-medium text-[var(--text-primary)] flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-[var(--accent-ink)] shrink-0" />
+                      <Bot className="w-4 h-4 text-[var(--accent-ink)] shrink-0" />
                       Generate an About description based on your info?
                     </span>
                     <div className="flex items-center gap-2 shrink-0">
@@ -765,7 +759,7 @@ export function NewSpaceScreen() {
                 <div className="mt-2.5 text-[14px] text-[var(--text-muted)] font-normal flex flex-col gap-2">
                   {aboutState.source === 'aura' && (
                     <div className="flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-[var(--accent-ink)] shrink-0" />
+                      <Bot className="w-4 h-4 text-[var(--accent-ink)] shrink-0" />
                       <span>Generated by Aura from your space info.</span>
                     </div>
                   )}
@@ -905,7 +899,7 @@ export function NewSpaceScreen() {
                       onToggleConfirm={async (id, nextState) => {
                         setSources(prev => prev.map(item => item.id === id ? { ...item, is_confirmed: nextState } : item));
                         try {
-                          await yulloOnboardingApi.updateSource(id, { is_confirmed: nextState }, activeToken);
+                          await yulloOnboardingApi.updateSource(id, { is_confirmed: nextState });
                         } catch (e) {
                           console.warn('Failed to update source confirmed state:', e);
                         }
@@ -983,29 +977,33 @@ export function NewSpaceScreen() {
               <button
                 type="button"
                 onClick={() => setInputUrl('https://youtube.com/@username')}
-                className="px-2.5 py-1 rounded-lg bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 text-[12px] font-medium transition-colors border border-transparent cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-[var(--surface-soft)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] text-[12px] font-medium transition-colors border border-[var(--border)] cursor-pointer inline-flex items-center gap-1.5"
               >
+                <ColouredIcon name="youtube" className="w-3.5 h-3.5" />
                 YouTube
               </button>
               <button
                 type="button"
                 onClick={() => setInputUrl('https://linkedin.com/in/username')}
-                className="px-2.5 py-1 rounded-lg bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 text-[12px] font-medium transition-colors border border-transparent cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-[var(--surface-soft)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] text-[12px] font-medium transition-colors border border-[var(--border)] cursor-pointer inline-flex items-center gap-1.5"
               >
+                <ColouredIcon name="linkedin" className="w-3.5 h-3.5" />
                 LinkedIn
               </button>
               <button
                 type="button"
                 onClick={() => setInputUrl('https://instagram.com/username')}
-                className="px-2.5 py-1 rounded-lg bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 text-[12px] font-medium transition-colors border border-transparent cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-[var(--surface-soft)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] text-[12px] font-medium transition-colors border border-[var(--border)] cursor-pointer inline-flex items-center gap-1.5"
               >
+                <ColouredIcon name="instagram" className="w-3.5 h-3.5" />
                 Instagram
               </button>
               <button
                 type="button"
                 onClick={() => setInputUrl('https://x.com/username')}
-                className="px-2.5 py-1 rounded-lg bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 text-[12px] font-medium transition-colors border border-transparent cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-[var(--surface-soft)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] text-[12px] font-medium transition-colors border border-[var(--border)] cursor-pointer inline-flex items-center gap-1.5"
               >
+                <ColouredIcon name="x" className="w-3.5 h-3.5" />
                 X (Twitter)
               </button>
             </div>
@@ -1067,7 +1065,7 @@ export function NewSpaceScreen() {
         <div className="fixed inset-0 z-[150] bg-[var(--canvas)] flex flex-col items-center justify-center p-6 transition-all duration-300">
           <div className="flex flex-col items-center text-center gap-4 max-w-sm">
             <div className="w-12 h-12 rounded-full bg-[var(--surface-soft)] border border-[var(--border)] flex items-center justify-center">
-              <Sparkles className="w-6 h-6 text-[var(--accent-ink)] animate-pulse" />
+              <Bot className="w-6 h-6 text-[var(--accent-ink)] animate-pulse" />
             </div>
 
             {payoffState === 'creating' && (

@@ -50,6 +50,7 @@
 
 - Follow the selected form plan's fields, placement, theme tokens, library choices, motion, mobile and accessibility requirements. Build only the shared controls this form needs.
 - Ensure form selection states, active focus borders, and interactive buttons adapt dynamically to the configured Yullo theme accent color CSS variables (`var(--accent)`) and other things like text should to dashboard theme color.
+- **Anti-Slop Icon Rule**: NEVER use sparkle (`Sparkles`), magic star, or magic wand (`Wand2`) icons for AI, automation, intelligence, or fact extraction. They are perceived as generic AI slop. Use clean, grounded, semantic icons (such as `ListChecks`, `Bot`, `Orbit`, `CheckCheck`, `Activity`, `Cpu`, or subtle indicators) or clean typography instead.
 
 - Keep UI copy simple; do not expose implementation jargon or internal errors to users. Respect reduced motion and keyboard operation.
 - Add concise comments for non-obvious decisions and constraints, not comments on every line.

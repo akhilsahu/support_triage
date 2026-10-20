@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Sparkles, Globe } from 'lucide-react'
 import { yulloConfig } from '../config'
 
 const ECOSYSTEM_NODES = [

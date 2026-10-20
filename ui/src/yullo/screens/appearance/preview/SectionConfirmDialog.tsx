@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Eye, EyeOff, Sparkles, X } from 'lucide-react'
+import { Bot, Eye, EyeOff, X } from 'lucide-react'
 
 export interface SectionConfirmation {
   action: 'hide' | 'unhide' | 'build'
@@ -14,7 +14,7 @@ export function SectionConfirmDialog({ request, onClose }: { request: SectionCon
     if (!request && dialog.current?.open) dialog.current.close()
   }, [request])
   const action = request?.action || 'build'
-  const Icon = action === 'build' ? Sparkles : action === 'hide' ? EyeOff : Eye
+  const Icon = action === 'build' ? Bot : action === 'hide' ? EyeOff : Eye
   const verb = action === 'build' ? 'Build with AI' : action === 'hide' ? 'Hide section' : 'Unhide section'
   return <dialog ref={dialog} className="appearance-confirm" aria-labelledby="section-confirm-title" aria-describedby="section-confirm-description" onCancel={onClose} onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <div className="appearance-confirm-body">

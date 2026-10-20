@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageSquare, ArrowRight, Sparkles } from 'lucide-react'
+import { MessageSquare, ArrowRight } from 'lucide-react'
 import { yulloConfig } from '../config'
 
 const SITUATIONS = [
