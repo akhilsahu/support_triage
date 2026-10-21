@@ -126,13 +126,6 @@ export const AuraKnowledgeScreen: React.FC = () => {
     eventSource.addEventListener('update', (e) => {
       try {
         const next = JSON.parse(e.data) as SourceItem[];
-        // If a source that was previously processing has now finished, automatically open the extraction modal
-        const finished = next.find(
-          s => processingSourceIdsRef.current.has(s.id) && ['ready', 'ready_to_review'].includes(s.status)
-        );
-        if (finished) {
-          setCompletedExtractionSource(finished);
-        }
         setSources(next);
         if (!next.some(source => ['uploaded', 'queued', 'running', 'processing', 'parsing_preview'].includes(source.status))) {
           Promise.all([refetchEntities(), refetchFacts()]).catch(console.error);

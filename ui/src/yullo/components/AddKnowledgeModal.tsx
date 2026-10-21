@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import { 
   X, Upload, FileText, HelpCircle, Globe, Loader2, AlertTriangle, 
-  Sparkles, Check, RefreshCw, Lock
+  Search, Check, RefreshCw, Lock, Image as ImageIcon
 } from 'lucide-react';
 import { yulloOnboardingApi } from '../api/onboarding';
 import type { SourceItem } from './SourceUnderstandingCard';
@@ -16,10 +16,11 @@ interface AddKnowledgeModalProps {
   isOpen: boolean;
   initialTab?: KnowledgeModalTab;
   onClose: () => void;
-  onAddLink: (url: string, title?: string) => Promise<SourceItem | void>;
+  onAddLink: (url: string, title?: string, background?: boolean) => Promise<SourceItem | void>;
   onUploadFile: (file: File) => Promise<string | void>;
   onAddText: (title: string, text: string) => Promise<void>;
   onSourceChanged?: () => Promise<void> | void;
+  onProcessingStarted?: (source: SourceItem) => void;
 }
 
 export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
@@ -30,6 +31,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
   onUploadFile,
   onAddText,
   onSourceChanged,
+  onProcessingStarted,
 }) => {
   const [activeTab, setActiveTab] = useState<KnowledgeModalTab>(initialTab);
   const [url, setUrl] = useState('');
@@ -152,6 +154,24 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
     }
   };
 
+  const handleRunLinkInBackground = async () => {
+    if (!url || !url.trim()) return;
+    let formattedUrl = url.trim();
+    if (!/^https?:\/\//i.test(formattedUrl)) {
+      formattedUrl = `https://${formattedUrl}`;
+    }
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      await onAddLink(formattedUrl, urlTitle.trim() || undefined, true);
+      await onSourceChanged?.();
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to start background preview');
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitDisabled) return;
@@ -176,6 +196,13 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
           if (!linkPreview) throw new Error('Link preview is unavailable');
           await yulloOnboardingApi.updateSource(linkPreview.id, { is_confirmed: true });
           await onSourceChanged?.();
+          onProcessingStarted?.({
+            ...linkPreview,
+            is_confirmed: true,
+            status: 'processing',
+            stage: 'Preparing Aura search',
+            progress: 35,
+          });
           onClose();
           return;
         }
@@ -184,14 +211,10 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
         if (!/^https?:\/\//i.test(formattedUrl)) {
           formattedUrl = `https://${formattedUrl}`;
         }
-        const source = await onAddLink(formattedUrl, urlTitle.trim() || undefined);
-        if (!source) throw new Error('Could not create the link preview');
-        if (!['ready', 'ready_to_review'].includes(source.status)) {
-          throw new Error(source.error_msg || 'Yullo could not read this link');
-        }
-        setLinkPreview(source);
-        setPollingSourceId(source.id);
-        setLinkStage('preview');
+        const source = await onAddLink(formattedUrl, urlTitle.trim() || undefined, true);
+        if (!source) throw new Error('Could not create the source');
+        await onSourceChanged?.();
+        onClose();
         return;
       } else if (activeTab === 'text') {
         if (!textContent.trim()) throw new Error('Please enter text content');
@@ -221,6 +244,15 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
       // Mark as confirmed to trigger full ingestion job in the background
       await yulloOnboardingApi.updateSource(pollingSourceId, { is_confirmed: true });
       await onSourceChanged?.();
+      if (uploadedSource) {
+        onProcessingStarted?.({
+          ...uploadedSource,
+          is_confirmed: true,
+          status: 'processing',
+          stage: 'Preparing Aura search',
+          progress: 35,
+        });
+      }
       onClose(); // Auto close to let user see background progress in AuraKnowledgeScreen
     } catch (err: any) {
       setUploadStage('preview');
@@ -357,7 +389,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                   placeholder="Founder notes, Company bio, Return policy..."
                   value={textTitle}
                   onChange={e => setTextTitle(e.target.value)}
-                  className="w-full h-[56px] px-4.5 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl text-[16px] text-[var(--text-primary)] focus:bg-[var(--surface)] focus:border-[var(--accent)] outline-none transition-colors font-[Instrument_Sans]"
+                  className="w-full h-[52px] px-4.5 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:bg-[var(--surface)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15 outline-none transition-all font-[Instrument_Sans]"
                 />
               </div>
 
@@ -370,7 +402,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                   placeholder="Paste FAQs, biography, customer guidelines, or internal notes..."
                   value={textContent}
                   onChange={e => setTextContent(e.target.value)}
-                  className="w-full min-h-[220px] p-4 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl text-[16px] text-[var(--text-primary)] focus:bg-[var(--surface)] focus:border-[var(--accent)] outline-none transition-colors font-[Instrument_Sans] leading-relaxed resize-y"
+                  className="w-full min-h-[220px] p-4 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:bg-[var(--surface)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15 outline-none transition-all font-[Instrument_Sans] leading-relaxed resize-y"
                   required
                 />
               </div>
@@ -404,7 +436,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                   {/* Candidate Facts Preview */}
                   <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between text-[14px] text-emerald-800 dark:text-emerald-300">
                     <div className="flex items-center gap-2.5">
-                      <Sparkles className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
+                      <Check className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
                       <span className="font-bold">Live facts candidate: ready for Aura</span>
                     </div>
                     <span className="text-[12px] font-mono font-semibold">Automatic extraction</span>
@@ -577,7 +609,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                   placeholder="https://example.com/about"
                   value={url}
                   onChange={e => setUrl(e.target.value)}
-                  className="w-full h-[56px] px-4.5 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl text-[16px] text-[var(--text-primary)] focus:bg-[var(--surface)] focus:border-[var(--accent)] outline-none transition-colors font-[Instrument_Sans]"
+                  className="w-full h-[52px] px-4.5 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:bg-[var(--surface)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15 outline-none transition-all font-[Instrument_Sans]"
                   required
                 />
               </div>
@@ -591,7 +623,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                   placeholder="e.g. Official website"
                   value={urlTitle}
                   onChange={e => setUrlTitle(e.target.value)}
-                  className="w-full h-[56px] px-4.5 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl text-[16px] text-[var(--text-primary)] focus:bg-[var(--surface)] focus:border-[var(--accent)] outline-none transition-colors font-[Instrument_Sans]"
+                  className="w-full h-[52px] px-4.5 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:bg-[var(--surface)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15 outline-none transition-all font-[Instrument_Sans]"
                 />
               </div>
 
@@ -613,14 +645,37 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                       </p>
                     </div>
                   </div>
-                  {/* Candidate Facts Preview */}
-                  <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[14px] text-emerald-800 dark:text-emerald-300">
-                    <div className="flex items-center gap-2.5">
-                      <Sparkles className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
-                      <span className="font-bold">Preview the scraped page before Aura uses it</span>
+                  {isLoading ? (
+                    <div className="p-4 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl space-y-3 text-[13px] text-[var(--text-secondary)] animate-in fade-in duration-150">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2.5 font-medium text-[var(--text-primary)]">
+                          <Loader2 className="w-4 h-4 animate-spin text-[var(--accent-ink)]" />
+                          <span>Fetching and scraping page content…</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSourceChanged?.();
+                            onClose();
+                          }}
+                          className="px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[12px] font-semibold text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors cursor-pointer self-start sm:self-auto"
+                        >
+                          Run in background & close
+                        </button>
+                      </div>
+                      <p className="text-[12px] leading-relaxed">
+                        Aura is downloading the page, harvesting metadata and assets, and extracting grounded facts. You can close this modal now and continue your work — a progress bar on top will show live status and notify you when ready.
+                      </p>
                     </div>
-                    <span className="text-[12px] font-mono font-semibold opacity-80 whitespace-nowrap">Automatic extraction</span>
-                  </div>
+                  ) : (
+                    <div className="p-4 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[13px] text-[var(--text-secondary)]">
+                      <div className="flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-[var(--text-primary)] shrink-0" />
+                        <span className="font-medium text-[var(--text-primary)]">Preview page before Aura uses it</span>
+                      </div>
+                      <span className="text-[12px] font-mono opacity-80 whitespace-nowrap">Automatic extraction</span>
+                    </div>
+                  )}
                 </div>
               )}
                 </>
@@ -632,6 +687,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                         <img
                           src={linkPreview.favicon_url}
                           alt=""
+                          referrerPolicy="no-referrer"
                           className="h-6 w-6 object-contain rounded-xs"
                           onError={(e) => {
                             e.currentTarget.style.display = 'none';
@@ -661,14 +717,56 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                     )}
                   </div>
 
-                  {linkPreview.preview_image_url && (
-                    <div className="rounded-xl border border-[var(--border)] overflow-hidden bg-[var(--surface-soft)]/40 max-h-44">
+                  {(linkPreview.preview_image_url || linkPreview.assets?.images?.[0]?.url) && (
+                    <div className="rounded-xl border border-[var(--border)] overflow-hidden bg-[var(--surface-soft)]/40 max-h-48">
                       <img
-                        src={linkPreview.preview_image_url}
+                        src={linkPreview.preview_image_url || linkPreview.assets?.images?.[0]?.url}
                         alt="Preview banner"
-                        className="w-full h-44 object-cover"
+                        referrerPolicy="no-referrer"
+                        loading="lazy"
+                        className="w-full h-48 object-cover"
                         onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }}
                       />
+                    </div>
+                  )}
+
+                  {Boolean(linkPreview.assets?.images?.length) && (
+                    <div className="space-y-2">
+                      <label className="text-[12px] font-bold uppercase tracking-wider text-[var(--text-secondary)] font-[Satoshi] flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5" /> Extracted Page Images ({linkPreview.assets!.images!.length})
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        {linkPreview.assets!.images!.slice(0, 8).map((img, idx) => (
+                          <a
+                            key={idx}
+                            href={img.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="group relative rounded-lg border border-[var(--border)] overflow-hidden bg-[var(--surface-soft)] hover:border-[var(--accent)] transition-all flex flex-col"
+                          >
+                            <div className="aspect-square w-full bg-[var(--surface-soft)]/80 flex items-center justify-center overflow-hidden">
+                              <img
+                                src={img.url}
+                                alt={img.alt || `Extracted image ${idx + 1}`}
+                                referrerPolicy="no-referrer"
+                                loading="lazy"
+                                className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                onError={(e) => {
+                                  const parent = (e.currentTarget as HTMLElement).parentElement;
+                                  if (parent) {
+                                    parent.innerHTML = '<div class="p-2 text-center text-[10px] text-[var(--text-muted)] flex items-center justify-center h-full"><span class="opacity-50">Unavailable</span></div>';
+                                  }
+                                }}
+                              />
+                            </div>
+                            {img.alt && (
+                              <p className="p-1.5 text-[11px] text-[var(--text-secondary)] truncate font-[Instrument_Sans]">
+                                {img.alt}
+                              </p>
+                            )}
+                          </a>
+                        ))}
+                      </div>
                     </div>
                   )}
 
@@ -683,7 +781,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                   </div>
 
                   <div className="flex items-start gap-3 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-soft)] p-4 text-[13px] leading-relaxed text-[var(--text-primary)]">
-                    <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent-ink)]" />
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent-ink)]" />
                     <span><strong>Add to Aura</strong> will start full indexing, fact extraction, and offering/entity detection in the background.</span>
                   </div>
                 </div>
@@ -703,7 +801,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                   placeholder="e.g. What is your return policy?"
                   value={question}
                   onChange={e => setQuestion(e.target.value)}
-                  className="w-full h-[56px] px-4.5 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl text-[16px] text-[var(--text-primary)] focus:bg-[var(--surface)] focus:border-[var(--accent)] outline-none transition-colors font-[Instrument_Sans]"
+                  className="w-full h-[52px] px-4.5 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:bg-[var(--surface)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15 outline-none transition-all font-[Instrument_Sans]"
                   required
                 />
               </div>
@@ -716,7 +814,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                   placeholder="e.g. We offer full refunds within 30 days of purchase..."
                   value={answer}
                   onChange={e => setAnswer(e.target.value)}
-                  className="w-full min-h-[160px] p-4 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl text-[16px] text-[var(--text-primary)] focus:bg-[var(--surface)] focus:border-[var(--accent)] outline-none transition-colors font-[Instrument_Sans] resize-y"
+                  className="w-full min-h-[160px] p-4 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:bg-[var(--surface)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15 outline-none transition-all font-[Instrument_Sans] resize-y"
                   required
                 />
               </div>
@@ -768,6 +866,28 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
               >
                 Cancel
               </button>
+              {activeTab === 'link' && linkStage === 'entry' && !isLoading && (
+                <button
+                  type="button"
+                  onClick={handleRunLinkInBackground}
+                  disabled={isSubmitDisabled}
+                  className="w-full sm:w-auto px-5 h-[52px] rounded-xl border border-[var(--border)] text-[14px] font-semibold text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Add in background
+                </button>
+              )}
+              {activeTab === 'link' && linkStage === 'entry' && isLoading && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSourceChanged?.();
+                    onClose();
+                  }}
+                  className="w-full sm:w-auto px-5 h-[52px] rounded-xl border border-[var(--border)] text-[14px] font-semibold text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  Run in background & close
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleSubmit}
@@ -781,7 +901,11 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                 }}
               >
                 {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                {activeTab === 'upload' ? 'Upload & process' : activeTab === 'link' ? 'Preview link' : 'Add to Aura'}
+                {activeTab === 'upload' 
+                  ? (isLoading ? 'Uploading…' : 'Upload & process') 
+                  : activeTab === 'link' 
+                  ? (isLoading ? 'Adding to Aura…' : 'Add to Aura')
+                  : (isLoading ? 'Adding…' : 'Add to Aura')}
               </button>
             </div>
           )}

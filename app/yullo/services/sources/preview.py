@@ -60,16 +60,68 @@ def is_excerpt_grounded(excerpt: str, clean_text: str) -> bool:
 
 
 
-async def _run_llm_fact_extraction(target_url: str, title: str, clean_text: str) -> List[Dict[str, str]]:
+def prepare_preview_prose(clean_text: str, title: str = "", description: str = "") -> str:
     """
-    Sends the cleaned text snippet to LLM provider using get_async_openai_clients,
-    and returns grounded facts verified by is_excerpt_grounded.
+    Sanitizes raw scraped markdown/text into clean semantic prose for LLM ingestion.
+    - Strips images: ![alt](url) -> ""
+    - Replaces markdown links: [Text](URL) -> Text
+    - Strips bare URLs: https://... -> ""
+    - Strips navigation/accessibility boilerplate (hotkeys, shortcuts, jump links)
+    - Formats clear paragraphs
+    """
+    if not clean_text:
+        return ""
+
+    # 1. Strip images
+    no_imgs = re.sub(r'!\[.*?\](?:\([^\)]*\))?', '', clean_text)
+    # 2. Replace markdown links: [Text](URL) -> Text
+    no_links = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', no_imgs)
+    # 3. Strip bare URLs
+    no_urls = re.sub(r'https?://\S+', '', no_links)
+
+    # 4. Filter boilerplate lines
+    boilerplate_re = re.compile(
+        r'(keyboard\s*shortcut|skip\s*to|move\s*between\s*items|press\s*enter\s*to|'
+        r'discovered\s*page\s*link|select\s*delivery\s*location|back\s*to\s*top|'
+        r'update\s*location|delivering\s*to|opt\+|shift\+|ctrl\+|cmd\+|'
+        r'show/hide\s*shortcuts)',
+        re.I
+    )
+
+    lines = []
+    for line in no_urls.splitlines():
+        l = line.strip()
+        if not l:
+            continue
+        # Skip markdown horizontal rules / backslashes / separators
+        if re.fullmatch(r'[\*\-_\\#\s\.\,]{1,6}', l):
+            continue
+        if boilerplate_re.search(l):
+            continue
+        # Skip isolated tiny symbols
+        if len(l) <= 2 and not l.isalnum():
+            continue
+        lines.append(l)
+
+    return "\n".join(lines)
+
+
+async def _run_llm_fact_extraction(
+    target_url: str,
+    title: str,
+    clean_text: str,
+    description: str = "",
+) -> List[Dict[str, str]]:
+    """
+    Sends the cleaned prose snippet to LLM provider using get_async_openai_clients,
+    and returns grounded facts verified by is_excerpt_grounded against source text and description.
     """
     facts: List[Dict[str, str]] = []
     if not clean_text or len(clean_text) < 30:
         return facts
 
-    snippet = clean_text[:4000].strip()
+    prose = prepare_preview_prose(clean_text, title=title, description=description)
+    snippet = prose[:4000].strip() if prose else clean_text[:4000].strip()
     from app.yullo.prompts.sources import (
         PREVIEW_FACT_EXTRACTION_SYSTEM_PROMPT as system_prompt,
         build_preview_fact_extraction_user_prompt,
@@ -82,7 +134,10 @@ async def _run_llm_fact_extraction(target_url: str, title: str, clean_text: str)
             logger.warning("No LLM providers configured/available for preview fact extraction.")
             return facts
 
-        user_msg = build_preview_fact_extraction_user_prompt(target_url, title, snippet)
+        user_msg = build_preview_fact_extraction_user_prompt(
+            target_url, title, snippet, description=description
+        )
+        grounding_corpus = f"{title}\n{description}\n{clean_text}\n{snippet}"
 
         for provider_name, client, model_name in providers:
             try:
@@ -120,14 +175,14 @@ async def _run_llm_fact_extraction(target_url: str, title: str, clean_text: str)
                     parsed = json.loads(c)
                     raw_facts = parsed.get("facts", []) if isinstance(parsed, dict) else []
 
-                    # Grounding Verification: Verify evidence_excerpt against clean_text
+                    # Grounding Verification: Verify evidence_excerpt against clean_text and meta description
                     for rf in raw_facts:
                         text_str = str(rf.get("text") or "").strip()
                         excerpt_str = str(rf.get("evidence_excerpt") or "").strip()
                         locator_str = str(rf.get("source_locator") or target_url).strip()
 
                         if text_str and excerpt_str:
-                            if is_excerpt_grounded(excerpt_str, clean_text):
+                            if is_excerpt_grounded(excerpt_str, grounding_corpus):
                                 facts.append({
                                     "text": text_str,
                                     "evidence_excerpt": excerpt_str,
@@ -238,8 +293,10 @@ async def extract_and_persist_link_preview(
         )
 
         # 5a. Extract preliminary facts FIRST (~3 seconds)
+        description = page_assets.get("description") or ""
+        prose = prepare_preview_prose(clean_text, title=title, description=description)
         try:
-            facts = await _run_llm_fact_extraction(target_url, title, clean_text)
+            facts = await _run_llm_fact_extraction(target_url, title, clean_text, description=description)
             logger.info(
                 "preview.fact_extraction.completed",
                 target_url=target_url,
@@ -265,7 +322,7 @@ async def extract_and_persist_link_preview(
                 stage="Preliminary facts extracted",
             )
 
-        # 5c. Extract structured entities (bounded preview chunks so it completes in <= 15s)
+        # 5c. Extract structured entities (bounded preview chunk so it completes in <= 10s)
         from app.config import settings
         if settings.YULLO_ENTITY_EXTRACTION_ENABLED:
             await source_stream.emit_progress(
@@ -279,14 +336,23 @@ async def extract_and_persist_link_preview(
                 from app.yullo.services.entities.provider import LLMEntityExtractionProvider
                 from app.yullo.services.entities.extraction import extract_entity_candidates
                 provider = LLMEntityExtractionProvider()
-                # Focus preview on top 18,000 characters for sub-20s response
-                preview_chunk = clean_text[:18000]
-                entity_candidates = await extract_entity_candidates(
-                    source_item_id=kb_item.id,
-                    source_version=kb_item.source_version or 1,
-                    provider=provider,
-                    source_text=preview_chunk,
-                )
+                # Focus preview on top 4,500 characters of clean semantic prose for sub-5s response
+                preview_chunk = (prose[:4500] if prose else clean_text[:4500])
+                try:
+                    entity_candidates = await asyncio.wait_for(
+                        extract_entity_candidates(
+                            source_item_id=kb_item.id,
+                            source_version=kb_item.source_version or 1,
+                            provider=provider,
+                            source_text=preview_chunk,
+                        ),
+                        timeout=8.0,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"preview.entity_extraction.timeout: Entity extraction exceeded 8s ceiling for {target_url}; proceeding with facts"
+                    )
+                    entity_candidates = []
                 logger.info(
                     "preview.entity_extraction.completed",
                     target_url=target_url,
@@ -325,7 +391,7 @@ async def extract_and_persist_link_preview(
         "source_version": kb_item.source_version or 1,
         "raw_text": raw_text_snippet,
         "target_badges": target_badges,
-        "is_confirmed": False,
+        "is_confirmed": True if status in ("ready", "ready_to_review") else False,
         "provenance": provenance,
         "favicon_url": favicon_url,
         "preview_image_url": preview_image_url,
@@ -344,7 +410,7 @@ async def extract_and_persist_link_preview(
         else (title or domain)
     )
     kb_item.title = persisted_title
-    kb_item.extracted_facts = facts[:4]
+    kb_item.extracted_facts = facts
     kb_item.source_metadata = source_metadata
     kb_item.ingestion_status = status
     db.add(kb_item)
@@ -366,7 +432,7 @@ async def extract_and_persist_link_preview(
         ).all()
         existing_values = {ef.value.strip().casefold() for ef in existing_facts if ef.value}
 
-        for f in facts[:4]:
+        for f in facts:
             val = (f.get("text") or "").strip()
             if val and val.casefold() not in existing_values:
                 kbf = KBFact(
@@ -413,7 +479,7 @@ async def extract_and_persist_link_preview(
         "facts": facts,
         "target_badges": target_badges,
         "raw_text": raw_text_snippet,
-        "is_confirmed": False,
+        "is_confirmed": True if status in ("ready", "ready_to_review") else False,
         "prompt_version": PROMPT_VERSION,
         "source_version": kb_item.source_version or 1,
         "favicon_url": favicon_url,

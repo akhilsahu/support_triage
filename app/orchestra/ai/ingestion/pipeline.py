@@ -1,4 +1,6 @@
 import functools
+import json
+import re
 import time
 from typing import Optional, List
 import uuid
@@ -10,6 +12,7 @@ from pydantic import BaseModel
 from app.config import settings
 from app.orchestra.ai.chunking import chunk as chunk_document, get_config as get_chunk_config
 from app.orchestra.ai.ingestion import get_ingestion_service
+from app.orchestra.ai.ingestion.text_sanitize import sanitize_extracted_text
 from app.rag.vector_store import get_vector_store
 from app.services.ai_usage_context import AiUsageContext, set_ai_usage_context
 
@@ -21,6 +24,8 @@ class IndexedSourceResult(BaseModel):
     chunk_count: int
     ai_cost_usd: float
     context_enriched: bool
+    full_text: Optional[str] = None
+    is_scanned: bool = False
 
 async def parse_and_index(
     *,
@@ -31,8 +36,10 @@ async def parse_and_index(
     filename: str,
     doc_id: str,
     doc_type: str = "general",
+    is_preview: bool = False,
+    progress_cb=None,
     enable_enrichment: Optional[bool] = None,
-    progress_cb=None
+    enable_summary: bool = True,
 ) -> IndexedSourceResult:
     """
     Extracts reusable processing primitives from `ingest_document`.
@@ -51,13 +58,30 @@ async def parse_and_index(
             progress_cb("parsing", current, total)
             
     parsed = await anyio.to_thread.run_sync(
-        functools.partial(svc.parse, raw_bytes, filename, progress_cb=_on_page)
+        functools.partial(svc.parse, raw_bytes, filename, progress_cb=_on_page, is_preview=is_preview)
     )
 
     if not parsed.pages or not parsed.full_text.strip():
         raise ValueError("Document appears empty or has no extractable text.")
 
-    # 2. Chunk
+    # 2. Chunk (Skip if preview)
+    # Extract is_scanned from parser metadata (set by PDF parsers based
+    # on character density — fewer than 50 chars/page signals a scanned image)
+    is_scanned = parsed.metadata.get("is_scanned", False)
+
+    if is_preview:
+        # Just return the preview data without chunks or enrichment
+        clean_full_text = sanitize_extracted_text(parsed.full_text)
+        return IndexedSourceResult(
+            doc_id=doc_id,
+            page_count=parsed.page_count,
+            chunk_count=0,
+            ai_cost_usd=0.0,
+            context_enriched=False,
+            full_text=clean_full_text,
+            is_scanned=is_scanned
+        )
+
     if progress_cb:
         progress_cb("chunking", 0, parsed.page_count)
         
@@ -65,12 +89,14 @@ async def parse_and_index(
     chunks = await anyio.to_thread.run_sync(chunk_document, parsed)
     if not chunks:
         raise ValueError("Document produced no chunks.")
+    if progress_cb:
+        progress_cb("chunking", len(chunks), len(chunks))
 
     # 3. Contextual AI Enrichment
     enriched_flag = False
     total_ai_cost = 0.0
 
-    should_enrich = enable_enrichment if enable_enrichment is not None else getattr(settings, "ENABLE_CONTEXTUAL_ENRICHMENT", True)
+    should_enrich = getattr(settings, "ENABLE_CONTEXTUAL_ENRICHMENT", True) if enable_enrichment is None else enable_enrichment
 
     if should_enrich:
         try:
@@ -78,7 +104,13 @@ async def parse_and_index(
 
             async def _on_enrich_progress(completed: int, total: int, cost_usd: float, eta_sec: int):
                 if progress_cb:
-                    progress_cb("enriching", completed, total, ai_cost_usd=cost_usd)
+                    progress_cb(
+                        "enriching",
+                        completed,
+                        total,
+                        ai_cost_usd=cost_usd,
+                        eta_seconds=eta_sec,
+                    )
 
             chunks, total_ai_cost = await enrich_chunks_contextually(
                 doc_title=filename,
@@ -99,11 +131,12 @@ async def parse_and_index(
 
     # 4. Summary
     semantic_summary = ""
-    try:
-        from app.api.v1.documents import _generate_summary
-        semantic_summary = await _generate_summary(parsed.full_text)
-    except Exception as e:
-        logger.warning("ingestion.pipeline.summary.failed", error=str(e))
+    if enable_summary:
+        try:
+            from app.api.v1.documents import _generate_summary
+            semantic_summary = await _generate_summary(parsed.full_text)
+        except Exception as e:
+            logger.warning("ingestion.pipeline.summary.failed", error=str(e))
 
     # 5. Index
     if progress_cb:
@@ -130,23 +163,49 @@ async def parse_and_index(
             topic="",
             chunks=[
                 {
-                    "text": c.text, "page": c.page,
-                    "chunk_index": c.chunk_index, "section": c.section,
+                    # Strip markdown link syntax for semantic vector indexing (e.g. [Buy](https://...) -> Buy)
+                    "text": re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', c.text),
+                    "page": c.page,
+                    "chunk_index": c.chunk_index,
+                    "section": c.section,
+                    "chunk_id": f"{doc_id}_{c.chunk_index}",
                     "extra": {
                         "is_table":     c.is_table,
                         "is_table_row": c.is_table_row,
                         "row_label":    c.row_label,
+                        # source_text is the original pre-enrichment text.
+                        # The fact extractor grounds extracted values against this
+                        # field rather than the enriched text, preventing a
+                        # hallucinated context prefix from passing the evidence check.
+                        "source_text":  getattr(c, "source_text", None) or c.text,
+                        # Persist chunk-associated links as a Chroma-compatible serialized JSON string
+                        "links_json":   json.dumps([
+                            {"title": title.strip(), "url": url.strip()}
+                            for title, url in re.findall(
+                                r'\[([^\]]+)\]\((https?://[^\)]+)\)',
+                                getattr(c, "source_text", None) or c.text
+                            )[:6]
+                        ]) if re.search(r'\[([^\]]+)\]\((https?://[^\)]+)\)', getattr(c, "source_text", None) or c.text) else "",
                     },
                 }
                 for c in chunks
             ],
         )
     )
+    if progress_cb:
+        progress_cb("indexing", len(chunks), len(chunks))
+
+    # Sanitise extracted text before persisting — fixes font-encoding
+    # artefacts (caron→apostrophe, ogonek→quote, etc.) and strips binary
+    # control characters so the preview modal always shows clean text.
+    clean_full_text = sanitize_extracted_text(parsed.full_text)
 
     return IndexedSourceResult(
         doc_id=doc_id,
         page_count=parsed.page_count,
         chunk_count=len(chunks),
         ai_cost_usd=total_ai_cost,
-        context_enriched=enriched_flag
+        context_enriched=enriched_flag,
+        full_text=clean_full_text,
+        is_scanned=is_scanned
     )
