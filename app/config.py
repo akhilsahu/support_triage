@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
     ENVIRONMENT: str = "development"
+    DATA_DIR: str = ".data"
 
     # Datamuse Online Terms API
     DATAMUSE_API_URL: str = "https://api.datamuse.com/words"
@@ -114,7 +115,7 @@ class Settings(BaseSettings):
 
     # Fireworks AI
     FIREWORKS_API_KEY: Optional[str] = None
-    FIREWORKS_MODEL: str = "accounts/fireworks/models/llama-v3p1-70b-instruct"
+    FIREWORKS_MODEL: str = "accounts/fireworks/models/deepseek-v4p1-flash"
 
     # Anyscale
     ANYSCALE_API_KEY: Optional[str] = None
@@ -191,6 +192,25 @@ class Settings(BaseSettings):
     YULLO_ABOUT_REPAIR_ATTEMPTS: int = 0
     YULLO_ABOUT_AUTO_SUGGEST: bool = False
 
+    # Grounded Yullo structured-entity extraction. These candidates remain
+    # private until the owner explicitly publishes them from "What Aura knows".
+    YULLO_ENTITY_EXTRACTION_ENABLED: bool = True
+    YULLO_ENTITY_EXTRACTION_MODEL: Optional[str] = None
+    YULLO_ENTITY_EXTRACTION_PROMPT_VERSION: str = "v2"
+    YULLO_ENTITY_EXTRACTION_BATCH_CHARACTERS: int = 12000
+    YULLO_ENTITY_EXTRACTION_MAX_SOURCE_CHARACTERS: int = 60000
+    YULLO_ENTITY_EXTRACTION_TIMEOUT_SECONDS: int = 45
+
+    # One grounded Yullo facts/entities pass per source batch.
+    YULLO_KNOWLEDGE_MODEL: Optional[str] = None
+    YULLO_KNOWLEDGE_BATCH_CHARACTERS: int = Field(default=12000, ge=1000, le=100000)
+    YULLO_KNOWLEDGE_BATCH_CHUNKS: int = Field(default=12, ge=1, le=100)
+    YULLO_KNOWLEDGE_MAX_OUTPUT_TOKENS: int = Field(default=6000, ge=512, le=64000)
+    YULLO_KNOWLEDGE_TIMEOUT_SECONDS: int = Field(default=60, ge=1, le=300)
+    YULLO_KNOWLEDGE_PROMPT_VERSION: str = "v1"
+    YULLO_INGESTION_ENRICHMENT_ENABLED: bool = False
+    YULLO_INGESTION_SUMMARY_ENABLED: bool = False
+
     # Anthropic
     ANTHROPIC_API_KEY: Optional[str] = None
     ANTHROPIC_MODEL: str = "claude-3-opus-20240229"
@@ -230,12 +250,14 @@ class Settings(BaseSettings):
     SCRAPER_QUICK_PROVIDER: str = ""
     SCRAPER_DEEP_PROVIDER: str = "firecrawl"
     SCRAPER_TIMEOUT_S: int = 15
-    SCRAPER_DEEP_TIMEOUT_S: int = 15
+    SCRAPER_DEEP_TIMEOUT_S: int = 60
     SCRAPER_MAX_BYTES: int = 30 * 1024 * 1024      # 30 MB, matches MAX_UPLOAD_BYTES
     SCRAPER_MAX_REDIRECTS: int = 5
     SCRAPER_USER_AGENT: str = "SupportBot/1.0 (KB Indexer)"
     FIRECRAWL_API_KEY: str = ""
     FIRECRAWL_BASE_URL: str = "https://api.firecrawl.dev"
+    # Retain navigation/footer content for complete single-page extraction.
+    FIRECRAWL_ONLY_MAIN_CONTENT: bool = False
     FIRECRAWL_MAX_REQUESTS_PER_SPACE_PER_DAY: int = 50
     FIRECRAWL_MAX_CONCURRENT_REQUESTS: int = 2
     # SSRF guard. Leave False unless you deliberately index an internal wiki:

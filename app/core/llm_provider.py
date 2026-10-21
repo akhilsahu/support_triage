@@ -107,10 +107,7 @@ def get_async_openai_clients(
                 continue
             api_key = client_kwargs.get("api_key") or getattr(settings, "FIREWORKS_API_KEY", None)
             if api_key:
-                # Use correct Fireworks model string: accounts/fireworks/models/llama-v3-1-70b-instruct instead of llama-v3p1-70b-instruct to prevent 404
-                model = override_model or getattr(settings, "FIREWORKS_MODEL", "accounts/fireworks/models/llama-v3-1-70b-instruct")
-                if "v3p1" in model:
-                    model = model.replace("v3p1", "v3-1")
+                model = override_model or getattr(settings, "FIREWORKS_MODEL", "accounts/fireworks/models/deepseek-v4p1-flash")
                 
                 kwargs = client_kwargs.copy()
                 kwargs["api_key"] = api_key

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import json
 import uuid
@@ -8,12 +9,15 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from bs4 import BeautifulSoup
+from pathlib import Path
 from urllib.parse import urlparse
+import aiofiles
 
 from app.config import settings
 from app.core.llm_provider import get_async_openai_clients
 from app.models.space import Space
 from app.models.knowledge_base import KnowledgeBaseItem
+from app.yullo.services.sources.stream import source_stream
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +149,13 @@ async def _run_llm_fact_extraction(target_url: str, title: str, clean_text: str)
     return facts
 
 
+from app.orchestra.ai.ingestion.scraper import (
+    compute_page_slug,
+    persist_raw_page_snapshot,
+    smart_scrape_url,
+)
+
+
 async def extract_and_persist_link_preview(
     db: AsyncSession,
     *,
@@ -189,77 +200,24 @@ async def extract_and_persist_link_preview(
     if not target_url.startswith(("http://", "https://")):
         target_url = f"https://{target_url}"
 
-    domain = urlparse(target_url).netloc.replace("www.", "") or target_url
-    title = domain
-    clean_text = ""
+    # 2. Emit progress: Scraping page
+    await source_stream.emit_progress(db, space_id=space_id, source_id=item_id, progress=25, stage="Reading website content...")
+
+    # Fetch and clean page content via shared Smart Scraper engine
+    scrape_res = await smart_scrape_url(
+        target_url,
+        space_id=space_id,
+        item_id=item_id,
+    )
+
+    domain = scrape_res.domain or urlparse(target_url).netloc.replace("www.", "") or target_url
+    title = scrape_res.title or domain
+    clean_text = scrape_res.clean_text
+    page_assets = scrape_res.page_assets
+    provenance = scrape_res.provenance
     status = "unavailable"
-    provenance = "scraper_llm_grounded"
 
-    # 2. Fetch and clean page content using quick scraper mode
-    page_assets: Dict[str, Any] = {
-        "favicon_url": None,
-        "preview_image_url": None,
-        "logo_url": None,
-        "description": None,
-        "images": [],
-        "documents": [],
-    }
-    try:
-        from app.orchestra.ai.ingestion.scraper import fetch_url
-        page = await fetch_url(target_url, mode="quick")
-        if page.title:
-            title = page.title.strip()
-        if page.raw:
-            # Extract brand assets, preview images, and downloadable media
-            from app.yullo.services.sources.asset_extractor import extract_page_assets
-            page_assets = extract_page_assets(page.raw, target_url)
-
-            soup = BeautifulSoup(page.raw, "html.parser")
-            if (not title or title == domain) and soup.title and soup.title.string:
-                title = soup.title.string.strip()
-            # Strip non-content / script elements (keeping header, footer, nav for e-commerce/landing sites)
-            for element in soup(["script", "style", "svg", "noscript", "iframe"]):
-                element.extract()
-            clean_text = soup.get_text(separator=" ", strip=True)
-    except Exception as e:
-        logger.warning(f"Quick scraper fetch failed for '{target_url}': {e}")
-        clean_text = ""
-
-    # If quick scrape yielded insufficient text (e.g. client-rendered SPAs like SpaceX, React apps, or bot challenges),
-    # fall back to the existing ingestion deep scraper (Firecrawl / headless browser).
-    if len(clean_text) < 30:
-        logger.info(f"Quick scrape yielded sparse text ({len(clean_text)} chars) for '{target_url}'. Falling back to existing deep scraper.")
-        try:
-            deep_page = await fetch_url(target_url, mode="deep")
-            if deep_page.title and (not title or title == domain):
-                title = deep_page.title.strip()
-            if deep_page.raw:
-                deep_text = deep_page.raw.decode("utf-8", errors="ignore").strip()
-                if len(deep_text) >= 30:
-                    clean_text = deep_text
-                    provenance = "scraper_deep_existing"
-
-                    # Extract rich images, links, and documents from deep rendered markdown
-                    from app.yullo.services.sources.asset_extractor import extract_markdown_assets
-                    deep_assets = extract_markdown_assets(deep_text, target_url)
-                    if not page_assets.get("images") and deep_assets.get("images"):
-                        page_assets["images"] = deep_assets["images"]
-                    if not page_assets.get("documents") and deep_assets.get("documents"):
-                        page_assets["documents"] = deep_assets["documents"]
-                    if not page_assets.get("links") and deep_assets.get("links"):
-                        page_assets["links"] = deep_assets["links"]
-                    if not page_assets.get("preview_image_url") and page_assets["images"]:
-                        page_assets["preview_image_url"] = page_assets["images"][0]["url"]
-        except Exception as deep_err:
-            logger.warning(f"Existing deep scraper fallback failed for '{target_url}': {deep_err}")
-
-    # If clean_text is still under 30 chars, fall back to meta description if available
-    if len(clean_text) < 30 and page_assets.get("description"):
-        meta_desc = page_assets["description"].strip()
-        if len(meta_desc) >= 30:
-            clean_text = meta_desc
-
-    # 5. Extract grounded page facts and structured entities (Useful links, Contact details, Services)
+    # 5. Extract grounded page facts and structured entities
     facts: List[Dict[str, str]] = []
     entity_candidates = []
     if clean_text and len(clean_text) >= 30:
@@ -271,44 +229,69 @@ async def extract_and_persist_link_preview(
             item_id=str(item_id),
         )
 
-        async def _extract_facts_safe() -> List[Dict[str, str]]:
-            try:
-                res = await _run_llm_fact_extraction(target_url, title, clean_text)
-                logger.info(
-                    "preview.fact_extraction.completed",
-                    target_url=target_url,
-                    extracted_count=len(res),
-                )
-                return res
-            except Exception as fact_err:
-                logger.error(
-                    "preview.fact_extraction.failed",
-                    target_url=target_url,
-                    error=str(fact_err),
-                    exc_info=True,
-                )
-                return []
+        await source_stream.emit_progress(
+            db,
+            space_id=space_id,
+            source_id=item_id,
+            progress=45,
+            stage="Analyzing facts from page...",
+        )
 
-        async def _extract_entities_safe() -> list:
-            from app.config import settings
-            if not settings.YULLO_ENTITY_EXTRACTION_ENABLED:
-                return []
+        # 5a. Extract preliminary facts FIRST (~3 seconds)
+        try:
+            facts = await _run_llm_fact_extraction(target_url, title, clean_text)
+            logger.info(
+                "preview.fact_extraction.completed",
+                target_url=target_url,
+                extracted_count=len(facts),
+            )
+        except Exception as fact_err:
+            logger.error(
+                "preview.fact_extraction.failed",
+                target_url=target_url,
+                error=str(fact_err),
+                exc_info=True,
+            )
+            facts = []
+
+        # 5b. Stream preliminary facts to UI IMMEDIATELY (within 5-10s)
+        if facts:
+            await source_stream.emit_facts_streamed(
+                db,
+                space_id=space_id,
+                source_id=item_id,
+                facts=facts,
+                progress=65,
+                stage="Preliminary facts extracted",
+            )
+
+        # 5c. Extract structured entities (bounded preview chunks so it completes in <= 15s)
+        from app.config import settings
+        if settings.YULLO_ENTITY_EXTRACTION_ENABLED:
+            await source_stream.emit_progress(
+                db,
+                space_id=space_id,
+                source_id=item_id,
+                progress=80,
+                stage="Extracting structured details...",
+            )
             try:
                 from app.yullo.services.entities.provider import LLMEntityExtractionProvider
                 from app.yullo.services.entities.extraction import extract_entity_candidates
                 provider = LLMEntityExtractionProvider()
-                cands = await extract_entity_candidates(
+                # Focus preview on top 18,000 characters for sub-20s response
+                preview_chunk = clean_text[:18000]
+                entity_candidates = await extract_entity_candidates(
                     source_item_id=kb_item.id,
                     source_version=kb_item.source_version or 1,
                     provider=provider,
-                    source_text=clean_text,
+                    source_text=preview_chunk,
                 )
                 logger.info(
                     "preview.entity_extraction.completed",
                     target_url=target_url,
-                    extracted_count=len(cands),
+                    extracted_count=len(entity_candidates),
                 )
-                return cands
             except Exception as entity_err:
                 logger.error(
                     "preview.entity_extraction.failed",
@@ -316,12 +299,7 @@ async def extract_and_persist_link_preview(
                     error=str(entity_err),
                     exc_info=True,
                 )
-                return []
-
-        facts, entity_candidates = await asyncio.gather(
-            _extract_facts_safe(),
-            _extract_entities_safe(),
-        )
+                entity_candidates = []
 
     # 6. Determine final status
     # When facts or structured entities are successfully extracted, the source is ready for owner review.
@@ -353,6 +331,8 @@ async def extract_and_persist_link_preview(
         "preview_image_url": preview_image_url,
         "logo_url": logo_url,
         "assets": page_assets,
+        "raw_html_path": page_assets.get("raw_html_path"),
+        "raw_deep_path": page_assets.get("raw_deep_path"),
         "entity_extraction_status": "done" if entity_candidates else ("no_entities_found" if clean_text else None),
     })
 
@@ -416,6 +396,16 @@ async def extract_and_persist_link_preview(
         )
 
     await db.commit()
+
+    # Emit final completion through stream broadcaster
+    await source_stream.emit_completed(
+        db,
+        space_id=space_id,
+        source_id=kb_item.id,
+        facts=facts,
+        assets=page_assets,
+        status=status,
+    )
 
     return {
         "status": status,

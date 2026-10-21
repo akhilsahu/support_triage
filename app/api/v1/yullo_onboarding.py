@@ -1,13 +1,16 @@
+import logging
 import uuid
 import re
 from datetime import datetime, timedelta
 import asyncio
 import json
 from sse_starlette.sse import EventSourceResponse
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status, Request, BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
+logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
 from app.core.auth import current_user
@@ -262,7 +265,12 @@ async def reserve_handle(req: HandleValidateRequest, user: User = Depends(curren
     return {"ok": True}
 
 @router.post("/sources/url", response_model=SpaceSourceResponse)
-async def add_source_url(req: SourceUrlRequest, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+async def add_source_url(
+    req: SourceUrlRequest, 
+    background_tasks: BackgroundTasks,
+    user: User = Depends(current_user), 
+    db: AsyncSession = Depends(get_db)
+):
     draft = await _resolve_source_space(db, user_id=user.id, space_id=req.space_id)
         
     target_url = req.url.strip()
@@ -280,6 +288,84 @@ async def add_source_url(req: SourceUrlRequest, user: User = Depends(current_use
             idempotency_key=uuid.uuid5(uuid.NAMESPACE_URL, target_url)
         )
         await db.commit()
+
+        if req.background:
+            # Mark job and item as processing in the background immediately
+            preview_job = await db.get(IngestionJob, accepted.job_id)
+            if preview_job:
+                preview_job.status = "running"
+                preview_job.stage_detail = "Generating preview..."
+                preview_job.progress = 25
+            kb_item = await db.get(KnowledgeBaseItem, accepted.item_id)
+            if kb_item:
+                meta = kb_item.source_metadata or {}
+                meta.update({"status": "processing", "stage": "Generating preview...", "progress": 25})
+                kb_item.source_metadata = meta
+            await db.commit()
+
+            async def _bg_preview_task(
+                space_id: uuid.UUID,
+                user_id: uuid.UUID,
+                item_id: uuid.UUID,
+                job_id: uuid.UUID,
+                url: str
+            ):
+                from app.core.database import AsyncSessionLocal
+                from app.yullo.services.sources.preview import extract_and_persist_link_preview
+                async with AsyncSessionLocal() as session:
+                    try:
+                        await extract_and_persist_link_preview(
+                            db=session,
+                            user_id=user_id,
+                            space_id=space_id,
+                            item_id=item_id,
+                            url=url,
+                        )
+                        job = await session.get(IngestionJob, job_id)
+                        if job and (job.status or "").lower() == "running":
+                            job.status = "pending_confirm"
+                            job.stage_detail = "Preview ready"
+                            job.progress = 100
+                        await session.commit()
+                    except Exception as bg_err:
+                        logger.error(f"Background preview failed for {url}: {bg_err}", exc_info=True)
+                        job = await session.get(IngestionJob, job_id)
+                        if job:
+                            job.status = "failed"
+                            job.stage_detail = str(bg_err)
+                        item = await session.get(KnowledgeBaseItem, item_id)
+                        if item:
+                            meta = item.source_metadata or {}
+                            meta.update({"status": "failed", "error_msg": str(bg_err)})
+                            item.source_metadata = meta
+                        await session.commit()
+
+            background_tasks.add_task(
+                _bg_preview_task,
+                draft.id,
+                user.id,
+                accepted.item_id,
+                accepted.job_id,
+                target_url
+            )
+
+            return {
+                "id": accepted.item_id,
+                "source_type": "url",
+                "content_ref": target_url,
+                "status": "processing",
+                "title": req.title or target_url,
+                "facts": [],
+                "target_badges": ["About", "Category", "Aura knowledge"],
+                "preview_excerpt": "",
+                "is_confirmed": False,
+                "prompt_version": "v1",
+                "source_version": 1,
+                "error_msg": None,
+                "created_at": datetime.utcnow(),
+                "stage": "Generating preview...",
+                "progress": 25,
+            }
 
         from app.yullo.services.sources.preview import extract_and_persist_link_preview
         preview_res = await extract_and_persist_link_preview(
@@ -409,25 +495,20 @@ async def stream_space_sources(
     request: Request,
     user: User = Depends(current_user),
 ):
+    from app.yullo.services.sources.stream import source_stream
+
+    async def fetch_latest_sources():
+        async for db in get_db():
+            await _resolve_source_space(db, user_id=user.id, space_id=space_id)
+            sources = await SourceService().get_space_sources(db, space_id)
+            return [s.model_dump(mode="json") for s in sources]
+        return []
+
     async def event_generator():
-        while True:
+        async for event in source_stream.subscribe(space_id, fetch_latest_sources):
             if await request.is_disconnected():
                 break
-            
-            async for db in get_db():
-                try:
-                    await _resolve_source_space(db, user_id=user.id, space_id=space_id)
-                    sources = await SourceService().get_space_sources(db, space_id)
-                    data = [s.model_dump(mode="json") for s in sources]
-                    yield {
-                        "event": "update",
-                        "data": json.dumps(data)
-                    }
-                except Exception as e:
-                    yield {"event": "error", "data": str(e)}
-                    break
-            
-            await asyncio.sleep(4.0)
+            yield event
 
     return EventSourceResponse(event_generator())
 
@@ -548,13 +629,18 @@ async def generate_summary(
         db,
         user_id=user.id,
         space_id=req.space_id,
-        draft_website=req.website
+        draft_website=req.website,
+        override_name=req.name,
+        client_sources=req.sources,
+        history=req.history,
+        user_message=req.user_message
     )
     return GenerateSummaryResponse(
         status=result["status"],
         description=result.get("description"),
         claims=result.get("claims", []),
         clarification=result.get("clarification"),
+        candidate_match=result.get("candidate_match"),
         prompt_version=result.get("prompt_version", "v1"),
         input_fingerprint=result.get("input_fingerprint"),
         context_version=1

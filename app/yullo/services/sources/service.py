@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
@@ -138,6 +138,12 @@ class SourceService:
             if not existing_job:
                 raise HTTPException(status_code=500, detail="Found item but no associated ingestion job")
                 
+            # Refresh timestamps so current retry reflects current execution time
+            now_utc = datetime.utcnow()
+            existing_job.created_at = now_utc
+            existing_job.updated_at = now_utc
+            db.add(existing_job)
+
             return SourceAccepted(
                 item_id=existing_item.id,
                 job_id=existing_job.id,
@@ -315,7 +321,30 @@ class SourceService:
                 error_msg = latest_job.error
                 
             status_val = item.ingestion_status
-            if latest_job and job_status == 'queued':
+
+            # Check if job is stale (no updates for >15 minutes)
+            is_stale_job = False
+            if latest_job and job_status in ('running', 'queued'):
+                cutoff = datetime.utcnow() - timedelta(minutes=15)
+                job_time = latest_job.updated_at or latest_job.created_at
+                if job_time and job_time < cutoff:
+                    is_stale_job = True
+
+            if status_val in ('ready', 'ready_to_review'):
+                # Item extraction is already completed and reviewable.
+                # Do not let an abandoned or orphaned running job drag it back to running.
+                if latest_job and job_status == 'running':
+                    latest_job.status = 'pending_confirm'
+                    latest_job.progress = 100
+                    latest_job.stage_detail = 'Preview ready'
+                    db.add(latest_job)
+            elif is_stale_job:
+                status_val = 'failed'
+                error_msg = error_msg or "Processing interrupted. Click Retry to re-run."
+                latest_job.status = 'failed'
+                latest_job.error = error_msg
+                db.add(latest_job)
+            elif latest_job and job_status == 'queued':
                 status_val = 'queued'
             elif latest_job and job_status == 'running':
                 status_val = 'running'
@@ -359,6 +388,12 @@ class SourceService:
                     source_assets["links"] = md_assets["links"]
                 if md_assets.get("documents") and not source_assets.get("documents"):
                     source_assets["documents"] = md_assets["documents"]
+                if md_assets.get("link_categories") and not source_assets.get("link_categories"):
+                    source_assets["link_categories"] = md_assets["link_categories"]
+
+            if source_assets.get("links") and not source_assets.get("link_categories"):
+                from app.yullo.services.sources.asset_extractor import _build_link_categories
+                source_assets["link_categories"] = _build_link_categories(source_assets["links"])
 
             sources.append(SpaceSourceResponse(
                 id=item.id,

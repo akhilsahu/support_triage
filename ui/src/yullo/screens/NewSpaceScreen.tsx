@@ -904,6 +904,14 @@ export function NewSpaceScreen() {
                           console.warn('Failed to update source confirmed state:', e);
                         }
                       }}
+                      onConfirmAllFacts={async (id) => {
+                        setSources(prev => prev.map(item => item.id === id ? { ...item, is_confirmed: true } : item));
+                        try {
+                          await yulloOnboardingApi.updateSource(id, { is_confirmed: true });
+                        } catch (e) {
+                          console.warn('Failed to update source confirmed state:', e);
+                        }
+                      }}
                     />
                   ))}
                 </div>
@@ -961,7 +969,8 @@ export function NewSpaceScreen() {
               value={inputUrl}
               onChange={(e) => setInputUrl(e.target.value)}
               placeholder="https://example.com"
-              className="w-full bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl p-3.5 text-[15px] text-[var(--text-primary)] outline-none"
+              className="w-full h-[52px] px-4.5 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:bg-[var(--surface)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15 outline-none transition-all font-[Instrument_Sans]"
+              autoFocus
             />
 
             {/* Quick Link Suggestions Row matching Onboarding */}
@@ -1047,7 +1056,8 @@ export function NewSpaceScreen() {
               onChange={(e) => setInputText(e.target.value)}
               rows={6}
               placeholder="Paste any text or notes for Aura to learn..."
-              className="w-full bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl p-3.5 text-[15px] text-[var(--text-primary)] outline-none"
+              className="w-full bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl p-4 text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:bg-[var(--surface)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15 outline-none transition-all font-[Instrument_Sans] resize-y leading-relaxed"
+              autoFocus
             />
             <div className="flex items-center justify-end gap-3 pt-2">
               <button onClick={() => setShowTextModal(false)} className="px-4 py-2 text-[14px] text-[var(--text-secondary)]">Cancel</button>

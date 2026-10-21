@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, Upload, FileText, Globe,
-  Sparkles, Clock, MoreHorizontal, Trash2, Eye, RefreshCw, AlertCircle
+  FolderOpen, HelpCircle, Clock, MoreHorizontal, Trash2, Eye, RefreshCw, AlertCircle,
+  CheckCircle2, Loader2, Check, X
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { SourceFact, yulloOnboardingApi } from '../../api/onboarding';
@@ -11,6 +12,7 @@ import { formsApi } from '../../api/forms';
 import { SourceItem } from '../../components/SourceUnderstandingCard';
 import { SourceReviewSheet } from '../../components/SourceReviewSheet';
 import { AddKnowledgeModal, KnowledgeModalTab } from '../../components/AddKnowledgeModal';
+import { LinkPreviewModal } from '../../components/LinkPreviewModal';
 import { DeleteSourceConfirmDialog } from '../../components/DeleteSourceConfirmDialog';
 import { ReuploadConfirmDialog } from '../../components/ReuploadConfirmDialog';
 import { FullSpaceKnowledgePreviewModal } from '../../components/FullSpaceKnowledgePreviewModal';
@@ -54,6 +56,10 @@ export const AuraKnowledgeScreen: React.FC = () => {
 
   // Facts Expansion State
   const [isFactsExpanded, setIsFactsExpanded] = useState(false);
+
+  // Link Preview viewing state
+  const [previewViewingSource, setPreviewViewingSource] = useState<SourceItem | null>(null);
+  const [dismissedPreviewIds, setDismissedPreviewIds] = useState<Set<string>>(new Set());
 
   const [identityData, setIdentityData] = useState<any>(null);
   // Entity State
@@ -150,9 +156,9 @@ export const AuraKnowledgeScreen: React.FC = () => {
   }, [spaceId, hasProcessingSource, refetchEntities, refetchFacts]);
 
   // Handlers for Add Knowledge
-  const handleAddLink = async (url: string, title?: string) => {
+  const handleAddLink = async (url: string, title?: string, background: boolean = true) => {
     if (!spaceId) return;
-    const source = await yulloOnboardingApi.addSourceUrl(url, 'url', spaceId, title);
+    const source = await yulloOnboardingApi.addSourceUrl(url, 'url', spaceId, title, background);
     await fetchSources();
     return source;
   };
@@ -177,6 +183,27 @@ export const AuraKnowledgeScreen: React.FC = () => {
       await fetchSources();
     } catch (err: any) {
       console.error('Failed to toggle source confirmation:', err);
+    }
+  };
+
+  const handleConfirmAllFacts = async (sourceId: string) => {
+    if (!spaceId) return;
+    try {
+      await yulloOnboardingApi.updateSource(sourceId, { is_confirmed: true });
+      const sourceFacts = await yulloOnboardingApi.getSourceFacts(spaceId, sourceId);
+      const unconfirmed = sourceFacts.filter(
+        f => f.review_status !== 'owner_confirmed' && f.review_status !== 'rejected' && f.review_status !== 'source_authoritative' && f.review_status !== 'superseded'
+      );
+      if (unconfirmed.length > 0) {
+        await Promise.all(
+          unconfirmed.map(fact =>
+            yulloOnboardingApi.reviewSourceFact(spaceId, sourceId, fact.id, 'owner_confirmed', fact.review_status)
+          )
+        );
+      }
+      await Promise.all([fetchSources(), refetchEntities(), refetchFacts()]);
+    } catch (err: any) {
+      console.error('Failed to confirm all facts:', err);
     }
   };
 
@@ -255,7 +282,7 @@ export const AuraKnowledgeScreen: React.FC = () => {
           bg: 'bg-amber-500/15 dark:bg-amber-400/15',
           border: 'border-amber-500/30 dark:border-amber-400/30',
           text: 'text-amber-700 dark:text-amber-400',
-          icon: <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400 fill-amber-400" />
+          icon: <HelpCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
         };
       default:
         return {
@@ -272,6 +299,17 @@ export const AuraKnowledgeScreen: React.FC = () => {
   const presenceLabel = identityData?.presence
     ? String(identityData.presence).replace('_', ' ')
     : 'Presence not set';
+
+  const activeProcessingSources = sources.filter(s =>
+    ['uploaded', 'queued', 'running', 'processing', 'parsing_preview'].includes(s.status)
+  );
+
+  const readyPreviewSources = sources.filter(s =>
+    s.source_type === 'url' &&
+    !s.is_confirmed &&
+    ['ready', 'ready_to_review'].includes(s.status) &&
+    !dismissedPreviewIds.has(s.id)
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end max-[899px]:top-0 max-[899px]:h-full min-[900px]:top-[72px] min-[900px]:h-[calc(100dvh-72px)] font-[Instrument_Sans]">
@@ -349,6 +387,135 @@ export const AuraKnowledgeScreen: React.FC = () => {
 
           {!isLoading && (
             <div className="space-y-12 pb-16">
+              {/* Active Background Tasks Progress Section */}
+              {activeProcessingSources.length > 0 && (
+                <div className="space-y-3">
+                  {activeProcessingSources.map(procSource => {
+                    const rawTitle = procSource.title || procSource.content_ref || '';
+                    const displayTitle = rawTitle.includes('/') ? rawTitle.split('/').pop() || rawTitle : rawTitle;
+                    const progress = procSource.progress ?? 30;
+                    const stageText = procSource.stage || 'Generating preview in background…';
+
+                    return (
+                      <div 
+                        key={procSource.id}
+                        onClick={() => setProcessingSource(procSource)}
+                        className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)]/70 hover:bg-[var(--surface-soft)] hover:border-[var(--accent)]/50 p-4 shadow-xs space-y-2.5 animate-in fade-in duration-200 cursor-pointer transition-all group"
+                        title="Click to view live processing stages and progress details"
+                      >
+                        <div className="flex items-center justify-between gap-3 text-[13px]">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Loader2 className="w-4 h-4 animate-spin text-[var(--accent)] shrink-0" />
+                            <span className="font-semibold text-[var(--text-primary)] truncate font-[Satoshi] group-hover:text-[var(--accent-ink)] transition-colors">
+                              {displayTitle}
+                            </span>
+                            <span className="text-[12px] text-[var(--text-secondary)] hidden sm:inline">
+                              · {stageText}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[12px] font-mono text-[var(--text-secondary)]">
+                              {progress}%
+                            </span>
+                            <span className="text-[11px] px-2 py-0.5 rounded-md bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] font-medium group-hover:border-[var(--accent)] group-hover:text-[var(--accent-ink)] transition-colors hidden sm:inline-flex items-center gap-1">
+                              View details
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="w-full bg-[var(--surface)] h-2 rounded-full overflow-hidden border border-[var(--border)]/60">
+                          <div 
+                            className="h-full bg-[var(--accent)] transition-all duration-500 rounded-full"
+                            style={{ width: `${Math.max(progress, 15)}%` }}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] text-[var(--text-secondary)]">
+                          <span>Running in background — click to view step-by-step progress.</span>
+                          {procSource.eta_seconds && procSource.eta_seconds > 0 ? (
+                            <span className="font-mono">~{procSource.eta_seconds}s remaining</span>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Ready Link Previews Notification Banner */}
+              {readyPreviewSources.length > 0 && (
+                <div className="space-y-3">
+                  {readyPreviewSources.map(readySource => {
+                    const rawTitle = readySource.title || readySource.content_ref || '';
+                    const displayTitle = rawTitle.includes('/') ? rawTitle.split('/').pop() || rawTitle : rawTitle;
+
+                    return (
+                      <div 
+                        key={readySource.id}
+                        className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-500/10 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in duration-200"
+                      >
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-[Satoshi] font-semibold text-[14px] text-[var(--text-primary)]">
+                                Preview generated
+                              </span>
+                              <span className="text-[12px] px-2 py-0.5 rounded-md bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] font-mono truncate max-w-[220px]">
+                                {displayTitle}
+                              </span>
+                            </div>
+                            <p className="text-[13px] text-[var(--text-secondary)] mt-0.5">
+                              Aura scraped metadata, brand assets, and grounded facts. Review the preview and click "Add to sources" to activate.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewViewingSource(readySource)}
+                            className="px-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-soft)] text-[13px] font-semibold text-[var(--text-primary)] transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> View preview
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await handleToggleConfirm(readySource.id, true);
+                              setProcessingSource({
+                                ...readySource,
+                                is_confirmed: true,
+                                status: 'processing',
+                                stage: 'Preparing Aura search',
+                                progress: 35
+                              });
+                            }}
+                            className="px-4 py-2 rounded-xl text-[13px] font-bold shadow-xs hover:opacity-90 active:scale-[0.99] transition-all cursor-pointer flex items-center gap-1.5"
+                            style={{
+                              backgroundColor: 'var(--accent)',
+                              color: 'var(--accent-fg)'
+                            }}
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[3]" /> Add to sources
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDismissedPreviewIds(prev => new Set([...prev, readySource.id]))}
+                            className="p-2 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors cursor-pointer"
+                            title="Dismiss notification"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* ZONE 1: SOURCES */}
               <section className="space-y-4">
                 <div className="pb-2 border-b border-[var(--border)] flex items-center justify-between">
@@ -359,7 +526,7 @@ export const AuraKnowledgeScreen: React.FC = () => {
 
                 {sources.length === 0 ? (
                   <div className="py-8 text-center border-b border-[var(--border)] font-[Instrument_Sans]">
-                    <Sparkles className="w-5 h-5 text-amber-500 mx-auto mb-2 opacity-80" />
+                    <FolderOpen className="w-6 h-6 text-[var(--text-tertiary)] mx-auto mb-2 opacity-70" />
                     <h3 className="font-[Satoshi] text-[15px] font-semibold text-[var(--text-primary)]">
                       No sources added yet
                     </h3>
@@ -405,6 +572,7 @@ export const AuraKnowledgeScreen: React.FC = () => {
                                 <img
                                   src={source.favicon_url}
                                   alt=""
+                                  referrerPolicy="no-referrer"
                                   className="w-4 h-4 object-contain rounded-xs"
                                   onError={(e) => {
                                     e.currentTarget.style.display = 'none';
@@ -550,13 +718,18 @@ export const AuraKnowledgeScreen: React.FC = () => {
 
               {/* ZONE 2: AURA'S UNDERSTANDING */}
               <section className="pt-4 space-y-6">
-                <div className="pb-3 border-b border-[var(--border)] flex items-center justify-between">
-                  <h2 className="text-[18px] font-semibold text-[var(--text-primary)] font-[Satoshi] tracking-tight">
-                    Aura’s understanding
-                  </h2>
+                <div className="pb-3 border-b border-[var(--border)] flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-[18px] font-semibold text-[var(--text-primary)] font-[Satoshi] tracking-tight">
+                      Aura’s understanding
+                    </h2>
+                    <p className="text-[13px] text-[var(--text-secondary)] mt-0.5 font-[Instrument_Sans]">
+                      Knowledge synthesis and facts learned from your sources.
+                    </p>
+                  </div>
                   <button
                     onClick={() => setIsPreviewModalOpen(true)}
-                    className="w-9 h-9 rounded-xl bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 transition-colors flex items-center justify-center border border-transparent cursor-pointer shadow-xs"
+                    className="w-9 h-9 rounded-xl bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 transition-colors flex items-center justify-center border border-transparent cursor-pointer shadow-xs shrink-0"
                     title="Full Knowledge Preview"
                     aria-label="Full Knowledge Preview"
                   >
@@ -564,27 +737,21 @@ export const AuraKnowledgeScreen: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Focal Summary Banner */}
-                <div className="p-4 rounded-xl bg-amber-500/10 dark:bg-amber-400/10 border border-amber-500/30 font-[Instrument_Sans]">
-                  <div className="flex items-center gap-2 text-[13px] font-semibold text-amber-800 dark:text-amber-400 tracking-wider mb-2.5 font-[Satoshi]">
-                    <Sparkles className="w-4 h-4 fill-amber-500 text-amber-600 dark:text-amber-400" />
-                    <span>Aura understands this Space as:</span>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="px-3 py-1 rounded-md bg-[var(--surface)] border border-[var(--border)] text-[13px] font-semibold text-[var(--text-primary)] shadow-2xs">
-                      {primaryCategory}
-                    </span>
-                    <span className="px-2.5 py-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-[13px] font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400" /> {presenceLabel}
-                    </span>
-                    <span className="px-2.5 py-1 rounded-md bg-[var(--surface-soft)] border border-[var(--border)] text-[13px] font-medium text-[var(--text-secondary)]">
-                      {offeringCount} {offeringCount === 1 ? 'offering' : 'offerings'}
-                    </span>
-                    <span className="px-2.5 py-1 rounded-md bg-[var(--surface-soft)] border border-[var(--border)] text-[13px] font-medium text-[var(--text-secondary)]">
-                      {sources.length} {sources.length === 1 ? 'source' : 'sources'}
-                    </span>
-                  </div>
+                {/* Space Summary Attributes */}
+                <div className="flex flex-wrap items-center gap-2 font-[Instrument_Sans]">
+                  <span className="px-3 py-1 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] text-[13px] font-semibold text-[var(--text-primary)]">
+                    {primaryCategory}
+                  </span>
+                  <span className="px-2.5 py-1 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] text-[13px] font-medium text-[var(--text-secondary)] inline-flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <span className="capitalize">{presenceLabel}</span>
+                  </span>
+                  <span className="px-2.5 py-1 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] text-[13px] font-medium text-[var(--text-secondary)]">
+                    {offeringCount} {offeringCount === 1 ? 'offering' : 'offerings'}
+                  </span>
+                  <span className="px-2.5 py-1 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] text-[13px] font-medium text-[var(--text-secondary)]">
+                    {sources.length} {sources.length === 1 ? 'source' : 'sources'}
+                  </span>
                 </div>
 
                 <div className="space-y-6 font-[Instrument_Sans]">
@@ -745,6 +912,27 @@ export const AuraKnowledgeScreen: React.FC = () => {
         onUploadFile={handleUploadFile}
         onAddText={handleAddText}
         onSourceChanged={fetchSources}
+        onProcessingStarted={(src) => setProcessingSource(src)}
+      />
+
+      {/* Link Preview Modal */}
+      <LinkPreviewModal
+        isOpen={Boolean(previewViewingSource)}
+        onClose={() => setPreviewViewingSource(null)}
+        source={previewViewingSource}
+        onAddToSources={async (sourceId) => {
+          const target = sources.find(s => s.id === sourceId) || previewViewingSource;
+          await handleToggleConfirm(sourceId, true);
+          if (target) {
+            setProcessingSource({
+              ...target,
+              is_confirmed: true,
+              status: 'processing',
+              stage: 'Preparing Aura search',
+              progress: 35
+            });
+          }
+        }}
       />
 
       {/* Styled Delete Confirmation Dialog */}
@@ -770,6 +958,7 @@ export const AuraKnowledgeScreen: React.FC = () => {
         isOpen={!!processingSource}
         onClose={() => setProcessingSource(null)}
         source={sources.find(s => s.id === processingSource?.id) || processingSource}
+        onConfirmAll={handleConfirmAllFacts}
       />
 
       {/* Source Excerpt Modal */}

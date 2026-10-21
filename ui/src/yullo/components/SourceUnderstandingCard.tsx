@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Check, Trash2, ChevronDown, ChevronUp, X, Globe, FileText, CheckCircle2, AlertCircle, Loader2, XCircle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Check, CheckCheck, Trash2, ChevronDown, ChevronUp, X, Globe, FileText, CheckCircle2, AlertCircle, Loader2, XCircle } from 'lucide-react';
 import { ColouredIcon, getBrandIconFromUrl } from './ColouredIcon';
 
 export interface FactItem {
@@ -40,6 +40,8 @@ export interface SourceItem {
     description?: string;
     images?: Array<{ url: string; alt?: string; title?: string; caption?: string }>;
     documents?: Array<{ url: string; title: string; file_type: string; filename?: string }>;
+    links?: Array<{ url: string; title?: string; category?: string; category_path?: string[]; depth?: number; context_text?: string; section?: string }>;
+    link_categories?: Array<{ name: string; path: string[]; depth: number; parent?: string | null; links: Array<{ url: string; title: string; context_text?: string }> }>;
   };
 }
 
@@ -49,6 +51,7 @@ interface SourceUnderstandingCardProps {
   onRemove: (id: string) => void;
   onFactsChange?: (id: string, facts: Array<FactItem | string>) => void;
   onToggleConfirm?: (id: string, nextConfirmedState: boolean) => void;
+  onConfirmAllFacts?: (id: string) => void | Promise<void>;
 }
 
 export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = ({
@@ -57,6 +60,7 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
   onRemove,
   onFactsChange,
   onToggleConfirm,
+  onConfirmAllFacts,
 }) => {
   const [showDetails, setShowDetails] = useState(false);
   
@@ -81,10 +85,17 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
       evidence_excerpt: f.evidence_excerpt || '',
       source_locator: f.source_locator || f.source_doc_id || source.content_ref,
     };
-  });
+  }).filter(f => Boolean(f.text));
 
   const [facts, setFacts] = useState<FactItem[]>(initialFacts);
   const [isConfirmed, setIsConfirmed] = useState(source.is_confirmed || false);
+
+  // Synchronize facts when source.facts updates live from SSE streaming
+  useEffect(() => {
+    if (source.facts && source.facts.length > 0) {
+      setFacts(initialFacts);
+    }
+  }, [source.facts]);
 
   const displayTitle = source.title || source.content_ref.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
@@ -103,6 +114,18 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
     }
     onToggleConfirm?.(source.id, nextState);
   };
+
+  const handleConfirmAll = async () => {
+    if (onConfirmAllFacts) {
+      await onConfirmAllFacts(source.id);
+    } else {
+      setIsConfirmed(true);
+      onUseSource(source.id);
+      onToggleConfirm?.(source.id, true);
+    }
+  };
+
+  const isProcessingSource = ['uploaded', 'queued', 'running', 'processing', 'parsing_preview'].includes(source.status);
 
   const isUsable = (
     source.status === 'ready' || source.status === 'ready_to_review'
@@ -181,9 +204,35 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
 
       {/* 2. What We Understood Section */}
       <div className="py-3.5 border-b border-[var(--border)]">
-        <span className="text-[12px] font-semibold text-[var(--text-muted)] tracking-wider uppercase block mb-2 font-[Instrument_Sans]">
-          We found:
-        </span>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] font-semibold text-[var(--text-muted)] tracking-wider uppercase block font-[Instrument_Sans]">
+              We found:
+            </span>
+            {isProcessingSource && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 animate-pulse font-[Instrument_Sans]">
+                <Loader2 className="w-2.5 h-2.5 animate-spin" /> Extracting facts live...
+              </span>
+            )}
+            {!isProcessingSource && facts.length > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-[Instrument_Sans]">
+                <CheckCircle2 className="w-2.5 h-2.5" /> Extraction complete
+              </span>
+            )}
+          </div>
+
+          {facts.length > 0 && !isConfirmed && (
+            <button
+              type="button"
+              onClick={handleConfirmAll}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--accent-ink)] hover:underline cursor-pointer font-[Instrument_Sans]"
+              title="Confirm all extracted facts"
+            >
+              <CheckCheck className="w-3.5 h-3.5" />
+              <span>Confirm all facts</span>
+            </button>
+          )}
+        </div>
 
         {facts.length > 0 ? (
           <ul className="space-y-2">
