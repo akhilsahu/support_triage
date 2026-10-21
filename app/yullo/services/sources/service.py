@@ -336,7 +336,7 @@ class SourceService:
                 if latest_job and job_status == 'running':
                     latest_job.status = 'pending_confirm'
                     latest_job.progress = 100
-                    latest_job.stage_detail = 'Preview ready'
+                    latest_job.stage_detail = 'Finalizing'
                     db.add(latest_job)
             elif is_stale_job:
                 status_val = 'failed'

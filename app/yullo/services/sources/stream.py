@@ -224,11 +224,11 @@ class SourceStreamBroadcaster:
                 meta = dict(item.source_metadata or {})
                 meta["status"] = status
                 meta["progress"] = 100
-                meta["stage"] = "Preview ready"
+                meta["stage"] = "Finalizing" if status in ("ready", "ready_to_review") else "Preview ready"
                 if assets:
                     meta["assets"] = assets
                 if facts is not None:
-                    item.extracted_facts = facts[:6]
+                    item.extracted_facts = facts
                 item.source_metadata = meta
 
             job_stmt = (
@@ -239,7 +239,7 @@ class SourceStreamBroadcaster:
             job = (await db.execute(job_stmt)).scalars().first()
             if job:
                 job.status = "pending_confirm"
-                job.stage_detail = "Preview ready"
+                job.stage_detail = "Finalizing" if status in ("ready", "ready_to_review") else "Preview ready"
                 job.progress = 100
                 job.updated_at = datetime.utcnow()
 
@@ -253,7 +253,7 @@ class SourceStreamBroadcaster:
                         "source_id": str(source_id),
                         "status": status,
                         "progress": 100,
-                        "stage": "Preview ready",
+                        "stage": "Finalizing" if status in ("ready", "ready_to_review") else "Preview ready",
                     },
                 },
             )

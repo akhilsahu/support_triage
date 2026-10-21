@@ -324,7 +324,7 @@ async def add_source_url(
                         job = await session.get(IngestionJob, job_id)
                         if job and (job.status or "").lower() == "running":
                             job.status = "pending_confirm"
-                            job.stage_detail = "Preview ready"
+                            job.stage_detail = "Finalizing" if preview_res.get("status") in ("ready", "ready_to_review") else "Preview ready"
                             job.progress = 100
                         await session.commit()
                     except Exception as bg_err:
@@ -382,7 +382,7 @@ async def add_source_url(
         preview_job = await db.get(IngestionJob, accepted.job_id)
         if preview_job and (preview_job.status or "").lower() == "queued":
             preview_job.status = "pending_confirm"
-            preview_job.stage_detail = "Preview ready"
+            preview_job.stage_detail = "Finalizing" if preview_res.get("status") in ("ready", "ready_to_review") else "Preview ready"
             await db.commit()
 
         return {

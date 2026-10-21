@@ -28,31 +28,37 @@ export const ProcessingDetailsModal: React.FC<ProcessingDetailsModalProps> = ({
   const [isConfirming, setIsConfirming] = useState(false);
   const [confirmedAll, setConfirmedAll] = useState(false);
 
+  const isProcessing = Boolean(source && ['uploaded', 'queued', 'running', 'processing', 'parsing_preview'].includes(source.status));
+  const isComplete = Boolean(source && !isProcessing && (source.status === 'ready' || source.status === 'ready_to_review' || (source.progress ?? 0) >= 100));
+
   useEffect(() => {
     const createdAt = source?.created_at;
     if (!isOpen) return;
 
     const mountTime = Date.now();
-    // Update elapsed time every second, guarding against stale orphaned timestamps (> 1 hour)
-    const interval = setInterval(() => {
-      const now = Date.now();
+    const computeDiff = () => {
       if (createdAt) {
-        // Append 'Z' to treat as UTC if not already containing timezone offset
         const createdStr = createdAt.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(createdAt) ? createdAt : createdAt + 'Z';
         const start = new Date(createdStr).getTime();
-        const diff = Math.floor((now - start) / 1000);
-        // If within reasonable bounds (0 to 3600s), show true elapsed backend time
+        const diff = Math.floor((Date.now() - start) / 1000);
         if (diff >= 0 && diff < 3600) {
-          setElapsedSeconds(diff);
-          return;
+          return diff;
         }
       }
-      // If orphaned / stale job (> 1 hour ago) or missing created_at, measure from modal mount
-      setElapsedSeconds(Math.floor((now - mountTime) / 1000));
+      return Math.floor((Date.now() - mountTime) / 1000);
+    };
+
+    setElapsedSeconds(computeDiff());
+
+    // If source has finished processing, freeze the elapsed timer and do not increment forward
+    if (!isProcessing) return;
+
+    const interval = setInterval(() => {
+      setElapsedSeconds(computeDiff());
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isOpen, source?.created_at]);
+  }, [isOpen, source?.created_at, isProcessing]);
 
   useEffect(() => {
     // If completed without facts, auto-close after 1.5s
@@ -65,8 +71,6 @@ export const ProcessingDetailsModal: React.FC<ProcessingDetailsModalProps> = ({
   }, [isOpen, source?.status, source?.facts?.length, onClose]);
 
   if (!isOpen || !source) return null;
-
-  const isProcessing = ['uploaded', 'queued', 'running', 'processing', 'parsing_preview'].includes(source.status);
 
   // Extract normalized facts list
   const rawFacts = source.facts || [];
@@ -104,17 +108,21 @@ export const ProcessingDetailsModal: React.FC<ProcessingDetailsModalProps> = ({
   };
 
   // Determine current step index (0 to STAGES.length - 1)
-  const currentStageStr = source.stage || 'Processing';
-  let currentStepIndex = STAGES.findIndex(s => currentStageStr.toLowerCase().startsWith(s.toLowerCase()));
+  const currentStageStr = isComplete ? 'Complete' : (source.stage || 'Processing');
+  let currentStepIndex = isComplete ? STAGES.length - 1 : STAGES.findIndex(s => currentStageStr.toLowerCase().startsWith(s.toLowerCase()));
 
   if (currentStepIndex === -1) {
-    const lower = currentStageStr.toLowerCase();
-    if (source.status === 'parsing_preview' || lower.includes('read') || lower.includes('pars') || lower.includes('preview') || lower.includes('scrap')) currentStepIndex = 0;
-    else if (lower.includes('chunk') || lower.includes('organi')) currentStepIndex = 1;
-    else if (lower.includes('index') || lower.includes('search') || lower.includes('prepar') || lower.includes('enrich') || lower.includes('context')) currentStepIndex = 2;
-    else if (lower.includes('fact') || lower.includes('detail') || lower.includes('entit') || lower.includes('understand')) currentStepIndex = 3;
-    else if (source.progress === 100 || source.status === 'ready' || lower.includes('final') || lower.includes('done')) currentStepIndex = STAGES.length - 1;
-    else currentStepIndex = 1; // fallback
+    if (isComplete || (source.progress ?? 0) >= 100 || source.status === 'ready' || source.status === 'ready_to_review') {
+      currentStepIndex = STAGES.length - 1;
+    } else {
+      const lower = currentStageStr.toLowerCase();
+      if (source.status === 'parsing_preview' || lower.includes('read') || lower.includes('pars') || lower.includes('scrap')) currentStepIndex = 0;
+      else if (lower.includes('chunk') || lower.includes('organi')) currentStepIndex = 1;
+      else if (lower.includes('index') || lower.includes('search') || lower.includes('prepar') || lower.includes('enrich') || lower.includes('context')) currentStepIndex = 2;
+      else if (lower.includes('fact') || lower.includes('detail') || lower.includes('entit') || lower.includes('understand')) currentStepIndex = 3;
+      else if (lower.includes('final') || lower.includes('done')) currentStepIndex = STAGES.length - 1;
+      else currentStepIndex = 1; // fallback
+    }
   }
 
   const formatTime = (seconds: number) => {
@@ -172,13 +180,13 @@ export const ProcessingDetailsModal: React.FC<ProcessingDetailsModalProps> = ({
           {/* Progress Bar */}
           <div className="space-y-2">
             <div className="flex items-center justify-between text-[12px] font-mono text-[var(--text-secondary)]">
-              <span>{currentStageStr}</span>
-              <span className="font-bold text-[var(--text-primary)]">{source.progress ?? 0}%</span>
+              <span>{isComplete ? 'Complete' : currentStageStr}</span>
+              <span className="font-bold text-[var(--text-primary)]">{isComplete ? 100 : (source.progress ?? 0)}%</span>
             </div>
             <div className="w-full bg-[var(--surface-soft)] h-2 rounded-full overflow-hidden border border-[var(--border)]">
               <div 
                 className="h-full transition-all duration-300 rounded-full"
-                style={{ width: `${Math.max(source.progress ?? 0, 8)}%`, backgroundColor: 'var(--accent)' }}
+                style={{ width: `${Math.max(isComplete ? 100 : (source.progress ?? 0), 8)}%`, backgroundColor: 'var(--accent)' }}
               />
             </div>
           </div>
@@ -187,12 +195,12 @@ export const ProcessingDetailsModal: React.FC<ProcessingDetailsModalProps> = ({
           <div className="grid grid-cols-2 gap-3 p-4 bg-[var(--surface-soft)]/70 rounded-xl border border-[var(--border)]">
             <div>
               <p className="text-[11px] text-[var(--text-secondary)] font-semibold uppercase tracking-wider mb-0.5">Progress</p>
-              <p className="text-xl font-bold font-mono text-[var(--text-primary)]">{source.progress ?? 0}%</p>
+              <p className="text-xl font-bold font-mono text-[var(--text-primary)]">{isComplete ? 100 : (source.progress ?? 0)}%</p>
             </div>
             <div>
               <p className="text-[11px] text-[var(--text-secondary)] font-semibold uppercase tracking-wider mb-0.5">Stage</p>
               <p className="text-[14px] font-medium mt-0.5 text-[var(--text-primary)]">
-                {currentStepIndex + 1} of {STAGES.length}
+                {isComplete ? '5 of 5' : `${currentStepIndex + 1} of ${STAGES.length}`}
               </p>
             </div>
             <div>
@@ -202,9 +210,11 @@ export const ProcessingDetailsModal: React.FC<ProcessingDetailsModalProps> = ({
             <div>
               <p className="text-[11px] text-[var(--text-secondary)] font-semibold uppercase tracking-wider mb-0.5">Est. Remaining</p>
               <p className="text-[14px] font-mono mt-0.5 text-[var(--text-primary)]">
-                {source.eta_seconds != null && source.eta_seconds > 0 
-                  ? formatTime(source.eta_seconds) 
-                  : (source.progress === 100 || source.status === 'ready' ? 'Complete' : 'Calculating…')}
+                {isComplete 
+                  ? 'Complete' 
+                  : source.eta_seconds != null && source.eta_seconds > 0 
+                    ? formatTime(source.eta_seconds) 
+                    : 'Calculating…'}
               </p>
             </div>
           </div>
@@ -276,9 +286,9 @@ export const ProcessingDetailsModal: React.FC<ProcessingDetailsModalProps> = ({
             </p>
             <div className="space-y-2.5">
               {STAGES.map((stageName, idx) => {
-                const isPast = idx < currentStepIndex;
-                const isCurrent = idx === currentStepIndex;
-                const isFuture = idx > currentStepIndex;
+                const isPast = isComplete || idx < currentStepIndex;
+                const isCurrent = !isComplete && idx === currentStepIndex;
+                const isFuture = !isComplete && idx > currentStepIndex;
                 
                 return (
                   <div key={stageName} className={`flex items-center gap-3 ${isFuture ? 'opacity-40' : ''}`}>
@@ -289,7 +299,7 @@ export const ProcessingDetailsModal: React.FC<ProcessingDetailsModalProps> = ({
                     ) : (
                       <CircleDashed className="w-4.5 h-4.5 text-[var(--text-tertiary)] shrink-0" />
                     )}
-                    <span className={`text-[13px] ${isCurrent ? 'font-semibold text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
+                    <span className={`text-[13px] ${isCurrent ? 'font-semibold text-[var(--text-primary)]' : isPast ? 'text-[var(--text-primary)] font-medium' : 'text-[var(--text-secondary)]'}`}>
                       {isCurrent ? currentStageStr : stageName}
                     </span>
                   </div>
