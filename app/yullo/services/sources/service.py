@@ -1,31 +1,98 @@
+import asyncio
 import hashlib
 import json
 import logging
 import re
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.ingestion_job import IngestionJob
 from app.models.knowledge_base import KnowledgeBase, KnowledgeBaseItem
+from app.models.kb_fact import KBFact
 from app.models.yullo_config import YulloConfig
 from app.models.yullo_space import YulloSpace
 from app.models.space import Space
 from app.orchestra.ai.ingestion.storage import put as storage_put
-from app.orchestra.ai.ingestion.text_sanitize import sanitize_extracted_text
+from app.orchestra.ai.ingestion.core.text_utils import sanitize_extracted_text
 from app.yullo.services.sources.contracts import SourceInput, SourceAccepted, TextSourceInput, UrlSourceInput, FileSourceInput
 from app.schemas.yullo_onboarding import SpaceSourceResponse
+from app.orchestra.ai.db_utils.source_loader import source_chunks_enabled
 
 logger = logging.getLogger(__name__)
 
 
+def public_source_asset(asset):
+    """Disclosure policy shared by source images and their associated links."""
+    return (isinstance(asset, dict)
+            and asset.get('visibility', 'public') in ('public', 'public_aura')
+            and asset.get('disclosure_mode', 'direct') == 'direct')
+
+
+def source_images(source, *, config=None):
+    """Authorize active indexed source evidence without a fact-approval gate."""
+    from app.orchestra.ai.db_utils.source_loader import active_chunk_doc_id
+    if not active_chunk_doc_id(source):
+        return []
+    metadata = source.source_metadata or {}
+    if metadata.get('visibility', 'public') not in ('public', 'public_aura'):
+        return []
+    if metadata.get('disclosure_mode', 'direct') != 'direct':
+        return []
+    from app.yullo.config.inference import get_chat_image_config
+    from app.orchestra.ai.knowledge.retrieval.images_retrieval import build_source_images
+
+    return build_source_images(source, config=config if config is not None else get_chat_image_config(),
+                               asset_visible=public_source_asset)
+
+
 class SourceService:
+    async def record_source_index(
+        self, db: AsyncSession, *, user_id: UUID, space_id: UUID, source_id: UUID,
+        source_version: int, doc_id: str, chunk_count: int, page_count: int,
+        job_id: UUID | None = None, lease_token: UUID | None = None,
+    ) -> bool:
+        """Make a completed index active without approving any extracted facts."""
+        if (type(source_version) is not int or source_version < 1
+            or type(chunk_count) is not int or chunk_count < 1
+            or type(page_count) is not int or page_count < 1
+            or doc_id not in (f'knowledge:{source_id}:v{source_version}', f'preview:{source_id}:v{source_version}')):
+            raise ValueError('Invalid source index result')
+        conditions = [
+            KnowledgeBaseItem.id == source_id, KnowledgeBaseItem.space_id == space_id,
+            Space.owner_user_id == user_id, Space.product == 'yullo',
+        ]
+        if job_id is not None:
+            conditions.append(select(IngestionJob.id).where(
+                IngestionJob.id == job_id, IngestionJob.kb_item_id == source_id,
+                IngestionJob.space_id == space_id, IngestionJob.source_version == source_version,
+                IngestionJob.lease_token == lease_token, IngestionJob.status == 'running',
+            ).exists())
+        item = await db.scalar(select(KnowledgeBaseItem).join(Space, Space.id == KnowledgeBaseItem.space_id)
+                               .where(*conditions).with_for_update(of=KnowledgeBaseItem)
+                               .execution_options(populate_existing=True))
+        if not item or (item.source_version or 1) != source_version:
+            return False
+        metadata = dict(item.source_metadata or {})
+        enabled = source_chunks_enabled(item)
+        metadata.update(indexing_status='done', indexed_source_version=source_version,
+                        chunk_count=chunk_count, page_count=page_count,
+                        chunks_enabled=enabled, is_confirmed=enabled)
+        item.indexed_doc_id = doc_id
+        item.published_version = source_version
+        item.source_metadata = metadata
+        await db.execute(update(YulloSpace).where(YulloSpace.space_id == space_id)
+                         .values(context_version=YulloSpace.context_version + 1))
+        await db.commit()
+        return True
+
     @staticmethod
     async def _resolve_primary_kb(db: AsyncSession, space_id: UUID, create_if_missing: bool = True) -> UUID | None:
         """
@@ -334,7 +401,7 @@ class SourceService:
                 # Item extraction is already completed and reviewable.
                 # Do not let an abandoned or orphaned running job drag it back to running.
                 if latest_job and job_status == 'running':
-                    latest_job.status = 'pending_confirm'
+                    latest_job.status = 'done'
                     latest_job.progress = 100
                     latest_job.stage_detail = 'Finalizing'
                     db.add(latest_job)
@@ -380,7 +447,7 @@ class SourceService:
 
             source_assets = dict(meta.get("assets") or {})
             if (not source_assets.get("images") or not source_assets.get("links")) and preview_txt:
-                from app.yullo.services.sources.asset_extractor import extract_markdown_assets
+                from app.orchestra.ai.ingestion.scraper.asset_extractor import extract_markdown_assets
                 md_assets = extract_markdown_assets(preview_txt, item.source_locator or "")
                 if md_assets.get("images") and not source_assets.get("images"):
                     source_assets["images"] = md_assets["images"]
@@ -392,7 +459,7 @@ class SourceService:
                     source_assets["link_categories"] = md_assets["link_categories"]
 
             if source_assets.get("links") and not source_assets.get("link_categories"):
-                from app.yullo.services.sources.asset_extractor import _build_link_categories
+                from app.orchestra.ai.ingestion.scraper.asset_extractor import _build_link_categories
                 source_assets["link_categories"] = _build_link_categories(source_assets["links"])
 
             sources.append(SpaceSourceResponse(
@@ -406,7 +473,7 @@ class SourceService:
                 preview_excerpt=preview_txt,
                 page_count=meta.get("page_count"),
                 chunk_count=meta.get("chunk_count"),
-                is_confirmed=meta.get("is_confirmed", False),
+                is_confirmed=source_chunks_enabled(item),
                 is_scanned=meta.get("is_scanned", False),
                 prompt_version=meta.get("prompt_version", "v1"),
                 source_version=item.source_version or 1,
@@ -457,7 +524,7 @@ class SourceService:
         source_id: UUID,
         is_confirmed: bool,
     ) -> UUID | None:
-        """Enable/disable a source and queue full ingestion when it is enabled."""
+        """Pause/resume a source without approving facts or rerunning ingestion."""
         item = await db.scalar(
             select(KnowledgeBaseItem)
             .join(Space, Space.id == KnowledgeBaseItem.space_id)
@@ -472,42 +539,14 @@ class SourceService:
             raise HTTPException(status_code=404, detail="Source not found")
 
         metadata = dict(item.source_metadata or {})
-        was_confirmed = bool(metadata.get("is_confirmed", False))
+        metadata['chunks_enabled'] = is_confirmed
         metadata["is_confirmed"] = is_confirmed
         item.source_metadata = metadata
 
         if is_confirmed:
-            if was_confirmed and item.ingestion_status in ("queued", "processing", "ready"):
-                return None
-
-            # URL previews prepare a durable job without dispatching it. Reuse
-            # that exact job after confirmation instead of creating a duplicate.
-            pending_jobs = (await db.execute(select(IngestionJob).where(
-                IngestionJob.kb_item_id == item.id,
-                IngestionJob.status.in_(("pending_confirm", "awaiting_confirmation", "queued")),
-            ).order_by(IngestionJob.created_at.desc()))).scalars().all()
-
-            item.ingestion_status = "queued"
-            if pending_jobs:
-                reusable_job = pending_jobs[0]
-                reusable_job.status = "queued"
-                reusable_job.progress = 0
-                reusable_job.eta_seconds = None
-                reusable_job.stage_detail = "Queued"
-                reusable_job.dispatch_attempts = 0
-                reusable_job.dispatch_after = datetime.utcnow()
-                for duplicate_job in pending_jobs[1:]:
-                    duplicate_job.status = "cancelled"
-                return reusable_job.id
-
-            accepted = await self.retry_source(
-                db,
-                user_id=user_id,
-                space_id=item.space_id,
-                item_id=item.id,
-                idempotency_key=uuid.uuid4(),
-            )
-            return accepted.job_id
+            await db.execute(update(YulloSpace).where(YulloSpace.space_id == item.space_id)
+                             .values(context_version=YulloSpace.context_version + 1))
+            return None
 
         # Stopping a source immediately removes its extracted entities from the
         # public page. The indexed source and provenance remain available for a
@@ -534,29 +573,140 @@ class SourceService:
             yullo_space.context_version += 1
         return None
 
-    async def delete_source(self, db: AsyncSession, *, user_id: UUID, space_id: Optional[UUID], source_id: UUID) -> None:
+    async def get_deletion_impact(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        source_id: UUID,
+    ) -> dict:
+        item = await db.scalar(select(KnowledgeBaseItem).where(KnowledgeBaseItem.id == source_id))
+        if not item:
+            raise HTTPException(status_code=404, detail="Source not found")
+        space = await db.scalar(
+            select(Space).where(
+                Space.id == item.space_id,
+                Space.owner_user_id == user_id,
+                Space.product == "yullo",
+            )
+        )
+        if not space:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        from app.models.yullo_space_entity import YulloSpaceEntityEvidence
+
+        facts = (
+            await db.scalars(select(KBFact.id).where(KBFact.source_item_id == item.id))
+        ).all()
+        affected_ids = set((await db.scalars(
+            select(YulloSpaceEntityEvidence.entity_id).where(
+                YulloSpaceEntityEvidence.space_id == item.space_id,
+                YulloSpaceEntityEvidence.source_item_id == item.id,
+            )
+        )).all())
+        other_supported_ids = set((await db.scalars(
+            select(YulloSpaceEntityEvidence.entity_id).where(
+                YulloSpaceEntityEvidence.space_id == item.space_id,
+                YulloSpaceEntityEvidence.entity_id.in_(affected_ids),
+                YulloSpaceEntityEvidence.source_item_id != item.id,
+            )
+        )).all()) if affected_ids else set()
+        metadata = item.source_metadata or {}
+        stored_artifacts = sum(bool(value) for value in (
+            item.source_locator if item.item_type != "url" else None,
+            metadata.get("extracted_text_blob_key"),
+            metadata.get("raw_html_path"),
+            metadata.get("raw_deep_path"),
+        ))
+        return {
+            "source_id": str(item.id),
+            "source_title": item.title or item.source_locator or "Untitled source",
+            "source_version": item.source_version or 1,
+            "facts": len(facts),
+            "entities_source_only": len(affected_ids - other_supported_ids),
+            "entities_with_other_evidence": len(affected_ids & other_supported_ids),
+            "vector_chunks": int(metadata.get("chunk_count") or 0),
+            "stored_artifacts": stored_artifacts,
+        }
+
+    @staticmethod
+    def _delete_snapshot(path_value: str | None, *, space_id: UUID, source_id: UUID) -> None:
+        if not path_value:
+            return
+        candidate = Path(path_value).resolve()
+        allowed_root = (Path.cwd() / "uploads" / "links").resolve()
+        try:
+            candidate.relative_to(allowed_root)
+        except ValueError:
+            raise ValueError("Snapshot path is outside the managed links directory")
+        if str(space_id) not in candidate.parts or str(source_id) not in candidate.parts:
+            raise ValueError("Snapshot path does not match its Space and source")
+        candidate.unlink(missing_ok=True)
+
+    async def delete_source(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        space_id: Optional[UUID],
+        source_id: UUID,
+        derived_data: str = "purge",
+        expected_source_version: int | None = None,
+    ) -> dict:
         """
         Delete a source, purge vector chunks from vector storage, deactivate extracted entities,
         and remove the KnowledgeBaseItem.
         """
-        stmt = select(KnowledgeBaseItem).where(KnowledgeBaseItem.id == source_id)
+        if derived_data not in {"purge", "retain_for_review"}:
+            raise HTTPException(status_code=400, detail="Invalid derived-data mode")
+        stmt = select(KnowledgeBaseItem).where(KnowledgeBaseItem.id == source_id).with_for_update()
         item = await db.scalar(stmt)
         if not item:
             raise HTTPException(status_code=404, detail="Source not found")
             
-        space_stmt = select(Space).where(Space.id == item.space_id, Space.owner_user_id == user_id)
+        space_stmt = select(Space).where(
+            Space.id == item.space_id,
+            Space.owner_user_id == user_id,
+            Space.product == "yullo",
+        )
         space = await db.scalar(space_stmt)
         if not space:
-            raise HTTPException(status_code=403, detail="Not authorized to modify this space")
+            raise HTTPException(status_code=404, detail="Source not found")
+        if space_id is not None and item.space_id != space_id:
+            raise HTTPException(status_code=404, detail="Source not found")
+        if expected_source_version is not None and (item.source_version or 1) != expected_source_version:
+            raise HTTPException(status_code=409, detail="Source changed; refresh and try again")
+
+        cleanup_errors: list[str] = []
+
+        # Revoke every source job, including old retries, before its parent and
+        # job rows cascade away. Workers also watch committed source deletion.
+        jobs = (await db.scalars(select(IngestionJob).where(
+            IngestionJob.kb_item_id == item.id,
+            IngestionJob.space_id == item.space_id,
+        ))).all()
+        doc_ids = {item.indexed_doc_id, item.doc_id}
+        for job in jobs:
+            doc_ids.add(job.doc_id)
+            if job.source_version is not None:
+                doc_ids.add(f'knowledge:{item.id}:v{job.source_version}')
+                doc_ids.add(f'preview:{item.id}:v{job.source_version}')
+        doc_ids.add(f'preview:{item.id}:v{item.source_version or 1}')
+        for job in jobs:
+            if not job.is_terminal:
+                job.status = 'cancelled'
+                job.lease_token = None
+                job.lease_expires_at = None
+                job.stage_detail = 'Source removed'
             
         # 1. Purge vector chunks from vector store
-        doc_id_to_delete = item.indexed_doc_id or item.doc_id
-        if doc_id_to_delete:
+        for doc_id_to_delete in sorted(doc_id for doc_id in doc_ids if doc_id):
             try:
-                from app.rag.vector_store import get_vector_store
-                get_vector_store().delete_doc(str(item.space_id), doc_id_to_delete)
+                from app.orchestra.ai.knowledge.vector_store import get_vector_store
+                await asyncio.to_thread(get_vector_store().delete_client_doc, str(item.space_id), doc_id_to_delete)
             except Exception as vec_err:
-                logger.warning(f"Failed to delete vector chunks for item {source_id}: {vec_err}")
+                cleanup_errors.append("vector_chunks")
+                logger.warning("Failed to delete vector chunks for item %s: %s", source_id, vec_err)
                 
         # 1.5 Purge original blob file from storage
         if item.source_locator and item.item_type != "url":
@@ -564,7 +714,8 @@ class SourceService:
                 from app.orchestra.ai.ingestion.storage import delete as storage_delete
                 await storage_delete(item.source_locator)
             except Exception as blob_err:
-                logger.warning(f"Failed to delete original blob for item {source_id}: {blob_err}")
+                cleanup_errors.append("source_blob")
+                logger.warning("Failed to delete original blob for item %s: %s", source_id, blob_err)
                 
         # 1.6 Purge extracted text blob if present
         meta = item.source_metadata or {}
@@ -577,7 +728,23 @@ class SourceService:
                     extracted_text_blob = f"{item.space_id}/{extracted_text_blob}"
                 await storage_delete(extracted_text_blob)
             except Exception as blob_err:
-                logger.warning(f"Failed to delete extracted text blob for item {source_id}: {blob_err}")
+                cleanup_errors.append("extracted_text")
+                logger.warning("Failed to delete extracted text blob for item %s: %s", source_id, blob_err)
+
+        for metadata_key in ("raw_html_path", "raw_deep_path"):
+            try:
+                self._delete_snapshot(meta.get(metadata_key), space_id=item.space_id, source_id=item.id)
+            except Exception as snapshot_err:
+                cleanup_errors.append(metadata_key)
+                logger.warning("Failed to delete %s for item %s: %s", metadata_key, source_id, snapshot_err)
+
+        try:
+            from app.orchestra.ai.ingestion.cancellation import delete_source_snapshots
+            await asyncio.to_thread(delete_source_snapshots, space_id=item.space_id, source_id=item.id)
+        except Exception as snapshot_err:
+            cleanup_errors.append('source_snapshots')
+            logger.warning('source.snapshot_cleanup_failed source_id=%s error_type=%s',
+                           source_id, type(snapshot_err).__name__)
 
         # 2. Deactivate entities whose provenance traces back to this source.
         #    The source_item_id link lives on YulloSpaceEntityEvidence (the
@@ -592,7 +759,15 @@ class SourceService:
         ).distinct()
         affected_entity_ids = (await db.execute(evidence_stmt)).scalars().all()
 
+        source_only_entity_ids: list[UUID] = []
         if affected_entity_ids:
+            other_evidence_ids = set((await db.scalars(
+                select(YulloSpaceEntityEvidence.entity_id).where(
+                    YulloSpaceEntityEvidence.space_id == item.space_id,
+                    YulloSpaceEntityEvidence.entity_id.in_(affected_entity_ids),
+                    YulloSpaceEntityEvidence.source_item_id != item.id,
+                )
+            )).all())
             entity_stmt = select(YulloSpaceEntity).where(
                 and_(
                     YulloSpaceEntity.space_id == item.space_id,
@@ -601,9 +776,59 @@ class SourceService:
             )
             entities = (await db.execute(entity_stmt)).scalars().all()
             for ent in entities:
-                ent.is_active = False
-                ent.review_status = "superseded"
-            
+                if ent.origin_type != "extracted" or ent.id in other_evidence_ids:
+                    continue
+                source_only_entity_ids.append(ent.id)
+                if derived_data == "purge":
+                    await db.delete(ent)
+                else:
+                    ent.is_active = False
+                    ent.is_public = False
+                    ent.review_status = "superseded"
+                    ent.revision += 1
+
+        facts = (await db.scalars(select(KBFact).where(
+            KBFact.space_id == item.space_id,
+            KBFact.source_item_id == item.id,
+        ))).all()
+        retained_fact_ids: list[str] = []
+        if derived_data == "purge":
+            for fact in facts:
+                await db.delete(fact)
+        else:
+            for fact in facts:
+                fact.source_item_id = None
+                fact.deleted_source_id = item.id
+                fact.deleted_source_locator = item.source_locator
+                fact.maintenance_mode = "review_required"
+                fact.review_status = "extracted"
+                fact.verified = False
+                retained_fact_ids.append(str(fact.id))
+            if retained_fact_ids or source_only_entity_ids:
+                from app.models.yullo_knowledge_cleanup_alert import YulloKnowledgeCleanupAlert
+
+                db.add(YulloKnowledgeCleanupAlert(
+                    space_id=item.space_id,
+                    deleted_source_id=item.id,
+                    source_title=item.title or item.source_locator or "Untitled source",
+                    source_locator=item.source_locator,
+                    fact_ids=retained_fact_ids,
+                    entity_ids=[str(entity_id) for entity_id in source_only_entity_ids],
+                ))
+
+        # Detach retained facts before deleting the source so the database FK
+        # cannot cascade them. Evidence rows still cascade from the source.
+        await db.flush()
+
+        from app.models.yullo_source import YulloSource
+
+        legacy_sources = (await db.scalars(select(YulloSource).where(
+            YulloSource.space_id == item.space_id,
+            YulloSource.kb_item_id == item.id,
+        ))).all()
+        for legacy_source in legacy_sources:
+            await db.delete(legacy_source)
+
         await db.delete(item)
         
         yullo_space = await db.scalar(select(YulloSpace).where(YulloSpace.space_id == item.space_id))
@@ -612,3 +837,27 @@ class SourceService:
             db.add(yullo_space)
             
         await db.commit()
+        logger.info('source.deleted space_id=%s source_id=%s jobs_cancelled=%s cleanup=%s',
+                    item.space_id, source_id, len(jobs), 'pending_retry' if cleanup_errors else 'complete')
+        return {
+            "ok": True,
+            "cleanup": "pending_retry" if cleanup_errors else "complete",
+            "cleanup_failures": cleanup_errors,
+            "review_created": bool(retained_fact_ids or source_only_entity_ids),
+        }
+
+
+async def load_chat_sources(db, context, *, refresh=False):
+    """Resolve current Space/KB/publication scope for retrieval and expansion."""
+    from app.orchestra.ai.db_utils.source_loader import (
+        resolve_space_kb_ids, load_published_chat_sources, active_chunk_doc_id,
+    )
+    authorized = await resolve_space_kb_ids(db, context.space_id, product='yullo')
+    kb_ids = [key for key in authorized if not context.kb_ids or key in context.kb_ids]
+    items = await load_published_chat_sources(db, context.space_id, kb_ids, product='yullo', refresh=refresh)
+    return kb_ids, {
+        doc_id: item for item in items
+        if (doc_id := active_chunk_doc_id(item))
+        and (item.source_metadata or {}).get('visibility', 'public') in ('public', 'public_aura')
+        and (item.source_metadata or {}).get('disclosure_mode', 'direct') == 'direct'
+    }

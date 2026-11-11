@@ -53,15 +53,21 @@ export interface AppearanceResponse {
   recommendation?: AppearanceCandidate | null
   assets: AppearanceAsset[]
   revision: number
+  editorDraft?: AppearanceRebuildLayoutResponse | null
+  appearanceInitialized?: boolean
 }
 
 export const appearanceApi = {
+  initialize: async (spaceId: string): Promise<AppearanceResponse> => {
+    const response = await yulloApiClient.post(`/spaces/${spaceId}/appearance/initialize`)
+    return response.data
+  },
   get: async (spaceId: string): Promise<AppearanceResponse> => {
     const response = await yulloApiClient.get(`/spaces/${spaceId}/appearance`)
     return response.data
   },
-  save: async (spaceId: string, config: SpacePresentationConfig, expectedRevision: number): Promise<AppearanceResponse> => {
-    const response = await yulloApiClient.patch(`/spaces/${spaceId}/appearance`, { config, expectedRevision })
+  save: async (spaceId: string, config: SpacePresentationConfig, expectedRevision: number, discardEditorDraft = false): Promise<AppearanceResponse> => {
+    const response = await yulloApiClient.patch(`/spaces/${spaceId}/appearance`, { config, expectedRevision, discardEditorDraft })
     return response.data
   },
   recommend: async (spaceId: string): Promise<AppearanceCandidate> => {

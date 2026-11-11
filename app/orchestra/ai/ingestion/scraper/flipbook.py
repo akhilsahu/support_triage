@@ -31,7 +31,7 @@ import re
 from typing import List, Optional
 from urllib.parse import urljoin, urlparse
 
-from app.orchestra.ai.ingestion.scraper.base import FetchedPage, ScrapeError, ScraperConfig
+from app.orchestra.ai.ingestion.scraper.base import FetchedPage, ScrapeError
 from app.orchestra.ai.ingestion.scraper.providers import _stream_fetch
 from app.orchestra.ai.ingestion.scraper.safety import validate_url
 
@@ -78,7 +78,7 @@ def _extract_text_for_pages(raw: bytes) -> List[str]:
     return [p for p in pages if isinstance(p, str) and p.strip()]
 
 
-async def resolve_flipbook(shell_url: str, cfg: ScraperConfig) -> Optional[FetchedPage]:
+async def resolve_flipbook(shell_url: str, cfg: dict) -> Optional[FetchedPage]:
     """
     Recover the real content of a FlipHTML5 shell.
 
@@ -102,7 +102,7 @@ async def resolve_flipbook(shell_url: str, cfg: ScraperConfig) -> Optional[Fetch
     if download:
         try:
             pdf_url = validate_url(urljoin(shell_url, download),
-                                   allow_private_hosts=cfg.allow_private_hosts)
+                                   allow_private_hosts=cfg['allow_private_hosts'])
             raw, final_url, content_type, status_code = await _stream_fetch(pdf_url, cfg)
             return FetchedPage(
                 raw=raw,
@@ -120,7 +120,7 @@ async def resolve_flipbook(shell_url: str, cfg: ScraperConfig) -> Optional[Fetch
     if search_text:
         try:
             text_url = validate_url(urljoin(shell_url, search_text),
-                                    allow_private_hosts=cfg.allow_private_hosts)
+                                    allow_private_hosts=cfg['allow_private_hosts'])
             raw_text, _, _, _ = await _stream_fetch(text_url, cfg)
         except ScrapeError:
             return None

@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.yullo.schemas.appearance import SpacePresentationConfig
+from app.yullo.schemas.appearance import AppearanceResponse, SpacePresentationConfig
 
 
 class StrictModel(BaseModel):
@@ -66,6 +66,7 @@ class AppearancePreviewRequest(StrictModel):
     current_config: SpacePresentationConfig = Field(alias="currentConfig")
     force: bool = False
     section_type: PreviewSectionType | None = Field(default=None, alias="sectionType")
+    current_content: AppearancePreviewContent | None = Field(default=None, alias="currentContent")
 
 
 class AppearancePreviewApplyRequest(StrictModel):
@@ -96,4 +97,9 @@ class AppearanceRebuildLayoutResponse(StrictModel):
     preview_content: AppearancePreviewContent = Field(alias="previewContent")
     explanation: str
     grounded_entity_ids: list[str] = Field(default_factory=list, alias="groundedEntityIds")
+
+
+class AppearanceEditorResponse(AppearanceResponse):
+    editor_draft: AppearanceRebuildLayoutResponse | None = Field(default=None, alias="editorDraft")
+    appearance_initialized: bool = Field(default=False, alias="appearanceInitialized")
 

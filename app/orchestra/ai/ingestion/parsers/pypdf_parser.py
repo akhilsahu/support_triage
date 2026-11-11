@@ -15,7 +15,7 @@ from typing import List
 
 import structlog
 
-from app.rag.document_parser import ParsedDocument, ParsedPage
+from app.orchestra.ai.core.document_models import ParsedDocument, ParsedPage
 from app.orchestra.ai.ingestion.core.base import BaseParser
 
 logger = structlog.get_logger()

@@ -1,14 +1,6 @@
-"""
-app/orchestra/ai_claude — Agno-based agent orchestration POC.
+"""Shared AI capabilities, database-agent orchestration and product AI flows.
 
-Drop-in replacement for DynamicAgentExecutor built on Agno's framework.
-
-Key wins over the custom executor:
-  - Single LLM call per request (Team routing replaces triage LLM call)
-  - Native parallel tool execution
-  - Native streaming
-  - Model-validated tool schemas (no hand-parsed JSON)
-  - Built-in mem0 memory backend
-
-Entry point: build_executor (core/factory.py)
+Database-agent entry point: build_executor (inference/factory.py).
+Aura conversation lifecycle: app.yullo.adapters.conversations.
+Product-specific evidence rules are injected by app.yullo services.
 """

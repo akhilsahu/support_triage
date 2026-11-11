@@ -509,3 +509,35 @@ Last updated: 2026-09-27
 - The approved V1 config defines one `hero.assetId`; it supports opening/hero and image-background use. A distinct featured-asset role needs a future contract field and was not invented here.
 - Aura provider failure behavior is implemented and preserves the draft. A live provider recommendation was not invoked during verification.
 
+
+## 2026-11-12 preview/public viewport parity — implemented
+
+User reported appearance preview/public page spacing and proportions differed, including excessive public-page side margins. Preserve the shared renderer and draft/publish behavior; no tests requested.
+
+- `components/PublicLinkPreview.tsx`: render the existing PublicSpaceExperience through a React portal into a same-origin sandboxed iframe. Desktop uses the host viewport (minimum 1280px for desktop simulation); mobile uses 390x844. ResizeObserver scales the complete viewport proportionally to the panel instead of changing content layout to fit the editor column. Mobile width remains capped even at compact editor breakpoints; frame height follows the viewport aspect ratio. CSS media queries and vw/vh now use the preview's own viewport. Existing section-edit context and draft callbacks remain attached through the portal. Copy/synchronize application styles and root theme attributes, with observer cleanup; preserve native dialog support. No additional backend request or public-link publication.
+- `presentation/themeTokens.ts`: widen the common per-theme content limits by 25%, capped at 1440px, preserving the stretch option. This reduces public-page side gaps and applies the same width to the preview.
+- `public/components/AuraExperience.tsx`: align composer maximum width with the shared presentation width and remove nested horizontal padding. Add min-height:0 to the flexible scrolling area so the composer stays visible instead of competing with a full-height child.
+- Verification: TypeScript and focused lint passed before final review; final repeat pending below. No tests, live configuration/data writes or publishing. Browser visual comparison was attempted, but the browser access host is unavailable. Iframe interactions, focus/native dialogs, responsive rendering and exact visual parity therefore remain unverified. Unsaved draft/example data can still intentionally differ from the published public page until saved.
+- Final verification: frontend TypeScript, focused ESLint and scoped diff whitespace checks passed after the final iframe sizing/theme changes. No tests ran. Browser/runtime parity remains unverified for the reason above.
+
+## 2026-11-12 section mismatch follow-up
+
+- User correctly identified section/content differences beyond viewport sizing. Read-only inspection of Space e79e184d-0a84-4008-aad8-02afc7a05934 found no stored published sections (public resolves its default config), while saved editor draft specifies grid_2col services and grid_3col portfolio. Draft and published content overrides also exist. No config was published or changed in the database.
+- `AppearanceScreen.tsx` previously merged fixtures into live content by default, causing preview-only example sections. It now starts from actual live content (empty until loaded), then overlays authorized saved/session drafts. Explicit example toggles retain fixture previews. No generation, approval or publishing capability was removed.
+- `AppearanceHeader.tsx` clarifies 'Draft saved · not published'. Different draft variants remain intentional until Save appearance; using the shared renderer does not imply the draft equals published state. The previous viewport-only change did not resolve these data/config differences.
+- Static type/lint results pending below. No tests, provider calls or live writes; browser visual comparison remains unavailable.
+- Final checks: TypeScript and scoped whitespace passed; focused lint reported no errors and one existing AppearanceScreen effect dependency warning (`history`, line 245). No tests ran. Actual post-save/public parity remains unverified.
+
+## 2026-11-12 preview zoom — implemented
+
+- Added keyboard-accessible minus/plus controls, live percentage and Fit reset beside device controls in AppearanceCanvas. Zoom ranges from 50% to 200% of the fitted preview, in 25% increments; limit buttons disable appropriately. Uses existing theme tokens and wraps on narrow layouts.
+- PublicLinkPreview now measures a stable scroll viewport and scales the existing iframe/frame dimensions by the selected zoom without changing the simulated desktop/mobile viewport or published layout. A centered max-content surface makes both edges reachable when zoomed, with horizontal/vertical scrolling and a stable scrollbar gutter. Fit includes frame borders to avoid artificial horizontal overflow.
+- AppearanceScreen keys the canvas by Space instead of every content update, preserving zoom/scroll and existing iframe/editor state through draft edits; switching Spaces remounts normally. No public appearance config or persistence/API change.
+- Verification: TypeScript, focused zoom-component ESLint and scoped whitespace checks passed. No tests ran per user instruction. Browser host remains unavailable, so visual zoom/scroll/focus behavior is not verified.
+
+## 2026-11-12 maximize preview workspace — implemented
+
+- Removed the desktop preview's 1080px cap in both sizing logic and frame CSS. Fit now fills the available preview column, retaining the 390px mobile simulation and proportional iframe rendering/zoom.
+- Changed the editor grid to a flexible preview column plus a 300–340px inspector; inspector fills its own column, removing the prior mismatch between a fractional column and a narrower right-aligned inspector. At 900–1199px use a 300px inspector; existing compact/mobile mode stays intact.
+- Reduced desktop preview gutters to 8px and toolbar gutters to 12px. Inspector inner gutters are 16px; preview direction text/button stack to avoid overflowing the narrower sidebar. All settings remain available.
+- Verification: frontend TypeScript, focused preview component lint and scoped whitespace checks passed. No tests or live data/config changes. Browser rendering/scroll behavior remains unverified because browser access is unavailable.

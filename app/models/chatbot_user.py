@@ -38,6 +38,7 @@ class ChatbotUser(Base):
     avatar_url   = Column(Text, nullable=True)
     created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
     last_seen_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     identities = relationship("ChatbotUserIdentity", back_populates="user",
                               cascade="all, delete-orphan")
@@ -69,6 +70,7 @@ class ChatbotUserIdentity(Base):
     provider     = Column(String(20), nullable=False)    # 'google' | 'phone' | 'email' | ...
     provider_sub = Column(String(255), nullable=False)
     created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     user = relationship("ChatbotUser", back_populates="identities")
 

@@ -10,7 +10,7 @@ import {
 
 import { useYulloAppStore } from '../store/useYulloAppStore';
 import { YulloAppHeader } from '../components/YulloAppHeader';
-import { SourceUnderstandingCard } from '../components/SourceUnderstandingCard';
+import { SourceUnderstandingCard, type FactItem } from '../components/SourceUnderstandingCard';
 import { ProcessingLoaderSystem } from '../components/ProcessingLoaderSystem';
 import { FullSpaceKnowledgePreviewModal } from '../components/FullSpaceKnowledgePreviewModal';
 import { ColouredIcon } from '../components/ColouredIcon';
@@ -905,11 +905,21 @@ export function NewSpaceScreen() {
                         }
                       }}
                       onConfirmAllFacts={async (id) => {
-                        setSources(prev => prev.map(item => item.id === id ? { ...item, is_confirmed: true } : item));
+                        if (!draftId) return;
                         try {
-                          await yulloOnboardingApi.updateSource(id, { is_confirmed: true });
+                          const facts = await yulloOnboardingApi.getSourceFacts(draftId, id);
+                          const visible = sources.find(source => source.id === id)?.facts || [];
+                          // Hidden preview candidates must not be approved by the bulk action.
+                          await Promise.all(facts.filter(fact => fact.review_status === 'extracted' && visible.some((candidate: FactItem | string) =>
+                            typeof candidate !== 'string' && candidate.subject === fact.subject
+                            && candidate.label === fact.label && candidate.value === fact.value
+                          )).map(fact =>
+                            yulloOnboardingApi.reviewSourceFact(draftId, id, fact.id, 'owner_confirmed', fact.review_status)
+                          ));
+                          setShowGeneratePrompt(true);
                         } catch (e) {
-                          console.warn('Failed to update source confirmed state:', e);
+                          console.warn('Failed to approve source facts:', e);
+                          throw e;
                         }
                       }}
                     />

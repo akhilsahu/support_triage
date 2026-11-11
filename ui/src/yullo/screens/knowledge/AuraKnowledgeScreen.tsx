@@ -3,10 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, Upload, FileText, Globe,
   FolderOpen, HelpCircle, Clock, MoreHorizontal, Trash2, Eye, RefreshCw, AlertCircle,
-  CheckCircle2, Loader2, Check, X
+  CheckCircle2, Loader2, Check, X, Bell, Database
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { SourceFact, yulloOnboardingApi } from '../../api/onboarding';
+import { SourceDeletionMode, SourceFact, yulloOnboardingApi } from '../../api/onboarding';
 import { useSpaceEntities } from '../../api/entityQueries';
 import { formsApi } from '../../api/forms';
 import { SourceItem } from '../../components/SourceUnderstandingCard';
@@ -19,6 +19,8 @@ import { FullSpaceKnowledgePreviewModal } from '../../components/FullSpaceKnowle
 import { ProcessingDetailsModal } from '../../components/ProcessingDetailsModal';
 import { SourceExcerptModal } from '../../components/SourceExcerptModal';
 import { ExtractionResultsModal } from '../../components/ExtractionResultsModal';
+import { KnowledgeCleanupReviewDialog } from '../../components/KnowledgeCleanupReviewDialog';
+import { VectorChunksManagerModal } from '../../components/VectorChunksManagerModal';
 
 export const AuraKnowledgeScreen: React.FC = () => {
   const { spaceId } = useParams<{ spaceId: string }>();
@@ -33,6 +35,7 @@ export const AuraKnowledgeScreen: React.FC = () => {
   const [reuploadSource, setReuploadSource] = useState<SourceItem | null>(null);
   const [completedExtractionSource, setCompletedExtractionSource] = useState<SourceItem | null>(null);
   const processingSourceIdsRef = React.useRef<Set<string>>(new Set());
+  const removedSourceIdsRef = React.useRef<Set<string>>(new Set());
   // Review Sheet State
   const [selectedReviewSource, setSelectedReviewSource] = useState<SourceItem | null>(null);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
@@ -44,6 +47,7 @@ export const AuraKnowledgeScreen: React.FC = () => {
   // Delete Confirmation State
   const [deleteConfirmSource, setDeleteConfirmSource] = useState<SourceItem | null>(null);
   const [isDeletingSource, setIsDeletingSource] = useState(false);
+  const [isCleanupReviewOpen, setIsCleanupReviewOpen] = useState(false);
 
   // Overflow Menu State
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -61,6 +65,10 @@ export const AuraKnowledgeScreen: React.FC = () => {
   const [previewViewingSource, setPreviewViewingSource] = useState<SourceItem | null>(null);
   const [dismissedPreviewIds, setDismissedPreviewIds] = useState<Set<string>>(new Set());
 
+  // Vector Chunks Sheets Modal State
+  const [isVectorChunksOpen, setIsVectorChunksOpen] = useState(false);
+  const [vectorChunksSourceId, setVectorChunksSourceId] = useState<string | undefined>(undefined);
+
   const [identityData, setIdentityData] = useState<any>(null);
   // Entity State
   const { data: entities = [], isLoading: isLoadingEntities, refetch: refetchEntities } = useSpaceEntities(spaceId || '');
@@ -68,13 +76,18 @@ export const AuraKnowledgeScreen: React.FC = () => {
   const { data: factGroups = [], isLoading: isLoadingFacts, isError: factsFailed, refetch: refetchFacts } = useQuery({
     queryKey: ['yullo-knowledge-facts', spaceId, sourceIds],
     enabled: Boolean(spaceId) && sources.length > 0,
-    queryFn: async () => Promise.all(sources.map(async source => ({
+    queryFn: async () => Promise.all(sources.filter(source => !removedSourceIdsRef.current.has(source.id)).map(async source => ({
       sourceId: source.id,
       facts: await yulloOnboardingApi.getSourceFacts(spaceId!, source.id),
     }))),
   });
+  const { data: cleanupAlerts = [], refetch: refetchCleanupAlerts } = useQuery({
+    queryKey: ['yullo-knowledge-cleanup-alerts', spaceId],
+    enabled: Boolean(spaceId),
+    queryFn: () => yulloOnboardingApi.getKnowledgeCleanupAlerts(spaceId!),
+  });
   const visibleFacts = factGroups.flatMap(group => group.facts)
-    .filter(fact => !['rejected', 'superseded'].includes(fact.review_status));
+    .filter(fact => !removedSourceIdsRef.current.has(fact.source_item_id) && !['rejected', 'superseded'].includes(fact.review_status));
   const confirmedFacts = visibleFacts.filter(fact => fact.verified);
   const sourceForFact = (fact: SourceFact) => sources.find(source => source.id === fact.source_item_id);
 
@@ -92,7 +105,7 @@ export const AuraKnowledgeScreen: React.FC = () => {
     setErrorMsg(null);
     try {
       const data = await yulloOnboardingApi.getSpaceSources(spaceId);
-      setSources(data || []);
+      setSources((data || []).filter((source: SourceItem) => !removedSourceIdsRef.current.has(source.id)));
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to load knowledge sources');
     } finally {
@@ -125,7 +138,7 @@ export const AuraKnowledgeScreen: React.FC = () => {
 
     eventSource.addEventListener('update', (e) => {
       try {
-        const next = JSON.parse(e.data) as SourceItem[];
+        const next = (JSON.parse(e.data) as SourceItem[]).filter(source => !removedSourceIdsRef.current.has(source.id));
         setSources(next);
         if (!next.some(source => ['uploaded', 'queued', 'running', 'processing', 'parsing_preview'].includes(source.status))) {
           Promise.all([refetchEntities(), refetchFacts()]).catch(console.error);
@@ -182,7 +195,6 @@ export const AuraKnowledgeScreen: React.FC = () => {
   const handleConfirmAllFacts = async (sourceId: string) => {
     if (!spaceId) return;
     try {
-      await yulloOnboardingApi.updateSource(sourceId, { is_confirmed: true });
       const sourceFacts = await yulloOnboardingApi.getSourceFacts(spaceId, sourceId);
       const unconfirmed = sourceFacts.filter(
         f => f.review_status !== 'owner_confirmed' && f.review_status !== 'rejected' && f.review_status !== 'source_authoritative' && f.review_status !== 'superseded'
@@ -197,15 +209,38 @@ export const AuraKnowledgeScreen: React.FC = () => {
       await Promise.all([fetchSources(), refetchEntities(), refetchFacts()]);
     } catch (err: any) {
       console.error('Failed to confirm all facts:', err);
+      throw err;
     }
   };
 
-  const handleRemoveSource = async (sourceId: string) => {
+  const handleRemoveSource = async (
+    sourceId: string,
+    mode: SourceDeletionMode = 'purge',
+    expectedSourceVersion?: number,
+  ) => {
     try {
-      await yulloOnboardingApi.deleteSource(sourceId);
+      await yulloOnboardingApi.deleteSource(sourceId, mode, expectedSourceVersion);
+      // An older fetch/SSE update must not resurrect a source just removed.
+      removedSourceIdsRef.current.add(sourceId);
       setSources(prev => prev.filter(s => s.id !== sourceId));
+      processingSourceIdsRef.current.delete(sourceId);
+      setProcessingSource(current => current?.id === sourceId ? null : current);
+      setCompletedExtractionSource(current => current?.id === sourceId ? null : current);
+      setExcerptSource(current => current?.id === sourceId ? null : current);
+      setPreviewViewingSource(current => current?.id === sourceId ? null : current);
+      setReuploadSource(current => current?.id === sourceId ? null : current);
+      if (selectedReviewSource?.id === sourceId) {
+        setSelectedReviewSource(null);
+        setIsReviewOpen(false);
+      }
+      if (vectorChunksSourceId === sourceId) {
+        setIsVectorChunksOpen(false);
+        setVectorChunksSourceId(undefined);
+      }
+      await Promise.all([refetchCleanupAlerts(), refetchEntities(), refetchFacts()]);
     } catch (err: any) {
       console.error('Failed to remove source:', err);
+      throw err;
     }
   };
 
@@ -298,8 +333,7 @@ export const AuraKnowledgeScreen: React.FC = () => {
   );
 
   const readyPreviewSources = sources.filter(s =>
-    s.source_type === 'url' &&
-    !s.is_confirmed &&
+    factGroups.some(group => group.sourceId === s.id && group.facts.some(fact => fact.review_status === 'extracted')) &&
     ['ready', 'ready_to_review'].includes(s.status) &&
     !dismissedPreviewIds.has(s.id)
   );
@@ -325,9 +359,27 @@ export const AuraKnowledgeScreen: React.FC = () => {
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
             <div>
-              <h1 className="font-[Satoshi] text-[32px] font-bold text-[var(--text-primary)] tracking-tight leading-tight">
-                What Aura knows
-              </h1>
+              <div className="flex items-center gap-2.5">
+                <h1 className="font-[Satoshi] text-[32px] font-bold text-[var(--text-primary)] tracking-tight leading-tight">
+                  What Aura knows
+                </h1>
+                <button
+                  type="button"
+                  onClick={() => setIsCleanupReviewOpen(true)}
+                  aria-label={cleanupAlerts.length > 0
+                    ? `${cleanupAlerts.length} knowledge ${cleanupAlerts.length === 1 ? 'review' : 'reviews'} pending`
+                    : 'Knowledge review notifications'}
+                  title={cleanupAlerts.length > 0 ? 'Review unsupported knowledge' : 'No knowledge reviews pending'}
+                  className={`relative inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-colors ${cleanupAlerts.length > 0 ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300' : 'border-[var(--border)] bg-[var(--surface-soft)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                >
+                  <Bell className="h-4 w-4" />
+                  {cleanupAlerts.length > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 min-w-5 rounded-full bg-rose-600 px-1.5 py-0.5 text-center text-[10px] font-bold leading-4 text-white">
+                      {cleanupAlerts.length > 99 ? '99+' : cleanupAlerts.length}
+                    </span>
+                  )}
+                </button>
+              </div>
               <p className="text-[15px] text-[var(--text-secondary)] mt-1 font-[Instrument_Sans]">
                 Everything Aura can learn from for this Space.
               </p>
@@ -335,6 +387,19 @@ export const AuraKnowledgeScreen: React.FC = () => {
 
             {/* Action Buttons */}
             <div className="flex flex-wrap items-center gap-2.5 font-[Instrument_Sans]">
+              <button
+                type="button"
+                onClick={() => {
+                  setVectorChunksSourceId(undefined);
+                  setIsVectorChunksOpen(true);
+                }}
+                className="h-[44px] w-[44px] rounded-xl bg-[var(--surface-soft)] text-sky-500 hover:text-sky-400 hover:bg-[var(--border)] border border-[var(--border)] transition-colors flex items-center justify-center cursor-pointer shrink-0"
+                title="View Vector Chunks & Embeddings (Sheets View)"
+                aria-label="View Vector Chunks"
+              >
+                <Database className="w-4 h-4" />
+              </button>
+
               <button
                 onClick={() => openAddModal('text')}
                 className="px-5 h-[44px] rounded-xl text-[14px] font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer hover:opacity-90 active:scale-[0.99]"
@@ -454,14 +519,14 @@ export const AuraKnowledgeScreen: React.FC = () => {
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-[Satoshi] font-semibold text-[14px] text-[var(--text-primary)]">
-                                Preview generated
+                                Facts ready for review
                               </span>
                               <span className="text-[12px] px-2 py-0.5 rounded-md bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] font-mono truncate max-w-[220px]">
                                 {displayTitle}
                               </span>
                             </div>
                             <p className="text-[13px] text-[var(--text-secondary)] mt-0.5">
-                              Aura scraped metadata, brand assets, and grounded facts. Review the preview and click "Add to sources" to activate.
+                              Chunks are active by default. Review extracted facts before allowing Aura to use them.
                             </p>
                           </div>
                         </div>
@@ -477,14 +542,8 @@ export const AuraKnowledgeScreen: React.FC = () => {
                           <button
                             type="button"
                             onClick={async () => {
-                              await handleToggleConfirm(readySource.id, true);
-                              setProcessingSource({
-                                ...readySource,
-                                is_confirmed: true,
-                                status: 'processing',
-                                stage: 'Preparing Aura search',
-                                progress: 35
-                              });
+                              await handleConfirmAllFacts(readySource.id);
+                              setDismissedPreviewIds(prev => new Set([...prev, readySource.id]));
                             }}
                             className="px-4 py-2 rounded-xl text-[13px] font-bold shadow-xs hover:opacity-90 active:scale-[0.99] transition-all cursor-pointer flex items-center gap-1.5"
                             style={{
@@ -492,7 +551,7 @@ export const AuraKnowledgeScreen: React.FC = () => {
                               color: 'var(--accent-fg)'
                             }}
                           >
-                            <Check className="w-3.5 h-3.5 stroke-[3]" /> Add to sources
+                            <Check className="w-3.5 h-3.5 stroke-[3]" /> Approve all facts
                           </button>
                           <button
                             type="button"
@@ -674,6 +733,16 @@ export const AuraKnowledgeScreen: React.FC = () => {
                                   <button
                                     onClick={() => {
                                       setOpenMenuId(null);
+                                      setVectorChunksSourceId(source.id);
+                                      setIsVectorChunksOpen(true);
+                                    }}
+                                    className="w-full text-left px-3.5 py-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors flex items-center gap-2 cursor-pointer"
+                                  >
+                                    <Database className="w-3.5 h-3.5 text-sky-500" /> View vector chunks
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setOpenMenuId(null);
                                       setCompletedExtractionSource(source);
                                     }}
                                     className="w-full text-left px-3.5 py-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors flex items-center gap-2 cursor-pointer"
@@ -687,7 +756,7 @@ export const AuraKnowledgeScreen: React.FC = () => {
                                     }}
                                     className="w-full text-left px-3.5 py-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors cursor-pointer"
                                   >
-                                    {source.is_confirmed ?? true ? 'Stop using source' : 'Use source'}
+                                    {source.is_confirmed ?? true ? 'Pause source' : 'Resume source'}
                                   </button>
                                   <button
                                     onClick={() => {
@@ -793,8 +862,8 @@ export const AuraKnowledgeScreen: React.FC = () => {
                   </section>
 
                   <section className="border-t border-[var(--border)] pt-5">
-                    <h3 className="text-[16px] font-semibold">Details found in your sources</h3>
-                    <p className="mt-1 text-[13px] text-[var(--text-secondary)]">Review extracted details in the source they came from. Approved details may be used on your page and in Aura answers.</p>
+                    <h3 className="text-[16px] font-semibold">Structured details</h3>
+                    <p className="mt-1 text-[13px] text-[var(--text-secondary)]">Details can come from your Space settings or be extracted from a source. Approved details may be used on your page and in Aura answers.</p>
                     {isLoadingEntities ? <p className="mt-3 text-[14px] text-[var(--text-secondary)]">Loading details…</p> : (
                       <div className="mt-3 divide-y divide-[var(--border)]">
                         {[
@@ -812,10 +881,17 @@ export const AuraKnowledgeScreen: React.FC = () => {
                                 {items.map(entity => (
                                   <div key={entity.id} className="text-[13px] text-[var(--text-secondary)]">
                                     • {entity.payload_json.title || entity.payload_json.name || entity.payload_json.label || 'Untitled'}
+                                    {entity.origin_type === 'owner' && <span className="ml-2 text-[11px] text-[var(--text-muted)]">Owner managed</span>}
                                   </div>
                                 ))}
                               </div>
-                              <p className="mt-3 text-[12px] text-[var(--text-secondary)]">Use Review beside the originating source to inspect or change these details.</p>
+                              <p className="mt-3 text-[12px] text-[var(--text-secondary)]">
+                                {sources.length === 0 && items.some(entity => entity.origin_type === 'extracted')
+                                  ? 'These extracted details no longer have an originating source. Use the notification bell above to review them.'
+                                  : items.some(entity => entity.origin_type === 'extracted')
+                                    ? 'Use Review beside the originating source to inspect extracted details.'
+                                    : 'These are owner-managed details from your Space settings.'}
+                              </p>
                             </details>
                           );
                         })}
@@ -914,36 +990,42 @@ export const AuraKnowledgeScreen: React.FC = () => {
         onClose={() => setPreviewViewingSource(null)}
         source={previewViewingSource}
         onAddToSources={async (sourceId) => {
-          const target = sources.find(s => s.id === sourceId) || previewViewingSource;
-          await handleToggleConfirm(sourceId, true);
-          if (target) {
-            setProcessingSource({
-              ...target,
-              is_confirmed: true,
-              status: 'processing',
-              stage: 'Preparing Aura search',
-              progress: 35
-            });
-          }
+          await handleConfirmAllFacts(sourceId);
+          setDismissedPreviewIds(prev => new Set([...prev, sourceId]));
         }}
       />
 
       {/* Styled Delete Confirmation Dialog */}
       <DeleteSourceConfirmDialog
         isOpen={!!deleteConfirmSource}
+        sourceId={deleteConfirmSource?.id}
         sourceTitle={deleteConfirmSource?.title || deleteConfirmSource?.content_ref}
+        sourceVersion={deleteConfirmSource?.source_version}
+        isProcessing={Boolean(deleteConfirmSource && ['uploaded', 'queued', 'running', 'processing', 'parsing_preview'].includes(deleteConfirmSource.status))}
         isDeleting={isDeletingSource}
-        onConfirm={async () => {
+        onConfirm={async (mode, expectedSourceVersion) => {
           if (!deleteConfirmSource) return;
           setIsDeletingSource(true);
           try {
-            await handleRemoveSource(deleteConfirmSource.id);
+            await handleRemoveSource(deleteConfirmSource.id, mode, expectedSourceVersion);
             setDeleteConfirmSource(null);
           } finally {
             setIsDeletingSource(false);
           }
         }}
         onCancel={() => setDeleteConfirmSource(null)}
+      />
+
+      <KnowledgeCleanupReviewDialog
+        isOpen={isCleanupReviewOpen}
+        spaceId={spaceId || ''}
+        alerts={cleanupAlerts}
+        onClose={() => setIsCleanupReviewOpen(false)}
+        onResolved={async () => {
+          const result = await refetchCleanupAlerts();
+          await Promise.all([refetchFacts(), refetchEntities()]);
+          if (!result.data?.length) setIsCleanupReviewOpen(false);
+        }}
       />
 
       {/* Processing Details Modal */}
@@ -1009,6 +1091,19 @@ export const AuraKnowledgeScreen: React.FC = () => {
           }
         }}
       />
+
+      {spaceId && (
+        <VectorChunksManagerModal
+          isOpen={isVectorChunksOpen}
+          onClose={() => {
+            setIsVectorChunksOpen(false);
+            setVectorChunksSourceId(undefined);
+          }}
+          spaceId={spaceId}
+          spaceName={identityData?.display_name || 'Space'}
+          initialSourceId={vectorChunksSourceId}
+        />
+      )}
       </div>
     </div>
   );

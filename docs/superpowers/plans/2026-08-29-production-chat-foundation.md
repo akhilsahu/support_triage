@@ -14,7 +14,7 @@
 
 - Preserve strict `space_id` and `chatbot_id` isolation.
 - Preserve the existing `/api/chat/{slug}` and `/api/chat/{slug}/stream` response contracts.
-- Keep `/api/v1/chat` as an explicitly documented legacy/demo API; do not route production traffic through it.
+- `/api/v1/chat` was retired with owner approval on 2026-11-09; production traffic continues through `/api/chat/*`.
 - Event persistence must fail open so analytics outages do not break customer chat.
 - Do not persist reasoning text, secrets, raw authorization headers, or unredacted tool inputs in event payloads.
 - Use `space`, not `org`, in new identifiers and documentation.
@@ -42,7 +42,7 @@
 
 **Files:**
 
-- Create: `app/orchestra/ai/customer_runtime.py`
+- Create: `app/orchestra/ai/inference/customer_runtime.py`
 - Modify: `app/api/customer.py`
 - Test: `tests/unit/orchestra/test_customer_runtime.py`
 
@@ -133,7 +133,7 @@ async def record_conversation_event(
 - Modify: `README.md`
 - Modify: `implementation.md`
 
-- [x] Document `/api/chat/*` as the production API and `/api/v1/chat` as legacy/demo.
+- [x] Document `/api/chat/*` as the production API; retire the legacy/demo `/api/v1/chat` API with owner approval (2026-11-09).
 - [x] Mark the first-sprint contract and event foundation as implemented while leaving later P0 work open.
 - [ ] Run `pytest tests/unit -v`.
 - [ ] Run `python -m compileall app`.
@@ -145,3 +145,19 @@ async def record_conversation_event(
 - Existing public response formats remain unchanged.
 - Initial lifecycle events are append-only, tenant scoped, and fail open.
 - Focused unit tests pass without PostgreSQL, Redis, or external model credentials.
+
+## Legacy-agent retirement — 2026-11-09
+
+Owner approved removal of the legacy demo chat and the old client-KB Q&A endpoint after an indirect-call audit. Removed `app/api/chat.py`, seven legacy `app/agents` implementations (including the previously unused technical-support implementation), and `ui/src/screens/Chat.tsx`. Retained `ResolvedAgent`, `DynamicAgentExecutor`, current database-agent customer chat and Yullo Aura.
+
+Changed `app/main.py` to unregister the demo router and `app/api/v1/documents.py` to remove only `/rag/client/{client_id}` and its request/response schemas. Removed the corresponding API helpers and endpoint constants from `ui/src/api/client.ts` and `ui/src/config/api.ts`. Updated `ui/src/App.tsx`, `ui/src/screens/Dashboard.tsx` and `ui/src/components/layout/ImpeccableDashboardLayout.tsx` so old demo chat entry points use `/app/agents/test`; `/app/chat` redirects there. Updated `app/agents/readme.md` with retained runtime responsibilities.
+
+The post-removal dependency audit also found `app/services/inventory_api.py`, `app/services/shipping_api.py` and `app/services/rag_service.py` had no remaining callers; removed those legacy-only services. Removed the orphaned synthetic demo users in `app/mock/users.py` and their package export. Retained CRM (used by Stripe), LLM services, shared vector storage/ingestion and product fixtures used by catalog seeding. Updated the main README's API boundaries.
+
+Verification: Python AST parsing and removed-module import checks passed across `app`, `scripts` and `tests`; current customer/Aura router registration and the separate `/rag/chat` route were checked statically. Frontend `npm run type-check` passed. Task-scoped diff whitespace checks passed. Existing runtime tests require owner approval; no new tests, database changes, commits or deployments are part of this cleanup. Live browser/API integration remains unverified.
+
+### Agno-only executor — 2026-11-09
+
+Owner approved removing the unused dynamic backend. Deleted `app/agents/dynamic_executor.py`, its standalone memory wrapper (`app/services/memory_service.py`) and dynamic-only scraping/demo script (`scripts/test_ecom_agent.py`). `app/orchestra/ai/inference/factory.py` now builds Agno directly with the same arguments as the previous Agno branch; its public signature is preserved. `app/config.py` restricts `ORCHESTRATOR` to `Literal["agno"]` and removes the dynamic-only rewrite-token setting. Updated runtime documentation in `app/agents/resolved_agent.py`, `app/orchestra/ai/core/config.py`, `app/orchestra/ai/__init__.py` and `app/agents/readme.md`.
+
+Agno memory/session/tool infrastructure, `ResolvedAgent`, DB customer chat and Aura remain. No database changes. Verification: all 490 remaining Python modules in `app`, `scripts` and `tests` parsed successfully; no imports or executable references to the removed executor/memory wrapper remain. AST comparison confirmed the factory signature and Agno constructor arguments are unchanged. Task-scoped whitespace checks passed. Existing runtime tests await owner approval; live integration remains unverified.

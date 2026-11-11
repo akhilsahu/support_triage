@@ -200,7 +200,7 @@ export function Dashboard() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => navigate('/app/chat')}
+                onClick={() => navigate('/app/agents/test')}
                 className="bg-white text-gray-900 hover:bg-white/90 border-none shadow-md font-semibold px-4 py-2.5 text-xs sm:text-sm rounded-2xl transition-all focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
               >
                 Test Chat <ArrowRight className="w-4 h-4 ml-1" />

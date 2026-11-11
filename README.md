@@ -224,11 +224,19 @@ Once the application is running, access the interactive API documentation:
 
 ### Chat API boundaries
 
+Shared document models live in `app/orchestra/ai/core/document_models.py`,
+format parsers in `app/orchestra/ai/ingestion/parsers/`, and the shared Chroma
+store in `app/orchestra/ai/knowledge/vector_store.py`. The former `app/rag/`
+Python package has been removed; import these canonical modules directly.
+The document UI asset lives in `app/static/knowledge/ui.html` and keeps its
+existing `/api/v1/documents/rag/ui` route.
+
 - `/api/chat/{space_slug}` and `/api/chat/{space_slug}/stream` are the production
   customer-chat APIs. They resolve a chatbot-scoped agent fleet and execute it
   through the shared production runtime in `app/orchestra/ai/`.
-- `/api/v1/chat` is the legacy/demo e-commerce chat API. It uses mock customer
-  and order data and must not be used as the production customer-chat path.
+- The legacy/demo `/api/v1/chat` API and `/api/v1/documents/rag/client/{client_id}`
+  endpoint were retired. `/app/chat` redirects to the DB-agent test screen at
+  `/app/agents/test`; per-document Q&A at `/api/v1/documents/rag/chat` remains.
 - Production chat lifecycle analytics are stored as redacted, append-only
   `conversation_events`; message content and model reasoning remain in their
   existing tenant-scoped message tables rather than being copied into events.
@@ -331,22 +339,47 @@ RAG_CHUNK_SIZE=1000
 
 ## 🧠 RAG Pipeline, Reranking & Session Memory
 
-The `app/orchestra/ai/` pipeline is: **ingestion → chunking → embedding →
+The `app/orchestra/ai/` flow is: **ingestion (parse → chunk → embed/index) →
 retrieval (hybrid + optional rerank) → Agno agent (knowledge + session memory)**.
-Standalone demo scripts (functional params at the top of each `main()`, no CLI
-args) validate each stage:
+
+Product/API callers use the public `app.orchestra.ai.ingestion` interface.
+`parse_source`, `prepare_document` / `prepare_text`, and `embed_and_store_chunks`
+are shared stages; `parse_and_index` coordinates the standard pipeline.
+Chunking lives in `ingestion/chunking/`; the parser service is
+`ingestion/parser_service.py`. Shared `embedding/` adapters serve both document
+indexing and query retrieval. Authorization, publication and job transactions
+remain with their existing product/job services.
+Developer checks for parsing and chunking:
 
 ```bash
-python -m app.orchestra.ai.ingestion.demo    # parse a file → ParsedDocument
-python -m app.orchestra.ai.chunking.demo      # parse → chunk (strategy per type)
-python -m app.orchestra.ai.knowledge.demo     # ingest → hybrid retrieval (+ rerank)
-python -m app.orchestra.ai.demochat           # full chat via the real orchestrator
+python -m app.orchestra.ai.ingestion.demo path/to/file.pdf  # parse a file
+python -m app.orchestra.ai.ingestion.chunking.demo      # parse → chunk (strategy per type)
 ```
+
+### Orchestra configuration
+
+All Orchestra configuration lives in `app/orchestra/ai/config.py`.
+`OrchestraConfig` holds runtime options; `ChunkConfig` and `IngestionConfig`
+retain per-document overrides. `get_embedding_config()`, `get_reranker_config()`
+and `get_scraper_config(mode)` return fresh dictionaries. For example, provider
+adapters read `cfg["model"]`; overrides use `dict(cfg, model="...")`.
+Environment settings and secrets remain in `app/config.py` and are resolved
+when the builders are called. The former per-feature config modules were removed.
 
 ### Embedding
 
-Write path (ChromaDB) and read path (Agno) build from one shared config so model
-and dimensions can never drift.
+Document writes and query retrieval build adapters from the same embedding
+configuration. VectorStore opens collections without an embedding function,
+checks model provenance and actual dimensions, then supplies explicit vectors.
+Document/metadata reads remain available without embedding credentials.
+
+Collections must carry Orchestra's model/dimension metadata and match the
+configured embedding settings. Old collections without that metadata, or with
+conflicting settings, should be reset and their sources re-ingested. There is no
+legacy manifest or persisted-function fallback. New collections record embedding
+metadata at creation. A configuration change never silently deletes an index.
+Local writes use a POSIX namespace lock (macOS/Linux); embedding API calls happen
+outside that lock. Exact continuation reads use the backend's own path/collection.
 
 ```bash
 EMBEDDING_MODEL=text-embedding-3-small       # or text-embedding-3-large
@@ -411,6 +444,23 @@ preflight, logs `session.db.unreachable`, and **degrades to stateless chat**
 (session features off, but messages still answer) rather than failing every
 request. Set `SESSION_STORE=sqlite` for local/dev (auto-creates a file) or
 `SESSION_STORE=none` to disable session persistence entirely.
+
+Aura uses the same Agno executor with request-local context and validated tools.
+Its native history requires a working persistent session store: unlike the
+customer-chat fallback above, Aura fails before generation if that store is
+unavailable. Existing Aura conversations are backfilled lazily from committed
+application messages, using message IDs to prevent duplicate history. New run
+writes are staged in memory and synchronized only after the application commit;
+the next request repairs a missing post-commit synchronization. Application
+records remain available for UI/audit. No manual history injection is added to
+the model request.
+
+`INFERENCE_TOOL_CALL_LIMIT=4` bounds prepared-chat tool execution (allowed 1–16).
+Continuation expansion remains one-use per response. Native tool execution can
+require additional model rounds after UI actions. Prepared-chat provider clients
+come from `get_async_openai_clients`, retaining configured priority, capability
+filtering and endpoint/model normalization; Agno owns model retries and fallback.
+The prepared path does not enable user-memory or session-summary model calls.
 
 > **Cost note:** `USER_MEMORIES_ENABLED` and `SESSION_SUMMARIES_ENABLED` each add
 > an LLM call per turn. Set them to `false` and rely on `NUM_HISTORY_RUNS` alone

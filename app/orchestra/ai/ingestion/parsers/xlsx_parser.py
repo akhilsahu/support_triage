@@ -11,8 +11,9 @@ from typing import List
 
 import structlog
 
-from app.rag.document_parser import ParsedDocument, ParsedPage
+from app.orchestra.ai.core.document_models import ParsedDocument, ParsedPage
 from app.orchestra.ai.ingestion.core.base import BaseParser
+from app.orchestra.ai.ingestion.parsers.table_text import table_page
 
 logger = structlog.get_logger()
 
@@ -40,22 +41,22 @@ class XlsxParser(BaseParser):
             if not rows:
                 continue
 
-            # First non-empty row = header
-            header = next(
-                ([str(c) if c is not None else "" for c in row] for row in rows if any(c is not None for c in row)),
-                None,
-            )
-            if not header:
+            # Retain the existing first-nonempty-row header policy, but do not
+            # repeat the header as data when the sheet starts with empty rows.
+            header_index = next((i for i, row in enumerate(rows)
+                                 if any(c is not None and str(c).strip() for c in row)), None)
+            if header_index is None:
                 continue
-
-            lines: List[str] = [" | ".join(header)]
-            for row in rows[1:]:
+            header = [str(c) if c is not None else "" for c in rows[header_index]]
+            data_rows = []
+            for row_number, row in enumerate(rows[header_index + 1:], header_index + 2):
                 cells = [str(c) if c is not None else "" for c in row]
                 if any(c.strip() for c in cells):
-                    lines.append(" | ".join(cells))
-
-            text = f"Sheet: {sheet_name}\n" + "\n".join(lines)
-            pages.append(ParsedPage(page=sheet_idx, text=text, section=sheet_name, is_table=True))
+                    data_rows.append((row_number, " | ".join(cells)))
+            pages.append(table_page(
+                page=sheet_idx, header=" | ".join(header), rows=data_rows,
+                section=sheet_name, preamble=f"Sheet: {sheet_name}", table_id=f"sheet:{sheet_idx}",
+            ))
 
         meta = {"sheet_count": len(wb.sheetnames), "sheets": wb.sheetnames}
         logger.info("ingestion.xlsx", filename=filename, sheets=len(pages))

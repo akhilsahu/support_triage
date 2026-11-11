@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.core.database import Base
 from app.models import agent, workflow, task, execution, conversation  # noqa
 from app.models import space, chat, chatbot, datasource, knowledge_base  # noqa
+from app.yullo.models import appearance_asset  # noqa: F401
 
 config = context.config
 

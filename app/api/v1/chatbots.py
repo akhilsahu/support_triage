@@ -251,7 +251,7 @@ async def update_chatbot(
     if req.homepage_sections_enabled is not None:
         chatbot.homepage_sections_enabled = req.homepage_sections_enabled
     if req.homepage_sections_override is not None:
-        from app.renderengine.homepage_sections import validate_override_payload
+        from app.orchestra.ai.appearance_preview.renderengine.homepage_sections import validate_override_payload
         try:
             chatbot.homepage_sections_override = validate_override_payload(req.homepage_sections_override)
         except ValueError as e:
@@ -264,13 +264,13 @@ async def update_chatbot(
             raise HTTPException(400, "login_after_messages must be 0 or greater (null disables the gate).")
         chatbot.login_after_messages = val
     if req.quick_topics is not None:
-        from app.renderengine.quick_topics import validate_quick_topics_payload
+        from app.orchestra.ai.appearance_preview.renderengine.quick_topics import validate_quick_topics_payload
         try:
             chatbot.quick_topics = validate_quick_topics_payload(req.quick_topics)
         except ValueError as e:
             raise HTTPException(400, str(e))
     if req.trust_badges is not None:
-        from app.renderengine.trust_badges import validate_trust_badges_payload
+        from app.orchestra.ai.appearance_preview.renderengine.trust_badges import validate_trust_badges_payload
         try:
             chatbot.trust_badges = validate_trust_badges_payload(req.trust_badges)
         except ValueError as e:
@@ -354,7 +354,7 @@ async def replace_stat_metrics(
     (homepage stat_band then falls back to the AI/web generator)."""
     from sqlalchemy import delete as sa_delete
     from app.models.chatbot import ChatbotStatMetric
-    from app.renderengine.stat_band import validate_stat_metrics
+    from app.orchestra.ai.appearance_preview.renderengine.stat_band import validate_stat_metrics
 
     chatbot = await _get_chatbot(chatbot_slug, space.id, db)
     try:
@@ -406,7 +406,7 @@ async def replace_comparison_grid(
     """Set/replace this chatbot's competitor comparison grid. An empty columns
     or rows list clears it (homepage 'comparison' then falls back to AI/web)."""
     from app.models.chatbot import ChatbotComparison
-    from app.renderengine.comparison import validate_comparison
+    from app.orchestra.ai.appearance_preview.renderengine.comparison import validate_comparison
 
     chatbot = await _get_chatbot(chatbot_slug, space.id, db)
     existing = (await db.execute(
@@ -544,7 +544,7 @@ def _clean_snapshot_payload(payload: dict) -> dict:
     """Keep only recognized welcome keys and coerce homepage_sections to a list
     of known, de-duped section ids. Deep section content is trusted from the
     editor -- the frontend section components already guard malformed shapes."""
-    from app.renderengine.homepage_sections import ALLOWED_SECTIONS
+    from app.orchestra.ai.appearance_preview.renderengine.homepage_sections import ALLOWED_SECTIONS
     if not isinstance(payload, dict):
         raise HTTPException(400, "payload must be an object")
     out = {k: v for k, v in payload.items() if k in _SNAPSHOT_KEYS}
@@ -594,7 +594,7 @@ async def generate_homepage_ui(
     # LLM-free once published.
     try:
         from app.utils.ai.chat_suggestions import get_suggestions
-        from app.rag.vector_store import get_vector_store
+        from app.orchestra.ai.knowledge.vector_store import get_vector_store
         active_agents = await _get_active_agents_cached(db, chatbot.id, str(space.id))
         try:
             doc_types = get_vector_store().get_org_doc_types(str(space.id))

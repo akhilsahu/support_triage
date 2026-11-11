@@ -532,7 +532,7 @@ Repository-state rule for every file list below: paths already present after the
 **Files:**
 - Inspect/modify: `alembic/versions/0001_initial.py` only through a new corrective migration, never by editing applied history.
 - Inspect: `app/schemas/document.py`
-- Inspect: `app/rag/vector_store.py`
+- Inspect: `app/orchestra/ai/knowledge/vector_store.py`
 - Create: `docs/YULLO_DOCUMENT_STORAGE_AUDIT.md`
 - Create: `tests/unit/yullo/test_document_storage_contract.py`
 
@@ -573,7 +573,7 @@ Repository-state rule for every file list below: paths already present after the
 ### Task 6: Connect onboarding sources to shared ingestion
 
 **Files:**
-- Create: `app/yullo/services/knowledge/sources.py`
+- Create: `app/orchestra/ai/yullo/knowledge/sources.py`
 - Modify: `app/models/knowledge_base.py`
 - Modify: `app/models/ingestion_job.py`
 - Modify: `app/orchestra/ai/ingestion/jobs/tasks.py`
@@ -592,6 +592,8 @@ Repository-state rule for every file list below: paths already present after the
 - [ ] **Step 5: Enforce status semantics:** `queued → processing → ready|limited|failed|removed`; pasted text is not `ready` until indexed.
 - [ ] **Step 6: Switch Yullo onboarding reads/writes to shared knowledge items/jobs, verify identity/status/count parity, then remove Yullo use of `SpaceSource` and drop `yullo_sources`.** Preserve `space_sources` only if a verified legacy consumer still requires it.
 - [ ] **Step 7: Run Yullo and existing ingestion tests; commit** `feat(yullo): ingest onboarding sources`.
+
+**Implementation update — 2026-09-26:** The shared Yullo ingestion path now processes prose and table-row chunks together, grounds extraction prompts and validation against original source text, preserves multiple values for the same subject/label, normalizes job states, prevents duplicate live-lease execution, and reports indexing separately from fact extraction. Successful empty extraction clears stale machine candidates; extraction failure preserves prior reviewed data and is surfaced separately. Focused extraction and preview-grounding tests pass. Full database-backed ingestion remains to be verified against an isolated test database.
 
 ### Task 7: Harden structured facts without using Mem0 as truth
 
@@ -618,7 +620,7 @@ Repository-state rule for every file list below: paths already present after the
 
 **Files:**
 - Create: `app/yullo/adapters/retrieval.py`
-- Create: `app/yullo/services/knowledge/retriever.py`
+- Create: `app/orchestra/ai/yullo/knowledge/retriever.py`
 - Modify only if necessary: `app/orchestra/ai/knowledge/agno_chroma.py`
 - Create: `tests/unit/yullo/test_retrieval_isolation.py`
 
@@ -858,3 +860,217 @@ After the vertical slice is stable, enable website ingestion, then document uplo
 - Automatic web discovery beyond owner-submitted sources.
 
 These features require separate plans after grounding, permissions, provenance and evaluations demonstrate production maturity.
+
+## Chat readiness audit — 2026-10-20
+
+Status: not ready for production sign-off. Review only; no runtime or endpoint changes.
+
+Confirmed findings:
+- `AuraMessage.tsx` renders plain text, not Markdown, and never displays collected citations. Markdown links/images, tables and code fences therefore remain literal text.
+- Rich UI supports service, location, portfolio and actions. Portfolio renders the first stored media URL; there is no image-generation tool in the Aura inference runtime and no explicit capability guidance in its prompt.
+- `HttpAuraProvider.ts` treats stream EOF as completion without requiring `message.done`; malformed intermediate events are logged and skipped.
+- `useAuraChat.ts` clears `isTyping` on `message.start`, re-enabling the composer during generation; there is no in-flight guard in `runMessage`.
+- `generate_validated_answer` ignores error events and always reports sufficiency as supported, including empty or partial responses.
+- The three-line inference prompt provides grounding instructions but no tone, follow-up or unsupported image-request guidance. Engagement remains unverified without live model evaluations.
+- Cards return null when entity fetching fails; portfolio images have no load-error fallback.
+
+Verification:
+- Three focused frontend tests passed (SSE parsing/error handling and inline service rendering); frontend TypeScript check passed.
+- Focused backend run: three passed, one failed. Manifest test fixture lacks `field_policies`; this is a fixture mismatch, not proof that real entity rendering fails.
+- Five database-dependent isolation checks errored during setup; no isolation pass is claimed. Do not rerun against a configured database without first establishing an isolated test database.
+- Initial backend collection required a process-local `DEBUG=false` override because inherited DEBUG was `release`.
+- No live model conversation, browser visual review, production build or end-to-end image/card retrieval was verified.
+
+Pending: safe Markdown/media rendering and visible citations; explicit stream completion and in-flight locking; truthful generation failure/sufficiency handling; capability-aware response guidance; all-card and image-failure coverage; isolated integration and real-model quality evaluation before release.
+
+
+## Chat-only implementation follow-up — 2026-10-20
+
+Approved scope: public chat KB resolution, published-version alignment, and extracted source-image context/rendering. No appearance, Space editing/management, ingestion, schema migration, production-data, commit or deployment changes.
+
+Implemented:
+- Public chat replaces caller KB selections with the current Space's active Yullo KB IDs. The retriever independently intersects explicit KB subsets with authorized Space KBs and includes verified facts through the existing fact service.
+- Passage scope now requires ready, confirmed sources with a published revision and builds document IDs from `published_version`. Returned vector hits are checked against document and Space metadata.
+- `chat_sources.py` shares the published-source boundary between retrieval and image resolution; `chat_images.py` associates extracted image captions with vector-retrieved documents and ranks against the question and retrieved chunk text. Model context is bounded and contains IDs/captions, not image URLs.
+- The `show_source_images` tool accepts only retrieved IDs. `GET /api/v1/yullo/public/spaces/{space_id}/aura/images/{image_id}` rechecks the live Space and published source before resolving a source/version/Space-bound ID. Source deletion, unconfirmation or metadata revision changes invalidate it.
+- `SourceImagesCard` renders the selected images within chat, with source labels, fresh lookup, retry and image-load fallback. HTTP stream validation accepts only well-formed image references.
+- Configuration: `YULLO_CHAT_MAX_CONTEXT_IMAGES` (default 6), `YULLO_CHAT_MAX_GALLERY_IMAGES` (default 4), `YULLO_CHAT_MAX_IMAGE_CAPTION_CHARACTERS` (default 400), validated in chat-only inference config.
+- Earlier P0/P1 response work is implemented: completion/error handling, in-flight send protection, safe Markdown, retrieved-reference disclosure, card errors/retries, and capability-aware prompt guidance.
+
+Verification: focused backend and frontend tests cover KB scoping, published vs draft revisions, wrong-Space vector hits, verified facts, image selection, invalid references, unconfirmation, model/tool context, chat rendering, streaming errors and retry behavior. TypeScript and production build pass. Test dependencies are mocked; no live database or index writes were performed.
+
+Limitations: source images need existing extracted caption/context metadata. This reuses document vector search followed by caption matching; it does not create a separate image-embedding index or run image understanding. Image metadata is withheld if its current revision differs from the published revision. Live-provider/browser acceptance and isolated real-index/database integration remain unverified.
+
+
+### Greeting/product presentation correction — 2026-10-20
+
+- Greeting-only and small-talk messages bypass retrieval and model generation, returning a concise greeting without product cards or citations. Mixed messages such as “hi, show jeans” still retrieve normally.
+- Chat prompt now prioritizes the current request over retrieved products and previous conversation topics; product/service cards are preferred when verified entities exist.
+- Streaming presentation converts Markdown image URLs that exactly match retrieved authorized images into source-image card references; unknown images never become browser requests. Ordinary text/links continue streaming, and fenced/inline code examples remain code.
+- Source-image cards now show a short title and a verified source-page link when source metadata supplies one. The old “preview unavailable” inline placeholder is removed.
+- Changes are chat-only. No appearance, ingestion, Space management, deployment or data changes.
+- Verification: greeting tests include the reported “hi” and “Whats up?” after jeans history; mocked model tests exercise split Markdown image conversion and preserved links; frontend tests verify visible image/title/source link. Focused tests and production build pass; live-provider/browser verification remains pending.
+
+### Chat card grid correction — 2026-10-20
+
+- `AuraMessage.tsx` groups all response cards into one responsive grid, flattening separate source-image tool responses into sibling cards instead of stacking individual galleries. One column on phones, two at `sm`, three at `lg`; action rows span the grid.
+- `SourceImagesCard.tsx` uses compact 4:3 image frames with contained images, equal-height cards, two-line titles/descriptions and a short “View source” link. Full source name remains the link's accessible label.
+- Chat presentation only; no retrieval, appearance or Space-management changes.
+- Verification: seven focused rendering tests passed; production build checked. Browser visual verification remains pending.
+
+### Chat image relevance/link correction — 2026-10-20
+
+- User clarified the images loaded but contained delivery/returns promotional text; no loading behavior changes retained.
+- Image selection now requires query-term overlap with the image's own alt/title/caption rather than broad page context. Explicit audience terms (women/men/kids/children) must match the image description. Known delivery/returns/payment/logo/placeholder metadata is excluded.
+- Chat image destinations use explicit attached links, exact nested Markdown image links, or links with an exact image_url association. Otherwise the source page remains the destination and UI labels it “Visit <domain>”; no product URL is guessed.
+- Focused source-context/presentation tests: 28 passed; frontend rendering tests: 7 passed; production build passed.
+- Limitation: filtering is metadata-based. No pixel OCR/vision added, and the specific live images were not fetched/visually classified. Existing saved responses are not rewritten.
+
+### Markdown chunk asset preservation — 2026-10-24
+
+- Markdown now uses a dedicated content-block strategy. It embeds clean titles/descriptions while storing local links and linked-image relationships as `links_json` and `images_json` chunk metadata.
+- Blocks merge only within the same heading when they share an explicit non-navigation destination, or when they are adjacent plain prose. URLs no longer consume embedding/chunk space.
+- High-confidence carousel, video-loading and dialog-control blocks are removed. Ambiguous controls are removed only with adjacent structural context to limit false positives.
+- Chat image selection prefers the exact images attached to retrieved chunks and retains the legacy caption matcher only for old indexes without image metadata.
+- The public image resolver revalidates the published chunk association before returning an item destination. If the same image maps to multiple destinations, it keeps the source fallback instead of guessing.
+- Existing indexed sources require re-indexing before they gain the new metadata. Focused tests were not run per the user's existing instruction to skip tests.
+
+### Delivery/returns graphics clarification
+
+- Retain eligible source graphics for delivery/returns; exclude them from ordinary product suggestions at query selection time.
+- Include a matching graphic only when the query explicitly mentions delivery, shipping, returns or refunds. Public source authorization and image-reference resolution remain unchanged.
+- Updated chat prompt and added six request-specific cases; 22 source-context tests pass. No UI/appearance/ingestion changes in this follow-up.
+
+### Common chat prompt composition — updated 2026-11-10
+
+The former category/intent keyword selector is removed. This supersedes its earlier implementation and verification notes; those old classifier checks do not validate the current behavior.
+
+Current implementation:
+- `app/yullo/prompts/base.py`: common evidence, comparison/recommendation/policy and presentation constraints. Preserves distinctions between items/categories/listings/services, price basis, availability, source provenance and safe image destinations without selecting a domain-specific prompt.
+- `app/yullo/prompts/composer.py`: combines common instructions, approved Space identity as data, and actually available tools. No domain/intent dispatch.
+- `app/yullo/schemas/inference.py`: validated SpaceChatProfile, moved unchanged from the removed classifier.
+- `app/yullo/services/inference/runtime.py`: existing read-only Space/product/publication-scoped profile loading and category provenance checks; the former `context.py` loader was consolidated here on 2026-11-10.
+- `app/orchestra/ai/knowledge/base.py:prepare_retrieval_query`: bounded visitor-only context for referential retrieval queries. This English-language heuristic is separate from prompt/tool selection and does not establish factual authority or fully resolve ambiguous references.
+- `app/yullo/services/inference/runtime.py`: greeting bypass, contextual retrieval, common prompt, authorized tools and shared Agno execution. Removed intent-based image suppression; existing image relevance/authorization validators remain.
+
+Deleted the obsolete classifier and its orphaned domain/intent prompt modules. Updated existing fixtures to the common prompt contract and retained follow-up/scoping checks; no new test cases added. Static syntax, reference and focused lint checks only; runtime tests/model calls remain skipped under the owner's standing instruction. No appearance, ingestion, database schema or source-publication behavior changed.
+
+Quality comparison has not been executed. Use the same indexed sources, questions, history, model and retrieval budgets for before/after comparisons. Cover exact product links, price conditions, policies, unrelated-topic changes, pronoun follow-ups, relevant/irrelevant images and absent evidence. Inspect extracted records, retrieved evidence and final answers separately so extraction/retrieval failures are not mistaken for prompt failures. Measure grounded answer correctness, source/link correctness, follow-up resolution, unnecessary tool calls, latency and token usage. Test a semantic query rewrite only if referential retrieval remains a demonstrated failure; do not add a classifier call without a measured benefit.
+
+
+### Simplify chat retrieval context — 2026-10-24
+
+Implemented the approved top-N retrieval simplification without adding extraction or model calls.
+- `app/yullo/schemas/retrieval.py`: `RetrievedContext` is the active in-memory return model; `EvidencePack` remains an alias for existing callers/tests, not another data layer.
+- `app/orchestra/ai/yullo/knowledge/retriever.py`: retained published, Space-scoped vector search; private sources are excluded from passage lookup, and the result limit applies after stale/foreign hits are rejected. Source identity is attached to passages. Removed the page-wide generic category-link scan. Links now come from returned chunk metadata and selected image destinations, with URL validation, deduplication and a global cap of ten.
+- `app/orchestra/ai/yullo/knowledge/chat_images.py`: removed word-overlap destination guessing; explicit associations remain, otherwise the source-page fallback is retained.
+- `app/yullo/services/inference/runtime.py`: consumes the renamed context and a single collected link list; passage citations use the actual source location rather than the first outbound link.
+- Preserved approved fact/contact retrieval, image relevance filters, prompt routing, entity cards, publication checks, provider fallback and streaming. Existing facts are still supplemental context; their database lookups have not been removed or relevance-filtered in this change.
+- No frontend, ingestion, endpoint, migration or production-data changes. Existing malformed/missing chunk link metadata still requires a separate ingestion repair; this change does not reconstruct it.
+
+Verification: Python AST syntax checks passed for all four changed modules. No new tests added. Existing focused test execution is awaiting user approval per AGENTS.md. Full-worktree whitespace inspection found pre-existing issues outside the changed modules; the task-scoped diff whitespace check passed. Live Amazon/browser integration remains unverified.
+
+
+### Image/link association repair — 2026-10-24
+
+Scope: generic image and destination correctness; reported Space `amazonin`. No category-specific retrieval rules or additional LLM calls introduced.
+- Added neutral `app/orchestra/ai/ingestion/parsers/markdown_links.py` using the existing markdown-it-py dependency. Parses actual image/anchor relationships, reference links, balanced destinations and headings; code examples are not treated as assets.
+- `app/yullo/services/sources/asset_extractor.py`: uses parsed blocks, retains heading/category paths, resolves relative destinations, enforces the image cap across the document, and enriches a repeated image with its explicit destination. Added quick/rendered asset merge by URL.
+- `app/orchestra/ai/ingestion/pipeline.py`: chunk links now contain actual anchor destinations rather than image URLs captured by the old regex. Original source text and fact-extraction inputs remain unchanged.
+- `app/orchestra/ai/ingestion/scraper/service.py`: merge rendered assets with quick-fetch assets; parse rendered Markdown versus HTML by returned format and resolve relative links against the final URL.
+- `app/orchestra/ai/yullo/knowledge/chat_images.py`: resolve stored Markdown image associations with the same parser; reject self-image destinations and restricted link associations.
+- `ui/src/yullo/components/generative-ui/cards/SourceImagesCard.tsx`: attached links use the neutral “View details” label; accessible labels include the displayed image title.
+
+Reported-response diagnosis:
+- The exact request was `Show images of Cotton bedsheets and Kurta`.
+- Read-only inspection found one ready/published `amazonin` source. Bedsheets has a verified category destination in source metadata, but that association was absent from its vector chunk. No Kurta link or Kurta image exists in the current published source metadata. The only image among the first 12 with a matching destination shown in the faulty response was the unrelated 8PM deal.
+- `app/orchestra/ai/yullo/knowledge/retriever.py` now rejoins links from the same published source only when the link's own visible title/context occurs in a retrieved passage. This recovers the existing Bedsheets destination without restoring page-wide navigation links.
+- Source image collection now ignores common logo/sprite assets, understands common lazy-image attributes, and retains up to 48 bounded candidates before chat relevance selection. The larger candidate pool is category-neutral and is not sent wholesale to the model.
+- The base presentation contract requires descriptive linked item labels and requires the assistant to disclose a missing requested image/destination instead of presenting an unrelated item.
+
+Verification: read-only database and conversation inspection completed; no database writes occurred. Python AST syntax and task-scoped whitespace checks passed. Existing tests were explicitly skipped at user request; no new tests added. No re-ingestion, publication, commit or deployment performed. Existing `amazonin` metadata must be refreshed through the normal review/publication flow before newly captured Bedsheets/Kurta imagery can appear. Kurta must remain unavailable until a source supplies its image/link.
+
+
+### Conditional chunk continuation — 2026-11-09 (implemented; runtime verification skipped)
+
+Approved scope: expose validated same-group continuation metadata to the first answer call; allow one bounded expansion round only when requested. Centralize chat fact/chunk/continuation switches and isolate feature functions. Keep ingestion extraction, review, publication, UI tools and provider fallback working.
+
+Implementation: config/inference.py owns switches and caps; knowledge/retriever.py coordinates facts and chunks; knowledge/continuations.py owns validation and expansion; knowledge backend provides optional exact chunk reads; inference/runtime.py owns the two-round model interaction. Defaults preserve existing features.
+
+Verification: static syntax/lint/diff checks only. User explicitly requested skipping runtime tests. No new tests, database writes, migrations or model calls.
+
+Completed:
+- `app/yullo/config/inference.py:get_knowledge_features` is the single validated switchboard. Comment the enabled keyword line (its schema default is false), or set the matching environment variable to false: chat facts, chat chunks, continuations, ingestion facts, ingestion entities. All remain enabled by default; existing entity master setting is respected. Indexing/chunk construction remains mandatory for ingestion because the extractors consume stored chunks. Support247 extraction behavior is unchanged.
+- `knowledge/retriever.py:retrieve` coordinates `_retrieve_facts`, `_retrieve_chunks`, asset selection and continuation discovery. `ingestion/orchestration.py:_extract_ingested_knowledge` contains the ingestion extraction/reuse step. Disabled extraction returns no replacement data and records disabled status, preserving existing review candidates/approved data; disabling both extraction features skips the extraction model and chunk-read work.
+- `knowledge/continuations.py:prepare_continuations` is synchronous and builds advertised IDs from retrieved chunk metadata only; no preliminary database/backend reads. Context includes document-local chunk/group indices and navigation IDs. Missing or malformed seed metadata exposes no link; already retrieved fragments are recognized locally. The expansion fetch validates target existence and reciprocal same-group/document/Space links. Missing targets or unsupported backends return unavailable without further hunting.
+- Expansion rechecks current active KB authorization, publication/version and public visibility, refreshes source ORM state, consumes a request-local allowlist, deduplicates chunk identities and caps complete fragment payloads at two chunks / 2048 cl100k_base tokens by default. No arbitrary indices, cross-document/group traversal or recursive sibling loading. Unknown metadata is not treated as proof of answer completeness.
+- `inference/runtime.py` supplies navigation status to the first answer call. No eligible links or a direct answer uses one generation attempt. A requested expansion uses one final generation attempt with expansion removed; provider fallback cannot reopen it. Initial text is buffered only while expansion is available, so speculative text is discarded. Existing UI/image calls remain validated and deferred calls are retained/deduplicated. Usage estimates include both rounds and tool-call output. Expansion citations are added for returned passages.
+- No frontend/endpoints, migrations, durable writes, re-ingestion or model requests performed by this task.
+
+Verification: all 11 touched Python modules passed AST parsing and focused Ruff syntax/undefined-name rules. Task-scoped whitespace check passed after cleanup. Broader Ruff F checks identify the same five pre-existing ingestion orchestration findings as HEAD (unused imports and job shadowing); these are outside this change. Runtime tests remain explicitly skipped; no new tests written.
+
+Pending: runtime/integration verification and any desired normal re-ingestion of old sources to populate links. Approved-fact relevance selection and the existing ingestion reuse path that skips fresh entity extraction when facts already exist remain unchanged. Structural fragment links cannot certify semantic answer completeness. Provider failures may add fallback attempts; only one expansion round is allowed.
+
+
+Continuation simplification follow-up (2026-11-09): removed preliminary neighbor metadata reads; updated the retriever to call the synchronous metadata formatter. Publication/Space/group validation remains at the requested content fetch, together with single-use IDs and existing expansion budgets. No ingestion or persisted metadata changes. Static AST/Ruff and whitespace checks passed; runtime tests remain skipped by user instruction.
+
+
+### Contact query DB-layer separation — 2026-11-09
+
+Completed: moved the contact entity/evidence/source join from `knowledge/retriever.py` into `knowledge/retrieval.py:get_published_contact_evidence`, alongside existing authoritative fact queries. The retriever calls this query function and retains payload projection, confirmation/disclosure checks, deduplication and context formatting. All original SQL predicates (public entity rules, Space, KB, source readiness and published evidence version) remain unchanged. Empty KB input returns no rows. No new repository abstraction, endpoints, migrations or database writes.
+
+Verification: AST parsing, focused Ruff checks and task-scoped whitespace checks passed. Runtime tests remain skipped by the user's existing instruction; no tests added.
+
+### Public chat URL session selection — 2026-11-11
+
+Completed:
+- `ui/src/yullo/hooks/useAuraChat.ts`: a public URL without `?chat=` starts with empty messages and no active session. The first successful session creation replaces the URL with `?chat=<session-id>`, preserving other query parameters, the hash and browser history state. Refreshing that URL selects the same session.
+- Browser message caches are keyed by Space ID and conversation ID. Old handle-based caches are read only when their saved session ID matches the explicit URL ID; existing caches and database chats are not deleted. Streaming/error recovery and retry behavior remain in place. Preview mode still avoids persistence and network calls.
+- `ui/src/yullo/screens/public/PublicYulloLink.tsx`: key the public experience by Space identity so navigating to another Space cannot retain the previous Space's hook state.
+- Adapted the existing interrupted-reply hook test fixture to provide an explicit URL session ID. No additional test cases, endpoints, migrations or database writes.
+
+Verification: frontend `npm run type-check` and task-scoped `git diff --check` passed. User explicitly requested skipping tests; no runtime tests run. Browser/live integration remains unverified.
+
+Pending: backend history hydration when the requested session has no browser cache, a previous-conversation picker/New chat control, and committing incoming user messages before generation. These are outside this URL-selection fix; a URL ID currently restores visible messages only from this browser's matching cache.
+
+### Minimal retrieval selection — 2026-11-11
+
+Approved intent: reuse the current embedding/retrieval/history services; select facts and cards by similarity without another durable index, duplicated authorization policy or ingestion pipeline. Rank only already-authorized, policy-projected records. Cache vectors using existing Space-scoped Redis helpers and content/model identity; changed approval/visibility is still enforced on every request. Preserve manual facts, source chunks, citations, cards/images, continuation tools and provider fallback.
+
+- [x] `embedding/service.py:similarity_scores` reuses the existing configured/tracked batch adapter and Redis `get_many`/`set_many`. Keys include Space, model/dimensions/base URL and content hash; only vectors are cached. Unchanged records reuse vectors without a new durable index or lifecycle/backfill path. The existing hybrid search exposes its query vector on the same worker, avoiding a second embedding of the question; worker-local state is outside SDK objects so their copy behavior remains intact.
+- [x] `knowledge/retrieval/retrieve_chunks.py:select_records` applies one cosine ranking and shared token/count budget to already-authorized facts and minimal card projections (type/title). Manual facts use the same path. Whole records exceeding the token budget are omitted rather than truncated; ranking outages retain bounded authorized records and record degraded status. `YULLO_CHAT_MAX_RECORD_TOKENS` defaults to 2048 and `YULLO_CHAT_EMBEDDING_CACHE_SECONDS` to 3600; both are validated in the existing config. Record count reuses `RAG_TOP_K`.
+- [x] Passage retrieval now respects `RAG_TOP_K`, or the active reranker's final top-N, while preserving its larger candidate-fetch budget and post-search Space/document checks. Empty/unavailable/disabled/success are distinguished in `schemas/retrieval.py`. Prompt composition lets generation continue with available authorized evidence during search outages, with uncertainty for unsupported details. Query vectors are excluded from serialized results.
+- [x] Existing `inference/streaming.py:prepare_response` owns one shared load/rank callback used by initial retrieval and optional `search_space_knowledge`. Yullo wires it through `api/public.py`; the existing Agent/session history lets the LLM supply a standalone follow-up query, replacing the heuristic on this path without a separate rewrite-model call or history implementation. Generic callers retain their previous defaults. The tool rechecks source eligibility and is limited to one search per reply.
+- [x] `ui_render/response.py` uses one citation builder and one retrieval-tool lock, preserving the single-use continuation cap. Refreshed cards/images reuse existing validators and source-image URL handling; dynamic evidence lists and buffering preserve image conversion, continuation behavior and streaming. No ingestion/extraction/review/publication changes, new endpoints/tables, re-indexing, migration or live provider/data calls.
+- [x] Ten changed Python modules parse for Python 3.11; focused Ruff E9/F and task-scoped whitespace checks pass. AST comparisons confirm existing embedding factories and hybrid ranking/filter logic are unchanged apart from request-local query-vector capture. Runtime tests remain skipped per the user's standing instruction; no tests added or edited.
+
+Pending: live Redis/embedding and authenticated retrieval/tool/browser verification. Similarity selection bounds facts/cards separately from the existing chunk/continuation limits; it does not impose a new limit on native conversation history or the entire model prompt. Cold record caches incur batch embeddings; only selected eligible record projections enter generation. Search tools cannot guarantee an answer when the requested information or model provider is unavailable.
+
+### Native session creation timestamp fix — 2026-11-12
+
+Completed: `app/orchestra/ai/session/store.py:StagedHistory.open` sets `created_at` and `updated_at` to the current Unix timestamp only when creating a new Agno `AgentSession`. Agno's constructor defaults both fields to `None`, and the installed Postgres adapter inserts that explicit null, causing the reported `agno_sessions.created_at` NOT NULL violation. Resumed session timestamps, scope checks, history merge/publish and application message transactions remain unchanged. No endpoint, schema, migration or database-data changes.
+
+Verification: Python 3.11 AST parsing, focused Ruff E9/F and task-added whitespace checks passed. Tests remain skipped per user instruction; live Postgres/new-chat verification remains pending.
+
+### Passage content metadata and local links — 2026-11-12
+
+Approved scope: supply each retrieved chunk with its available content metadata rather than structural fields alone. Reuse stored associations; the LLM decides linked text and existing component selection. No new source approval gate, catalog, link registry or rendering tool.
+
+- [x] `knowledge/retrieval/retrieve_chunks.py:passage_context` includes nonempty content metadata alongside each passage, decodes stored JSON fields (including links/images/headings), retains zero/false values and structural/continuation context, and excludes internal routing/storage fields. Chunk-local item/price/link associations are retained, not inferred or rebuilt.
+- [x] `api/public.py`, `inference/streaming.py`, `ui_render/response.py` and `prompts/yullo/composer.py` use the same formatter for initial context, follow-up search and continuation output/budget accounting. Existing asset disclosure policy is injected by Yullo; no fact/entity approval is required for chunk metadata. Existing supplementary source-link recovery, image/card tools, extraction/review, Space/source scope and provider behavior remain.
+- [x] `prompts/yullo/base.py` directs the model to use the matching supplied item destinations and preserve item/price/variant relationships without treating category promotions as item prices or source evidence as live stock.
+- [x] Verification: all six changed Python modules pass Python 3.11 AST parsing and focused Ruff E9/F checks. Task-added whitespace checks pass. User explicitly chose "Skip tests" after implementation; no runtime tests run or new tests written.
+
+Pending: live model/browser verification; focused existing tests remain unverified and skipped by user request. More metadata increases initial context size; existing stored per-chunk asset limits and continuation token budgets remain. This change enables linked text from chunks; new product-card components and changes to structured-entity review are outside scope. No endpoint, schema, migration, re-indexing, database writes, commit or deployment.
+
+### Answer-first citations and linked-list presentation — 2026-11-12
+
+Reported: a fresh Amazon reply still omitted links after the metadata update; retrieved references appeared before streamed answer text. Read-only chat inspection confirmed the matching reply was generated after the changed files reloaded. The saved audit history still does not contain the exact model context, so model omission versus a particular retrieved set cannot be conclusively distinguished for that run.
+
+- [x] `inference/streaming.py:generate_response` defers initial and search/continuation citation events until generation completes, following answer text and UI and preceding `message.done`. Successful replies retain citation persistence; generation failures do not emit deferred references. Existing model tools, text/image streaming and commit-before-done remain.
+- [x] `ui/src/yullo/screens/public/components/AuraMessage.tsx` displays retrieved references only for completed replies, so earlier event arrivals cannot expose references during generation or before answer persistence.
+- [x] `prompts/yullo/base.py` explicitly specifies linked item names for matching supplied destinations and fresh evidence for repeated questions; unsupported destinations remain unlinked, and category/promotional evidence is labeled honestly. LLM retains item/component selection; no automatic link matching or new cards.
+- [x] Existing context-prepared logs now include passage/link/image/card counts and `common-v3` prompt version; no source contents or URLs are logged.
+- [ ] Verification: static checks pending. Tests remain skipped under the user's explicit instruction; no new tests added.
+
+Pending: live model/browser verification that the model uses matching links and citations appear only after completion. This strengthens model guidance rather than enforcing output links; no extra model calls, source mutations, schema changes, re-indexing or deployment.

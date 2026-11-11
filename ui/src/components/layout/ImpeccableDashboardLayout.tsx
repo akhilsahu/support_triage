@@ -40,7 +40,7 @@ interface ImpeccableSidebarProps {
 
 const NAV_ITEMS = [
   { id: '/app/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: '/app/chat', label: 'Chat', icon: MessageSquare },
+  { id: '/app/agents/test', label: 'Test Chat', icon: MessageSquare },
   { id: '/app/agents', label: 'Agents', icon: Bot },
   { id: '/app/inbox', label: 'Inbox', icon: Bell },
   { id: '/app/knowledge-base', label: 'Knowledge Base', icon: Database },

@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence } from 'motion/react'
+import type { SpacePresentationConfig } from '../../appearance/presentation/schema'
 
 export function PublicNetworkBackground({ 
   state, 
   pulseKey 
+  , intensity
 }: { 
   state: 'empty' | 'conversation',
-  pulseKey: number 
+  pulseKey: number
+  intensity: SpacePresentationConfig['networkIntensity']
 }) {
   const [pulses, setPulses] = useState<number[]>([])
 
@@ -25,7 +28,8 @@ export function PublicNetworkBackground({
   // Restrained network styling
   // Empty state: opacity 0.2
   // Conversation: opacity 0.05
-  const baseOpacity = state === 'empty' ? 0.2 : 0.05
+  const intensityOpacity = intensity === 'none' ? 0 : intensity === 'very_low' ? 0.08 : 0.16
+  const baseOpacity = state === 'empty' ? intensityOpacity : intensityOpacity * 0.35
 
   return (
     <motion.div 
@@ -48,16 +52,16 @@ export function PublicNetworkBackground({
 
         {/* Marginal static lines - architectural, asymmetrical */}
         <g stroke="#9CA3AF" strokeWidth="0.5" strokeDasharray="4 4" opacity="0.3">
-          <path d="M 0 100 L 250 100 L 400 -50" />
-          <path d="M 100% 80% L 80% 80% L 90% 120%" />
-          <path d="M 80% 0 L 80% 150 L 120% 250" />
+          <path d="M 0 100 L 250 100 L 400 -50" stroke="var(--presentation-accent)" />
+          <path d="M 1000 800 L 800 800 L 900 1200" />
+          <path d="M 800 0 L 800 150 L 1200 250" />
         </g>
 
         {/* Static anchor nodes */}
         <g fill="#D1D5DB">
           <circle cx="250" cy="100" r="2" />
-          <circle cx="80%" cy="80%" r="2" />
-          <circle cx="80%" cy="150" r="2" />
+          <circle cx="800" cy="800" r="2" />
+          <circle cx="800" cy="150" r="2" />
         </g>
 
         {/* Pulse Animations */}

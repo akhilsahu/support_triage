@@ -1,5 +1,6 @@
 import { AuraProvider, AuraStreamHandlers } from './AuraProvider'
 import { PublicSpace, AuraEvent } from './types'
+import { AppearancePreviewContentSchema } from '../../screens/appearance/preview/types'
 
 export class HttpAuraProvider implements AuraProvider {
   private readonly baseUrl: string
@@ -14,7 +15,12 @@ export class HttpAuraProvider implements AuraProvider {
       if (response.status === 404) return null
       throw new Error(`Failed to fetch public space: ${response.statusText}`)
     }
-    return response.json()
+    const data = await response.json() as PublicSpace
+    if (data.landingContent) {
+      const parsed = AppearancePreviewContentSchema.safeParse(data.landingContent)
+      data.landingContent = parsed.success ? parsed.data : undefined
+    }
+    return data
   }
 
   async startConversation(spaceId: string): Promise<string> {
@@ -66,6 +72,56 @@ export class HttpAuraProvider implements AuraProvider {
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let streamError: Error | null = null
+      let started = false
+      let completed = false
+      let hasContent = false
+
+      const processLine = (line: string) => {
+        if (!line.startsWith('data:')) return
+        const dataStr = line.slice(5).trim()
+        if (!dataStr) return
+
+        if (completed || streamError) return
+        const event = JSON.parse(dataStr) as AuraEvent
+        if (!event || typeof event.type !== 'string') throw new Error('Invalid response event')
+        if (event.type === 'error') {
+          streamError = new Error(event.message || 'Aura could not respond')
+          return
+        }
+        if (event.type === 'message.start') {
+          if (started || typeof event.messageId !== 'string' || !event.messageId.trim()) throw new Error('Invalid response start')
+          started = true
+        } else {
+          if (!started) throw new Error('Response has not started')
+          if (event.type === 'text.delta') {
+            if (typeof event.delta !== 'string') throw new Error('Invalid response text')
+            hasContent ||= !!event.delta.trim()
+          } else if (event.type === 'ui.add') {
+            const node = event.node
+            if (!node || !['service', 'location', 'portfolio', 'actions', 'images'].includes(node.type)) throw new Error('Invalid response card')
+            // Public streaming cards reference server-authorized entities, not inline payloads.
+            if (node.type === 'images') {
+              if (!Array.isArray(node.imageIds) || !node.imageIds.length || node.imageIds.length > 4 || node.imageIds.some(id => typeof id !== 'string' || !/^[a-f0-9]{64}$/.test(id))) throw new Error('Invalid response images')
+            } else if (node.type === 'actions') {
+              if (!Array.isArray(node.entityIds) || !node.entityIds.length || node.entityIds.length > 4 || node.entityIds.some(id => typeof id !== 'string' || !id.trim())) throw new Error('Invalid response card')
+            } else if (typeof node.entityId !== 'string' || !node.entityId.trim()) {
+              throw new Error('Invalid response card')
+            }
+            if ('entity' in node || 'entities' in node) throw new Error('Invalid response card')
+            hasContent = true
+          } else if (event.type === 'citation.add') {
+            const citation = event.citation
+            if (!citation || typeof citation.id !== 'string' || typeof citation.label !== 'string'
+              || (citation.snippet !== undefined && typeof citation.snippet !== 'string')
+              || (citation.sourceUrl !== undefined && typeof citation.sourceUrl !== 'string')) throw new Error('Invalid response reference')
+          } else if (event.type === 'message.done') {
+            if (!hasContent) throw new Error('Aura returned an empty response')
+            completed = true
+          }
+        }
+        handlers.onEvent(event)
+      }
 
       while (true) {
         const { done, value } = await reader.read()
@@ -78,25 +134,28 @@ export class HttpAuraProvider implements AuraProvider {
         buffer = lines.pop() || ''
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6).trim()
-            if (!dataStr) continue
-            
-            try {
-              const event = JSON.parse(dataStr) as AuraEvent
-              handlers.onEvent(event)
-              
-              if (event.type === 'message.done' || event.type === 'error') {
-                // If it's done or error, we still let the stream finish naturally, 
-                // but the backend will close it soon.
-              }
-            } catch (e) {
-              console.error('Failed to parse SSE event:', e, dataStr)
-            }
+          try {
+            processLine(line)
+          } catch (error) {
+            streamError = new Error('Aura returned an unreadable response')
+            break
           }
         }
+
+        if (streamError || completed) {
+          await reader.cancel()
+          break
+        }
       }
-      
+
+      buffer += decoder.decode()
+      if (!streamError && !completed && buffer.trim()) processLine(buffer)
+
+      if (streamError) {
+        handlers.onError(streamError)
+        return
+      }
+      if (!completed) throw new Error('Aura response was interrupted. Please try again.')
       handlers.onComplete()
     } catch (error) {
       handlers.onError(error instanceof Error ? error : new Error(String(error)))

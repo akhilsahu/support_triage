@@ -26,7 +26,7 @@ export function ClaimStep({ draft, token, onContinue, onBack }: { draft: DraftSp
     
     timerRef.current = setTimeout(async () => {
       try {
-        const res = await yulloOnboardingApi.validateHandle(handle, token)
+        const res = await yulloOnboardingApi.validateHandle(handle)
         if (res.valid) {
           setHandleStatus('valid')
           setHandleReason(null)
@@ -50,10 +50,10 @@ export function ClaimStep({ draft, token, onContinue, onBack }: { draft: DraftSp
     
     try {
       // 1. Update draft
-      const updatedDraft = await yulloOnboardingApi.updateDraft({ name, handle }, token)
+      const updatedDraft = await yulloOnboardingApi.updateDraft({ name, handle })
       
       // 2. Reserve handle (which also moves step to 'teach')
-      await yulloOnboardingApi.reserveHandle(handle, token)
+      await yulloOnboardingApi.reserveHandle(handle)
       
       // The API returns ok, we need to artificially update the local draft state 
       // or re-fetch. Since we know it succeeds:

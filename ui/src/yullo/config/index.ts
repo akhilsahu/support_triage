@@ -76,3 +76,15 @@ export async function checkHandleAvailability(slug: string): Promise<{ available
   }
 }
 
+/**
+ * Resolves the display domain for Yullo links.
+ * In browser environment, defaults to the active host (e.g. localhost:3000 during dev, or yullo.co in prod).
+ * Use mode='brand' when you strictly want the canonical brand domain 'yullo.co'.
+ */
+export function getBaseDomain(mode: 'active' | 'brand' = 'active'): string {
+  if (mode === 'active' && typeof window !== 'undefined' && window.location?.host) {
+    return window.location.host;
+  }
+  return yulloConfig.domain || 'yullo.co';
+}
+

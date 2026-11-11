@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import uuid
 from datetime import datetime
 from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import UUID
@@ -13,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ingestion_job import IngestionJob
 from app.models.knowledge_base import KnowledgeBaseItem
-from app.models.kb_fact import KBFact
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +58,19 @@ class SourceStreamBroadcaster:
         Updates job and source item progress and immediately broadcasts to the UI.
         """
         try:
+            # The preview session may cache a source deleted by another request.
+            item = await db.scalar(select(KnowledgeBaseItem).where(
+                KnowledgeBaseItem.id == source_id,
+                KnowledgeBaseItem.space_id == space_id,
+            ).with_for_update().execution_options(populate_existing=True))
+            if not item:
+                return
             # 1. Update IngestionJob
             job_stmt = (
                 select(IngestionJob)
-                .where(IngestionJob.kb_item_id == source_id)
+                .where(IngestionJob.kb_item_id == source_id,
+                       IngestionJob.space_id == space_id,
+                       IngestionJob.status.not_in(('done', 'failed', 'cancelled')))
                 .order_by(IngestionJob.created_at.desc())
             )
             job = (await db.execute(job_stmt)).scalars().first()
@@ -75,7 +82,6 @@ class SourceStreamBroadcaster:
                 job.updated_at = datetime.utcnow()
 
             # 2. Update KnowledgeBaseItem metadata
-            item = await db.get(KnowledgeBaseItem, source_id)
             if item and item.space_id == space_id:
                 meta = dict(item.source_metadata or {})
                 meta["progress"] = progress
@@ -119,67 +125,8 @@ class SourceStreamBroadcaster:
         progress: int = 55,
         stage: str = "Preliminary facts ready",
     ) -> None:
-        """
-        Persists preliminary extracted facts immediately into KnowledgeBaseItem
-        and KBFact so the UI receives and renders them within seconds.
-        """
+        """Broadcast already-persisted candidates without truncating or approving them."""
         try:
-            item = await db.get(KnowledgeBaseItem, source_id)
-            if not item or item.space_id != space_id:
-                logger.warning("source_stream.emit_facts_streamed: item %s not in space %s", source_id, space_id)
-                return
-
-            # Update item facts and metadata
-            item.extracted_facts = facts[:6]
-            meta = dict(item.source_metadata or {})
-            meta["progress"] = progress
-            meta["stage"] = stage
-            meta["status"] = "parsing_preview"
-            meta["fact_extraction_status"] = "done" if facts else "no_facts_found"
-            item.source_metadata = meta
-
-            # Persist to KBFact table if not already present
-            existing_facts_stmt = select(KBFact).where(
-                KBFact.source_item_id == source_id,
-                KBFact.space_id == space_id,
-            )
-            existing_facts = (await db.execute(existing_facts_stmt)).scalars().all()
-            existing_values = {ef.value.strip().casefold() for ef in existing_facts if ef.value}
-
-            subject_title = item.title or "Source Facts"
-            for f in facts[:6]:
-                val = str(f.get("text") or "").strip()
-                if val and val.casefold() not in existing_values:
-                    kbf = KBFact(
-                        kb_id=item.kb_id,
-                        space_id=space_id,
-                        subject=subject_title,
-                        label="Overview",
-                        value=val,
-                        note=str(f.get("evidence_excerpt") or "").strip(),
-                        review_status="extracted",
-                        verified=False,
-                        source_item_id=source_id,
-                        source_filename=subject_title,
-                        source_version=item.source_version or 1,
-                    )
-                    db.add(kbf)
-                    existing_values.add(val.casefold())
-
-            # Update Job
-            job_stmt = (
-                select(IngestionJob)
-                .where(IngestionJob.kb_item_id == source_id)
-                .order_by(IngestionJob.created_at.desc())
-            )
-            job = (await db.execute(job_stmt)).scalars().first()
-            if job:
-                job.progress = progress
-                job.stage_detail = stage
-                job.updated_at = datetime.utcnow()
-
-            await db.commit()
-
             # Broadcast instant event
             await self._broadcast_to_subscribers(
                 space_id,
@@ -187,7 +134,7 @@ class SourceStreamBroadcaster:
                     "event": "facts_streamed",
                     "data": {
                         "source_id": str(source_id),
-                        "facts": facts[:6],
+                        "facts": facts,
                         "progress": progress,
                         "stage": stage,
                         "count": len(facts),
@@ -209,16 +156,22 @@ class SourceStreamBroadcaster:
         *,
         space_id: UUID,
         source_id: UUID,
+        source_version: int | None = None,
         facts: Optional[List[Dict[str, Any]]] = None,
         assets: Optional[Dict[str, Any]] = None,
         status: str = "ready",
     ) -> None:
         """
-        Marks preview extraction complete, updates job to pending_confirm,
+        Marks source extraction complete, updates its job to done,
         and broadcasts completion to the UI.
         """
         try:
-            item = await db.get(KnowledgeBaseItem, source_id)
+            item = await db.scalar(select(KnowledgeBaseItem).where(
+                KnowledgeBaseItem.id == source_id,
+                KnowledgeBaseItem.space_id == space_id,
+            ).with_for_update().execution_options(populate_existing=True))
+            if (not item or (source_version is not None and (item.source_version or 1) != source_version)):
+                return
             if item and item.space_id == space_id:
                 item.ingestion_status = status
                 meta = dict(item.source_metadata or {})
@@ -237,8 +190,8 @@ class SourceStreamBroadcaster:
                 .order_by(IngestionJob.created_at.desc())
             )
             job = (await db.execute(job_stmt)).scalars().first()
-            if job:
-                job.status = "pending_confirm"
+            if job and job.status in ('pending_confirm', 'awaiting_confirmation', 'running'):
+                job.status = "done"
                 job.stage_detail = "Finalizing" if status in ("ready", "ready_to_review") else "Preview ready"
                 job.progress = 100
                 job.updated_at = datetime.utcnow()

@@ -21,7 +21,7 @@ from app.models.chat import ChatSession
 
 # Client & Core Imports
 from app.integrations.whatsapp.client import WhatsAppClient
-from app.orchestra.ai.core.factory import build_executor
+from app.orchestra.ai.inference.factory import build_executor
 from app.api.customer import (
     _get_active_agents_cached,
     _get_triage_agent_cached,

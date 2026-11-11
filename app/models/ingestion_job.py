@@ -105,7 +105,7 @@ class IngestionJob(Base):
             "stage_detail":     self.stage_detail,
             "eta_seconds":      self.eta_seconds,
             "context_enriched": self.context_enriched or False,
-            "ai_cost_usd":      round(self.ai_cost_usd or 0.0, 6),
+            "ai_cost_usd":      round(self.ai_cost_usd, 6) if self.ai_cost_usd is not None else None,
             "doc_id":           self.doc_id,
             "pages":            self.pages,
             "chunks":           self.chunks,

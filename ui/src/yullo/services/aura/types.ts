@@ -7,16 +7,29 @@ export interface PublicSpace {
   locationLabel?: string
   promptStarters?: string[]
   auraEnabled: boolean
+  bookingLinks?: { id: string; label: string; url: string }[]
   // public action metadata
   websiteUrl?: string
   contactEmail?: string
+  presentationConfig?: import('../../screens/appearance/presentation/schema').SpacePresentationConfig
+  heroAsset?: { id: string; url: string; altText?: string | null } | null
+  landingContent?: import('../../screens/appearance/preview/types').AppearancePreviewContent
+}
+
+export interface AuraEntitySnapshot {
+  id: string
+  space_id: string
+  entity_type: string
+  title: string
+  payload_json: Record<string, unknown>
 }
 
 export type AuraUINode =
-  | { type: 'service'; entityId: string }
-  | { type: 'portfolio'; entityId: string }
-  | { type: 'location'; entityId: string }
-  | { type: 'actions'; entityIds: string[] }
+  | { type: 'images'; imageIds: string[] }
+  | { type: 'service'; entityId?: string; entity?: AuraEntitySnapshot }
+  | { type: 'portfolio'; entityId?: string; entity?: AuraEntitySnapshot }
+  | { type: 'location'; entityId?: string; entity?: AuraEntitySnapshot }
+  | { type: 'actions'; entityIds?: string[]; entities?: AuraEntitySnapshot[] }
 
 export interface Citation {
   id: string

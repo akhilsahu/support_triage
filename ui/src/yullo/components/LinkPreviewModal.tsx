@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Globe, Check, Loader2, Image as ImageIcon, ExternalLink, ShieldCheck } from 'lucide-react';
+import { X, Globe, Check, Loader2, Image as ImageIcon, ExternalLink, ShieldCheck, FolderTree } from 'lucide-react';
 import type { SourceItem } from './SourceUnderstandingCard';
 
 interface LinkPreviewModalProps {
@@ -35,6 +35,8 @@ export const LinkPreviewModal: React.FC<LinkPreviewModalProps> = ({
   const imagesCount = source.assets?.images?.length || 0;
   const docsCount = source.assets?.documents?.length || 0;
   const factsCount = source.facts?.length || 0;
+  const linkCategories = source.assets?.link_categories || [];
+  const linksCount = source.assets?.links?.length || 0;
 
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 font-[Instrument_Sans]">
@@ -177,6 +179,69 @@ export const LinkPreviewModal: React.FC<LinkPreviewModalProps> = ({
             </div>
           )}
 
+          {/* Hierarchical Link Categories & Navigation */}
+          {linkCategories.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-[12px] font-bold uppercase tracking-wider text-[var(--text-secondary)] font-[Satoshi] flex items-center gap-1.5">
+                  <FolderTree className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                  Navigation & Link Categories ({linkCategories.length})
+                </label>
+                <span className="text-[11px] text-[var(--text-muted)] font-mono">
+                  {linksCount} links mapped
+                </span>
+              </div>
+              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                {linkCategories.map((cat, catIdx) => (
+                  <div
+                    key={catIdx}
+                    className="p-3 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)]/50 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[var(--accent-soft)] text-[var(--accent-ink)] border border-[var(--accent)]/20">
+                          {cat.depth > 1 ? `L${cat.depth}` : 'Category'}
+                        </span>
+                        <span className="text-[13px] font-semibold text-[var(--text-primary)] truncate font-[Satoshi]">
+                          {cat.name}
+                        </span>
+                        {cat.parent && (
+                          <span className="text-[11px] text-[var(--text-muted)] truncate">
+                            (in {cat.parent})
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-[var(--text-secondary)] font-mono shrink-0">
+                        {cat.links.length} {cat.links.length === 1 ? 'link' : 'links'}
+                      </span>
+                    </div>
+                    {cat.links && cat.links.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {cat.links.slice(0, 6).map((linkItem, lkIdx) => (
+                          <a
+                            key={lkIdx}
+                            href={linkItem.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] bg-[var(--surface)] hover:bg-[var(--surface-soft)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
+                          >
+                            <span className="truncate max-w-[140px]">{linkItem.title || 'Link'}</span>
+                            <ExternalLink className="w-2.5 h-2.5 opacity-60 shrink-0" />
+                          </a>
+                        ))}
+                        {cat.links.length > 6 && (
+                          <span className="inline-flex items-center px-2 py-1 text-[11px] text-[var(--text-muted)]">
+                            +{cat.links.length - 6} more
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Scraped Content Preview */}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -209,7 +274,7 @@ export const LinkPreviewModal: React.FC<LinkPreviewModalProps> = ({
             <div>
               <p className="font-semibold text-[var(--text-primary)]">Preview ready to be added</p>
               <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">
-                Click <strong>Add to Aura</strong> below to confirm and integrate this source into your Space's knowledge base.
+                Chunks are active by default. Approve extracted facts before Aura uses them as facts.
               </p>
             </div>
           </div>
@@ -238,12 +303,12 @@ export const LinkPreviewModal: React.FC<LinkPreviewModalProps> = ({
             {isSubmitting ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Adding to Aura…
+                Approving facts…
               </>
             ) : (
               <>
                 <Check className="w-4.5 h-4.5 stroke-[3]" />
-                Add to Aura
+                Approve all facts
               </>
             )}
           </button>

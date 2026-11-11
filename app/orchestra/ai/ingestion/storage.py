@@ -50,6 +50,18 @@ class LocalSourceBlobStore:
         finally:
             pass
 
+    async def delete(self, blob_key: str) -> None:
+        """Delete the blob if it exists."""
+        if not blob_key:
+            return
+        file_path = self.base_dir / blob_key
+        if file_path.exists():
+            try:
+                os.remove(file_path)
+                logger.info(f"Deleted blob {blob_key}")
+            except Exception as e:
+                logger.error(f"Failed to delete blob {blob_key}: {e}")
+
 # Default to local blob store for now
 default_blob_store = LocalSourceBlobStore()
 
@@ -60,3 +72,6 @@ async def put(*, space_id: UUID, key: str, body: bytes, content_type: str) -> st
 async def materialize(blob_key: str) -> AsyncContextManager[Path]:
     async with default_blob_store.materialize(blob_key) as path:
         yield path
+
+async def delete(blob_key: str) -> None:
+    await default_blob_store.delete(blob_key)

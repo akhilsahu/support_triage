@@ -48,7 +48,7 @@ async def generate_doc_metadata_suggestion(
     # 1. On-the-fly parsing for new file uploads (PDF, DOCX, TXT, etc.)
     if file_bytes and file_title:
         try:
-            from app.orchestra.ai.ingestion.ingestion import IngestionService
+            from app.orchestra.ai.ingestion import IngestionService
             svc = IngestionService()
             parsed_doc = svc.parse(file_bytes, file_title)
             parsed_text = (parsed_doc.full_text or "").strip()[:60000]
@@ -63,7 +63,7 @@ async def generate_doc_metadata_suggestion(
         target_doc_id = (doc_id or "").strip()
         if target_doc_id:
             try:
-                from app.rag.vector_store import get_vector_store
+                from app.orchestra.ai.knowledge.vector_store import get_vector_store
                 store = get_vector_store()
                 chunks: list = []
                 if space_id:

@@ -2,8 +2,8 @@
 ResolvedAgent — a unified runtime representation of an agent,
 whether it originated from SpaceBuiltinAgentConfig or CustomAgent.
 
-DynamicAgentExecutor works exclusively with ResolvedAgent so it
-doesn't need to know which table the agent came from.
+Agno orchestration and datasource tools consume this representation without
+needing to know which table the agent came from.
 """
 
 from __future__ import annotations
@@ -195,7 +195,7 @@ class ResolvedAgent:
     # count above: a one-document agent has no topics but can still have facts.
     fact_sheet:         str = ""
     # Per-agent LLM override. None = inherit the chatbot-level default, then
-    # env config (AgnoConfig.llm_model / reasoning_effort). reasoning_effort:
+    # env config (OrchestraConfig.llm_model / reasoning_effort). reasoning_effort:
     # "" = off, low/medium/high = on. Applied in LLMFactory.build.
     llm_model:          Optional[str] = None
     reasoning_effort:   Optional[str] = None

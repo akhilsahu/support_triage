@@ -1,7 +1,7 @@
 import type { SectionProps } from './types'
 import { SectionHeading } from './SectionHeading'
 
-// "How it works" numbered journey (see app/renderengine/process_steps.py).
+// "How it works" numbered journey (see app/orchestra/ai/appearance_preview/renderengine/process_steps.py).
 // Renders nothing until the backend sends processSteps -- safe no-op.
 export function ProcessStepsSection({ theme: t, processSteps }: SectionProps) {
   if (!processSteps?.steps?.length) return null

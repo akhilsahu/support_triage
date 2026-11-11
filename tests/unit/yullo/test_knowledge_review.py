@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 
 from app.models.kb_fact import KBFact
-from app.yullo.services.knowledge.review import apply_fact_review
+from app.yullo.services.sources.fact_review import apply_fact_review
 
 
 def _fact(status: str = "extracted", verified: bool = False) -> KBFact:

@@ -65,12 +65,12 @@ app/main.py
 app/models/__init__.py
 app/models/space.py
 app/orchestra/ai/contracts.py
-app/orchestra/ai/customer_runtime.py
-app/orchestra/ai/core/factory.py
+app/orchestra/ai/inference/customer_runtime.py
+app/orchestra/ai/inference/factory.py
 app/orchestra/ai/core/config.py
-app/orchestra/ai/factories/tools.py
-app/orchestra/ai/factories/team.py
-app/orchestra/ai/orchestrators/agno.py
+app/orchestra/ai/inference/factories/tools.py
+app/orchestra/ai/inference/factories/team.py
+app/orchestra/ai/inference/agno.py
 app/orchestra/ai/session/pool.py
 app/agents/dynamic_executor.py
 app/mcp/datasource_server.py
@@ -379,12 +379,12 @@ git commit -m "feat(datasource): add tool management API"
 
 **Files:**
 - Modify: `app/orchestra/ai/contracts.py`
-- Modify: `app/orchestra/ai/customer_runtime.py`
-- Modify: `app/orchestra/ai/core/factory.py`
+- Modify: `app/orchestra/ai/inference/customer_runtime.py`
+- Modify: `app/orchestra/ai/inference/factory.py`
 - Modify: `app/orchestra/ai/core/config.py`
-- Modify: `app/orchestra/ai/factories/tools.py`
-- Modify: `app/orchestra/ai/factories/team.py`
-- Modify: `app/orchestra/ai/orchestrators/agno.py`
+- Modify: `app/orchestra/ai/inference/factories/tools.py`
+- Modify: `app/orchestra/ai/inference/factories/team.py`
+- Modify: `app/orchestra/ai/inference/agno.py`
 - Modify: `app/orchestra/ai/session/pool.py`
 - Modify: `app/agents/dynamic_executor.py`
 - Modify: `app/mcp/datasource_server.py`

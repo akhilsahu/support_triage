@@ -41,7 +41,7 @@ export default defineConfig({
         },
       },
       // /space/public/* lives on the backend — proxy for local widget dev
-      '/space': {
+      '/space/': {
         target: process.env.VITE_BACKEND_URL || 'http://127.0.0.1:8001',
         changeOrigin: true,
       },

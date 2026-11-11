@@ -27,6 +27,7 @@ class YulloHomeEvent(Base):
     
     occurred_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     __table_args__ = (
         # Partial unique index for dedupe_key per space

@@ -13,7 +13,7 @@ Adding a new backend (e.g. agno_pgvector, langchain_pinecone):
 
 from __future__ import annotations
 
-from app.orchestra.ai.core.config import OrchestraConfig
+from app.orchestra.ai.config import OrchestraConfig
 from app.orchestra.ai.knowledge.base import BaseKnowledgeBackend
 
 
@@ -29,7 +29,6 @@ def build_knowledge_backend(cfg: OrchestraConfig) -> BaseKnowledgeBackend:
         return AgnoChromaKnowledgeBackend(
             chroma_path=cfg.chroma_path,
             chroma_collection=cfg.chroma_collection,
-            embedding_model=cfg.embedding_model,
         )
 
     # Future backends:

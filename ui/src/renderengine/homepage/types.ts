@@ -33,7 +33,7 @@ export interface QuickTopic {
   prompt: string
 }
 
-// AI-designed, search-grounded data block (see app/renderengine/data_block.py).
+// AI-designed, search-grounded data block (see app/orchestra/ai/appearance_preview/renderengine/data_block.py).
 // block_type decides which content shape is populated -- always exactly one
 // of the four. Always illustrative, never a verified fact -- disclaimer is
 // always present (backend forces a default if the model omits one).
@@ -65,7 +65,7 @@ export interface DataBlock {
   content: DataBlockTable | DataBlockChart | DataBlockCard | DataBlockTabs
 }
 
-// Trust-metrics band (see app/renderengine/stat_band.py). Illustrative --
+// Trust-metrics band (see app/orchestra/ai/appearance_preview/renderengine/stat_band.py). Illustrative --
 // representative figures for display, always with a disclaimer.
 export interface StatBandItem {
   value: string
@@ -77,7 +77,7 @@ export interface StatBand {
   disclaimer: string
 }
 
-// "How it works" numbered journey (see app/renderengine/process_steps.py).
+// "How it works" numbered journey (see app/orchestra/ai/appearance_preview/renderengine/process_steps.py).
 export interface ProcessStep {
   label: string
   body?: string
@@ -87,7 +87,7 @@ export interface ProcessSteps {
   steps: ProcessStep[]
 }
 
-// Competitor comparison grid (see app/renderengine/comparison.py). Admin-curated
+// Competitor comparison grid (see app/orchestra/ai/appearance_preview/renderengine/comparison.py). Admin-curated
 // grids are verified (illustrative:false, no disclaimer); AI/web ones are
 // illustrative with a disclaimer.
 export interface Comparison {

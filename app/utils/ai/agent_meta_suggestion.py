@@ -236,7 +236,7 @@ def _fetch_doc_context(space_id: str, doc_types: list[str], doc_id: str = "",
     When kb_doc_ids is given, sampling is restricted to exactly those documents.
     """
     try:
-        from app.rag.vector_store import get_vector_store, COLLECTION_CLIENT
+        from app.orchestra.ai.knowledge.vector_store import get_vector_store, COLLECTION_CLIENT
 
         col = get_vector_store()._collection(COLLECTION_CLIENT)
         lines: list[str] = []

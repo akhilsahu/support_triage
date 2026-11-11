@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +14,9 @@ from app.yullo.schemas.forms.identity import (
     HandleCheckResponse,
     HandleChangeRequest,
     SpaceCreateRequest,
-    ToggleLiveRequest
+    ToggleLiveRequest,
+    CategorySuggestionsResponse,
+    CategorySuggestionItem
 )
 from app.yullo.services.persistence.identity import (
     get_identity,
@@ -21,11 +24,35 @@ from app.yullo.services.persistence.identity import (
     check_handle,
     change_handle,
     create_space,
-    delete_or_archive_space
+    delete_or_archive_space,
+    list_category_suggestions
 )
 from app.yullo.services.spaces.publication import publish_space, unpublish_space
 
 router = APIRouter(prefix="/yullo/spaces", tags=["yullo-forms"])
+
+
+@router.get("/categories/suggestions", response_model=CategorySuggestionsResponse)
+async def get_category_suggestions_endpoint(
+    query: Optional[str] = None,
+    purpose: Optional[str] = None,
+    limit: int = 30,
+    db: AsyncSession = Depends(get_db)
+):
+    """Returns database-backed category suggestions filtered by purpose and search query."""
+    results = await list_category_suggestions(db, query=query, purpose=purpose, limit=limit)
+    return CategorySuggestionsResponse(
+        items=[
+            CategorySuggestionItem(
+                id=item.id,
+                name=item.name,
+                purpose=item.purpose,
+                is_popular=item.is_popular,
+                usage_count=item.usage_count
+            )
+            for item in results
+        ]
+    )
 
 @router.post("", response_model=IdentityFormResponse)
 @router.post("/", response_model=IdentityFormResponse)

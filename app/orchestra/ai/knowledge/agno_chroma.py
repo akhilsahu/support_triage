@@ -132,31 +132,39 @@ class AgnoChromaKnowledgeBackend(BaseKnowledgeBackend):
         self,
         chroma_path:       str,
         chroma_collection: str,
-        embedding_model:   str = "text-embedding-3-small",
     ):
         self._chroma_path       = chroma_path
         self._chroma_collection = chroma_collection
-        self._embedding_model   = embedding_model
         self._knowledge: Optional[Any] = None
+        self._knowledge_config: Optional[dict] = None
+        self._store = None
+
+    def _get_store(self):
+        if self._store is None:
+            from app.orchestra.ai.knowledge.vector_store import VectorStore
+            self._store = VectorStore(persist_dir=self._chroma_path)
+        return self._store
 
     def _get_knowledge(self) -> Optional[Any]:
-        if self._knowledge is not None:
-            return self._knowledge
         try:
             from agno.knowledge import Knowledge
-            from agno.vectordb.chroma import ChromaDb
+            from app.orchestra.ai.knowledge.hybrid_chroma import HybridChromaDb
             from agno.vectordb.search import SearchType
             from app.config import settings
             from app.orchestra.ai.embedding import build_agno_embedder
 
-            # Built from the shared embedding config so read-path model +
-            # dimensions always match what the write path stored.
-            embedder = build_agno_embedder()
+            cfg = self._get_store().ensure_embedding_compatible(self._chroma_collection)
+            if self._knowledge is not None and self._knowledge_config == cfg:
+                return self._knowledge
+            self._knowledge = None
+            embedder = build_agno_embedder(cfg)
+            if embedder is None:
+                raise RuntimeError("Configured query embedding provider is unavailable")
 
             from app.orchestra.ai.knowledge.reranking import build_reranker
             reranker = build_reranker()
 
-            vector_db = ChromaDb(
+            vector_db = HybridChromaDb(
                 name=self._chroma_collection,
                 collection=self._chroma_collection,
                 path=self._chroma_path,
@@ -170,6 +178,7 @@ class AgnoChromaKnowledgeBackend(BaseKnowledgeBackend):
             max_results = settings.RERANK_FETCH_K if reranker else settings.RAG_TOP_K
 
             self._knowledge = Knowledge(vector_db=vector_db, max_results=max_results)
+            self._knowledge_config = dict(cfg)
             logger.info(
                 "knowledge.agno_chroma.init",
                 collection=self._chroma_collection,
@@ -178,9 +187,14 @@ class AgnoChromaKnowledgeBackend(BaseKnowledgeBackend):
                 max_results=max_results,
             )
         except ImportError:
+            self._knowledge = None
+            self._knowledge_config = None
             logger.warning("knowledge.agno_chroma.missing_dep", dep="agno")
         except Exception as e:
-            logger.error("knowledge.agno_chroma.init_error", error=str(e))
+            self._knowledge = None
+            self._knowledge_config = None
+            logger.error("knowledge.agno_chroma.init_error", error=str(e), error_type=type(e).__name__,
+                         collection=self._chroma_collection)
         return self._knowledge
 
     def for_agent(
@@ -192,16 +206,15 @@ class AgnoChromaKnowledgeBackend(BaseKnowledgeBackend):
         specific_doc_ids: Optional[List[str]] = None,
         kb_assignments:  Optional[List[dict]] = None,
     ) -> KnowledgeBundle:
-        knowledge = self._get_knowledge()
-        if not knowledge:
-            return KnowledgeBundle.empty()
-
         # An agent MUST bring its own scoping — linked KB(s) (doc_ids/specific_doc_ids/kb_assignments)
         # or, for builtins, categories (doc_types). With neither, we return NO knowledge.
         if not doc_ids and not doc_types and not specific_doc_ids and not kb_assignments:
             logger.info("knowledge.agno_chroma.no_scope", space_id=space_id)
             return KnowledgeBundle.empty()
 
+        knowledge = self._get_knowledge()
+        if not knowledge:
+            return KnowledgeBundle.empty()
         filters = _make_filters(space_id, doc_ids, doc_types, topics, specific_doc_ids, kb_assignments)
         logger.debug(
             "knowledge.agno_chroma.bundle",
@@ -213,6 +226,11 @@ class AgnoChromaKnowledgeBackend(BaseKnowledgeBackend):
             topics=topics,
         )
         return KnowledgeBundle(knowledge=knowledge, filters=filters)
+
+    def read_chunks(self, space_id: str, doc_id: str, indices: list[int], *, content: bool = True) -> list[dict]:
+        return self._get_store().get_chunks_by_indices(
+            space_id, doc_id, indices, content=content, collection=self._chroma_collection,
+        )
 
     def name(self) -> str:
         return "agno_chroma"

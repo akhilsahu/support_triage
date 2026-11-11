@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 import structlog
 
 from app.agents.resolved_agent import ResolvedAgent
-from app.orchestra.ai.core.config import AgnoConfig
+from app.orchestra.ai.config import OrchestraConfig
 
 logger = structlog.get_logger()
 
@@ -41,7 +41,7 @@ class SessionPool:
         active_agents:     List[ResolvedAgent],
         space_id:          str,
         org_name:          str                        = "Support",
-        cfg:               Optional[AgnoConfig]       = None,
+        cfg:               Optional[OrchestraConfig]       = None,
         mcp_server:        Optional[Any]              = None,
         datasource_runtime: Optional[Any]             = None,
         skills_map:        Optional[Dict[str, List[Any]]] = None,
@@ -62,8 +62,8 @@ class SessionPool:
                 self._last_used[session_id] = time.monotonic()
                 return self._runners[session_id]
 
-            from app.orchestra.ai.core.config import build_config
-            from app.orchestra.ai.factories.team import TeamFactory
+            from app.orchestra.ai.config import build_config
+            from app.orchestra.ai.inference.factories.team import TeamFactory
 
             runner = None
             try:

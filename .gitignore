@@ -114,6 +114,7 @@ site/
 
 # Data files
 data/
+.data/yullo_source_blobs/
 *.parquet
 
 # Uploads

@@ -5,6 +5,7 @@ import {
   Layers, ShieldCheck, Tag, ArrowRight, MapPin
 } from 'lucide-react';
 import { SourceItem, FactItem } from './SourceUnderstandingCard';
+import { getBaseDomain } from '../config';
 
 export interface FullSpaceKnowledgePreviewModalProps {
   isOpen: boolean;
@@ -134,7 +135,7 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
 
   // Collect statistics
   const totalSources = sources.length;
-  const confirmedSources = sources.filter(s => s.is_confirmed).length;
+  const confirmedSources = sources.filter(s => s.is_confirmed !== false).length;
   const totalFacts = sources.reduce((acc, s) => acc + (s.facts ? s.facts.length : 0), 0);
 
   const getSourceIcon = (sourceType: string) => {
@@ -216,7 +217,7 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
                 </div>
                 {confirmedSources > 0 && (
                   <span className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
-                    {confirmedSources} active confirmed source{confirmedSources !== 1 ? 's' : ''}
+                    {confirmedSources} enabled source{confirmedSources !== 1 ? 's' : ''}
                   </span>
                 )}
               </div>
@@ -233,7 +234,7 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
                   )}
                   <div className="min-w-0">
                     <h4 className="text-[15px] font-bold text-[var(--text-primary)] truncate font-[Satoshi]">{spaceName}</h4>
-                    <p className="text-[13px] text-[var(--text-secondary)] truncate font-mono">{slug ? `yullo.com/${slug}` : 'Draft Space'}</p>
+                    <p className="text-[13px] text-[var(--text-secondary)] truncate font-mono">{slug ? `${getBaseDomain()}/${slug}` : 'Draft Space'}</p>
                   </div>
                 </div>
 
@@ -314,7 +315,7 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
                     ).filter(f => f.text || f.label || f.value);
 
                     const titleText = source.title || source.content_ref || `Source #${index + 1}`;
-                    const isConfirmed = !!source.is_confirmed;
+                    const isConfirmed = source.is_confirmed !== false;
                     const rawTextPayload = source.preview_excerpt || '';
 
                     // Detect binary content
@@ -357,11 +358,11 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
                                 </h4>
                                 {isConfirmed ? (
                                   <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
-                                    In Active Grounding
+                                    Chunks enabled
                                   </span>
                                 ) : (
                                   <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30">
-                                    Stored / Unconfirmed
+                                    Source paused
                                   </span>
                                 )}
                               </div>
@@ -433,7 +434,7 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
                                     Extracted Facts ({factsList.length}):
                                   </h5>
                                   <span className="text-[12px] font-medium text-[var(--text-secondary)]">
-                                    {isConfirmed ? '✓ Fact active in space identity' : '• Fact stored in knowledge index'}
+                                    Fact usage is controlled by fact review
                                   </span>
                                 </div>
 
@@ -479,7 +480,7 @@ export const FullSpaceKnowledgePreviewModal: React.FC<FullSpaceKnowledgePreviewM
                                                 ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30' 
                                                 : 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/30'
                                             }`}>
-                                              {isConfirmed ? 'Active Claim' : 'Stored Fact'}
+                                              Saved fact
                                             </span>
                                           </div>
 

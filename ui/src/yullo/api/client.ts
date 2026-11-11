@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { type InternalAxiosRequestConfig } from 'axios';
 import { useYulloAppStore } from '../store/useYulloAppStore';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -17,6 +17,31 @@ export const yulloApiClient = axios.create({
   },
 });
 
+type RetryableYulloRequest = InternalAxiosRequestConfig & {
+  _yulloCsrfRetried?: boolean;
+};
+
+let csrfRefreshPromise: Promise<string> | null = null;
+
+const refreshCsrfToken = async (): Promise<string> => {
+  if (!csrfRefreshPromise) {
+    csrfRefreshPromise = yulloApiClient
+      .get('/auth/me')
+      .then(({ data }) => {
+        useYulloAppStore.getState().setAuth(
+          data.user,
+          data.csrf_token,
+          data.preference?.appTheme,
+        );
+        return data.csrf_token as string;
+      })
+      .finally(() => {
+        csrfRefreshPromise = null;
+      });
+  }
+  return csrfRefreshPromise;
+};
+
 // Interceptor to attach CSRF token to mutating requests
 yulloApiClient.interceptors.request.use((config) => {
   if (config.method && ['post', 'put', 'patch', 'delete'].includes(config.method.toLowerCase())) {
@@ -30,12 +55,26 @@ yulloApiClient.interceptors.request.use((config) => {
 
 yulloApiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
-    // If we get a 401 or 403, and it's not the login endpoint, clear auth
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-      if (!error.config.url?.includes('/auth/')) {
+  async (error) => {
+    const request = error.config as RetryableYulloRequest | undefined;
+    const isInvalidCsrf =
+      error.response?.status === 403 &&
+      error.response?.data?.detail === 'Invalid CSRF token';
+
+    if (isInvalidCsrf && request && !request._yulloCsrfRetried) {
+      request._yulloCsrfRetried = true;
+      try {
+        const csrfToken = await refreshCsrfToken();
+        request.headers['X-Yullo-CSRF'] = csrfToken;
+        return yulloApiClient.request(request);
+      } catch {
         useYulloAppStore.getState().clearAuth();
       }
+    }
+
+    // A 403 can be a valid authorization denial; only 401 means the session ended.
+    if (error.response?.status === 401 && !request?.url?.includes('/auth/')) {
+      useYulloAppStore.getState().clearAuth();
     }
     return Promise.reject(error);
   }

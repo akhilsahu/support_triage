@@ -42,6 +42,8 @@ export function AssetPickerModal({
   const [isDragOver, setIsDragOver] = useState(false)
   const [searchFilter, setSearchFilter] = useState('')
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const busy = isUploading || isSubmitting
 
   // Sync dialog visibility
   useEffect(() => {
@@ -90,6 +92,7 @@ export function AssetPickerModal({
   }, [assets, searchFilter])
 
   const handleFileSelection = (file: File) => {
+    if (busy) return
     if (!file.type.startsWith('image/')) {
       setUploadError('Please choose a valid image file (PNG, JPG, WebP, GIF).')
       return
@@ -111,17 +114,21 @@ export function AssetPickerModal({
   }
 
   const handleConfirmUpload = async () => {
-    if (!stagedFile) return
+    if (!stagedFile || busy) return
+    setIsSubmitting(true)
     try {
       setUploadError(null)
       await onUploadFile(stagedFile)
       onClose()
     } catch (err: any) {
       setUploadError(err?.message || 'Failed to upload image. Please try again.')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const handleConfirmSelectExisting = () => {
+    if (busy) return
     const asset = assets.find((a) => a.id === selectedAssetId)
     if (!asset) return
     onSelectAsset(asset)
@@ -137,9 +144,10 @@ export function AssetPickerModal({
       ref={dialogRef}
       className="appearance-confirm asset-picker-dialog yullo-app font-[Instrument_Sans] text-[var(--text-primary)]"
       aria-labelledby="asset-picker-title"
-      onCancel={onClose}
+      aria-busy={busy}
+      onCancel={(event) => { event.preventDefault(); if (!busy) onClose() }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
+        if (!busy && e.target === e.currentTarget) onClose()
       }}
     >
       <div className="appearance-confirm-body asset-picker-body">
@@ -147,6 +155,7 @@ export function AssetPickerModal({
           type="button"
           className="appearance-confirm-close"
           aria-label="Close image picker"
+          disabled={busy}
           onClick={onClose}
         >
           <X size={18} />
@@ -175,6 +184,7 @@ export function AssetPickerModal({
             type="button"
             role="tab"
             aria-selected={activeTab === 'upload'}
+            disabled={busy}
             className={`asset-picker-tab ${activeTab === 'upload' ? 'is-active' : ''}`}
             onClick={() => setActiveTab('upload')}
           >
@@ -185,6 +195,7 @@ export function AssetPickerModal({
             type="button"
             role="tab"
             aria-selected={activeTab === 'existing'}
+            disabled={busy}
             className={`asset-picker-tab ${activeTab === 'existing' ? 'is-active' : ''}`}
             onClick={() => setActiveTab('existing')}
           >
@@ -220,6 +231,7 @@ export function AssetPickerModal({
                 <input
                   ref={fileInputRef}
                   type="file"
+                  disabled={busy}
                   accept="image/jpeg,image/png,image/webp,image/gif"
                   className="hidden"
                   onChange={(e) => {
@@ -328,6 +340,7 @@ export function AssetPickerModal({
                         type="button"
                         key={asset.id}
                         className={`asset-grid-card ${isSelected ? 'is-selected' : ''}`}
+                        disabled={busy}
                         onClick={() => setSelectedAssetId(asset.id)}
                         onDoubleClick={() => {
                           setSelectedAssetId(asset.id)
@@ -371,6 +384,7 @@ export function AssetPickerModal({
               <button
                 type="button"
                 className="asset-action-remove"
+                disabled={busy}
                 onClick={() => {
                   onRemoveImage()
                   onClose()
@@ -383,7 +397,7 @@ export function AssetPickerModal({
           </div>
 
           <div className="asset-picker-actions-right">
-            <button type="button" className="asset-action-cancel" onClick={onClose}>
+            <button type="button" className="asset-action-cancel" onClick={onClose} disabled={busy}>
               Cancel
             </button>
 
@@ -391,10 +405,10 @@ export function AssetPickerModal({
               <button
                 type="button"
                 className="asset-action-primary"
-                disabled={!stagedFile || isUploading}
+                disabled={!stagedFile || busy}
                 onClick={handleConfirmUpload}
               >
-                {isUploading ? (
+                {busy ? (
                   <>
                     <Loader2 size={14} className="animate-spin" />
                     <span>Uploading…</span>
@@ -410,7 +424,7 @@ export function AssetPickerModal({
               <button
                 type="button"
                 className="asset-action-primary"
-                disabled={!selectedAsset}
+                disabled={!selectedAsset || busy}
                 onClick={handleConfirmSelectExisting}
               >
                 <Check size={14} />

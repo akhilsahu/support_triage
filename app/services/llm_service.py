@@ -248,19 +248,7 @@ class LLMService:
     ) -> None:
         """Fire-and-forget AI usage record. Fail-open — never affects the reply."""
         try:
-            import asyncio
-            import time
-
-            from app.services.ai_usage import (
-                build_usage_event,
-                estimate_tokens,
-                record_usage_event,
-            )
-
-            # OpenAI/Anthropic SDKs return pydantic usage objects — normalize to dict.
-            if usage is not None and not isinstance(usage, dict):
-                dump = getattr(usage, "model_dump", None)
-                usage = dump() if callable(dump) else dict(usage)
+            from app.services.ai_usage import estimate_tokens, track_usage
 
             estimated = False
             if not usage and provider == LLMProvider.WATSONX.value:
@@ -272,12 +260,10 @@ class LLMService:
                          "completion_tokens": estimate_tokens(content or "")}
                 estimated = True
 
-            ev = build_usage_event(
+            track_usage(
                 kind="chat", provider=provider, model=model, latency_ms=latency_ms,
                 usage=usage, estimated=estimated, ok=ok, error_type=error_type,
             )
-            loop = asyncio.get_running_loop()
-            loop.create_task(record_usage_event(ev))
         except Exception as e:  # pragma: no cover — telemetry must never break chat
             logger.warning("llm_service.usage_track_failed", error=str(e))
 

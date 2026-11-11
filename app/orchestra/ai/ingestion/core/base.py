@@ -1,8 +1,8 @@
 """
 BaseParser — abstract contract every parser must implement.
 
-All parsers return the existing ParsedDocument / ParsedPage types from
-app.rag.document_parser so chunking.py needs zero changes.
+All parsers return the shared ParsedDocument / ParsedPage models from
+app.orchestra.ai.core.document_models, also consumed by chunking.
 """
 
 from __future__ import annotations
@@ -11,8 +11,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List
 
-from app.rag.document_parser import ParsedDocument
-from app.orchestra.ai.ingestion.config import IngestionConfig
+from app.orchestra.ai.core.document_models import ParsedDocument
+from app.orchestra.ai.config import IngestionConfig
 
 
 class BaseParser(ABC):

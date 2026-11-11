@@ -1,19 +1,26 @@
 import React, { useState } from 'react';
 import { useParams, Link, useNavigate, Outlet } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formsApi } from '../api/forms';
 import { yulloOnboardingApi } from '../api/onboarding';
 import { useAppStore } from '../../store/useAppStore';
 import { Card } from '../../components/ui/Card';
-import { ArrowLeft, ArrowRight, Eye } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Eye, Layers, Table, Database, SlidersHorizontal } from 'lucide-react';
 import { YulloAppHeader } from '../components/YulloAppHeader';
+import { Locations } from '../forms/Locations';
+import { BookingLinks } from '../forms/BookingLinks';
 import { FullSpaceKnowledgePreviewModal } from '../components/FullSpaceKnowledgePreviewModal';
+import { UnifiedEntityManagerModal } from '../components/UnifiedEntityManagerModal';
+import { VectorChunksManagerModal } from '../components/VectorChunksManagerModal';
+import { getBaseDomain } from '../config';
 
 export function SpaceDashboard() {
   const { spaceId } = useParams<{ spaceId: string }>();
   const navigate = useNavigate();
   const { token } = useAppStore();
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isEntityManagerOpen, setIsEntityManagerOpen] = useState(false);
+  const [isVectorChunksOpen, setIsVectorChunksOpen] = useState(false);
 
   const { data: identity, isLoading } = useQuery({
     queryKey: ['identity', spaceId],
@@ -27,6 +34,16 @@ export function SpaceDashboard() {
     enabled: !!spaceId,
   });
 
+  const queryClient = useQueryClient();
+  const toggleLiveMutation = useMutation({
+    mutationFn: (live: boolean) => formsApi.toggleLive(spaceId!, live),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['identity', spaceId], data);
+    }
+  });
+
+  const isLive = identity?.status === 'live';
+
   return (
     <div className="yullo-app min-h-screen bg-[var(--canvas)] text-[var(--text-primary)] font-[Instrument_Sans]">
       <YulloAppHeader spaceId={spaceId} />
@@ -37,16 +54,34 @@ export function SpaceDashboard() {
             {isLoading ? 'Loading Space...' : identity?.display_name || 'Unnamed Space'}
           </h1>
           {identity?.slug && (
-            <div className="flex items-center gap-3 mt-3">
+            <div className="flex items-center gap-4 mt-3">
               <a 
-                href={`/yullo/${identity.slug}`}
+                href={`/${identity.slug}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[15px] font-[Instrument_Sans] text-[var(--network-cyan,var(--accent-solid))] hover:underline flex items-center"
               >
-                yullo.com/{identity.slug}
-                <ArrowRight className="w-4 h-4 ml-1 opacity-70" />
+                {getBaseDomain()}/{identity.slug}
+                <ArrowRight className="w-4 h-4 ml-1 opacity-70 transform -rotate-45" />
               </a>
+
+              <div className="flex items-center gap-2">
+                <span className={`flex items-center gap-1.5 text-[14px] font-[Instrument_Sans] font-medium ${isLive ? 'text-[#10b981]' : 'text-[var(--text-secondary)]'}`}>
+                  {isLive ? (
+                    <><span className="w-2 h-2 rounded-full bg-[#10b981]"></span> Live</>
+                  ) : (
+                    <><span className="w-2 h-2 rounded-full border border-current"></span> Private</>
+                  )}
+                </span>
+                
+                <button
+                  onClick={() => toggleLiveMutation.mutate(!isLive)}
+                  disabled={toggleLiveMutation.isPending}
+                  className="text-[13px] font-[Instrument_Sans] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50 ml-1"
+                >
+                  [{isLive ? 'Hide' : 'Make live'}]
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -86,35 +121,59 @@ export function SpaceDashboard() {
             </div>
             <div className="flex items-center gap-2 self-start md:self-auto">
               <button 
-                onClick={() => setIsPreviewOpen(true)}
-                className="px-4 py-2.5 rounded-lg text-[14px] font-[Instrument_Sans] font-medium bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 border border-transparent transition-colors cursor-pointer flex items-center gap-1.5"
-                title="Preview full space knowledge"
+                onClick={() => setIsEntityManagerOpen(true)}
+                className="h-10 w-10 rounded-lg bg-[var(--surface-soft)] text-[var(--text-primary)] hover:bg-[var(--border)] border border-[var(--border)] transition-colors cursor-pointer flex items-center justify-center"
+                title="All Entities & Statuses (Sheets View)"
+                aria-label="All Entities & Statuses Sheet"
               >
-                <Eye className="w-4 h-4 text-[var(--accent-ink)]" /> Preview
+                <Table className="w-4 h-4 text-emerald-500" />
+              </button>
+              <button 
+                onClick={() => setIsVectorChunksOpen(true)}
+                className="h-10 w-10 rounded-lg bg-[var(--surface-soft)] text-[var(--text-primary)] hover:bg-[var(--border)] border border-[var(--border)] transition-colors cursor-pointer flex items-center justify-center"
+                title="Vector Chunks & Embeddings (Sheets View)"
+                aria-label="Vector Chunks Sheet"
+              >
+                <Database className="w-4 h-4 text-sky-500" />
+              </button>
+              <button 
+                onClick={() => setIsPreviewOpen(true)}
+                className="h-10 w-10 rounded-lg bg-[var(--surface-soft)] text-[var(--text-primary)] hover:bg-[var(--border)] border border-[var(--border)] transition-colors cursor-pointer flex items-center justify-center"
+                title="Preview Full Space Knowledge"
+                aria-label="Preview Knowledge"
+              >
+                <Eye className="w-4 h-4 text-[var(--accent-ink,#3b82f6)]" />
               </button>
               <button 
                 onClick={() => navigate(`/yullo/spaces/${spaceId}/aura-knowledge`)}
-                className="px-5 py-2.5 rounded-lg text-[15px] font-[Instrument_Sans] font-medium bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 border border-transparent transition-colors cursor-pointer"
+                className="h-10 w-10 rounded-lg bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 border border-transparent transition-colors cursor-pointer flex items-center justify-center"
+                title="Manage Knowledge Sources"
+                aria-label="Manage Sources"
               >
-                Manage
+                <SlidersHorizontal className="w-4 h-4" />
               </button>
             </div>
           </div>
 
+          {spaceId && identity && <BookingLinks key={spaceId} spaceId={spaceId} spaceName={identity.display_name} />}
+
+          {spaceId && identity && <Locations key={spaceId} spaceId={spaceId} />}
+
           {/* Row 3: Appearance */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between py-6 gap-4 opacity-50 pointer-events-none">
+          <div className="flex flex-col md:flex-row md:items-center justify-between py-6 gap-4">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-1">
                 <h3 className="font-[Satoshi] font-medium text-[18px] text-[var(--text-primary)]">Appearance</h3>
               </div>
               <p className="text-[15px] font-[Instrument_Sans] text-[var(--text-secondary)]">
-                Customize colors, layout, and visual presets for your space. (Coming soon)
+                Shape the visual personality of your public Yullo Link.
               </p>
             </div>
-            <button 
+            <button
+              onClick={() => navigate(`/yullo/spaces/${spaceId}/appearance`)}
               className="px-5 py-2.5 rounded-lg text-[15px] font-[Instrument_Sans] font-medium transition-colors self-start md:self-auto bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90"
             >
-              Manage
+              Open studio
             </button>
           </div>
 
@@ -135,6 +194,24 @@ export function SpaceDashboard() {
         logoUrl={identity?.logo_url}
         sources={sources}
       />
+
+      {spaceId && (
+        <UnifiedEntityManagerModal
+          isOpen={isEntityManagerOpen}
+          onClose={() => setIsEntityManagerOpen(false)}
+          spaceId={spaceId}
+          spaceName={identity?.display_name || 'Space'}
+        />
+      )}
+
+      {spaceId && (
+        <VectorChunksManagerModal
+          isOpen={isVectorChunksOpen}
+          onClose={() => setIsVectorChunksOpen(false)}
+          spaceId={spaceId}
+          spaceName={identity?.display_name || 'Space'}
+        />
+      )}
     </div>
   );
 }

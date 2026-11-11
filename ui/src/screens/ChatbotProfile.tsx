@@ -31,7 +31,7 @@ interface Chatbot {
 
 const DEFAULT_THEME_COLOR = '#6366f1'
 
-// Sections an admin can manually pick/order, mirrors app/renderengine/homepage_sections.py's
+// Sections an admin can manually pick/order, mirrors app/orchestra/ai/appearance_preview/renderengine/homepage_sections.py's
 // ALLOWED_SECTIONS minus quick_topics/trust_badges -- those two have their own dedicated
 // authoring card + force-include path below, so listing them here too would be a redundant,
 // confusing second way to turn on the same content.

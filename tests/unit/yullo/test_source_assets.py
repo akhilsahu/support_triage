@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 import pytest
-from app.yullo.services.sources.asset_extractor import extract_page_assets
+from app.orchestra.ai.ingestion.scraper.asset_extractor import extract_page_assets
 from app.schemas.yullo_onboarding import SpaceSourceResponse
 
 SAMPLE_HTML = """

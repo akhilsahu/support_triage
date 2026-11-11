@@ -3,9 +3,9 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 from app.orchestra.ai.contracts import ConversationExecutionContext
-from app.orchestra.ai.customer_runtime import build_customer_executor
-from app.orchestra.ai.core.config import AgnoConfig
-from app.orchestra.ai.orchestrators.agno import AgnoOrchestrator
+from app.orchestra.ai.inference.factory import build_customer_executor
+from app.orchestra.ai.config import OrchestraConfig
+from app.orchestra.ai.inference.agno import AgnoOrchestrator
 
 
 def test_build_customer_executor_forwards_canonical_context() -> None:
@@ -21,7 +21,7 @@ def test_build_customer_executor_forwards_canonical_context() -> None:
     expected_executor = object()
 
     with patch(
-        "app.orchestra.ai.customer_runtime.build_executor",
+        "app.orchestra.ai.inference.factory.build_executor",
         return_value=expected_executor,
     ) as factory:
         executor = build_customer_executor(
@@ -56,7 +56,7 @@ def test_build_customer_executor_defaults_conversation_to_session() -> None:
         session_id=uuid.uuid4(),
     )
 
-    with patch("app.orchestra.ai.customer_runtime.build_executor") as factory:
+    with patch("app.orchestra.ai.inference.factory.build_executor") as factory:
         build_customer_executor(
             context=context,
             space=object(),
@@ -77,7 +77,7 @@ def test_evaluation_runtime_uses_separate_cache_and_disables_session_state() -> 
         org_name="Acme",
         active_agents=[],
         chatbot_id="bot-1",
-        cfg=AgnoConfig(
+        cfg=OrchestraConfig(
             session_store="sqlite",
             session_db_url="sessions.db",
             history_enabled=True,
@@ -99,10 +99,10 @@ def test_evaluation_runtime_uses_separate_cache_and_disables_session_state() -> 
 
     with (
         patch(
-            "app.orchestra.ai.orchestrators.agno._pool.get_or_init",
+            "app.orchestra.ai.inference.agno._pool.get_or_init",
             new=AsyncMock(return_value=object()),
         ) as get_or_init,
-        patch("app.orchestra.ai.orchestrators.agno._get_knowledge_backend", return_value=object()),
+        patch("app.orchestra.ai.inference.agno._get_knowledge_backend", return_value=object()),
     ):
         asyncio.run(orchestrator._runner())
 

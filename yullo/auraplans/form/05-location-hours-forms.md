@@ -1,3 +1,30 @@
+## Implemented approved slice — 2026-10-19
+
+Space dashboard now has Locations beside Booking/Appearance. Owners can add multiple independent location entities and edit each branch with its existing revision. Fields: name, address, optional map URL, public visibility (default off). Optional Google Maps picker supports explicit address search through Geocoding, choosing a result, map-click pin placement and dragging an advanced marker. Owner must click Use this location before the candidate enters the form, and Save location before persistence. Manual address/map-link editing clears stale coordinates. Failed reverse lookup requires manual address entry. Existing coordinates and public/private state reload from each entity.
+
+Reuses canonical entity POST/PATCH and existing owner boundaries. No backend, schema, database, booking or Appearance changes. Only the SpaceDashboard import/Locations row connects the new implementation. Appearance's previously discussed presentation-only changes are NOT implemented; those require separate approval.
+
+### Google Maps configuration (operator action)
+
+In the existing UI environment configuration (for example ui/.env.local), set:
+
+```dotenv
+VITE_YULLO_GOOGLE_MAPS_API_KEY=<browser-restricted Google Maps key>
+VITE_YULLO_GOOGLE_MAPS_MAP_ID=<JavaScript map ID>
+```
+
+Enable Maps JavaScript API and Geocoding API on the Google Cloud project with billing configured. Restrict the browser key to the actual application HTTP referrers and these APIs; allow localhost explicitly for development. Browser keys are public configuration, not server secrets. Use a production map ID; DEMO_MAP_ID is the development fallback. Restart Vite/rebuild after environment changes. No key or environment file was created or changed by this implementation.
+
+SDK loads only when Open map is clicked. No key: manual entry remains available. SDK failures/timeouts show a manual-entry fallback. No Places/autocomplete subscription or LLM call is introduced. Searches execute on explicit Search map/Enter; multiple results require owner selection. Pin geocoding handles stale responses and cleans up map event listeners on unmount. Google attribution remains SDK-managed.
+
+Files: ui/src/yullo/forms/LocationForm.tsx, Locations.tsx, GoogleLocationPicker.tsx, googleLocationMaps.ts, their focused tests, and ui/src/yullo/screens/SpaceDashboard.tsx.
+
+Verification: six focused tests pass (manual fallback, search confirmation, click/drag pins with mocked SDK, validated save, stale pin removal, failure retention, multiple branch list/edit). TypeScript and focused lint pass. Real Google Maps loading, browser/mobile visuals and live API persistence require configured credentials and remain unverified. No user records were written during tests.
+
+Google references: https://developers.google.com/maps/documentation/javascript/examples/advanced-markers-draggable and https://developers.google.com/maps/documentation/javascript/geocoding
+
+---
+
 # Location and opening hours — UI and backend implementation plan
 
 Date: 2026-09-22. Self-contained form plan. Shared requirements are embedded below; sibling plans are optional references. All paths/functions below are implementation targets unless marked existing.

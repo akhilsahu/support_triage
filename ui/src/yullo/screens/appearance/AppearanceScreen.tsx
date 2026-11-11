@@ -35,6 +35,10 @@ export function AppearanceScreen() {
   })
   const history = useAppearanceHistory(defaultPresentationConfig())
   const loadedRevision = useRef<number | null>(null)
+  const loadedSpace = useRef('')
+  const loadedConfig = useRef('')
+  const currentSpace = useRef(spaceId)
+  currentSpace.current = spaceId
   const [device, setDevice] = useState<PreviewDevice>('desktop')
   const [mobileMode, setMobileMode] = useState<MobileMode>('preview')
   const [isCompactLayout, setIsCompactLayout] = useState(() =>
@@ -44,8 +48,9 @@ export function AppearanceScreen() {
   const [error, setError] = useState('')
   const [assetError, setAssetError] = useState('')
   const [assetNotice, setAssetNotice] = useState('')
-  const [imagePickerTarget, setImagePickerTarget] = useState<ImagePickerTarget | null>(null)
+  const [imagePickerTarget, setImagePickerTarget] = useState<(ImagePickerTarget & { review?: boolean }) | null>(null)
   const [modifiedSectionTypes, setModifiedSectionTypes] = useState<Set<PreviewSectionType>>(new Set())
+  const [discardSavedDraft, setDiscardSavedDraft] = useState(false)
 
   const spaceSummary = useMemo(() => {
     return { name: query.data?.space.displayName || 'This Space' }
@@ -64,7 +69,16 @@ export function AppearanceScreen() {
   const [layoutModalData, setLayoutModalData] = useState<AppearanceRebuildLayoutResponse | null>(null)
   const [isRebuildingLayout, setIsRebuildingLayout] = useState(false)
   const [isLayoutModalOpen, setIsLayoutModalOpen] = useState(false)
-  const hasAutoTriggeredFirstTime = useRef(false)
+  const initializedSpace = useRef<string | null>(null)
+  const [isInitializing, setIsInitializing] = useState(false)
+  useEffect(() => {
+    setIsInitializing(false)
+    setModifiedSectionTypes(new Set())
+    setDiscardSavedDraft(false)
+    setLayoutModalData(null)
+    setIsLayoutModalOpen(false)
+    setError('')
+  }, [spaceId])
   const livePreview = useQuery({
     queryKey: ['yullo', 'appearance-live-preview', spaceId],
     queryFn: () => appearanceApi.getLivePreview(spaceId),
@@ -77,8 +91,11 @@ export function AppearanceScreen() {
   const previewContent = useMemo(() => {
     if (!query.data) return undefined
     const fixture = createAppearancePreviewFixtures(query.data.space.purpose as SpacePurpose, spaceSummary)
-    const base = mergeAppearancePreview(fixture, livePreview.data || null)
-    const withDraft = mergeAppearancePreview(base, previewState.content)
+    // The preview starts with actual live content. Examples are opt-in below;
+    // filling missing live sections with fixtures misrepresents the public page.
+    const base = livePreview.data || { schemaVersion: 1 as const, sections: [] }
+    const withSavedDraft = mergeAppearancePreview(base, discardSavedDraft ? null : query.data.editorDraft?.previewContent || null)
+    const withDraft = mergeAppearancePreview(withSavedDraft, previewState.content)
     const sections = withDraft.sections.filter((section) =>
       exampleVisibility[section.type] !== false || section.items.some((item) => item.source === 'grounded'),
     )
@@ -94,7 +111,7 @@ export function AppearanceScreen() {
       ...withDraft,
       sections,
     }
-  }, [query.data, spaceSummary, livePreview.data, previewState.content, exampleVisibility])
+  }, [query.data, spaceSummary, livePreview.data, previewState.content, exampleVisibility, discardSavedDraft])
   const exampleSections = previewContent?.sections
     .filter((section) => section.items.some((item) => item.source === 'example'))
     .map((section) => section.type) || []
@@ -166,17 +183,17 @@ export function AppearanceScreen() {
   }, [activeModalSection, clearSectionDraft])
 
   const handleUploadItemImage = useCallback(
-    async (sectionType: PreviewSectionType, itemKey: string, file: File) => {
+    async (sectionType: PreviewSectionType, itemKey: string, file: File, review = false) => {
       try {
         const asset = await appearanceApi.uploadAsset(spaceId, file)
         if (asset?.url) {
           const currentSection = previewContent?.sections.find((s) => s.type === sectionType)
           updateItemImage(sectionType, itemKey, asset.url, asset.id, currentSection)
-          setModifiedSectionTypes((prev) => new Set(prev).add(sectionType))
+          if (!review) setModifiedSectionTypes((prev) => new Set(prev).add(sectionType))
           queryClient.invalidateQueries({ queryKey: ['yullo', 'appearance', spaceId] })
         }
-      } catch (err) {
-        console.error('Failed to upload image for item', err)
+      } catch {
+        throw new Error('Could not upload this image. Please try again.')
       }
     },
     [spaceId, updateItemImage, queryClient, previewContent],
@@ -215,11 +232,17 @@ export function AppearanceScreen() {
   }, [activeModalSection])
 
   useEffect(() => {
-    if (query.data && loadedRevision.current !== query.data.revision) {
-      history.replace(resolvePresentationConfig(query.data.effectiveConfig))
+    if (query.data && (loadedSpace.current !== spaceId || loadedRevision.current !== query.data.revision)) {
+      const next = resolvePresentationConfig(query.data.effectiveConfig)
+      // A slow initialization/refetch must not overwrite edits made while it ran.
+      if (loadedSpace.current !== spaceId || JSON.stringify(history.draft) === loadedConfig.current) {
+        history.replace(next)
+      }
+      loadedSpace.current = spaceId
+      loadedConfig.current = JSON.stringify(next)
       loadedRevision.current = query.data.revision
     }
-  }, [query.data, history.replace])
+  }, [spaceId, query.data, history.draft, history.replace])
 
   const handleRebuildLayout = useCallback(async (force = true) => {
     setIsRebuildingLayout(true)
@@ -237,6 +260,7 @@ export function AppearanceScreen() {
 
   const handleConfirmRebuiltLayout = useCallback(() => {
     if (!layoutModalData) return
+    setDiscardSavedDraft(Boolean(query.data?.editorDraft))
     history.apply(layoutModalData.config)
     if (layoutModalData.previewContent) {
       setPreviewContent(layoutModalData.previewContent, layoutModalData.explanation)
@@ -246,7 +270,7 @@ export function AppearanceScreen() {
     }
     setIsLayoutModalOpen(false)
     setLayoutModalData(null)
-  }, [layoutModalData, history, setPreviewContent])
+  }, [layoutModalData, history, setPreviewContent, query.data?.editorDraft])
 
   const handleCancelRebuiltLayout = useCallback(() => {
     setIsLayoutModalOpen(false)
@@ -256,19 +280,32 @@ export function AppearanceScreen() {
   useEffect(() => {
     if (
       query.data &&
-      !hasAutoTriggeredFirstTime.current &&
+      !query.data.appearanceInitialized &&
+      initializedSpace.current !== spaceId &&
       query.data.publishedConfig.presentationSource === 'default'
     ) {
-      hasAutoTriggeredFirstTime.current = true
-      void handleRebuildLayout(false)
+      initializedSpace.current = spaceId
+      setIsInitializing(true)
+      void appearanceApi.initialize(spaceId)
+        .then((result) => queryClient.setQueryData(['yullo', 'appearance', spaceId], result))
+        .catch(() => {
+          if (currentSpace.current === spaceId) setError('Could not prepare your appearance. Try Rebuild layout.')
+        })
+        .finally(() => {
+          if (currentSpace.current === spaceId) setIsInitializing(false)
+        })
     }
-  }, [query.data, handleRebuildLayout])
+  }, [spaceId, query.data, queryClient])
 
   const dirty = useMemo(() => {
-    const configDirty = Boolean(query.data) && JSON.stringify(history.draft) !== JSON.stringify(query.data?.publishedConfig)
-    return configDirty || modifiedSectionTypes.size > 0
-  }, [history.draft, query.data, modifiedSectionTypes])
-  const confirmLeave = useUnsavedChangesGuard(dirty)
+    const configDirty = Boolean(query.data) && JSON.stringify(history.draft) !== JSON.stringify(resolvePresentationConfig(query.data?.publishedConfig))
+    return configDirty || modifiedSectionTypes.size > 0 || discardSavedDraft || Boolean(query.data?.editorDraft?.previewContent.sections.length)
+  }, [history.draft, query.data, modifiedSectionTypes, discardSavedDraft])
+  const unsavedEdits = Boolean(query.data) && (
+    JSON.stringify(history.draft) !== JSON.stringify(resolvePresentationConfig(query.data!.effectiveConfig))
+    || modifiedSectionTypes.size > 0 || discardSavedDraft
+  )
+  const confirmLeave = useUnsavedChangesGuard(unsavedEdits)
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 899px)')
@@ -280,12 +317,16 @@ export function AppearanceScreen() {
   const save = useMutation({
     mutationFn: async () => {
       let result = query.data!
-      const configDirty = JSON.stringify(history.draft) !== JSON.stringify(query.data?.publishedConfig)
-      if (configDirty) {
-        result = await appearanceApi.save(spaceId, history.draft, loadedRevision.current ?? query.data!.revision)
+      const configDirty = JSON.stringify(history.draft) !== JSON.stringify(resolvePresentationConfig(query.data?.publishedConfig))
+      if (configDirty || discardSavedDraft) {
+        result = await appearanceApi.save(spaceId, history.draft, loadedRevision.current ?? query.data!.revision, discardSavedDraft)
       }
-      if (modifiedSectionTypes.size > 0) {
-        for (const type of modifiedSectionTypes) {
+      const pendingTypes = new Set([
+        ...(!discardSavedDraft ? query.data?.editorDraft?.previewContent.sections.map((section) => section.type) || [] : []),
+        ...modifiedSectionTypes,
+      ])
+      if (pendingTypes.size > 0) {
+        for (const type of pendingTypes) {
           const section =
             previewState.content?.sections.find((s) => s.type === type) ||
             previewContent?.sections.find((s) => s.type === type)
@@ -300,9 +341,12 @@ export function AppearanceScreen() {
     },
     onSuccess: (result) => {
       queryClient.setQueryData(['yullo', 'appearance', spaceId], result)
-      history.replace(result.effectiveConfig)
+      history.replace(resolvePresentationConfig(result.effectiveConfig))
+      loadedConfig.current = JSON.stringify(resolvePresentationConfig(result.effectiveConfig))
       loadedRevision.current = result.revision
       setModifiedSectionTypes(new Set())
+      setDiscardSavedDraft(false)
+      clearPreview()
       setError('')
       setSaved(true)
       window.setTimeout(() => setSaved(false), 900)
@@ -374,7 +418,7 @@ export function AppearanceScreen() {
       } else {
         const currentSection = previewContent?.sections.find((s) => s.type === imagePickerTarget.sectionType)
         updateItemImage(imagePickerTarget.sectionType, imagePickerTarget.itemKey, asset.url, asset.id, currentSection)
-        setModifiedSectionTypes((prev) => new Set(prev).add(imagePickerTarget.sectionType))
+        if (!imagePickerTarget.review) setModifiedSectionTypes((prev) => new Set(prev).add(imagePickerTarget.sectionType))
       }
       setImagePickerTarget(null)
     },
@@ -385,9 +429,13 @@ export function AppearanceScreen() {
     async (file: File) => {
       if (!imagePickerTarget) return
       if (imagePickerTarget.itemKey === 'hero') {
-        upload.mutate([file])
+        try {
+          await upload.mutateAsync([file])
+        } catch {
+          throw new Error('Could not upload this image. Please try again.')
+        }
       } else {
-        await handleUploadItemImage(imagePickerTarget.sectionType, imagePickerTarget.itemKey, file)
+        await handleUploadItemImage(imagePickerTarget.sectionType, imagePickerTarget.itemKey, file, imagePickerTarget.review)
       }
       setImagePickerTarget(null)
     },
@@ -405,7 +453,7 @@ export function AppearanceScreen() {
     } else {
       const currentSection = previewContent?.sections.find((s) => s.type === imagePickerTarget.sectionType)
       updateItemImage(imagePickerTarget.sectionType, imagePickerTarget.itemKey, '', undefined, currentSection)
-      setModifiedSectionTypes((prev) => new Set(prev).add(imagePickerTarget.sectionType))
+      if (!imagePickerTarget.review) setModifiedSectionTypes((prev) => new Set(prev).add(imagePickerTarget.sectionType))
     }
     setImagePickerTarget(null)
   }, [imagePickerTarget, history, updateItemImage, previewContent])
@@ -433,13 +481,33 @@ export function AppearanceScreen() {
   return (
     <div className="yullo-app appearance-page min-h-screen bg-[var(--canvas)] text-[var(--text-primary)]">
       <YulloAppHeader spaceId={spaceId} />
-      <AppearanceHeader space={query.data.space} dirty={dirty} canUndo={history.canUndo} canRedo={history.canRedo} saving={save.isPending} saved={saved} togglingLive={toggleLive.isPending} onBack={() => confirmLeave() && navigate(`/yullo/spaces/${spaceId}`)} onToggleLive={() => toggleLive.mutate()} onUndo={history.undo} onRedo={history.redo} onReset={() => { history.replace(query.data.publishedConfig); clearPreview(); setModifiedSectionTypes(new Set()); }} onSave={() => save.mutate()} />
+      <AppearanceHeader
+        space={query.data.space}
+        dirty={dirty}
+        draftSaved={Boolean(query.data.editorDraft) && !unsavedEdits}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
+        saving={save.isPending || isInitializing}
+        saved={saved}
+        togglingLive={toggleLive.isPending}
+        onBack={() => confirmLeave() && navigate(`/yullo/spaces/${spaceId}`)}
+        onToggleLive={() => toggleLive.mutate()}
+        onUndo={history.undo}
+        onRedo={history.redo}
+        onReset={() => {
+          history.replace(resolvePresentationConfig(query.data.publishedConfig))
+          clearPreview()
+          setModifiedSectionTypes(new Set())
+          setDiscardSavedDraft(Boolean(query.data.editorDraft))
+        }}
+        onSave={() => save.mutate()}
+      />
       {error && <div className="appearance-error" role="alert">{error}</div>}
       <MobileModeSwitcher value={mobileMode} onChange={setMobileMode} />
       <main className="appearance-shell">
         <div className={`appearance-mode appearance-preview-mode ${mobileMode === 'preview' ? 'is-active' : ''}`} aria-hidden={isCompactLayout && mobileMode !== 'preview'} {...inactive('preview')}>
           <SectionEditorContext.Provider value={{
-            generating: previewState.isGenerating,
+            generating: previewState.isGenerating || isInitializing,
             toggle: (type) => history.apply({ ...history.draft, sections: history.draft.sections.map((section) => section.type === type ? { ...section, visible: !section.visible } : section) }),
             build: handlePullSectionData,
             uploadItemImage: handleUploadItemImage,
@@ -447,7 +515,8 @@ export function AppearanceScreen() {
             updateSectionHeading: handleUpdateSectionHeading,
             updateSectionItem: handleUpdateSectionItem,
           }}>
-            <AppearanceCanvas key={previewState.lastUpdate || 'fixture'} space={query.data.space} config={history.draft} assets={query.data.assets} device={device} onDeviceChange={setDevice} previewContent={previewContent} isGenerating={previewState.isGenerating} />
+            {/* Keep zoom and scroll when draft content changes. */}
+            <AppearanceCanvas key={spaceId} space={query.data.space} config={history.draft} assets={query.data.assets} device={device} onDeviceChange={setDevice} previewContent={previewContent} isGenerating={previewState.isGenerating || isInitializing} />
           </SectionEditorContext.Provider>
         </div>
         <div className={`appearance-mode appearance-customize-mode ${mobileMode === 'customize' ? 'is-active' : ''}`} aria-hidden={isCompactLayout && mobileMode !== 'customize'} {...inactive('customize')}>
@@ -459,11 +528,11 @@ export function AppearanceScreen() {
             assetUploading={upload.isPending} 
             assetError={assetError} 
             assetNotice={assetNotice}
-            previewStatus={previewState.status}
-            previewGenerating={previewState.isGenerating || isRebuildingLayout}
-            previewGroundedCount={previewState.content ? previewState.content.sections.reduce((acc, s) => acc + s.items.length, 0) : 0}
+            previewStatus={previewState.status === 'idle' && query.data.editorDraft ? 'ready' : previewState.status}
+            previewGenerating={previewState.isGenerating || isRebuildingLayout || isInitializing}
+            previewGroundedCount={(previewState.content || (!discardSavedDraft ? query.data.editorDraft?.previewContent : null))?.sections.reduce((acc, section) => acc + section.items.filter((item) => item.source === 'grounded').length, 0) || 0}
             previewLastUpdate={previewState.lastUpdate}
-            previewExplanation={previewState.explanation}
+            previewExplanation={previewState.explanation || query.data.editorDraft?.explanation}
             previewContent={previewContent}
             onPreviewRebuild={() => void handleRebuildLayout(true)}
             previewDraftTypes={previewState.content?.sections.map((s) => s.type) || (buildingSection ? [buildingSection] : [])}
@@ -497,8 +566,8 @@ export function AppearanceScreen() {
         </div>
       </main>
       <div className="appearance-mobile-savebar">
-        <span>{dirty ? 'Unsaved changes' : query.data.space.status === 'live' ? 'Public link is live' : 'Public link is private'}</span>
-        <button className="appearance-save" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>{save.isPending ? 'Saving…' : 'Save'}</button>
+        <span>{unsavedEdits ? 'Unsaved changes' : query.data.editorDraft ? 'Draft saved' : query.data.space.status === 'live' ? 'Public link is live' : 'Public link is private'}</span>
+        <button className="appearance-save" onClick={() => save.mutate()} disabled={!dirty || save.isPending || isInitializing}>{save.isPending ? 'Saving…' : 'Save'}</button>
       </div>
       <SectionDataModal
         isOpen={Boolean(activeModalSection)}
@@ -507,10 +576,17 @@ export function AppearanceScreen() {
         isLoading={previewState.isGenerating || buildingSection === activeModalSection}
         isApplying={applySection.isPending}
         sectionData={modalSectionData}
+        assets={query.data.assets}
         explanation={previewState.explanation}
         status={previewState.status}
         onConfirm={handleConfirmSectionData}
         onCancel={handleCancelSectionData}
+        onChooseImage={(item) => {
+          if (activeModalSection) setImagePickerTarget({ sectionType: activeModalSection, itemKey: item.key, itemTitle: item.title, currentImageUrl: item.imageUrl, review: true })
+        }}
+        onRemoveImage={(item) => {
+          if (activeModalSection) updateItemImage(activeModalSection, item.key, '', undefined, modalSectionData || undefined)
+        }}
       />
       <LayoutConfirmModal
         isOpen={isLayoutModalOpen}

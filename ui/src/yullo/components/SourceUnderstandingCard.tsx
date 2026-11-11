@@ -4,6 +4,9 @@ import { ColouredIcon, getBrandIconFromUrl } from './ColouredIcon';
 
 export interface FactItem {
   text: string;
+  subject?: string;
+  label?: string;
+  value?: string;
   evidence_excerpt?: string;
   source_locator?: string;
 }
@@ -81,6 +84,9 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
       text = String(f.value);
     }
     return {
+      subject: f.subject,
+      label: f.label,
+      value: f.value,
       text: text || f.text || '',
       evidence_excerpt: f.evidence_excerpt || '',
       source_locator: f.source_locator || f.source_doc_id || source.content_ref,
@@ -88,7 +94,8 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
   }).filter(f => Boolean(f.text));
 
   const [facts, setFacts] = useState<FactItem[]>(initialFacts);
-  const [isConfirmed, setIsConfirmed] = useState(source.is_confirmed || false);
+  const [isConfirmed, setIsConfirmed] = useState(source.is_confirmed ?? true);
+  useEffect(() => setIsConfirmed(source.is_confirmed ?? true), [source.is_confirmed]);
 
   // Synchronize facts when source.facts updates live from SSE streaming
   useEffect(() => {
@@ -118,10 +125,6 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
   const handleConfirmAll = async () => {
     if (onConfirmAllFacts) {
       await onConfirmAllFacts(source.id);
-    } else {
-      setIsConfirmed(true);
-      onUseSource(source.id);
-      onToggleConfirm?.(source.id, true);
     }
   };
 
@@ -180,7 +183,7 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
         <div className="shrink-0">
           {isConfirmed ? (
             <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full font-[Instrument_Sans]">
-              <CheckCircle2 className="w-3.5 h-3.5" /> In use for Aura
+              <CheckCircle2 className="w-3.5 h-3.5" /> Source enabled
             </span>
           ) : source.status === 'ready' || source.status === 'ready_to_review' ? (
             <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-emerald-500 bg-emerald-500/10 px-3 py-1 rounded-full font-[Instrument_Sans]">
@@ -221,7 +224,7 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
             )}
           </div>
 
-          {facts.length > 0 && !isConfirmed && (
+          {facts.length > 0 && onConfirmAllFacts && (
             <button
               type="button"
               onClick={handleConfirmAll}
@@ -245,7 +248,7 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
                   <span className="text-[var(--accent-ink)] text-[14px] leading-tight select-none">•</span>
                   <span className="break-words">{fact.text}</span>
                 </div>
-                {!isConfirmed && (
+                {(
                   <button
                     type="button"
                     onClick={() => handleRemoveFact(idx)}
@@ -322,7 +325,7 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
               title="Stop using this source for Aura suggestions"
             >
               <XCircle className="w-3.5 h-3.5 text-amber-500" />
-              <span>Stop using source</span>
+              <span>Pause source</span>
             </button>
           ) : (
             <button
@@ -332,7 +335,7 @@ export const SourceUnderstandingCard: React.FC<SourceUnderstandingCardProps> = (
               className="px-3.5 py-1.5 bg-[var(--accent-solid)] text-[var(--accent-on-solid)] text-[12px] font-medium rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center gap-1.5 font-[Instrument_Sans]"
             >
               <Check className="w-3.5 h-3.5" />
-              <span>Use source</span>
+              <span>Resume source</span>
             </button>
           )}
 

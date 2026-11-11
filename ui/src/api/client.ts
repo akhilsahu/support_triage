@@ -37,7 +37,7 @@ export interface IngestionJob {
   stage_detail: string | null
   eta_seconds?: number | null
   context_enriched?: boolean
-  ai_cost_usd?: number
+  ai_cost_usd?: number | null
   doc_id: string | null
   pages: number | null
   chunks: number | null
@@ -254,15 +254,6 @@ http.interceptors.response.use(
 export const apiClient = {
   healthCheck: () => http.get(API_CONFIG.endpoints.health).then(r => r.data),
 
-  sendMessage: (message: string, conversationId?: string, spaceId?: string) =>
-    http.post(API_CONFIG.endpoints.chat, { message, conversation_id: conversationId, org_id: spaceId }).then(r => r.data),
-
-  getAgentStatus: () =>
-    http.get(API_CONFIG.endpoints.agents).then(r => r.data),
-
-  analyzeSentiment: (message: string) =>
-    http.post(API_CONFIG.endpoints.sentiment, { message }).then(r => r.data),
-
   // RAG
   // Returns 202 with a job to poll -- ingestion runs in the background, so this
   // resolves in milliseconds even for documents that take minutes to process.
@@ -358,9 +349,6 @@ export const apiClient = {
 
   chatWithDoc: (docId: string, question: string, topK = 5) =>
     http.post(API_CONFIG.endpoints.ragChat, { doc_id: docId, question, top_k: topK }).then(r => r.data),
-
-  chatWithClientKB: (clientId: string, question: string, docId?: string) =>
-    http.post(API_CONFIG.endpoints.ragClient(clientId), { client_id: clientId, question, doc_id: docId }).then(r => r.data),
 
   getAdminStats: () =>
     http.get(API_CONFIG.endpoints.adminStats).then(r => r.data),

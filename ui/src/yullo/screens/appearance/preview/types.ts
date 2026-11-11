@@ -69,6 +69,7 @@ export const AppearancePreviewRequestSchema = z
     currentConfig: presentationConfigSchema,
     force: z.boolean(),
     sectionType: PreviewSectionTypeSchema.optional(),
+    currentContent: AppearancePreviewContentSchema.optional(),
   })
   .strict();
 

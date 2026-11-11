@@ -16,7 +16,6 @@ from app.yullo.schemas.appearance import (
     AppearanceAssetUpdateRequest,
     AppearanceCandidateResponse,
     AppearanceCommandRequest,
-    AppearanceResponse,
     AppearanceUpdateRequest,
 )
 from app.yullo.schemas.appearance_preview import (
@@ -26,26 +25,29 @@ from app.yullo.schemas.appearance_preview import (
     AppearancePreviewResponse,
     AppearanceRebuildLayoutRequest,
     AppearanceRebuildLayoutResponse,
+    AppearanceEditorResponse,
 )
-from app.yullo.services.appearance_assets import (
+from app.orchestra.ai.appearance_preview.asset_persistence import (
     archive_asset,
     get_owned_asset,
     list_source_extracted_assets,
     update_asset,
     upload_asset,
 )
-from app.yullo.services.appearance_assistant import (
+from app.orchestra.ai.appearance_preview.generate_appearance_suggestions import (
     apply_appearance_command,
     recommend_appearance,
     rebuild_space_layout,
 )
-from app.yullo.services.appearance_preview import apply_appearance_preview_section, generate_appearance_preview, get_live_appearance_preview
-from app.yullo.services.persistence.appearance import get_appearance, update_appearance
+from app.yullo.services.persistence.appearance import (
+    apply_appearance_preview_section, generate_appearance_preview, get_live_appearance_preview,
+    get_appearance, update_appearance, initialize_appearance,
+)
 
 router = APIRouter(prefix="/yullo/spaces", tags=["yullo-appearance"])
 
 
-@router.get("/{space_id}/appearance", response_model=AppearanceResponse, response_model_by_alias=True)
+@router.get("/{space_id}/appearance", response_model=AppearanceEditorResponse, response_model_by_alias=True)
 async def read_appearance(
     space_id: UUID,
     user: User = Depends(current_user),
@@ -54,7 +56,19 @@ async def read_appearance(
     return await get_appearance(db, user_id=user.id, space_id=space_id)
 
 
-@router.patch("/{space_id}/appearance", response_model=AppearanceResponse, response_model_by_alias=True)
+@router.post("/{space_id}/appearance/initialize", response_model=AppearanceEditorResponse, response_model_by_alias=True)
+async def initialize_editor(
+    space_id: UUID,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await enforce_rate_limit("yullo-appearance-initialize", f"{user.id}:{space_id}", 10, 60)
+    result = await initialize_appearance(db, user_id=user.id, space_id=space_id)
+    await db.commit()
+    return result
+
+
+@router.patch("/{space_id}/appearance", response_model=AppearanceEditorResponse, response_model_by_alias=True)
 async def save_appearance(
     space_id: UUID,
     payload: AppearanceUpdateRequest,

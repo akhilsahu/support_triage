@@ -5,7 +5,7 @@ import type {
 } from './types'
 import { SectionHeading } from './SectionHeading'
 
-// AI-designed, KB-grounded data block (see app/renderengine/data_block.py).
+// AI-designed, KB-grounded data block (see app/orchestra/ai/appearance_preview/renderengine/data_block.py).
 // The backend agent decides block_type (table/chart/card/tabs) AND content
 // together -- this component only dispatches to the matching fixed renderer,
 // it never interprets arbitrary structure. Always shows the disclaimer --

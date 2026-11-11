@@ -4,17 +4,23 @@ import { useAuraChat } from '../../../hooks/useAuraChat'
 import { AuraIntro } from './AuraIntro'
 import { MessageList } from './MessageList'
 import { AuraComposer } from './AuraComposer'
-import { useEffect, useRef } from 'react'
+import type { SpacePresentationConfig } from '../../appearance/presentation/schema'
+
+import { AppearancePreviewContent } from '../../appearance/preview/types'
 
 interface AuraExperienceProps {
   space: PublicSpace
+  presentation: SpacePresentationConfig
+  heroAssetUrl?: string
+  heroAssetAltText?: string
   viewState: AuraViewState
   chat: ReturnType<typeof useAuraChat>
   onMessageSent: (text: string) => void
   onIdentityVisibilityChange: (isVisible: boolean) => void
+  previewContent?: AppearancePreviewContent
 }
 
-export function AuraExperience({ space, viewState, chat, onMessageSent, onIdentityVisibilityChange }: AuraExperienceProps) {
+export function AuraExperience({ space, presentation, heroAssetUrl, heroAssetAltText, viewState, chat, onMessageSent, onIdentityVisibilityChange, previewContent }: AuraExperienceProps) {
   const hasMessages = chat.messages.length > 0 || viewState === 'conversation' || viewState === 'transitioning'
 
   const handleSend = (text: string) => {
@@ -23,14 +29,18 @@ export function AuraExperience({ space, viewState, chat, onMessageSent, onIdenti
   }
 
   return (
-    <div className="flex-1 w-full h-full flex flex-col relative overflow-hidden">
+    <div className="min-h-0 flex-1 w-full flex flex-col relative overflow-hidden">
       
       {/* Scrollable Viewport */}
-      <div className="flex-1 overflow-y-auto scroll-smooth w-full">
+      <div className="min-h-0 flex-1 overflow-y-auto scroll-smooth w-full">
         <AuraIntro 
           space={space} 
+          presentation={presentation}
+          heroAssetUrl={heroAssetUrl}
+          heroAssetAltText={heroAssetAltText}
           onSelectPrompt={handleSend} 
           onIdentityVisibilityChange={onIdentityVisibilityChange}
+          previewContent={previewContent}
         />
         
         {hasMessages && (
@@ -38,6 +48,7 @@ export function AuraExperience({ space, viewState, chat, onMessageSent, onIdenti
             spaceId={space.id!}
             messages={chat.messages} 
             isTyping={chat.isTyping} 
+            onRetry={chat.retryLastMessage}
           />
         )}
         
@@ -53,15 +64,15 @@ export function AuraExperience({ space, viewState, chat, onMessageSent, onIdenti
       */}
       <div className={`w-full transition-all duration-500 ease-in-out ${
         hasMessages 
-          ? 'absolute bottom-0 left-0 bg-white/80 backdrop-blur-md border-t border-gray-100 p-4'
-          : 'absolute left-0 bottom-1/4 pointer-events-none' // positioned relatively near the intro
-      }`}>
-        <div className={`w-full max-w-4xl mx-auto ${!hasMessages && 'pointer-events-auto px-4 md:px-8'}`}>
+          ? 'absolute bottom-0 left-0 bg-[color:var(--presentation-surface)]/90 backdrop-blur-md border-t border-[var(--presentation-border)] py-4'
+          : 'relative shrink-0 pt-4 pb-8'
+      }`} style={{ paddingInline: 'clamp(16px, 4vw, 48px)' }}>
+        <div className="w-full mx-auto pointer-events-auto" style={{ maxWidth: 'var(--presentation-content-width)' }}>
           <AuraComposer 
             layoutId="aura-composer" 
             isDocked={hasMessages}
             onSend={handleSend}
-            disabled={chat.isTyping}
+            disabled={chat.isSending}
           />
         </div>
       </div>

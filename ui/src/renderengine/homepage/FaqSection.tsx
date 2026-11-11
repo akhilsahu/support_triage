@@ -2,7 +2,7 @@ import type { SectionProps } from './types'
 import { SectionHeading } from './SectionHeading'
 
 // AI-generated FAQ, grounded in this bot's actual knowledge base content
-// (see app/renderengine/faq.py). Renders nothing when there's no usable KB
+// (see app/orchestra/ai/appearance_preview/renderengine/faq.py). Renders nothing when there's no usable KB
 // content to ground answers in -- same safe no-op as the original stub.
 // Uses native <details>/<summary> for the expand/collapse -- no extra state.
 export function FaqSection({ theme: t, faq }: SectionProps) {

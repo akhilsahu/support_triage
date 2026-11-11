@@ -1,7 +1,14 @@
-from typing import Literal, Optional, List
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Literal, Optional, List
 from datetime import datetime
+from copy import deepcopy
 import re
-from pydantic import BaseModel, HttpUrl, Field, field_validator, model_validator, ConfigDict, AnyUrl
+
+from pydantic import BaseModel, HttpUrl, Field, field_validator, model_validator, ConfigDict
+
+if TYPE_CHECKING:
+    from app.models.yullo_space_entity import YulloSpaceEntity
 
 EntityType = Literal['offering', 'location', 'portfolio_item', 'contact_channel', 'person', 'event', 'action']
 
@@ -78,6 +85,9 @@ class ContactChannelPayload(BaseEntityPayload):
     label: str = Field(..., min_length=1, max_length=200)
     channel: Literal['email', 'phone', 'website']
     value: str = Field(..., min_length=1, max_length=500)
+    organization: Optional[str] = Field(None, max_length=200)
+    purpose: Optional[str] = Field(None, max_length=500)
+    relationship: Literal['space_owner', 'third_party', 'unknown'] = 'unknown'
 
     @model_validator(mode='after')
     def validate_channel_value(self) -> 'ContactChannelPayload':
@@ -140,6 +150,9 @@ class EventPayload(BaseEntityPayload):
         return self
 
 class ActionPayload(BaseEntityPayload):
+    organization: Optional[str] = Field(None, max_length=200)
+    purpose: Optional[str] = Field(None, max_length=500)
+    relationship: Literal['space_owner', 'third_party', 'unknown'] = 'unknown'
     label: str = Field(..., min_length=1, max_length=200)
     kind: Literal['booking', 'enquiry', 'external_link']
     destination_url: HttpUrl
@@ -169,3 +182,75 @@ def validate_entity_payload(entity_type: EntityType, schema_version: int, payloa
     validated = schema_class(**payload)
     return validated.model_dump(mode='json') if hasattr(validated, 'model_dump') else validated.dict()
 
+
+
+PUBLIC_VISIBILITIES = ("public", "public_aura")
+
+
+def _payload_title(payload: dict[str, Any]) -> str:
+    return str(payload.get("title") or payload.get("name") or payload.get("label") or "Untitled")
+
+
+def _remove_payload_path(payload: dict[str, Any], path: str) -> None:
+    parts = [part for part in path.split(".") if part]
+    current: Any = payload
+    for part in parts[:-1]:
+        if not isinstance(current, dict):
+            return
+        current = current.get(part)
+    if parts and isinstance(current, dict):
+        current.pop(parts[-1], None)
+
+
+
+def project_public_entity_payload(entity: YulloSpaceEntity) -> dict[str, Any]:
+    """Apply field policies before entity data reaches a public browser or model."""
+    payload = deepcopy(entity.payload_json or {})
+    raw_policies = entity.field_policies or {}
+    policies = raw_policies.get("fields", raw_policies) if isinstance(raw_policies, dict) else {}
+    if not isinstance(policies, dict):
+        return payload
+    for path, policy in policies.items():
+        if not isinstance(path, str):
+            continue
+        visibility = policy.get("visibility") if isinstance(policy, dict) else policy
+        if visibility and visibility not in PUBLIC_VISIBILITIES:
+            _remove_payload_path(payload, path)
+    return payload
+
+
+
+def entity_title(entity: YulloSpaceEntity) -> str:
+    payload = project_public_entity_payload(entity)
+    return _payload_title(payload)
+
+
+
+def public_entity_summary(entity: YulloSpaceEntity) -> dict[str, Any]:
+    """Return the small policy-projected DTO used by public landing surfaces."""
+    payload = project_public_entity_payload(entity)
+    description = payload.get("description") or payload.get("summary") or payload.get("bio")
+    meta = payload.get("short_metadata") or payload.get("meta") or payload.get("subtitle")
+    if entity.entity_type == "location" and not description:
+        description = payload.get("address")
+    if entity.entity_type == "event" and not meta:
+        meta = payload.get("starts_at")
+    return {
+        "id": str(entity.id),
+        "type": entity.entity_type,
+        "title": _payload_title(payload),
+        "description": str(description) if description else None,
+        "meta": str(meta) if meta else None,
+        "kind": str(payload.get("kind")) if payload.get("kind") else None,
+        "revision": entity.revision,
+    }
+
+
+
+def public_entity_card(entity: YulloSpaceEntity) -> dict[str, Any]:
+    """Minimal field-policy-projected record for AI card selection, not raw payload."""
+    payload = project_public_entity_payload(entity)
+    media = payload.get('media_urls')
+    return {'id': str(entity.id), 'entity_type': entity.entity_type,
+            'title': _payload_title(payload),
+            'image_count': len(media) if isinstance(media, list) else 0}

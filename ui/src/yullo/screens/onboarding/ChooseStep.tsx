@@ -21,7 +21,7 @@ export function ChooseStep({ token, onContinue, draft }: { token: string, onCont
     setLoading(true)
     setError(null)
     try {
-      const draft = await yulloOnboardingApi.createDraft(selected, token)
+      const draft = await yulloOnboardingApi.createDraft(selected)
       onContinue(draft)
     } catch (err: any) {
       setError(err.message || 'Failed to create space.')

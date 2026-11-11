@@ -1,10 +1,10 @@
-from dataclasses import replace
 import json
 
 import httpx
 import pytest
 
-from app.orchestra.ai.ingestion.scraper.base import ScrapeError, get_scraper_config
+from app.orchestra.ai.ingestion.scraper.base import ScrapeError
+from app.orchestra.ai.config import get_scraper_config
 
 
 PUBLIC_URL = "https://93.184.216.34/page"
@@ -33,8 +33,9 @@ async def test_firecrawl_returns_markdown_page_and_sends_expected_request(monkey
         assert request.headers["content-type"] == "application/json"
         assert json.loads(request.content) == {
             "url": "https://93.184.216.34/page",
-            "formats": ["markdown"],
-            "onlyMainContent": True,
+            "formats": ["markdown", "links"],
+            "onlyMainContent": False,
+            "timeout": max(1, min(300000, get_scraper_config("deep")['timeout_s'] * 1000 - 1000)),
         }
         return httpx.Response(200, json=_success_payload())
 
@@ -176,10 +177,62 @@ async def test_firecrawl_rejects_markdown_over_max_bytes(monkeypatch):
     )
     monkeypatch.setattr(firecrawl, "_transport", transport)
     monkeypatch.setattr("app.config.settings.FIRECRAWL_API_KEY", "test-key")
-    cfg = replace(get_scraper_config("deep"), max_bytes=4)
+    cfg = dict(get_scraper_config("deep"), max_bytes=4)
 
     with pytest.raises(ScrapeError) as exc:
         await firecrawl.fetch_firecrawl(PUBLIC_URL, cfg)
 
     assert exc.value.reason == "too_large"
     assert exc.value.status_hint == 413
+
+
+@pytest.mark.anyio
+async def test_firecrawl_retains_discovered_links_through_preview_cache(monkeypatch, tmp_path):
+    from app.orchestra.ai.ingestion.scraper import firecrawl, cache
+
+    links = [f"/item/{i}" for i in range(30)]
+    links += ["/item/0", "javascript:alert(1)", "https://user:pass@example.com/", "/item/(special)"]
+    monkeypatch.setattr(firecrawl, "_transport", httpx.MockTransport(
+        lambda request: httpx.Response(200, json=_success_payload(links=links))))
+    monkeypatch.setattr("app.config.settings.FIRECRAWL_API_KEY", "test-key")
+    monkeypatch.setattr(cache, "PREVIEW_DIR", tmp_path)
+    page = await firecrawl.fetch_firecrawl(PUBLIC_URL, get_scraper_config("deep"))
+    text = page.raw.decode()
+    assert text.count("[Discovered page link]") == 31
+    assert "https://93.184.216.34/item/29" in text
+    assert "/item/%28special%29" in text
+    assert "javascript:" not in text
+    assert "user:pass" not in text
+    token = cache.store_preview("space-a", page)
+    assert cache.load_preview(token, "space-a").raw == page.raw
+    assert cache.load_preview(token, "space-b") is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("data", [
+    {"success": False, "data": {"markdown": "failure"}},
+    _success_payload(markdown=None),
+    _success_payload(links="invalid"),
+])
+async def test_firecrawl_rejects_invalid_success_payload(monkeypatch, data):
+    from app.orchestra.ai.ingestion.scraper import firecrawl
+
+    monkeypatch.setattr(firecrawl, "_transport", httpx.MockTransport(
+        lambda request: httpx.Response(200, json=data)))
+    monkeypatch.setattr("app.config.settings.FIRECRAWL_API_KEY", "test-key")
+    with pytest.raises(ScrapeError, match="invalid response"):
+        await firecrawl.fetch_firecrawl(PUBLIC_URL, get_scraper_config("deep"))
+
+
+@pytest.mark.anyio
+async def test_firecrawl_rejects_target_error_inside_success_response(monkeypatch):
+    from app.orchestra.ai.ingestion.scraper import firecrawl
+
+    payload = _success_payload()
+    payload["data"]["metadata"]["statusCode"] = 403
+    monkeypatch.setattr(firecrawl, "_transport", httpx.MockTransport(
+        lambda request: httpx.Response(200, json=payload)))
+    monkeypatch.setattr("app.config.settings.FIRECRAWL_API_KEY", "test-key")
+    with pytest.raises(ScrapeError) as exc:
+        await firecrawl.fetch_firecrawl(PUBLIC_URL, get_scraper_config("deep"))
+    assert exc.value.reason == "provider_blocked"

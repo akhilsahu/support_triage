@@ -86,7 +86,7 @@ async def build_homepage_fields(
     slug = org.slug
     try:
         from app.api.customer import _get_active_agents_cached
-        from app.renderengine.homepage_sections import get_homepage_sections
+        from app.orchestra.ai.appearance_preview.renderengine.homepage_sections import get_homepage_sections
 
         active_agents = await _get_active_agents_cached(db, chatbot.id, str(org.id))
         hp["homepage_sections"] = await get_homepage_sections(
@@ -103,7 +103,7 @@ async def build_homepage_fields(
         # whenever the admin has configured topics, regardless of the AI/override
         # decision. Isolated so a parse issue can't remove already-decided sections.
         try:
-            from app.renderengine.quick_topics import parse_quick_topics
+            from app.orchestra.ai.appearance_preview.renderengine.quick_topics import parse_quick_topics
             topics = parse_quick_topics(chatbot.quick_topics)
             if topics:
                 hp["quick_topics"] = topics
@@ -114,7 +114,7 @@ async def build_homepage_fields(
 
         # trust_badges -- same admin-authored, force-include treatment.
         try:
-            from app.renderengine.trust_badges import parse_trust_badges
+            from app.orchestra.ai.appearance_preview.renderengine.trust_badges import parse_trust_badges
             badges = parse_trust_badges(chatbot.trust_badges)
             if badges:
                 hp["trust_badges"] = badges
@@ -126,7 +126,7 @@ async def build_homepage_fields(
         # stat_band -- admin's OWN verified metrics take precedence over the
         # AI/web generator. When set, force-include and skip the AI fallback below.
         try:
-            from app.renderengine.stat_band import admin_stat_band
+            from app.orchestra.ai.appearance_preview.renderengine.stat_band import admin_stat_band
             from app.models.chatbot import ChatbotStatMetric
             metric_rows = (await db.execute(
                 select(ChatbotStatMetric)
@@ -143,7 +143,7 @@ async def build_homepage_fields(
 
         # comparison -- admin's OWN curated/cited competitor grid takes precedence.
         try:
-            from app.renderengine.comparison import admin_comparison
+            from app.orchestra.ai.appearance_preview.renderengine.comparison import admin_comparison
             from app.models.chatbot import ChatbotComparison
             cmp_row = (await db.execute(
                 select(ChatbotComparison).where(ChatbotComparison.chatbot_id == chatbot.id)
@@ -158,7 +158,7 @@ async def build_homepage_fields(
 
         # promo -- admin-authored banner via homepage_sections_override's "overrides".
         try:
-            from app.renderengine.homepage_sections import parse_section_overrides
+            from app.orchestra.ai.appearance_preview.renderengine.homepage_sections import parse_section_overrides
             section_overrides = parse_section_overrides(chatbot.homepage_sections_override)
             if section_overrides and section_overrides.get("promo", {}).get("text"):
                 hp["section_overrides"] = section_overrides
@@ -173,7 +173,7 @@ async def build_homepage_fields(
         # capabilities -- deterministic, derived from active_agents. No LLM/cache.
         if "capabilities" in hp["homepage_sections"]:
             try:
-                from app.renderengine.capabilities import get_capabilities
+                from app.orchestra.ai.appearance_preview.renderengine.capabilities import get_capabilities
                 caps = get_capabilities(active_agents)
                 if caps:
                     hp["capabilities"] = caps
@@ -185,7 +185,7 @@ async def build_homepage_fields(
 
         # Cap total length BEFORE content generation so we don't pay for an LLM
         # call on a section that then gets trimmed. Override picks are protected.
-        from app.renderengine.homepage_sections import _parse_override, cap_total_sections
+        from app.orchestra.ai.appearance_preview.renderengine.homepage_sections import _parse_override, cap_total_sections
         override_ids = set(_parse_override(chatbot.homepage_sections_override) or [])
         hp["homepage_sections"] = cap_total_sections(hp["homepage_sections"], protected_extra=override_ids)
 
@@ -194,7 +194,7 @@ async def build_homepage_fields(
         gen_specs = []
 
         if "key_benefits" in section_ids:
-            from app.renderengine.key_benefits import get_key_benefits
+            from app.orchestra.ai.appearance_preview.renderengine.key_benefits import get_key_benefits
             gen_specs.append(("key_benefits", get_key_benefits(
                 chatbot_id=chatbot.id, space_id=org.id, space_name=name,
                 description=description, active_agents=active_agents,
@@ -202,7 +202,7 @@ async def build_homepage_fields(
             )))
 
         if "faq" in section_ids:
-            from app.renderengine.faq import get_faq
+            from app.orchestra.ai.appearance_preview.renderengine.faq import get_faq
             gen_specs.append(("faq", get_faq(
                 chatbot_id=chatbot.id, space_id=org.id, space_name=name,
                 active_agents=active_agents,
@@ -213,7 +213,7 @@ async def build_homepage_fields(
         # False on the live path (serve cached, warm in background) and True for
         # the admin generate path (wait for real content to freeze).
         if "data_block" in section_ids:
-            from app.renderengine.data_block import get_data_block
+            from app.orchestra.ai.appearance_preview.renderengine.data_block import get_data_block
             gen_specs.append(("data_block", get_data_block(
                 chatbot_id=chatbot.id, space_id=org.id, space_name=name,
                 description=description, active_agents=active_agents,
@@ -222,7 +222,7 @@ async def build_homepage_fields(
             )))
 
         if "stat_band" in section_ids and "stat_band" not in hp:
-            from app.renderengine.stat_band import get_stat_band
+            from app.orchestra.ai.appearance_preview.renderengine.stat_band import get_stat_band
             gen_specs.append(("stat_band", get_stat_band(
                 chatbot_id=chatbot.id, space_id=org.id, space_name=name,
                 description=description, active_agents=active_agents,
@@ -231,7 +231,7 @@ async def build_homepage_fields(
             )))
 
         if "comparison" in section_ids and "comparison" not in hp:
-            from app.renderengine.comparison import get_comparison
+            from app.orchestra.ai.appearance_preview.renderengine.comparison import get_comparison
             gen_specs.append(("comparison", get_comparison(
                 chatbot_id=chatbot.id, space_id=org.id, space_name=name,
                 description=description, active_agents=active_agents,
@@ -240,7 +240,7 @@ async def build_homepage_fields(
             )))
 
         if "process_steps" in section_ids:
-            from app.renderengine.process_steps import get_process_steps
+            from app.orchestra.ai.appearance_preview.renderengine.process_steps import get_process_steps
             gen_specs.append(("process_steps", get_process_steps(
                 chatbot_id=chatbot.id, space_id=org.id, space_name=name,
                 active_agents=active_agents,
@@ -287,7 +287,7 @@ async def org_public_info(
     falling back to the org's); omitted or unknown → the default chatbot.
 
     device/visitor_type feed the renderengine's homepage-section recommendation
-    (see app/renderengine/homepage_sections.py). Frontend doesn't send them yet —
+    (see app/orchestra/ai/appearance_preview/renderengine/homepage_sections.py). Frontend doesn't send them yet —
     this endpoint derives safe defaults so the field is always populated ahead
     of the frontend wiring landing.
     """

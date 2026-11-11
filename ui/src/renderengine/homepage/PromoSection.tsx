@@ -1,6 +1,6 @@
 import type { SectionProps } from './types'
 
-// Admin-authored only -- never AI-generated (see app/renderengine/homepage_sections.py,
+// Admin-authored only -- never AI-generated (see app/orchestra/ai/appearance_preview/renderengine/homepage_sections.py,
 // where "promo" is excluded from the AI-selectable pool). Renders nothing unless
 // an admin has explicitly set section_overrides.promo via ChatbotProfile.
 export function PromoSection({ theme: t, overrides }: SectionProps) {

@@ -17,6 +17,7 @@ import { SectionComponents } from '../home/sectionRegistry';
 import { mapYulloHomeResponse } from '../home/apiAdapter';
 import { useYulloHome } from '../api/queries';
 import { formsApi } from '../api/forms';
+import { BookingForm } from '../forms/BookingForm';
 import type { HomeData, HomeSpace } from '../home/types';
 
 // ─── Theme Management (Moved to YulloAppProviders) ───
@@ -99,6 +100,8 @@ const SpaceRow = ({ space, index }: { space: HomeSpace, index: number }) => {
 };
 
 export const YulloHome = () => {
+  const [bookingSpace, setBookingSpace] = useState<HomeSpace | null>(null);
+  const [bookingSaved, setBookingSaved] = useState(false);
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
   const [deleteTargetSpace, setDeleteTargetSpace] = useState<HomeSpace | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -286,7 +289,7 @@ export const YulloHome = () => {
                             >
                               Open Space
                             </button>
-                            <button className="px-4 py-2 text-[14px] font-medium rounded-lg transition-colors bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90">
+                            <button onClick={() => { setBookingSaved(false); setBookingSpace(selected); }} className="px-4 py-2 text-[14px] font-medium rounded-lg transition-colors bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90">
                               Add booking option
                             </button>
                           </div>
@@ -618,6 +621,8 @@ export const YulloHome = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      {bookingSaved && <p role="status" className="fixed bottom-5 left-5 z-50 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-[var(--text-primary)]">Booking link saved.</p>}
+      {bookingSpace && <BookingForm key={bookingSpace.id} spaceId={bookingSpace.id} spaceName={bookingSpace.name} onClose={() => setBookingSpace(null)} onSaved={() => { setBookingSpace(null); setBookingSaved(true); }} />}
     </div>
   );
 };

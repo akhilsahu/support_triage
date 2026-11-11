@@ -28,8 +28,8 @@ from typing import List, Optional
 
 import structlog
 
-from app.rag.document_parser import ParsedDocument, ParsedPage
 from app.orchestra.ai.ingestion.core.base import BaseParser
+from app.orchestra.ai.core.document_models import ParsedDocument, ParsedPage
 
 logger = structlog.get_logger()
 
@@ -81,6 +81,40 @@ _VISION_REFUSAL_RE = re.compile(
     r"(?:view|extract|read|process))\b",
     re.I,
 )
+
+
+def _block_text(block: dict) -> str:
+    """Collapse one PyMuPDF text block without changing its cell boundary."""
+    return " ".join(
+        span.get("text", "").strip()
+        for line in block.get("lines", [])
+        for span in line.get("spans", [])
+        if span.get("text", "").strip()
+    ).strip()
+
+
+def _cluster_blocks_by_row(blocks: list[dict], tolerance: float = 3.0) -> list[list[dict]]:
+    """Group independently drawn text blocks that share one visual row.
+
+    PDF coordinates often differ by fractions of a point for cells on the same
+    baseline. Sorting by the raw y coordinate caused later columns to precede
+    the first column; grouping with a small tolerance restores left-to-right
+    reading order without merging genuinely separate lines.
+    """
+    rows: list[dict] = []
+    for block in sorted(blocks, key=lambda item: (item["bbox"][1], item["bbox"][0])):
+        y = float(block["bbox"][1])
+        if rows and abs(y - rows[-1]["anchor_y"]) <= tolerance:
+            rows[-1]["blocks"].append(block)
+            count = len(rows[-1]["blocks"])
+            rows[-1]["anchor_y"] = ((rows[-1]["anchor_y"] * (count - 1)) + y) / count
+        else:
+            rows.append({"anchor_y": y, "blocks": [block]})
+    return [sorted(row["blocks"], key=lambda item: item["bbox"][0]) for row in rows]
+
+
+def _sort_blocks_reading_order(blocks: list[dict]) -> list[dict]:
+    return [block for row in _cluster_blocks_by_row(blocks) for block in row]
 
 
 def _is_vision_refusal(text: str) -> bool:
@@ -138,6 +172,8 @@ class PdfParser(BaseParser):
 
     def _vision_ok(self) -> bool:
         """False once the provider has failed enough times to call it down."""
+        if getattr(self, "_is_preview", False):
+            return False
         return self.cfg.vision_enabled and not getattr(self, "_vision_off", False)
 
     def _vision_failed(self, page_num: int) -> None:
@@ -218,7 +254,8 @@ class PdfParser(BaseParser):
             # where two headings were stored last in the stream despite
             # sitting at the top of the page — without this sort, both
             # headings landed one section late.
-            sorted_blocks = sorted(page_dict["blocks"], key=lambda b: (b["bbox"][1], b["bbox"][0]))
+            text_blocks = [block for block in page_dict["blocks"] if block["type"] == 0]
+            sorted_blocks = _sort_blocks_reading_order(page_dict["blocks"])
 
             # Stale-section safety net: if no heading has been detected in a
             # long time, stop trusting the old label — flush what's pending
@@ -251,6 +288,23 @@ class PdfParser(BaseParser):
             # see _find_page_tables for why borderless tables aren't included).
             page_tables = self._find_page_tables(page) if self.cfg.pdf_table_aware else []
             emitted_table_idxs: set = set()
+            borderless_tables = (
+                self._find_borderless_column_tables(
+                    text_blocks,
+                    page_tables,
+                    page_width=float(page.rect.width),
+                    pdf_page=page_idx + 1,
+                    boilerplate=boilerplate,
+                )
+                if self.cfg.pdf_table_aware and self.cfg.pdf_borderless_column_tables
+                else []
+            )
+            borderless_by_block = {
+                block_id: table_index
+                for table_index, table in enumerate(borderless_tables)
+                for block_id in table["block_ids"]
+            }
+            emitted_borderless: set[int] = set()
 
             # A page holding dozens of image blocks is one artwork sliced into
             # tiles (a cover page, typically), not a page of figures. Each tile
@@ -275,6 +329,23 @@ class PdfParser(BaseParser):
                     continue
 
                 if block["type"] != 0:
+                    continue
+
+                # Borderless slide tables are drawn as independent text boxes.
+                # Emit the reconstructed atomic rows once at the first cell and
+                # skip the consumed boxes so their flattened duplicate cannot
+                # produce shifted subject/value pairs during fact extraction.
+                borderless_index = borderless_by_block.get(id(block))
+                if borderless_index is not None:
+                    if borderless_index not in emitted_borderless:
+                        emitted_borderless.add(borderless_index)
+                        _flush()
+                        pages.append(ParsedPage(
+                            page=page_idx + 1,
+                            text=borderless_tables[borderless_index]["text"],
+                            section=current_section,
+                            is_table=True,
+                        ))
                     continue
 
                 # Case 2a: Block falls inside a table detected via PyMuPDF's
@@ -502,8 +573,9 @@ class PdfParser(BaseParser):
             if stats is not None:
                 stats["api_calls"] += 1
 
-            from app.orchestra.ai.ingestion.parsers.vision import vision_completion
             from tenacity import Retrying, stop_after_attempt, wait_exponential
+
+            from app.orchestra.ai.ingestion.parsers.vision import vision_completion
 
             messages = [{
                 "role": "user",
@@ -554,8 +626,9 @@ class PdfParser(BaseParser):
             png  = pix.tobytes("png")
             b64  = base64.b64encode(png).decode()
 
-            from app.orchestra.ai.ingestion.parsers.vision import vision_completion
             from tenacity import Retrying, stop_after_attempt, wait_exponential
+
+            from app.orchestra.ai.ingestion.parsers.vision import vision_completion
 
             messages = [{
                 "role": "user",
@@ -592,6 +665,111 @@ class PdfParser(BaseParser):
             return ""
 
     # ── Table detection (layout-aware, primary) ──────────────────────────────
+
+    def _find_borderless_column_tables(
+        self,
+        blocks: list[dict],
+        ruled_tables: list,
+        *,
+        page_width: float,
+        pdf_page: int,
+        boilerplate: set,
+    ) -> list[dict]:
+        """Recover high-confidence column tables drawn without ruling lines.
+
+        The detector is intentionally narrow: at least three short headers and
+        two following rows must align to the same x centres, and each data row
+        must also have one label to the left. When those constraints are not
+        met, content remains ordinary prose rather than risking a false table.
+        Output uses one atomic row per subject/attribute/value relationship so
+        downstream fact extraction never has to infer column association.
+        """
+        if len(blocks) < 9:
+            return []
+
+        def inside_ruled_table(block: dict) -> bool:
+            bbox = block.get("bbox")
+            return self._table_index_for_block(bbox, ruled_tables) is not None
+
+        eligible = [
+            block for block in blocks
+            if _block_text(block)
+            and not inside_ruled_table(block)
+            and not any(bp in _block_text(block) for bp in boilerplate)
+        ]
+        visual_rows = _cluster_blocks_by_row(eligible)
+        claimed: set[int] = set()
+        found: list[dict] = []
+
+        for header_index, header_row in enumerate(visual_rows):
+            header_cells = [block for block in header_row if id(block) not in claimed]
+            if not 3 <= len(header_cells) <= 6:
+                continue
+            header_texts = [_block_text(block) for block in header_cells]
+            if any(len(text) > 60 or not any(ch.isalpha() for ch in text) for text in header_texts):
+                continue
+
+            centers = [(block["bbox"][0] + block["bbox"][2]) / 2 for block in header_cells]
+            centers.sort()
+            gaps = [right - left for left, right in zip(centers, centers[1:])]
+            if not gaps or min(gaps) < page_width * 0.08:
+                continue
+            alignment_tolerance = min(gaps) * 0.35
+            first_center = centers[0]
+            leading_cutoff = first_center - min(gaps) * 0.35
+            data_rows: list[tuple[str, list[str], list[dict]]] = []
+
+            for row in visual_rows[header_index + 1:header_index + 6]:
+                row_y = min(float(block["bbox"][1]) for block in row)
+                header_y = min(float(block["bbox"][1]) for block in header_cells)
+                if row_y - header_y > 140:
+                    break
+
+                labels: list[dict] = []
+                values: dict[int, dict] = {}
+                for block in row:
+                    if id(block) in claimed:
+                        continue
+                    center = (block["bbox"][0] + block["bbox"][2]) / 2
+                    if center < leading_cutoff:
+                        labels.append(block)
+                        continue
+                    nearest = min(range(len(centers)), key=lambda idx: abs(centers[idx] - center))
+                    if abs(centers[nearest] - center) <= alignment_tolerance and nearest not in values:
+                        values[nearest] = block
+
+                if len(labels) != 1 or len(values) != len(centers):
+                    continue
+                label = _block_text(labels[0])
+                ordered_values = [_block_text(values[idx]) for idx in range(len(centers))]
+                if not label or any(not value for value in ordered_values):
+                    continue
+                data_rows.append((label, ordered_values, [labels[0], *values.values()]))
+
+            if len(data_rows) < 2:
+                continue
+
+            markdown_rows = ["| Subject | Attribute | Value |", "|---|---|---|"]
+            consumed = list(header_cells)
+            for label, values, row_blocks in data_rows:
+                consumed.extend(row_blocks)
+                for subject, value in zip(header_texts, values):
+                    markdown_rows.append(f"| {subject} | {label} | {value} |")
+
+            block_ids = {id(block) for block in consumed}
+            claimed.update(block_ids)
+            found.append({
+                "block_ids": block_ids,
+                "text": f"Borderless table (page {pdf_page}):\n" + "\n".join(markdown_rows),
+            })
+            logger.info(
+                "ingestion.pdf.borderless_table_reconstructed",
+                page=pdf_page,
+                columns=len(header_cells),
+                attributes=len(data_rows),
+            )
+
+        return found
 
     def _find_page_tables(self, page) -> list:
         """
@@ -887,4 +1065,3 @@ class PdfParser(BaseParser):
         if not sizes:
             return 11.0
         return Counter(sizes).most_common(1)[0][0]
-

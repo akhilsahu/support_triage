@@ -35,6 +35,8 @@ from app.models.yullo_user_preference import YulloUserPreference
 from app.models.conversation_turn import ConversationTurn
 from app.models.yullo_home_event import YulloHomeEvent
 from app.models.yullo_space_entity import YulloSpaceEntity, YulloSpaceEntityEvidence
+from app.models.yullo_category_suggestion import YulloCategorySuggestion
+from app.models.yullo_knowledge_cleanup_alert import YulloKnowledgeCleanupAlert
 
 __all__ = [
     "User", "AuthIdentity",
@@ -67,6 +69,8 @@ __all__ = [
     "YulloHomeEvent",
     "YulloSpaceEntity",
     "YulloSpaceEntityEvidence",
+    "YulloCategorySuggestion",
+    "YulloKnowledgeCleanupAlert",
 ]
 
 # Made with Bob

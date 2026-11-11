@@ -53,7 +53,7 @@ export function presentationThemeStyle(config: SpacePresentationConfig): Present
     '--presentation-radius': preset.radius,
     '--presentation-heading-weight': preset.weight,
     '--presentation-heading-tracking': preset.tracking,
-    '--presentation-content-width': isStretch ? '100%' : preset.width,
+    '--presentation-content-width': isStretch ? '100%' : `${Math.min(1440, Number.parseFloat(preset.width) * 1.25)}px`,
     '--presentation-section-gap': preset.gap,
     '--presentation-card-shadow': preset.shadow,
     '--presentation-hero-scale': preset.heroScale,

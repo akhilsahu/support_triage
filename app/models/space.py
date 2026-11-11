@@ -53,7 +53,7 @@ class Space(Base):
     token_version = Column(Integer, default=1, nullable=False)
 
     # White-label customisation
-    logo_url     = Column(String(500), nullable=True)
+    logo_url     = Column(Text, nullable=True)
     theme_color  = Column(String(20), default="#6366f1")   # indigo-500
 
     # Plan / status
@@ -236,7 +236,7 @@ class ConversationLog(Base):
     agent_slug      = Column(String(80), nullable=True)
     rag_hit         = Column(Boolean, nullable=True)
     citations       = Column(JSONB, nullable=True)     # retrieved chunks used for this reply
-    blocks          = Column(JSONB, nullable=True)     # structured table/card/tabs (see tools/render_tools.py)
+    blocks          = Column(JSONB, nullable=True)     # structured table/card/tabs (see ui_render/render_tools.py)
     sentiment_score = Column(Float, nullable=True)
     response_ms     = Column(Integer, nullable=True)   # latency in ms
     feedback        = Column(String(10), nullable=True)  # customer rating: "up" | "down"

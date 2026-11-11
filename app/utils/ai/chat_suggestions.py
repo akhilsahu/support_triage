@@ -92,17 +92,17 @@ async def _sample_rag_content(space_id: UUID, kb_ids: list[str], doc_types: list
     for builtin agents, which have no linked KBs and select content by category.
     """
     try:
-        from app.rag.vector_store import get_vector_store, COLLECTION_CLIENT
+        from app.orchestra.ai.knowledge.vector_store import get_vector_store, COLLECTION_CLIENT
 
         store = get_vector_store()
         client_id = str(space_id)
         sample_texts: list[str] = []
 
         if kb_ids:
-            from app.rag.vector_store import client_where
+            from app.orchestra.ai.knowledge.vector_store import client_where
             wheres = [client_where(client_id, kb_ids=kb_ids)]
         else:
-            from app.rag.vector_store import client_doc_type_where
+            from app.orchestra.ai.knowledge.vector_store import client_doc_type_where
             types_to_sample = doc_types[:3] if doc_types else ["general"]
             wheres = [client_doc_type_where(client_id, dt) for dt in types_to_sample]
 

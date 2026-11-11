@@ -1,6 +1,87 @@
+## Approved third slice — public booking buttons (2026-10-19)
+
+Public Space GET now returns `bookingLinks` from its already-loaded same-Space eligible entities. Static-page projection additionally requires public (or legacy null) visibility, active/public approved booking actions, unrestricted label/kind/destination fields, and a safe HTTPS destination. Public-Aura-only/private/on-request fields do not become static booking buttons. No extra request, LLM call, database migration or scheduling integration.
+
+PublicSpace's optional bookingLinks property feeds IdentityBlock: theme-aware, wrapping, >=48px links beneath the introduction; real stored destinations open in a new tab. No example bookings. Appearance generation and chat rendering were not changed.
+
+Files: app/yullo/api/public.py; ui/src/yullo/services/aura/types.ts; ui/src/yullo/screens/public/components/IdentityBlock.tsx; focused backend/frontend tests.
+
+Verification: 13 booking backend tests, 11 frontend tests, TypeScript and focused lint pass. Existing test_public_chat_stream.py fails because its direct stream_aura_chat call omits required raw_request; unchanged/out of scope. Live browser/mobile visual and real persistence end-to-end testing remain pending. Existing Home suggestion resolver route remains outside this slice.
+
+---
+
+## Approved second slice — Space booking management (2026-10-19)
+
+Implemented a permanent Booking row in `SpaceDashboard.tsx`. Expanding it loads the existing entity API lazily through `forms/BookingLinks.tsx`. Approved, active booking actions show their label, destination host/Open link, visitor access state and Edit. Extracted suggestions link back to the existing knowledge review flow; they are not automatically approved. No new directories, routes, endpoints or database changes.
+
+`forms/BookingForm.tsx` now accepts an existing entity. Editing merges the original payload, preserving organization/purpose/relationship, and sends the saved revision to the canonical PATCH endpoint. Visitor enable/disable is saved through that same editor. Revision conflicts retain edits and instruct closing/reopening to inspect fresh data. Home create behavior remains unchanged.
+
+Verification: all nine focused booking tests passed, including prior create/retry/validation tests, editing with preserved context and revision, conflict handling, and lazy Space listing/review separation. TypeScript and booking-file lint passed. Live browser/mobile visual checks and real backend writes remain unverified. Appearance/public-page rendering and Home action-resolver routes were not changed and remain pending separate approval.
+
+---
+
+## Approved first slice — implementation status (2026-10-19)
+
+Implemented only the Home selected-Space **Add booking option** button and its responsive editor: label, HTTPS URL, visitor enable toggle (off initially), Save/Cancel, error recovery and unsaved-close confirmation. The existing owner entity POST stores an `action` with `kind=booking`; no backend/schema changes. A stable per-editor identity key supports retry without duplicate creation of the same payload. Existing entity and Home query caches refresh after save.
+
+Files: `ui/src/yullo/forms/BookingForm.tsx`, its colocated test, `ui/src/yullo/screens/YulloHome.tsx`, and the optional `identity_key` API command type in `ui/src/yullo/api/entities.ts`.
+
+This approved slice opens directly from Home, rather than adding a route or new directories. Remaining route/resolver, permanent Space entry, editing existing links, public landing integration and other broader work below require the user's next approval.
+
+Verification: six component tests passed (invalid URLs, private default, explicit enablement, failed-save retry preserving input/identity, unsaved-close protection); frontend TypeScript passed; new component/test lint passed. Live browser, mobile visual review and real backend persistence were not exercised. No user data was created during tests. Existing unrelated changes preserved.
+
+---
+
 # Programs, collaboration and participation actions — UI and backend implementation plan
 
 Date: 2026-09-22. Self-contained form plan. Shared requirements are embedded below; sibling plans are optional references. All paths/functions below are implementation targets unless marked existing.
+
+
+## Booking-link implementation slice — 2026-10-19
+
+Status: PLAN ONLY. This slice takes precedence over the broader future-program targets below for booking. Implement only external booking links. No scheduling engine, calendar availability, payments, LLM generation, new database table, migration, duplicate persistence service or enum extension is required. Follow repository AGENTS.md; preserve current knowledge, ingestion, appearance and entity flows. Do not change production records or commit/deploy as part of implementation.
+
+**Goal:** An owner can add/edit/enable a booking link from Home or the Space page; visitors can open the enabled link on the public page or through Aura.
+**Architecture:** Reuse existing action entities (kind=booking), owner entity routes/services, revision/identity checks and public visibility projection. Keep URLs canonical in the saved entity; preview text or an LLM must never supply the booking destination.
+**Stack:** Existing React Hook Form, Zod, Yullo field controls and Motion for React. Reuse the current sheet/accessibility primitives; do not introduce a second visual library.
+**Approved scope reference:** Chat request: implement Add a booking option as an external scheduling/reservation link; user subsequently requested this plan before code changes.
+
+### 1. Owner entry points and editor
+
+- [ ] Wire the currently inert Add booking option button in ui/src/yullo/screens/YulloHome.tsx. Fix add_booking_action in ui/src/yullo/home/actionResolver.ts; it currently points at the nonexistent /manage/:id/actions/new route. Trace the Home response-to-view adapter too, so API-driven suggestion actionHref reaches the same real route.
+- [ ] Add an authenticated child route at /yullo/spaces/:spaceId/booking in ui/src/App.tsx, following the existing SpaceDashboard/Outlet editor pattern. Add a Booking row in ui/src/yullo/screens/SpaceDashboard.tsx so links remain manageable after the Home suggestion disappears.
+- [ ] Proposed new files, to be created only during implementation: ui/src/yullo/forms/booking/BookingForm.tsx, ui/src/yullo/forms/booking/schema.ts and ui/src/yullo/screens/booking/BookingFormScreen.tsx. These are feature UI files, not backend form services. Search again before creating; extend equivalent existing files if another implementation has appeared.
+- [ ] Show saved booking links as compact ruled rows with label, visible destination host, Enabled/Hidden state and Edit. Reuse listEntities and filter entity_type=action, payload_json.kind=booking. Imported bookings use the same editor; retain existing context fields and provenance.
+
+Fields: button label (required, trimmed, 1–200 characters; editable initial suggestion Book a call); booking URL (required HTTPS); Enable for visitors (explicit owner control, initially off for a new link, persisted as is_public). Explain: Enabled links appear on the public page and may be offered by public Aura. No provider dropdown, iframe, customer details or appointment fields. Show destination host and Open booking page for checking the entered URL. Never fetch or scrape this URL on Save.
+
+Editor: wide sheet approximately 720–800px on desktop, constrained to available width; fullscreen below 720px. Preserve the Yullo header/theme access. Use theme tokens for canvas/surface/border/text/focus/accent; Satoshi title and Instrument Sans fields. Controls >=52px, input text >=16px, accessible labels/errors, keyboard focus trapping/restoration, sticky safe-area-aware Save/Cancel. Restrained 160–220ms reveal and validation transitions; respect reduced motion. No admin cards or Support247 styling. Keep invalid values visible and handle unsaved-close confirmation.
+
+### 2. Canonical persistence and authorization
+
+- [ ] Reuse POST /api/v1/yullo/spaces/{spaceId}/entities with entity_type=action, schema_version=1, identity_key=<stable UUID per new draft>, payload_json={label,kind:booking,destination_url}, is_public=<visitor toggle>. Current backend EntityCommand supports identity_key/schema_version, but ui/src/yullo/api/entities.ts must expose these optional properties. Reuse useCreateEntity in entityQueries.ts rather than a parallel API.
+- [ ] Editing uses PATCH on the existing entity ID with expected_revision; merge the original payload before modifying label/destination so organization/purpose/relationship and other valid context are preserved. Changing URL must not fabricate new source evidence. Retain the existing owner-edit semantics.
+- [ ] Enable/hide uses the existing owner update/confirm flow with explicit visibility and revision. Do not use rejection to mean hidden. Use existing archive only if removal is exposed; require confirmation.
+- [ ] Reuse app/yullo/services/entities/service.py:create_owner_entity/update_entity and app/yullo/services/entities/payloads.py:ActionPayload. Verify same-owner/product/Space checks, HTTPS validation, public projection, context-version bump and existing domain events. Do not create app/yullo/forms or a new persistence repository.
+- [ ] Validate URL structure on both client and backend; reject credentials, javascript/data schemes and unsupported destinations. Keep provider support generic (Calendly, Cal.com, reservations or an owner's HTTPS booking page), not domain-allowlisted. Do not infer ownership from the entered domain. A Save retry uses the same draft identity_key; a later changed payload is an explicit edit, not another create. Show 403, 409 and 422 errors clearly without discarding input.
+
+### 3. Public page, Aura and Home refresh
+
+- [ ] Reuse the existing public entity projection and ActionsCard. Approved/public active booking entities should be included in the verified Aura manifest, letting the existing generative-UI tool emit an actions card. No special new LLM call or promise that every chat answer contains a booking button.
+- [ ] Ensure a real Book button appears on the public landing page independent of chat. Inspect ui/src/yullo/screens/public/components/AuraIntro.tsx and PublicSpaceExperience.tsx; existing featured preview content is descriptive and does not guarantee an actionable link. Render from the policy-filtered saved action entity using existing public entity readers/ActionsCard; avoid duplicate booking buttons across featured/primary areas. Resolve sourceEntityId to an eligible entity rather than accepting an LLM-supplied URL. Keep mock preview fixtures out of the real booking flow.
+- [ ] External navigation requires a deliberate click; show host, use target=_blank and rel=noopener noreferrer, and preserve keyboard/touch behavior. Hidden, rejected, archived or other-Space actions must never appear publicly or in Aura tools.
+- [ ] After Save invalidate the existing Space entity, Home and relevant public/appearance queries using their actual keys. Audit app/yullo/services/home/repository.py booking capability detection: enabling a valid booking action suppresses the repeated-booking suggestion; hiding/removing it permits the suggestion when demand rules qualify. Do not mutate appearance layouts or silently regenerate content.
+
+### 4. Acceptance and verification
+
+- [ ] Home button and API-driven suggestion open the correct Space editor; Space Booking row works independently.
+- [ ] Save a booking link through the real owner API in an isolated test environment; reload and edit preserve values. Duplicate Save/retry does not create duplicate records.
+- [ ] Public enabled booking works via direct page navigation and the existing Aura actions renderer; disabling removes public/Aura access. Private Spaces remain private.
+- [ ] Test invalid URLs, unrelated-owner/Space access, stale revisions, hidden actions, and imported-booking edits preserving context/evidence.
+- [ ] Verify mobile 375px, tablet and desktop layouts, keyboard/focus behavior and reduced motion. Run focused frontend tests, TypeScript, lint and existing entity/public-visibility/backend tests. Live browser tests depend on localhost access; do not claim them if blocked.
+- [ ] Update this slice with actual changed files, tests and any remaining integration gaps. No application code has been changed while preparing this plan.
+
+---
 
 ## Placement and interaction
 

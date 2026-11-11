@@ -1,3 +1,3 @@
-from app.orchestra.ai.core.config import OrchestraConfig, AgnoConfig, build_config
+from app.orchestra.ai.config import OrchestraConfig, build_config
 
-__all__ = ["OrchestraConfig", "AgnoConfig", "build_config"]
+__all__ = ["OrchestraConfig", "build_config"]

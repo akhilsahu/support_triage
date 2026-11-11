@@ -2,7 +2,7 @@ import { Check } from 'lucide-react'
 import type { SectionProps } from './types'
 import { SectionHeading } from './SectionHeading'
 
-// AI-generated benefit bullets (see app/renderengine/key_benefits.py).
+// AI-generated benefit bullets (see app/orchestra/ai/appearance_preview/renderengine/key_benefits.py).
 // Renders nothing until the backend sends keyBenefits -- safe no-op if the
 // content generation failed or hasn't populated yet.
 export function KeyBenefitsSection({ theme: t, keyBenefits }: SectionProps) {

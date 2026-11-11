@@ -24,15 +24,13 @@ from __future__ import annotations
 import uuid
 from typing import List, Optional
 
+import anyio
 import structlog
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 
-from app.orchestra.ai.chunking import get_config as get_chunk_config
-from app.orchestra.ai.chunking import chunk as chunk_document
-from app.orchestra.ai.ingestion import get_ingestion_service
-from app.rag.document_parser import ParsedDocument
-from app.rag.vector_store import VALID_DOC_TYPES, get_vector_store
+from app.orchestra.ai.ingestion import get_ingestion_service, prepare_source, embed_and_store_chunks
+from app.orchestra.ai.knowledge.vector_store import VALID_DOC_TYPES, get_vector_store
 
 logger = structlog.get_logger()
 
@@ -100,7 +98,6 @@ async def upload_knowledge_base(
             detail=f"Invalid doc_type '{doc_type}'. Valid values: {', '.join(sorted(VALID_DOC_TYPES))}",
         )
 
-    store = get_vector_store()
     svc   = get_ingestion_service()
     results: List[KBUploadResult] = []
 
@@ -122,30 +119,12 @@ async def upload_knowledge_base(
             if len(raw) > 50 * 1024 * 1024:
                 raise ValueError("File too large (max 50 MB for admin uploads).")
 
-            parsed: ParsedDocument = svc.parse(raw, filename)
-            if not parsed.pages or not parsed.full_text.strip():
-                raise ValueError("Document has no extractable text.")
-
-            cfg    = get_chunk_config(filename)
-            chunks = chunk_document(parsed)
-            if not chunks:
-                raise ValueError("Document produced no chunks.")
-
+            prepared = await anyio.to_thread.run_sync(prepare_source, raw, filename)
+            parsed, chunks = prepared.document, prepared.chunks
             doc_id = str(uuid.uuid4())[:8]
-
-            store.upsert_client_chunks(
-                client_id=client_id,
-                session_id=ADMIN_SESSION,
-                doc_id=doc_id,
-                filename=filename,
-                extension=parsed.extension,
-                strategy=cfg.strategy.value,
-                doc_type=doc_type,
-                chunks=[
-                    {"text": c.text, "page": c.page, "chunk_index": c.chunk_index, "section": c.section}
-                    for c in chunks
-                ],
-                ttl_days=None,  # permanent — no expiry
+            await embed_and_store_chunks(
+                prepared, client_id=client_id, session_id=ADMIN_SESSION,
+                doc_id=doc_id, filename=filename, doc_type=doc_type, ttl_days=None,
             )
 
             logger.info(

@@ -13,10 +13,13 @@ Agno auto-creates its own tables in this database on first use.
 from __future__ import annotations
 
 from typing import Any, Optional
+import asyncio
+import time
+from functools import lru_cache
 
 import structlog
 
-from app.orchestra.ai.core.config import AgnoConfig
+from app.orchestra.ai.config import OrchestraConfig
 
 logger = structlog.get_logger()
 
@@ -37,7 +40,7 @@ def _postgres_reachable(url: str) -> bool:
         return False
 
 
-def build_session_db(cfg: AgnoConfig) -> Optional[Any]:
+def build_session_db(cfg: OrchestraConfig) -> Optional[Any]:
     store = (cfg.session_store or "none").strip().lower()
 
     if store == "none":
@@ -83,7 +86,7 @@ def build_session_db(cfg: AgnoConfig) -> Optional[Any]:
     return None
 
 
-def session_runner_kwargs(cfg: AgnoConfig, db: Optional[Any], memory: Optional[Any]) -> dict:
+def session_runner_kwargs(cfg: OrchestraConfig, db: Optional[Any], memory: Optional[Any]) -> dict:
     """
     Native Agno session knobs for a conversational runner (Team leader or a
     standalone single Agent). Same param names on Agent and Team.
@@ -110,3 +113,107 @@ def session_runner_kwargs(cfg: AgnoConfig, db: Optional[Any], memory: Optional[A
         "enable_session_summaries": cfg.session_summaries_enabled,
         "add_session_summary_to_context": cfg.session_summaries_enabled,
     }
+
+
+@lru_cache(maxsize=8)
+def _persistent_history_db(store: str, url: str, schema: str):
+    db = build_session_db(OrchestraConfig(
+        session_store=store, session_db_url=url, session_db_schema=schema,
+    ))
+    if db is None:
+        # A failed construction is not cached: do not silently lose context.
+        raise RuntimeError("Persistent conversation history is unavailable")
+    return db
+
+
+class StagedHistory:
+    """Agno-owned history, staged until the application commits its audit rows.
+
+    Caller must serialize each conversation (e.g. lock its application session
+    row). Committed audit rows backfill legacy conversations and repair a native
+    write lost after an application commit. Uncommitted model runs never reach
+    the persistent Agno store. No schema or destructive migration is required.
+    """
+
+    @classmethod
+    async def open(cls, cfg, *, scope_id, session_id, records, namespace='conversation'):
+        from agno.db.in_memory import InMemoryDb
+        from agno.db.base import SessionType
+        from agno.session.agent import AgentSession
+
+        self = cls()
+        self.agent_id = 'prepared-conversation'
+        self.user_id = f'{namespace}:{scope_id}'
+        self.session_id = f'{namespace}:{scope_id}:{session_id}'
+        self.persistent = await asyncio.to_thread(
+            _persistent_history_db, cfg.session_store, cfg.session_db_url, cfg.session_db_schema,
+        )
+        self.session = await asyncio.to_thread(
+            self.persistent.get_session, self.session_id,
+            session_type=SessionType.AGENT, user_id=self.user_id,
+        )
+        if self.session is None:
+            # Agno defaults these to None, but its persistent schema requires timestamps.
+            now = int(time.time())
+            self.session = AgentSession(session_id=self.session_id, agent_id=self.agent_id,
+                                        user_id=self.user_id, runs=[], created_at=now, updated_at=now)
+        if self.session.user_id != self.user_id or self.session.agent_id != self.agent_id:
+            raise ValueError('Conversation history scope mismatch')
+        self._merge(records)
+        # Native history must be readable/writable before generation. This
+        # contains committed audit rows only, never the current request.
+        saved = await asyncio.to_thread(self.persistent.upsert_session, self.session)
+        if saved is None:
+            raise RuntimeError('Conversation history backfill failed')
+        self.session = saved
+        self.db = InMemoryDb()
+        self.db.upsert_session(self.session)
+        return self
+
+    def _merge(self, records):
+        from datetime import timezone
+        from agno.models.message import Message
+        from agno.run.agent import RunOutput
+        from agno.run.base import RunStatus
+
+        covered = {str(value) for run in self.session.runs or []
+                   for value in (run.metadata or {}).get('audit_message_ids', [])}
+        pending = []
+
+        def append(rows):
+            final = rows[-1]
+            timestamp = final['timestamp']
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            self.session.upsert_run(RunOutput(
+                run_id=str(final['id']), agent_id=self.agent_id,
+                session_id=self.session_id, user_id=self.user_id,
+                messages=[Message(role=row['role'], content=row['message']) for row in rows],
+                content=final['message'] if final['role'] == 'assistant' else None,
+                created_at=int(timestamp.timestamp()), status=RunStatus.completed,
+                metadata={'audit_message_ids': [str(row['id']) for row in rows]},
+            ))
+
+        for record in records:
+            if record['role'] not in ('user', 'assistant') or str(record['id']) in covered:
+                continue
+            pending.append(record)
+            if record['role'] == 'assistant':
+                append(pending)
+                pending = []
+        # Preserve committed unanswered user messages without inventing replies.
+        for record in pending:
+            append([record])
+
+    def messages(self):
+        return [message for run in self.session.runs or [] for message in run.messages or []
+                if message.role in ('user', 'assistant')]
+
+    async def publish(self, committed_records):
+        # Publish delivered text only. Tool results and source evidence must not
+        # leak into later requests after source permissions/publication change.
+        self._merge(committed_records)
+        saved = await asyncio.to_thread(self.persistent.upsert_session, self.session)
+        if saved is None:
+            raise RuntimeError('Conversation history synchronization failed')
+        self.session = saved

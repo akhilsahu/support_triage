@@ -91,3 +91,26 @@ async def publish_space(db: AsyncSession, *, space_id: uuid.UUID, owner_user_id:
     db.add(event)
     
     await db.flush()
+
+async def unpublish_space(db: AsyncSession, *, space_id: uuid.UUID, owner_user_id: uuid.UUID) -> None:
+    stmt = select(Space, YulloSpace).join(YulloSpace, YulloSpace.space_id == Space.id).where(
+        Space.id == space_id
+    ).with_for_update(of=Space)
+    
+    result = await db.execute(stmt)
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Space not found")
+        
+    space, y_space = row
+    
+    if space.owner_user_id != owner_user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to unpublish this space")
+        
+    if space.status == "draft" and y_space.lifecycle_status == "draft":
+        return
+        
+    space.status = "draft"
+    y_space.lifecycle_status = "draft"
+    
+    await db.flush()

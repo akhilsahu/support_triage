@@ -718,7 +718,7 @@ async def get_org_doc_chunks(
     doc_id: str,
     org: Space = Depends(current_space),
 ):
-    from app.rag.vector_store import get_vector_store
+    from app.orchestra.ai.knowledge.vector_store import get_vector_store
     store = get_vector_store()
     chunks = store.get_doc_chunks(client_id=str(org.id), doc_id=doc_id)
     return {"doc_id": doc_id, "org_slug": org.slug, "chunks": chunks, "total": len(chunks)}

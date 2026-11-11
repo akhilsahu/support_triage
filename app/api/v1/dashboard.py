@@ -263,7 +263,7 @@ async def list_doc_types(
     org: Space = Depends(current_space),
 ):
     """Return distinct doc_types present in this org's knowledge base (ChromaDB)."""
-    from app.rag.vector_store import get_vector_store
+    from app.orchestra.ai.knowledge.vector_store import get_vector_store
     import asyncio
     loop = asyncio.get_event_loop()
     doc_types = await loop.run_in_executor(
@@ -290,7 +290,7 @@ async def update_profile(
 
     # Keep vector DB metadata in sync when display_name changes
     if name_changed:
-        from app.rag.vector_store import get_vector_store
+        from app.orchestra.ai.knowledge.vector_store import get_vector_store
         import asyncio
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
@@ -319,7 +319,7 @@ async def dashboard_stats(
     from sqlalchemy import select, func, cast, Date
     from app.models.space import ConversationLog, CustomAgent
     from app.models.chat import ChatSession
-    from app.rag.vector_store import get_vector_store
+    from app.orchestra.ai.knowledge.vector_store import get_vector_store
     import asyncio
 
     now = datetime.utcnow()
@@ -542,7 +542,7 @@ async def get_agent_suggestion(
     Subsequent calls with the same doc_types return instantly from DB — no LLM call.
     """
     from app.utils.ai.agent_meta_suggestion import get_or_generate
-    from app.rag.vector_store import get_vector_store
+    from app.orchestra.ai.knowledge.vector_store import get_vector_store
     import asyncio
 
     # Knowledge-base context. Resolved here and passed through to generation:

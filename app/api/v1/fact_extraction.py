@@ -11,11 +11,11 @@ from datetime import datetime
 from app.api.auth import current_space
 from app.core.database import get_db, AsyncSessionLocal
 from app.core.redis import get_redis, RedisClient
-from app.rag.vector_store import get_vector_store
-from app.orchestra.ai.facts.schemas import RawChunk, ExtractedFact
-from app.orchestra.ai.facts.extractor_v2 import FactEngine
-from app.orchestra.ai.facts.auditor import FactAuditor
-from app.orchestra.ai.facts.session import sync_chat_history
+from app.orchestra.ai.knowledge.vector_store import get_vector_store
+from app.orchestra.ai.knowledge.extraction.facts.schemas import RawChunk, ExtractedFact
+from app.orchestra.ai.knowledge.extraction.facts.extractor_v2 import FactEngine
+from app.orchestra.ai.knowledge.extraction.facts.auditor import FactAuditor
+from app.orchestra.ai.knowledge.extraction.facts.session import sync_chat_history
 from app.config import settings
 from app.models.kb_fact import KBFact
 from app.models.knowledge_base import KnowledgeBaseItem
@@ -487,7 +487,7 @@ async def graphify_extracted_facts(
     if not req.facts:
         return ExtractV2Response(status="completed", facts=[])
         
-    from app.orchestra.ai.facts.hierarchy.builder import build_hierarchy_tree, apply_hierarchy_to_facts
+    from app.orchestra.ai.knowledge.extraction.facts.hierarchy.builder import build_hierarchy_tree, apply_hierarchy_to_facts
     
     # 1. Extract unique subjects
     unique_subjects = list(set([f.subject for f in req.facts if f.subject]))

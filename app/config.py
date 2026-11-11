@@ -1,6 +1,6 @@
 """Application configuration using Pydantic Settings"""
 
-from typing import Annotated, List, Optional
+from typing import Annotated, List, Literal, Optional
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict, NoDecode
 import json
@@ -23,6 +23,25 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     ENVIRONMENT: str = "development"
     DATA_DIR: str = ".data"
+
+    # JSON: {"provider:model": {"input_per_million": USD, "output_per_million": USD}}.
+    # No guessed prices: absent model rates produce unknown costs, not free calls.
+    AI_USAGE_PRICING: dict[str, dict[str, float]] = Field(default_factory=dict)
+
+    @field_validator("AI_USAGE_PRICING")
+    @classmethod
+    def validate_usage_pricing(cls, rates):
+        import math
+
+        for key, prices in rates.items():
+            provider, separator, model = key.partition(":")
+            if not separator or not provider.strip() or not model.strip():
+                raise ValueError("AI_USAGE_PRICING keys must be provider:model")
+            if set(prices) != {"input_per_million", "output_per_million"}:
+                raise ValueError("Each model requires input_per_million and output_per_million")
+            if any(not math.isfinite(value) or value < 0 for value in prices.values()):
+                raise ValueError("AI usage rates must be finite, nonnegative USD values")
+        return rates
 
     # Datamuse Online Terms API
     DATAMUSE_API_URL: str = "https://api.datamuse.com/words"
@@ -126,9 +145,6 @@ class Settings(BaseSettings):
     MODAL_BASE_URL: Optional[str] = None
     MODAL_MODEL: Optional[str] = None
 
-    # RAG Ingestion Contextual AI Enrichment
-    ENABLE_CONTEXTUAL_ENRICHMENT: bool = True
-
     # ── Pluggable SMS Gateways ───────────────────────────────────────────────────
     SMS_PROVIDER_GLOBAL: str = "mock"    # "twilio" | "mock"
     SMS_PROVIDER_INDIA: str = "fast2sms" # "fast2sms" | "msg91" | "twilio" | "mock"
@@ -170,7 +186,7 @@ class Settings(BaseSettings):
     # Ordered, comma-separated provider names — first one with a configured
     # API key becomes the PRIMARY provider; every other configured provider
     # after it becomes an automatic live-retry fallback (Agno's
-    # fallback_models — see LLMFactory.build_fallbacks() in factories/llm.py).
+    # fallback_models — see LLMFactory.build_models() in inference/factories/llm.py).
     # Priority order for LLM routing. The app will try these in order
     # if a specific model isn't requested.
     LLM_PROVIDER_PRIORITY: str = "modal,fireworks,openai,openrouter,together,anthropic,watsonx,anyscale"
@@ -208,7 +224,6 @@ class Settings(BaseSettings):
     YULLO_KNOWLEDGE_MAX_OUTPUT_TOKENS: int = Field(default=6000, ge=512, le=64000)
     YULLO_KNOWLEDGE_TIMEOUT_SECONDS: int = Field(default=60, ge=1, le=300)
     YULLO_KNOWLEDGE_PROMPT_VERSION: str = "v1"
-    YULLO_INGESTION_ENRICHMENT_ENABLED: bool = False
     YULLO_INGESTION_SUMMARY_ENABLED: bool = False
 
     # Anthropic
@@ -257,7 +272,7 @@ class Settings(BaseSettings):
     FIRECRAWL_API_KEY: str = ""
     FIRECRAWL_BASE_URL: str = "https://api.firecrawl.dev"
     # Retain navigation/footer content for complete single-page extraction.
-    FIRECRAWL_ONLY_MAIN_CONTENT: bool = False
+    FIRECRAWL_ONLY_MAIN_CONTENT: bool = True
     FIRECRAWL_MAX_REQUESTS_PER_SPACE_PER_DAY: int = 50
     FIRECRAWL_MAX_CONCURRENT_REQUESTS: int = 2
     # SSRF guard. Leave False unless you deliberately index an internal wiki:
@@ -287,6 +302,9 @@ class Settings(BaseSettings):
 
     # RAG
     RAG_TOP_K: int = 12                              # chunks in context (no-rerank path); widened for recall & numeric figures
+    RAG_HYBRID_MAX_CANDIDATES: int = Field(default=100, ge=1, le=1000)
+    RAG_HYBRID_MAX_TERMS: int = Field(default=16, ge=1, le=64)
+    INFERENCE_TOOL_CALL_LIMIT: int = Field(default=4, ge=1, le=16)
 
     RAG_SIMILARITY_THRESHOLD: float = 0.7
     RAG_CHUNK_SIZE: int = 1000
@@ -391,11 +409,9 @@ class Settings(BaseSettings):
     MEM0_COLLECTION: str = "agent_memory"
     MEM0_CHROMA_PATH: str = ".chroma_db"
     MEM0_SEARCH_LIMIT: int = 5
-    MEM0_REWRITE_MAX_TOKENS: int = 80
 
-    # Orchestrator backend: "dynamic" (default) or "agno"
-    # Set ORCHESTRATOR=agno in .env to enable Agno-backed routing.
-    ORCHESTRATOR: str = "agno"
+    # Retained for existing environments; Agno is the only supported backend.
+    ORCHESTRATOR: Literal["agno"] = "agno"
 
     # Frontend base URL — used to build email verification / password reset links
     # Set this to the public site URL (e.g. https://support247.chat) in production

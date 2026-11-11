@@ -1,7 +1,7 @@
 import type { SectionProps } from './types'
 import { SectionHeading } from './SectionHeading'
 
-// Admin-authored quick-topic buttons (see app/renderengine/quick_topics.py).
+// Admin-authored quick-topic buttons (see app/orchestra/ai/appearance_preview/renderengine/quick_topics.py).
 // Not AI-generated -- same treatment as PromoSection. Clicking a topic sends
 // its configured prompt as the first message, same mechanism as suggestion chips.
 export function QuickTopicsSection({ theme: t, quickTopics, onSend }: SectionProps) {

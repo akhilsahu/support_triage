@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, constr
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
 import uuid
 
@@ -14,7 +14,8 @@ class SpaceSourceResponse(BaseModel):
     preview_excerpt: Optional[str] = None
     page_count: Optional[int] = None
     chunk_count: Optional[int] = None
-    is_confirmed: bool = False
+    # Legacy API name for source enable/pause; fact approval is per KBFact.
+    is_confirmed: bool = True
     is_scanned: Optional[bool] = False
     prompt_version: Optional[str] = "v1"
     source_version: Optional[int] = 1
@@ -35,7 +36,13 @@ class SpaceSourceResponse(BaseModel):
         from_attributes = True
 
 class SourceUpdateRequest(BaseModel):
+    # Source activity only. This never approves facts or reruns ingestion.
     is_confirmed: Optional[bool] = None
+
+
+class SourceDeleteRequest(BaseModel):
+    derived_data: Literal["purge", "retain_for_review"] = "purge"
+    expected_source_version: Optional[int] = Field(None, ge=1)
 
 class DraftSpaceResponse(BaseModel):
     id: uuid.UUID
@@ -76,6 +83,7 @@ class SourceUrlRequest(BaseModel):
     url: str
     title: Optional[str] = None
     source_type: str = Field("website", description="website | instagram | linkedin | youtube | other")
+    background: bool = False
 
 class SourceTextRequest(BaseModel):
     space_id: Optional[uuid.UUID] = None
@@ -102,6 +110,8 @@ class GenerateSummaryRequest(BaseModel):
     name: Optional[str] = None
     website: Optional[str] = None
     sources: Optional[List[dict]] = None
+    history: Optional[List[Dict[str, str]]] = None
+    user_message: Optional[str] = None
 
 class GenerateSummaryResponse(BaseModel):
     status: str = Field(..., description="ready | insufficient_context | needs_clarification | unavailable")
@@ -109,6 +119,7 @@ class GenerateSummaryResponse(BaseModel):
     category: Optional[str] = None
     claims: List[IdentityClaim] = []
     clarification: Optional[str] = None
+    candidate_match: Optional[Dict[str, Any]] = None
     prompt_version: str = "identity-v2"
     input_fingerprint: Optional[str] = None
     context_version: int = 1

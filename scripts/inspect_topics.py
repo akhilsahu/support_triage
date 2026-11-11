@@ -22,7 +22,7 @@ from app.core.database import AsyncSessionLocal
 from app.models.kb_fact import KBFact
 from app.models.knowledge_base import KnowledgeBase
 from app.models.space import CustomAgent
-from app.rag.vector_store import COLLECTION_CLIENT, get_vector_store
+from app.orchestra.ai.knowledge.vector_store import COLLECTION_CLIENT, get_vector_store
 
 
 def _rule(title: str) -> None:

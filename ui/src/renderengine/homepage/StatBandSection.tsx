@@ -6,7 +6,7 @@ import {
 import type { SectionProps, StatBandItem } from './types'
 import { SectionHeading } from './SectionHeading'
 
-// Trust-metrics band (see app/renderengine/stat_band.py). The big headline
+// Trust-metrics band (see app/orchestra/ai/appearance_preview/renderengine/stat_band.py). The big headline
 // numbers a prospect scans first, rendered as colorful infographic tiles: a
 // metric-aware icon in an accent-tinted chip, a hue wash, and a count-up
 // animation when the band scrolls into view. Numbers stay in primary ink --

@@ -129,6 +129,7 @@ class SpacePresentationConfig(StrictModel):
 class AppearanceUpdateRequest(StrictModel):
     config: SpacePresentationConfig
     expected_revision: int = Field(alias="expectedRevision", ge=1)
+    discard_editor_draft: bool = Field(default=False, alias="discardEditorDraft")
 
 
 class AppearanceCommandRequest(StrictModel):

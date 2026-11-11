@@ -21,7 +21,7 @@ export function FormActions({ onCancel, onDelete, isSubmitting, submitLabel = 'S
             type="button"
             onClick={onDelete}
             disabled={isSubmitting}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-[14px] font-[Instrument_Sans] font-medium text-[#ef4444] bg-[#ef4444]/10 hover:bg-[#ef4444]/20 border-transparent border-transparent-[#ef4444]/20 transition-colors disabled:opacity-50 cursor-pointer bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-[14px] font-[Instrument_Sans] font-medium text-[#ef4444] bg-[#ef4444]/10 hover:bg-[#ef4444]/20 border border-[#ef4444]/20 transition-colors disabled:opacity-50 cursor-pointer"
           >
             <Trash2 className="w-4 h-4" />
             <span>Delete space</span>
@@ -35,7 +35,7 @@ export function FormActions({ onCancel, onDelete, isSubmitting, submitLabel = 'S
             type="button"
             onClick={onCancel}
             disabled={isSubmitting}
-            className="px-5 py-2.5 rounded-lg text-[16px] font-[Instrument_Sans] font-medium hover:bg-[var(--surface-soft,rgba(0,0,0,0.05))] transition-colors disabled:opacity-50 cursor-pointer bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90"
+            className="px-5 py-2.5 rounded-lg text-[16px] font-[Instrument_Sans] font-medium text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors disabled:opacity-50 cursor-pointer"
           >
             Cancel
           </button>
@@ -44,11 +44,7 @@ export function FormActions({ onCancel, onDelete, isSubmitting, submitLabel = 'S
           type="submit"
           form={form}
           disabled={isSubmitting}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-[16px] font-[Instrument_Sans] font-medium shadow-sm hover:shadow-md transition-all duration-300 disabled:opacity-50 hover:-translate-y-[1px] active:translate-y-[0px] active:shadow-sm cursor-pointer bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90"
-          style={{
-            backgroundColor: 'var(--accent)',
-            color: 'var(--accent-fg)'
-          }}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-[16px] font-[Instrument_Sans] font-medium shadow-sm hover:shadow-md transition-all duration-300 disabled:opacity-50 hover:-translate-y-[1px] active:translate-y-[0px] active:shadow-sm cursor-pointer bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 border border-transparent"
         >
           {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
           <span>{isSubmitting ? 'Saving...' : submitLabel}</span>

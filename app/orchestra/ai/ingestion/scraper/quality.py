@@ -11,8 +11,17 @@ QualityRating = Literal["good", "questionable", "poor"]
 
 _BOILERPLATE = re.compile(
     r"^(?:faq|faqs|terms(?:\s*&\s*|\s+and\s+)conditions|contact us|"
-    r"privacy policy|login|register now|apply now|view all(?:\s+\w+)*|"
-    r"quick links|important links)$",
+    r"privacy policy|login|sign in|create account|register now|apply now|view all(?:\s+\w+)*|"
+    r"quick links|important links|keyboard shortcuts|skip to main content|"
+    r"search|cart|orders|all categories|select the department|delivering to|update location|"
+    r"search\s+alt\s*\+\s*/|cart\s+shift\s*\+\s*alt\s*\+\s*c|home\s+shift\s*\+\s*alt\s*\+\s*h|"
+    r"orders\s+shift\s*\+\s*alt\s*\+\s*o|show/hide shortcuts.*)$",
+    re.IGNORECASE,
+)
+_BOT_CHALLENGE = re.compile(
+    r"(?:enter the characters you see below|robot check|verify you are human|"
+    r"verify you are a human|access denied|just a moment\.{3}|enable javascript and cookies|"
+    r"security check to continue|please complete the captcha|cloudflare ray id)",
     re.IGNORECASE,
 )
 _WORDS = re.compile(r"\b[\w₹$%.,+-]+\b")
@@ -34,13 +43,13 @@ def _rating_for_score(score: int) -> QualityRating:
     return "poor"
 
 
-def assess_extraction(text: str) -> ExtractionQuality:
+def assess_extraction(text: str, *, raw_bytes_len: int | None = None) -> ExtractionQuality:
     """Score extracted text without relying on any scraper-specific metadata.
 
     Length alone is deliberately insufficient: a repeated navigation tree can
     be much larger than a useful article. Line diversity, navigation density,
-    and prose density ensure those two cases receive different ratings, while
-    a normal prose paragraph remains valid even when it has no line breaks.
+    prose density, and HTML-to-text ratios ensure unhydrated shells, bot challenges,
+    and menus receive low ratings, while normal prose remains valid.
     """
     cleaned_text = text.strip()
     lines = [
@@ -76,18 +85,40 @@ def assess_extraction(text: str) -> ExtractionQuality:
     score = 100
     reasons: list[str] = []
 
+    # 1. Bot check / CAPTCHA challenge detection
+    if _BOT_CHALLENGE.search(cleaned_text):
+        score -= 60
+        reasons.append("bot_detection_challenge")
+
+    # 2. Content length checks
     if len(cleaned_text) < 200 or len(words) < 40:
         score -= 35
         reasons.append("too_little_content")
+
+    # 3. High repetition checks
     if repeated_line_ratio > 0.45:
         score -= 35
         reasons.append("high_repetition")
+
+    # 4. Navigation & boilerplate ratio
     if navigation_ratio > 0.65:
         score -= 35
         reasons.append("navigation_dominant")
+
+    # 5. Prose density checks
     if len(lines) >= 8 and prose_ratio < 0.12:
         score -= 20
         reasons.append("low_prose_density")
+    elif len(lines) >= 3 and prose_lines == 0:
+        score -= 25
+        reasons.append("low_prose_density")
+
+    # 6. Unhydrated SPA / HTML ratio check (e.g. 100 KB+ of HTML yielding < 1.5% extracted text)
+    if raw_bytes_len and raw_bytes_len > 80_000:
+        ratio = len(cleaned_text) / raw_bytes_len
+        if ratio < 0.015:
+            score -= 35
+            reasons.append("unhydrated_shell")
 
     score = max(0, min(100, score))
     return ExtractionQuality(

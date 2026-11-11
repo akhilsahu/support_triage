@@ -1,3 +1,4 @@
+from app.orchestra.ai.appearance_preview.generation import PreviewGenerationContext, build_preview_fingerprint
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -6,20 +7,18 @@ import json
 from types import SimpleNamespace
 from fastapi import HTTPException
 
-from app.yullo.services.appearance_preview import (
-    PreviewGenerationContext,
-    build_preview_fingerprint,
+from app.yullo.services.persistence.appearance import (
     collect_preview_context,
     merge_applied_sections,
 )
 
 
 @pytest.mark.asyncio
-@patch("app.yullo.services.appearance_preview.collect_preview_facts", new_callable=AsyncMock, return_value=[])
+@patch("app.yullo.services.persistence.appearance.collect_preview_facts", new_callable=AsyncMock, return_value=[])
 async def test_section_build_calls_llm_with_only_requested_section(_facts):
     from app.yullo.schemas.appearance import default_presentation_config
     from app.yullo.schemas.appearance_preview import AppearancePreviewRequest
-    from app.yullo.services.appearance_preview import generate_appearance_preview
+    from app.yullo.services.persistence.appearance import generate_appearance_preview
 
     context = PreviewGenerationContext("Space", "business", None, None, False, [
         {"id": "service", "revision": 1, "type": "offering", "title": "Consulting"},
@@ -30,7 +29,7 @@ async def test_section_build_calls_llm_with_only_requested_section(_facts):
     ]}]}
     client = MagicMock()
     client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(content)))]))
-    with patch("app.yullo.services.appearance_preview.collect_preview_context", AsyncMock(return_value=context)), patch("app.yullo.services.appearance_preview.get_async_openai_clients", return_value=[("test", client, "test-model")]):
+    with patch("app.yullo.services.persistence.appearance.collect_preview_context", AsyncMock(return_value=context)), patch("app.orchestra.ai.appearance_preview.generation.get_async_openai_clients", return_value=[("test", client, "test-model")]):
         result = await generate_appearance_preview(AsyncMock(), user_id=uuid.uuid4(), space_id=uuid.uuid4(), request=AppearancePreviewRequest(currentConfig=default_presentation_config(None), sectionType="services", force=True))
     sent = json.loads(client.chat.completions.create.call_args.kwargs["messages"][1]["content"])
     assert sent["requestedSection"] == "services"
@@ -39,16 +38,16 @@ async def test_section_build_calls_llm_with_only_requested_section(_facts):
 
 
 @pytest.mark.asyncio
-@patch("app.yullo.services.appearance_preview.collect_preview_facts", new_callable=AsyncMock, return_value=[])
+@patch("app.yullo.services.persistence.appearance.collect_preview_facts", new_callable=AsyncMock, return_value=[])
 async def test_section_build_without_provider_does_not_pretend_ai_generated(_facts):
     from app.yullo.schemas.appearance import default_presentation_config
     from app.yullo.schemas.appearance_preview import AppearancePreviewRequest
-    from app.yullo.services.appearance_preview import generate_appearance_preview
+    from app.yullo.services.persistence.appearance import generate_appearance_preview
 
     context = PreviewGenerationContext("Space", "business", None, None, False, [
         {"id": "service", "revision": 1, "type": "offering", "title": "Consulting"},
     ])
-    with patch("app.yullo.services.appearance_preview.collect_preview_context", AsyncMock(return_value=context)), patch("app.yullo.services.appearance_preview.get_async_openai_clients", return_value=[]):
+    with patch("app.yullo.services.persistence.appearance.collect_preview_context", AsyncMock(return_value=context)), patch("app.orchestra.ai.appearance_preview.generation.get_async_openai_clients", return_value=[]):
         result = await generate_appearance_preview(AsyncMock(), user_id=uuid.uuid4(), space_id=uuid.uuid4(), request=AppearancePreviewRequest(currentConfig=default_presentation_config(None), sectionType="services"))
     assert result.status == "unavailable"
     assert result.content is None
@@ -70,7 +69,7 @@ async def test_collect_preview_context_not_found():
 async def test_fact_only_service_draft_generation_apply_and_revocation():
     from app.yullo.schemas.appearance import default_presentation_config
     from app.yullo.schemas.appearance_preview import AppearancePreviewRequest, AppearancePreviewContent
-    from app.yullo.services.appearance_preview import generate_appearance_preview, apply_appearance_preview_section
+    from app.yullo.services.persistence.appearance import generate_appearance_preview, apply_appearance_preview_section
     fact_id = str(uuid.uuid4())
     context = PreviewGenerationContext("Space", "business", None, None, False, [])
     facts = [{"id": fact_id, "subject": "Rocket", "label": "Use cases", "value": "Cargo transport", "note": None}]
@@ -80,7 +79,7 @@ async def test_fact_only_service_draft_generation_apply_and_revocation():
     db = AsyncMock()
     saved = SimpleNamespace(settings={})
     db.scalar.return_value = saved
-    with patch("app.yullo.services.appearance_preview.collect_preview_context", AsyncMock(return_value=context)), patch("app.yullo.services.appearance_preview.collect_preview_facts", AsyncMock(return_value=facts)), patch("app.yullo.services.appearance_preview.get_async_openai_clients", return_value=[("test", client, "model")]), patch("app.yullo.services.appearance_preview.finalize_space_mutation", AsyncMock()) as finalize:
+    with patch("app.yullo.services.persistence.appearance.collect_preview_context", AsyncMock(return_value=context)), patch("app.yullo.services.persistence.appearance.collect_preview_facts", AsyncMock(return_value=facts)), patch("app.orchestra.ai.appearance_preview.generation.get_async_openai_clients", return_value=[("test", client, "model")]), patch("app.yullo.services.persistence.appearance.finalize_space_mutation", AsyncMock()) as finalize:
         response = await generate_appearance_preview(db, user_id=uuid.uuid4(), space_id=uuid.uuid4(), request=AppearancePreviewRequest(currentConfig=default_presentation_config(None), sectionType="services"))
         assert response.status == "ready"
         sent = json.loads(client.chat.completions.create.call_args.kwargs["messages"][1]["content"])
@@ -93,7 +92,7 @@ async def test_fact_only_service_draft_generation_apply_and_revocation():
     empty = AppearancePreviewContent(schemaVersion=1, sections=[])
     assert merge_applied_sections(empty, saved.settings, set(), {fact_id}).sections
     assert merge_applied_sections(empty, saved.settings, set(), set()).sections == []
-    with patch("app.yullo.services.appearance_preview.collect_preview_context", AsyncMock(return_value=context)), patch("app.yullo.services.appearance_preview.collect_preview_facts", AsyncMock(return_value=[])):
+    with patch("app.yullo.services.persistence.appearance.collect_preview_context", AsyncMock(return_value=context)), patch("app.yullo.services.persistence.appearance.collect_preview_facts", AsyncMock(return_value=[])):
         with pytest.raises(HTTPException) as error:
             await apply_appearance_preview_section(db, user_id=uuid.uuid4(), space_id=uuid.uuid4(), section=response.content.sections[0])
         assert error.value.status_code == 422
@@ -164,7 +163,7 @@ def test_build_preview_fingerprint():
 
 
 def test_applied_section_requires_current_public_entity():
-    from app.yullo.services.appearance_preview import build_deterministic_landing_content
+    from app.yullo.services.persistence.appearance import build_deterministic_landing_content
 
     live = build_deterministic_landing_content([
         {"id": "one", "revision": 1, "type": "offering", "kind": None, "title": "Original", "description": None, "meta": None},
@@ -186,7 +185,7 @@ def test_applied_section_requires_current_public_entity():
 async def test_generate_preview_insufficient_context():
     from app.yullo.schemas.appearance import default_presentation_config
     from app.yullo.schemas.appearance_preview import AppearancePreviewRequest, PreviewStatus
-    from app.yullo.services.appearance_preview import generate_appearance_preview
+    from app.yullo.services.persistence.appearance import generate_appearance_preview
 
     db = AsyncMock()
     mock_space = MagicMock()
@@ -219,7 +218,7 @@ async def test_generate_preview_insufficient_context():
 async def test_forced_preview_rebuilds_from_confirmed_entities_without_provider():
     from app.yullo.schemas.appearance import default_presentation_config
     from app.yullo.schemas.appearance_preview import AppearancePreviewRequest, PreviewStatus
-    from app.yullo.services.appearance_preview import generate_appearance_preview
+    from app.yullo.services.persistence.appearance import generate_appearance_preview
 
     db = AsyncMock()
     space = MagicMock(display_name="Test Space", purpose="business", logo_url=None)
@@ -256,7 +255,7 @@ async def test_forced_preview_rebuilds_from_confirmed_entities_without_provider(
 @pytest.mark.asyncio
 async def test_rebuild_space_layout_configures_grid_2col():
     from app.yullo.schemas.appearance import default_presentation_config
-    from app.yullo.services.appearance_assistant import rebuild_space_layout
+    from app.orchestra.ai.appearance_preview.generate_appearance_suggestions import rebuild_space_layout
 
     db = AsyncMock()
     user_id = uuid.uuid4()
@@ -298,9 +297,9 @@ async def test_rebuild_space_layout_configures_grid_2col():
     mock_preview.grounded_entity_ids = ["e1"]
 
     with patch("app.yullo.services.persistence.appearance.get_appearance", AsyncMock(return_value=mock_appearance)), \
-         patch("app.yullo.services.appearance_assistant.recommend_appearance", AsyncMock(return_value=mock_candidate)), \
-         patch("app.yullo.services.appearance_assistant._appearance_context", AsyncMock(return_value=mock_context)), \
-         patch("app.yullo.services.appearance_preview.generate_appearance_preview", AsyncMock(return_value=mock_preview)):
+         patch("app.orchestra.ai.appearance_preview.generate_appearance_suggestions.recommend_appearance", AsyncMock(return_value=mock_candidate)), \
+         patch("app.orchestra.ai.appearance_preview.generate_appearance_suggestions._appearance_context", AsyncMock(return_value=mock_context)), \
+         patch("app.yullo.services.persistence.appearance.generate_appearance_preview", AsyncMock(return_value=mock_preview)):
         resp = await rebuild_space_layout(db, user_id=user_id, space_id=space_id, force=True)
 
     assert resp.config is not None

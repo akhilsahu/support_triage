@@ -2,22 +2,24 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { auraProvider } from '../../services/aura'
 import { PublicSpace } from '../../services/aura/types'
-import { AuraExperience } from './components/AuraExperience'
-import { PublicHeader } from './components/PublicHeader'
-import { PublicNetworkBackground } from './components/PublicNetworkBackground'
-import { useAuraChat } from '../../hooks/useAuraChat'
+import { PublicSpaceExperience } from './PublicSpaceExperience'
 
 export type AuraViewState = 'loading' | 'empty' | 'transitioning' | 'conversation' | 'not-found'
 
-export function PublicYulloLink() {
-  const { slug } = useParams<{ slug: string }>()
-  const [space, setSpace] = useState<PublicSpace | null>(null)
-  const [viewState, setViewState] = useState<AuraViewState>('loading')
-  const [networkPulse, setNetworkPulse] = useState<number>(0)
-  const [identityVisible, setIdentityVisible] = useState<boolean>(true)
+export function PublicYulloLink({ initialSpace = null }: { initialSpace?: PublicSpace | null }) {
+  const { slug, handle } = useParams<{ slug?: string; handle?: string }>()
+  const publicHandle = handle || slug
+  const [space, setSpace] = useState<PublicSpace | null>(initialSpace)
+  const [viewState, setViewState] = useState<AuraViewState>(initialSpace ? 'empty' : 'loading')
 
   useEffect(() => {
-    if (!slug) {
+    if (initialSpace) {
+      setSpace(initialSpace)
+      setViewState('empty')
+      return
+    }
+
+    if (!publicHandle) {
       setViewState('not-found')
       return
     }
@@ -25,7 +27,7 @@ export function PublicYulloLink() {
     let isMounted = true
     const fetchSpace = async () => {
       try {
-        const data = await auraProvider.getPublicSpace(slug)
+        const data = await auraProvider.getPublicSpace(publicHandle)
         if (!isMounted) return
         if (data) {
           setSpace(data)
@@ -41,13 +43,7 @@ export function PublicYulloLink() {
     fetchSpace()
 
     return () => { isMounted = false }
-  }, [slug])
-
-  // Initialize chat hook
-  // We call this here even if space is null, React hooks must be called unconditionally.
-  // When space is null, we won't render AuraExperience anyway.
-  const dummySpace: PublicSpace = { handle: '', displayName: '', description: '', auraEnabled: false }
-  const chat = useAuraChat(space || dummySpace)
+  }, [initialSpace, publicHandle])
 
   if (viewState === 'loading') {
     return (
@@ -71,41 +67,5 @@ export function PublicYulloLink() {
     )
   }
 
-  const handleMessageSent = () => {
-    if (viewState === 'empty') {
-      setViewState('transitioning')
-      setTimeout(() => {
-        setViewState('conversation')
-      }, 420) // match transition duration
-    }
-    setNetworkPulse(prev => prev + 1)
-  }
-
-  return (
-    <div className="relative min-h-[100dvh] w-full bg-[#F6F7F8] text-gray-900 font-sans overflow-hidden">
-      {/* Network Background */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <PublicNetworkBackground 
-          state={viewState === 'conversation' ? 'conversation' : 'empty'} 
-          pulseKey={networkPulse} 
-        />
-      </div>
-
-      <div className="relative z-10 flex flex-col h-[100dvh] pb-[env(safe-area-inset-bottom)]">
-        {/* Header is always visible, but switches layout based on identityVisibility */}
-        <div className="w-full relative z-50">
-          <PublicHeader space={space} identityVisible={identityVisible} />
-        </div>
-
-        {/* Main Content Area */}
-        <AuraExperience 
-          space={space} 
-          viewState={viewState}
-          chat={chat}
-          onMessageSent={handleMessageSent}
-          onIdentityVisibilityChange={setIdentityVisible}
-        />
-      </div>
-    </div>
-  )
+  return <PublicSpaceExperience key={space.id || space.handle} space={space} />
 }

@@ -26,7 +26,7 @@ from urllib.parse import urljoin, urlparse
 
 import structlog
 
-from app.orchestra.ai.ingestion.scraper.base import FetchedPage, ScrapeError, ScraperConfig
+from app.orchestra.ai.ingestion.scraper.base import FetchedPage, ScrapeError
 from app.orchestra.ai.ingestion.scraper.registry import register
 from app.orchestra.ai.ingestion.scraper.safety import validate_url
 
@@ -72,7 +72,7 @@ def _filename_for(url: str, content_type: str) -> str:
 
 
 async def _stream_fetch(
-    url: str, cfg: ScraperConfig, *, max_bytes: Optional[int] = None,
+    url: str, cfg: dict, *, max_bytes: Optional[int] = None,
 ) -> Tuple[bytes, str, str, int]:
     """
     GET `url` following redirects by hand, returning
@@ -83,19 +83,19 @@ async def _stream_fetch(
     """
     import httpx
 
-    current = validate_url(url, allow_private_hosts=cfg.allow_private_hosts)
-    limit = max_bytes if max_bytes is not None else cfg.max_bytes
+    current = validate_url(url, allow_private_hosts=cfg['allow_private_hosts'])
+    limit = max_bytes if max_bytes is not None else cfg['max_bytes']
 
     # Redirects are followed BY HAND. httpx's follow_redirects would chase a
     # 302 into private address space without re-validating, which is the
     # standard way an SSRF guard gets bypassed.
     try:
         async with httpx.AsyncClient(
-            timeout=cfg.timeout_s,
+            timeout=cfg['timeout_s'],
             follow_redirects=False,
-            headers={"User-Agent": cfg.user_agent},
+            headers={"User-Agent": cfg['user_agent']},
         ) as client:
-            for _ in range(cfg.max_redirects + 1):
+            for _ in range(cfg['max_redirects'] + 1):
                 async with client.stream("GET", current) as response:
                     if response.is_redirect:
                         location = response.headers.get("location")
@@ -104,7 +104,7 @@ async def _stream_fetch(
                                               reason="bad_redirect")
                         current = validate_url(
                             urljoin(current, location),
-                            allow_private_hosts=cfg.allow_private_hosts,
+                            allow_private_hosts=cfg['allow_private_hosts'],
                         )
                         continue
 
@@ -135,7 +135,7 @@ async def _stream_fetch(
 
                     return raw, current, response.headers.get("content-type", ""), response.status_code
 
-            raise ScrapeError(f"Too many redirects (>{cfg.max_redirects}).",
+            raise ScrapeError(f"Too many redirects (>{cfg['max_redirects']}).",
                               reason="too_many_redirects")
 
     except ScrapeError:
@@ -149,7 +149,7 @@ async def _stream_fetch(
 
 
 @register("httpx")
-async def _fetch_httpx(url: str, cfg: ScraperConfig) -> FetchedPage:
+async def _fetch_httpx(url: str, cfg: dict) -> FetchedPage:
     raw, current, content_type, status_code = await _stream_fetch(url, cfg)
 
     filename = _filename_for(current, content_type)

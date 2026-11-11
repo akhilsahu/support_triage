@@ -501,7 +501,7 @@ export function CustomerChat() {
   useEffect(() => {
     if (!slug) return
     // Cheap visitor signals for the homepage-section recommendation (see
-    // app/renderengine/homepage_sections.py). Harmless to send even while
+    // app/orchestra/ai/appearance_preview/renderengine/homepage_sections.py). Harmless to send even while
     // HOMEPAGE_SECTIONS_ENABLED is off -- the backend already derives safe
     // defaults if these are absent.
     const device = window.innerWidth < 768 ? 'mobile' : 'desktop'

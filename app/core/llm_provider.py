@@ -1,27 +1,37 @@
-from typing import List, Tuple, Optional
-from openai import AsyncOpenAI
+from __future__ import annotations
+
+from typing import Iterable, List, Tuple, Optional, TYPE_CHECKING
 import logging
 
-from app.config import settings
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
+def resolve_provider_order(available: Iterable[str], priority: str | Iterable[str]) -> list[str]:
+    """Select available providers in configured order, without duplicates or clients."""
+    available = {name.strip().lower() for name in available}
+    requested = priority.split(",") if isinstance(priority, str) else priority
+    return list(dict.fromkeys(name.strip().lower() for name in requested
+                             if name.strip().lower() in available))
+
 def _is_openai_model(model: str) -> bool:
-    m = model.lower()
+    m = model.lower().removeprefix("openai/")
     return m.startswith(("gpt-", "o1-", "o3-", "chatgpt-", "text-embedding-"))
 
 
 def get_async_openai_clients(
     override_model: Optional[str] = None,
+    *, providers: Optional[List[str]] = None,
     **client_kwargs
 ) -> List[Tuple[str, AsyncOpenAI, str]]:
     """
     Returns a priority-ordered list of (provider_name, AsyncOpenAI, model_name).
     
     Reads from settings.LLM_PROVIDER_PRIORITY (comma-separated list, e.g., "openai,openrouter").
-    If empty, defaults to trying "openai" then "openrouter".
+    An explicit providers list selects that subset in the supplied order.
     
     Args:
         override_model: If provided, this model string is used instead of the default settings model.
@@ -29,19 +39,31 @@ def get_async_openai_clients(
                          (e.g., base_url, max_retries, timeout, etc. Note: base_url and api_key 
                          are populated automatically if not overridden).
     """
+    from openai import AsyncOpenAI
+    from app.config import settings
+
     priority_str = getattr(settings, "LLM_PROVIDER_PRIORITY", "") or "modal,openai,openrouter,together,anyscale"
-    order = [p.strip().lower() for p in priority_str.split(",") if p.strip()]
+    available = [name for name in ("openai", "openrouter", "fireworks", "together", "anyscale")
+                 if client_kwargs.get("api_key") or getattr(settings, f"{name.upper()}_API_KEY", None)]
+    if client_kwargs.get("base_url") or getattr(settings, "MODAL_BASE_URL", None):
+        available.append("modal")
+    order = resolve_provider_order(available, providers if providers is not None else priority_str)
     
     out: List[Tuple[str, AsyncOpenAI, str]] = []
+    base_client_kwargs = client_kwargs.copy()
+    base_client_kwargs.setdefault("max_retries", 0)
     
     for provider in order:
         if provider == "openai":
+            if override_model and "/" in override_model and not override_model.startswith("openai/"):
+                continue
             if override_model and (override_model.startswith("accounts/") or "llama" in override_model.lower() or "hierarchy" in override_model.lower()):
                 continue
-            api_key = client_kwargs.get("api_key") or getattr(settings, "OPENAI_API_KEY", None)
+            api_key = base_client_kwargs.get("api_key") or getattr(settings, "OPENAI_API_KEY", None)
             if api_key:
                 model = override_model or getattr(settings, "OPENAI_MODEL", "gpt-4o-mini")
-                kwargs = client_kwargs.copy()
+                model = model.removeprefix("openai/")
+                kwargs = base_client_kwargs.copy()
                 kwargs["api_key"] = api_key
                 try:
                     out.append(("openai", AsyncOpenAI(**kwargs), model))

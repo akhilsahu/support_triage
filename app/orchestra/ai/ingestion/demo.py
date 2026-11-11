@@ -37,7 +37,7 @@ def main() -> None:
 
     # Import after env is set so config picks up the override
     from app.orchestra.ai.ingestion import IngestionService
-    from app.orchestra.ai.ingestion.config import build_ingestion_config
+    from app.orchestra.ai.config import build_ingestion_config
     from app.orchestra.ai.ingestion.parsers.html_parser import HtmlParser
 
     cfg = build_ingestion_config()

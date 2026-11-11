@@ -2,13 +2,14 @@ import uuid
 import re
 from typing import Optional, Dict, Any
 from fastapi import HTTPException
-from sqlalchemy import select, and_, update
+from sqlalchemy import select, and_, update, case, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.space import Space
 from app.models.yullo_space import YulloSpace
 from app.models.yullo_config import YulloConfig
 from app.models.yullo_space_entity import YulloSpaceEntity
+from app.models.yullo_category_suggestion import YulloCategorySuggestion
 from app.yullo.schemas.forms.identity import (
     IdentityFormResponse,
     IdentityFormUpdate,
@@ -164,12 +165,15 @@ async def update_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.U
             identity_settings["category_source"] = data.category_source
         elif data.category and data.category.strip():
             identity_settings["category_source"] = "owner"
+        # Record category usage in the DB suggestions store
+        if data.category and data.category.strip():
+            await record_category_usage(db, data.category.strip(), space.purpose)
         # Remove legacy subtype key on new writes
         identity_settings.pop("subtype", None)
 
     # Ensure category is populated if blank
     if not identity_settings.get("category") or not str(identity_settings.get("category")).strip():
-        from app.yullo.services.about_generation import suggest_about
+        from app.orchestra.ai.data_generation.identity_generate import suggest_about
         gen_res = await suggest_about(db, user_id=user_id, space_id=space_id)
         suggested_cat = gen_res.get("category")
         if suggested_cat and suggested_cat.strip():
@@ -194,8 +198,12 @@ async def update_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.U
     # Update Website Contact Channel
     if data.website is not None:
         website_val = data.website.strip()
-        if website_val != "" and not website_val.startswith(("http://", "https://")):
-            raise HTTPException(status_code=422, detail="website must be a valid HTTP or HTTPS URL")
+        if website_val != "":
+            if not website_val.startswith(("http://", "https://")):
+                if re.match(r'^[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+', website_val) or website_val.startswith("localhost"):
+                    website_val = f"https://{website_val}"
+                else:
+                    raise HTTPException(status_code=422, detail="website must be a valid HTTP or HTTPS URL")
             
         website_entity = await db.scalar(
             select(YulloSpaceEntity).where(
@@ -309,8 +317,9 @@ async def create_space(
     if category and category.strip():
         identity_settings["category"] = category.strip()
         identity_settings["category_source"] = "owner"
+        await record_category_usage(db, category.strip(), canonical_p)
     else:
-        from app.yullo.services.about_generation import suggest_about
+        from app.orchestra.ai.data_generation.identity_generate import suggest_about
         gen_res = await suggest_about(db, user_id=user_id, space_id=created.space.id)
         suggested_cat = gen_res.get("category")
         if suggested_cat and suggested_cat.strip():
@@ -332,6 +341,11 @@ async def create_space(
     
     if website and website.strip():
         website_val = website.strip()
+        if not website_val.startswith(("http://", "https://")):
+            if re.match(r'^[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+', website_val) or website_val.startswith("localhost"):
+                website_val = f"https://{website_val}"
+            else:
+                raise HTTPException(status_code=422, detail="website must be a valid HTTP or HTTPS URL")
         payload = {"label": "Website", "channel": "website", "value": website_val}
         await create_owner_entity(db, user_id=user_id, space_id=created.space.id, command=EntityCommand(
             identity_key=WEBSITE_IDENTITY_KEY,
@@ -371,6 +385,68 @@ async def delete_or_archive_space(
         return {"status": "ok", "action": "archive", "space_id": str(space_id)}
     else:
         raise HTTPException(status_code=400, detail=f"Invalid action '{action}'. Must be 'archive' or 'delete'.")
+
+
+async def record_category_usage(
+    db: AsyncSession,
+    category_name: str,
+    purpose: Optional[str] = None
+) -> None:
+    """Records category usage and persists new user-defined categories to the suggestions store."""
+    trimmed = category_name.strip()
+    if not trimmed or len(trimmed) > 100:
+        return
+    existing = await db.scalar(
+        select(YulloCategorySuggestion).where(func.lower(YulloCategorySuggestion.name) == trimmed.lower())
+    )
+    if existing:
+        existing.usage_count += 1
+    else:
+        new_cat = YulloCategorySuggestion(
+            id=uuid.uuid4(),
+            name=trimmed,
+            purpose=purpose.lower() if purpose else None,
+            is_popular=False,
+            usage_count=1
+        )
+        db.add(new_cat)
+
+
+async def list_category_suggestions(
+    db: AsyncSession,
+    query: Optional[str] = None,
+    purpose: Optional[str] = None,
+    limit: int = 30
+) -> list[YulloCategorySuggestion]:
+    """
+    Retrieves category suggestions from the DB store.
+    Supports filtering by purpose and query, ordering by exact/purpose match, popularity, and usage count.
+    """
+    stmt = select(YulloCategorySuggestion)
+    
+    if query and query.strip():
+        q_clean = query.strip()
+        stmt = stmt.where(YulloCategorySuggestion.name.ilike(f"%{q_clean}%"))
+    
+    order_clauses = []
+    if query and query.strip():
+        order_clauses.append(
+            case((func.lower(YulloCategorySuggestion.name) == query.strip().lower(), 0), else_=1)
+        )
+    if purpose and purpose.strip():
+        order_clauses.append(
+            case((YulloCategorySuggestion.purpose == purpose.strip().lower(), 0), else_=1)
+        )
+    order_clauses.extend([
+        YulloCategorySuggestion.is_popular.desc(),
+        YulloCategorySuggestion.usage_count.desc(),
+        YulloCategorySuggestion.name.asc()
+    ])
+    
+    stmt = stmt.order_by(*order_clauses).limit(limit)
+    res = await db.scalars(stmt)
+    return list(res.all())
+
 
 
 

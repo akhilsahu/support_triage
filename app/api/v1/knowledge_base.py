@@ -126,7 +126,7 @@ def _item_out(item: KnowledgeBaseItem) -> KBItemOut:
 async def _tag_doc_with_kb(doc_id: str, kb_id: str, space_id: str) -> None:
     """Backfill kb_id onto all ChromaDB chunks for an already-uploaded document."""
     try:
-        from app.rag.vector_store import get_vector_store
+        from app.orchestra.ai.knowledge.vector_store import get_vector_store
         store = get_vector_store()
         col   = store._collection("client_documents")
         results = col.get(where={"$and": [{"client_id": {"$eq": space_id}}, {"doc_id": {"$eq": doc_id}}]}, include=["metadatas"])
@@ -145,7 +145,7 @@ async def _index_kb_item(item: KnowledgeBaseItem, space: Space, kb: KnowledgeBas
     """Index a text/qna KB item into ChromaDB and write indexed_doc_id back."""
     try:
         import uuid as _uuid
-        from app.rag.vector_store import get_vector_store
+        from app.orchestra.ai.ingestion import prepare_text, embed_and_store_chunks
         from app.core.database import AsyncSessionLocal
 
         text = item.content or ""
@@ -156,46 +156,15 @@ async def _index_kb_item(item: KnowledgeBaseItem, space: Space, kb: KnowledgeBas
 
         title = str(item.title or f"kb-{str(item.id)[:8]}")
 
-        # Short items and Q&A stay as ONE atomic chunk — a Q&A pair must never be
-        # split (question would separate from its answer), and short text has no
-        # need to chunk. Long free-text items go through the chunker so retrieval
-        # is granular instead of returning a wall of text.
-        INLINE_MAX = 1200
-        if item.item_type == "qna" or len(text) <= INLINE_MAX:
-            strategy = "inline"
-            chunks_payload = [{"text": text, "page": 1, "chunk_index": 0, "section": title}]
-        else:
-            from app.orchestra.ai.chunking import chunk as chunk_document, get_config as get_chunk_config
-            from app.rag.document_parser import ParsedDocument, ParsedPage
-            parsed = ParsedDocument(
-                filename="kb.txt",   # RECURSIVE text strategy
-                extension=".txt",
-                pages=[ParsedPage(page=1, text=text, section=title)],
-            )
-            strategy = get_chunk_config(parsed.filename).strategy.value
-            chunks_payload = [
-                {"text": c.text, "page": c.page, "chunk_index": c.chunk_index, "section": c.section or title}
-                for c in chunk_document(parsed)
-            ] or [{"text": text, "page": 1, "chunk_index": 0, "section": title}]
-
+        # Preserve the product's atomic Q&A / short-text policy.
+        prepared = prepare_text(text, section=title, inline=item.item_type == "qna" or len(text) <= 1200)
         idx_doc_id = str(_uuid.uuid4())[:8]
-        store = get_vector_store()
-        store.upsert_client_chunks(
-            client_id=str(space.id),
-            session_id="kb",
-            doc_id=idx_doc_id,
-            filename=title,
-            extension=".txt",
-            strategy=strategy,
-            doc_type="general",
-            ttl_days=None,
-            kb_id=str(kb.id),
-            kb_name=str(kb.name),
-            space_id=str(space.id),
-            org_name=getattr(space, "display_name", ""),
-            description=description,
+        await embed_and_store_chunks(
+            prepared, client_id=str(space.id), session_id="kb", doc_id=idx_doc_id,
+            filename=title, doc_type="general", ttl_days=None, kb_id=str(kb.id),
+            kb_name=str(kb.name), space_id=str(space.id),
+            org_name=getattr(space, "display_name", ""), description=description,
             topic=item.topic or "",
-            chunks=chunks_payload,
         )
 
         async with AsyncSessionLocal() as db:
@@ -222,7 +191,7 @@ async def _apply_topic(item: KnowledgeBaseItem, space: Space,
     nothing — and because that is a filter miss rather than an error, it
     presents as a missing document rather than a stale tag.
     """
-    from app.rag.vector_store import get_vector_store
+    from app.orchestra.ai.knowledge.vector_store import get_vector_store
     from app.utils.slug import slugify
 
     if topic is not None:

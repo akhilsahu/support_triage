@@ -65,6 +65,8 @@ class ChatSession(Base):
     message_count   = Column(Integer, default=0, nullable=False)
     started_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
     last_message_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # CSAT micro-poll (migration 0055_csat)
     csat_rating  = Column(SmallInteger, nullable=True)
@@ -140,6 +142,7 @@ class MessageThought(Base):
     model            = Column(String(120), nullable=True)
     reasoning_effort = Column(String(20), nullable=True)
     created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     def to_dict(self) -> dict:
         return {

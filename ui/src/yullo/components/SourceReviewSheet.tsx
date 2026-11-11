@@ -3,7 +3,7 @@ import { AlertCircle, AlignLeft, Check, CheckCheck, CheckCircle2, Clock, Downloa
 import { SourceItem } from './SourceUnderstandingCard';
 import { DeleteSourceConfirmDialog } from './DeleteSourceConfirmDialog';
 import { SourceEntityCandidate } from './SourceEntityCandidate';
-import { SourceFact, yulloOnboardingApi } from '../api/onboarding';
+import { SourceDeletionMode, SourceFact, yulloOnboardingApi } from '../api/onboarding';
 import { entitiesApi, SourceEntity } from '../api/entities';
 import { ColouredIcon, getBrandIconFromUrl } from './ColouredIcon';
 
@@ -13,7 +13,7 @@ interface SourceReviewSheetProps {
   spaceId: string;
   source: SourceItem | null;
   onToggleConfirm?: (sourceId: string, nextState: boolean) => void | Promise<void>;
-  onRemoveSource?: (sourceId: string) => void | Promise<void>;
+  onRemoveSource?: (sourceId: string, mode?: SourceDeletionMode, expectedSourceVersion?: number) => void | Promise<void>;
   onRetrySource?: (sourceId: string) => Promise<void>;
   onEntitiesChanged?: () => void | Promise<void>;
   onShowProgress?: () => void;
@@ -35,7 +35,7 @@ function factStatus(fact: SourceFact): string {
 export const SourceReviewSheet: React.FC<SourceReviewSheetProps> = ({
   isOpen, onClose, spaceId, source, onToggleConfirm, onRemoveSource, onRetrySource, onEntitiesChanged, onShowProgress,
 }) => {
-  const [isConfirmed, setIsConfirmed] = useState(source?.is_confirmed ?? false);
+  const [isConfirmed, setIsConfirmed] = useState(source?.is_confirmed ?? true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isReExtracting, setIsReExtracting] = useState(false);
   const [isLoadingReview, setIsLoadingReview] = useState(false);
@@ -69,7 +69,7 @@ export const SourceReviewSheet: React.FC<SourceReviewSheetProps> = ({
   }, [isOpen, sourceId, spaceId]);
 
   useEffect(() => {
-    setIsConfirmed(source?.is_confirmed ?? false);
+    setIsConfirmed(source?.is_confirmed ?? true);
   }, [source?.is_confirmed]);
 
   useEffect(() => {
@@ -185,7 +185,13 @@ export const SourceReviewSheet: React.FC<SourceReviewSheetProps> = ({
                   <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-amber-700 dark:text-amber-400"><Clock className="h-4 w-4 animate-spin" /> Processing</span>
                 )}
                 <span className="text-[13px] text-[var(--text-secondary)]">
-                  · {source.status === 'failed' ? 'Unavailable to Aura' : isConfirmed ? 'Used by Aura' : 'Paused'}
+                  · {source.status === 'failed'
+                    ? 'Unavailable to Aura'
+                    : ['ready', 'ready_to_review'].includes(source.status)
+                      ? isConfirmed
+                        ? 'Chunks active'
+                        : 'Source paused'
+                      : 'Extracting details...'}
                 </span>
               </div>
               {source.status === 'failed' && source.error_msg && (
@@ -462,7 +468,7 @@ export const SourceReviewSheet: React.FC<SourceReviewSheetProps> = ({
 
         <footer className="flex items-center gap-3 border-t border-[var(--border)] bg-[var(--surface-soft)] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-7">
           <button type="button" onClick={async () => { const next = !isConfirmed; setIsConfirmed(next); await onToggleConfirm?.(source.id, next); onClose(); }} className="inline-flex min-h-[46px] flex-1 items-center justify-center gap-2 rounded-xl bg-[var(--accent-solid)] px-4 text-[14px] font-semibold text-[var(--accent-on-solid)]">
-            <StopCircle className="h-4 w-4" /> {isConfirmed ? 'Stop using source' : 'Resume using source'}
+            <StopCircle className="h-4 w-4" /> {isConfirmed ? 'Pause source' : 'Resume source'}
           </button>
           <button type="button" aria-label="Remove source" onClick={() => setShowDeleteConfirm(true)} className="flex h-[46px] w-[46px] items-center justify-center rounded-xl border border-rose-500/25 bg-rose-500/10 text-rose-600"><Trash2 className="h-4 w-4" /></button>
         </footer>
@@ -470,8 +476,15 @@ export const SourceReviewSheet: React.FC<SourceReviewSheetProps> = ({
 
       <DeleteSourceConfirmDialog
         isOpen={showDeleteConfirm}
+        sourceId={source.id}
         sourceTitle={displayTitle}
-        onConfirm={async () => { setShowDeleteConfirm(false); await onRemoveSource?.(source.id); onClose(); }}
+        sourceVersion={source.source_version}
+        isProcessing={processing}
+        onConfirm={async (mode, expectedSourceVersion) => {
+          await onRemoveSource?.(source.id, mode, expectedSourceVersion);
+          setShowDeleteConfirm(false);
+          onClose();
+        }}
         onCancel={() => setShowDeleteConfirm(false)}
       />
     </div>

@@ -44,3 +44,4 @@ class AiUsageEvent(Base):
     error_type   = Column(String(120), nullable=True)
     meta         = Column(JSONB, nullable=True)
     created_at   = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at   = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

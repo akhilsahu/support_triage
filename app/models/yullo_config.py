@@ -1,5 +1,6 @@
+from datetime import datetime
 import uuid
-from sqlalchemy import Column, String, ForeignKey, JSON
+from sqlalchemy import Column, DateTime, String, ForeignKey, JSON
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -18,6 +19,10 @@ class YulloConfig(Base):
     
     # Store schema-validated Yullo settings as JSONB
     settings = Column(JSONB, nullable=False, server_default='{}')
+    
+    # Audit timestamps for creation and modification tracking
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationship to the parent Space
     space = relationship("Space", back_populates="yullo_config")

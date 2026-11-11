@@ -62,8 +62,8 @@ async def run_escalation_workflow(
         logger.warning("agno not installed — escalation workflow unavailable")
         return {"error": "agno not installed"}
 
-    from app.orchestra.ai.core.config import build_config
-    from app.orchestra.ai.factories.llm import LLMFactory
+    from app.orchestra.ai.config import build_config
+    from app.orchestra.ai.inference.factories.llm import LLMFactory
 
     cfg   = build_config()
     model = LLMFactory(cfg).build()

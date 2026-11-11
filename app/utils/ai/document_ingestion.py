@@ -113,7 +113,7 @@ async def reingest_from_db(
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy import select
     from app.models.knowledge_base import KnowledgeBaseItem
-    from app.rag.vector_store import get_vector_store, COLLECTION_CLIENT
+    from app.orchestra.ai.knowledge.vector_store import get_vector_store, COLLECTION_CLIENT
 
     from app.config import settings
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
@@ -187,7 +187,7 @@ def reingest_raw(
     dry_run: bool = False,
 ):
     """Re-ingest raw text or a local file directly into ChromaDB."""
-    from app.rag.vector_store import get_vector_store, COLLECTION_CLIENT
+    from app.orchestra.ai.knowledge.vector_store import get_vector_store, COLLECTION_CLIENT
 
     store = get_vector_store()
     doc_id = doc_id or str(uuid.uuid4())
@@ -264,7 +264,7 @@ async def main():
 
     # Optional: reset collection first
     if args.reset_collection:
-        from app.rag.vector_store import get_vector_store
+        from app.orchestra.ai.knowledge.vector_store import get_vector_store
         store = get_vector_store()
         store.reset_collection(args.reset_collection)
         print(f"✓ Collection '{args.reset_collection}' reset.")

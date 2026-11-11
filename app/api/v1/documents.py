@@ -28,11 +28,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import current_space
 from app.core.database import get_db
-from app.rag.document_parser import ParsedDocument
-from app.orchestra.ai.chunking import chunk as chunk_document, get_config as get_chunk_config
+from app.orchestra.ai.ingestion import prepare_text, embed_and_store_chunks, generate_summary as _generate_summary
 from app.orchestra.ai.ingestion import get_ingestion_service
 from app.orchestra.ai.ingestion.jobs import get_job_runner
-from app.rag.vector_store import (
+from app.orchestra.ai.knowledge.vector_store import (
     COLLECTION_CLIENT,
     VALID_DOC_TYPES,
     get_vector_store,
@@ -45,28 +44,6 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-async def _generate_summary(content: str) -> str:
-    """Generate a highly concise 1-2 sentence semantic summary of the text content."""
-    if not content or not content.strip():
-        return ""
-    snippet = content[:6000].strip()
-    system_prompt = (
-        "You are an AI that writes extremely concise summaries for customer support documents. "
-        "Write exactly one or two sentences summarizing the main topic or scope of this document. "
-        "Do not include any intro, meta-commentary, or pleasantries."
-    )
-    try:
-        res = await llm_service.generate_with_fallback(
-            messages=[{"role": "user", "content": f"Document content:\n{snippet}\n\nSummary:"}],
-            system_prompt=system_prompt,
-            temperature=0.2,
-            max_tokens=150,
-        )
-        if res and res.get("content"):
-            return res["content"].strip()
-    except Exception as e:
-        logger.warning("Failed to generate semantic summary", error=str(e))
-    return ""
 
 
 async def _resolve_kb_id(kb_id: Optional[str], org, db: AsyncSession) -> Optional[str]:
@@ -114,16 +91,17 @@ async def _link_kb_item(kb_id: Optional[str], doc_id: str, title: str) -> None:
     """
     if not kb_id:
         return
-    from app.orchestra.ai.ingestion.jobs.tasks import _attach_kb_item
+    from app.orchestra.ai.ingestion import attach_indexed_source
     try:
-        await _attach_kb_item(kb_id, doc_id, title)
+        await attach_indexed_source(kb_id, doc_id, title)
     except Exception as e:
         logger.error("ingest.kb_link_failed", kb_id=kb_id, doc_id=doc_id, error=str(e))
 
 
-UI_HTML       = Path(__file__).resolve().parents[2] / "rag" / "ui.html"
-UI_ADMIN_HTML = Path(__file__).resolve().parents[2] / "rag" / "ui" / "admin.html"
-UI_CHAT_HTML  = Path(__file__).resolve().parents[2] / "rag" / "ui" / "chat.html"
+UI_BASE       = Path(__file__).resolve().parents[2] / "static" / "knowledge"
+UI_HTML       = UI_BASE / "ui.html"
+UI_ADMIN_HTML = UI_BASE / "ui" / "admin.html"
+UI_CHAT_HTML  = UI_BASE / "ui" / "chat.html"
 
 # ── Max upload size ────────────────────────────────────────────────────────────
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024  # 30 MB
@@ -240,7 +218,7 @@ async def rag_upload(
     x_item_title: Optional[str] = Header(default=None, alias="X-Item-Title"),
     x_topic: Optional[str] = Header(default=None, alias="X-Topic"),
     x_doc_label: Optional[str] = Header(default=None, alias="X-Doc-Label"),
-    x_contextual_enrichment: Optional[str] = Header(default=None, alias="X-Contextual-Enrichment"),
+    x_contextual_enrichment: Optional[str] = Header(default=None, alias="X-Contextual-Enrichment", deprecated=True, description="Ignored; contextual enrichment has been removed."),
     org=Depends(current_space),
     db: AsyncSession = Depends(get_db),
 ):
@@ -249,9 +227,6 @@ async def rag_upload(
     kb_name     = x_kb_name or ""
     description = x_kb_description or ""
     expiry_date = x_kb_expiry or ""
-    enable_enrichment: bool = True
-    if x_contextual_enrichment is not None:
-        enable_enrichment = x_contextual_enrichment.strip().lower() in ("true", "1", "yes", "on")
 
     # Resolve filename and raw bytes (either from preview token or fresh file upload)
     if x_preview_token:
@@ -334,7 +309,6 @@ async def rag_upload(
         item_title=x_item_title or filename,
         topic=x_topic or "",
         doc_label=x_doc_label or "",
-        enable_enrichment=enable_enrichment,
     )
     job_row.retry_payload = {"task": task_kwargs}
     await db.commit()
@@ -586,64 +560,6 @@ async def rag_chat(req: RagChatRequest):
     return RagChatResponse(answer=answer, doc_id=req.doc_id, sources=sources, provider=provider)
 
 
-# ── Client KB chat ────────────────────────────────────────────────────────────
-
-class ClientChatRequest(BaseModel):
-    client_id: str
-    question: str
-    doc_id: Optional[str] = None   # narrow to a specific doc; None = entire KB
-    top_k: int = 5
-
-
-class ClientChatResponse(BaseModel):
-    answer: str
-    client_id: str
-    doc_id: Optional[str]
-    sources: List[SourceSnippet]
-    provider: Optional[str] = None
-    rag_hit: bool = True
-
-
-@router.post("/rag/client/{client_id}", response_model=ClientChatResponse)
-async def rag_client_chat(client_id: str, req: ClientChatRequest, org=Depends(current_space)):
-    """
-    Chat with the authenticated org's knowledge base.
-    client_id in the path must match the JWT org slug.
-    """
-    if client_id != str(org.id):
-        raise HTTPException(status_code=403, detail="You can only query your own knowledge base.")
-
-    from app.agents.support_agent import get_support_agent
-    agent = get_support_agent()
-
-    result = await agent.answer(
-        question=req.question,
-        client_id=str(org.id),
-        doc_id=req.doc_id or None,
-        top_k=req.top_k,
-    )
-
-    sources = [
-        SourceSnippet(
-            chunk_index=0,
-            page=s.get("page", 0),
-            section=s.get("section", ""),
-            score=s.get("score", 0.0),
-            excerpt=s.get("excerpt", ""),
-        )
-        for s in result.sources
-    ]
-
-    return ClientChatResponse(
-        answer=result.answer,
-        client_id=client_id,
-        doc_id=req.doc_id,
-        sources=sources,
-        provider=result.provider,
-        rag_hit=result.rag_hit,
-    )
-
-
 # ── List / Delete ─────────────────────────────────────────────────────────────
 
 @router.get("/rag/list", response_model=List[RagDocInfo])
@@ -716,41 +632,18 @@ async def rag_ingest_text(req: IngestTextRequest, org=Depends(current_space),
     doc_type = req.doc_type if req.doc_type in VALID_DOC_TYPES else "general"
     filename = f"{req.title.strip() or 'text-input'}.txt"
 
-    # Build a ParsedDocument directly from the raw text
-    from app.rag.document_parser import ParsedDocument, ParsedPage
-    parsed = ParsedDocument(
-        filename=filename,
-        extension=".txt",
-        pages=[ParsedPage(page=1, text=req.text.strip(), section=req.title.strip())],
-    )
-
-    cfg = get_chunk_config(filename)
-    chunks = chunk_document(parsed)
-    if not chunks:
-        raise HTTPException(status_code=422, detail="Text produced no chunks.")
-
+    try:
+        prepared = prepare_text(req.text.strip(), filename=filename, section=req.title.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Text produced no chunks.") from exc
+    chunks = prepared.chunks
     doc_id = str(uuid.uuid4())[:8]
-    store  = get_vector_store()
     semantic_summary = await _generate_summary(req.text)
-    store.upsert_client_chunks(
-        client_id=str(org.id),
-        session_id=str(uuid.uuid4()),
-        doc_id=doc_id,
-        filename=filename,
-        extension=".txt",
-        strategy=cfg.strategy.value,
-        doc_type=doc_type,
-        ttl_days=None,
-        kb_name=req.kb_name or "",
-        kb_id=kb_id or "",
-        space_id=str(org.id),
-        org_name=org.display_name,
-        description=req.description or "",
-        semantic_summary=semantic_summary,
-        chunks=[
-            {"text": c.text, "page": c.page, "chunk_index": c.chunk_index, "section": c.section}
-            for c in chunks
-        ],
+    await embed_and_store_chunks(
+        prepared, client_id=str(org.id), session_id=str(uuid.uuid4()), doc_id=doc_id,
+        filename=filename, doc_type=doc_type, ttl_days=None, kb_name=req.kb_name or "",
+        kb_id=kb_id or "", space_id=str(org.id), org_name=org.display_name,
+        description=req.description or "", semantic_summary=semantic_summary,
     )
     await _link_kb_item(kb_id, doc_id, req.title.strip() or filename)
 
@@ -834,8 +727,8 @@ async def rag_preview_url(req: PreviewUrlRequest, org=Depends(current_space)):
     ingests exactly what was shown here rather than re-fetching.
     """
     from dataclasses import replace as _replace
-    from app.orchestra.ai.ingestion.config import build_ingestion_config
-    from app.orchestra.ai.ingestion.ingestion import IngestionService
+    from app.orchestra.ai.config import build_ingestion_config
+    from app.orchestra.ai.ingestion import IngestionService
     from app.orchestra.ai.ingestion.scraper import (
         DeepPreviewLease,
         ScrapeError,
@@ -927,8 +820,8 @@ async def rag_preview_doc(
     OCR/Vision is disabled for previews to keep it fast and responsive.
     """
     from dataclasses import replace as _replace
-    from app.orchestra.ai.ingestion.config import build_ingestion_config
-    from app.orchestra.ai.ingestion.ingestion import IngestionService
+    from app.orchestra.ai.config import build_ingestion_config
+    from app.orchestra.ai.ingestion import IngestionService
     from app.orchestra.ai.ingestion.scraper import FetchedPage, store_preview
     from app.orchestra.ai.ingestion.scraper.quality import assess_extraction
 
@@ -985,7 +878,7 @@ async def rag_preview_doc(
 
 @router.post("/rag/ingest-url", response_model=RagUploadAcceptedResponse, status_code=202)
 async def rag_ingest_url(req: IngestUrlRequest,
-                         x_contextual_enrichment: Optional[str] = Header(default=None, alias="X-Contextual-Enrichment"),
+                         x_contextual_enrichment: Optional[str] = Header(default=None, alias="X-Contextual-Enrichment", deprecated=True, description="Ignored; contextual enrichment has been removed."),
                          org=Depends(current_space),
                          db: AsyncSession = Depends(get_db)):
 
@@ -1072,9 +965,6 @@ async def rag_ingest_url(req: IngestUrlRequest,
     # kwargs, not inside them: on retry, if the temp bytes are gone (the task
     # deletes them on a genuine failure), the URL job can re-fetch rather than
     # making the user start over — file uploads have no such escape hatch.
-    enable_enrichment: bool = True
-    if x_contextual_enrichment is not None:
-        enable_enrichment = x_contextual_enrichment.strip().lower() in ("true", "1", "yes", "on")
 
 
     task_kwargs = dict(
@@ -1098,7 +988,6 @@ async def rag_ingest_url(req: IngestUrlRequest,
         source_url=page.final_url,
         topic=req.topic or "",
         doc_label=req.doc_label or "",
-        enable_enrichment=enable_enrichment,
     )
 
     job_row.retry_payload = {"task": task_kwargs, "url": url}

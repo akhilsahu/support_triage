@@ -21,9 +21,27 @@ Scoping rules (enforced by every implementation):
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import re
 from typing import List, Optional
 
 from app.orchestra.ai.knowledge.bundle import KnowledgeBundle
+
+
+def prepare_retrieval_query(message: str, history: list) -> str:
+    """Add bounded visitor context for referential queries, not prompt routing.
+
+    This conservative English-language heuristic is not semantic resolution.
+    Current questions stay verbatim; assistant claims never become evidence.
+    The caller supplies authorized history and may omit greetings/irrelevant turns.
+    """
+    text = message.casefold().strip()
+    follows = re.match(r'^(what about|how about|and |those\b|these\b|which one\b|tell me more|more details)', text)
+    refers = re.search(r'\b(it|its|that|them|those|these|first one|second one|former|latter)\b', text)
+    if not follows and not refers:
+        return message
+    prior = next((entry.message for entry in reversed(history)
+                  if entry.role == 'user' and isinstance(entry.message, str) and entry.message.strip()), None)
+    return f'Previous visitor question: {prior[:500]}\nCurrent question: {message}' if prior else message
 
 
 class BaseKnowledgeBackend(ABC):
@@ -63,6 +81,10 @@ class BaseKnowledgeBackend(ABC):
             Returns KnowledgeBundle.empty() when RAG is disabled or unavailable.
         """
         ...
+
+    def read_chunks(self, space_id: str, doc_id: str, indices: list[int], *, content: bool = True) -> list[dict]:
+        """Optional exact reads; unsupported backends expose no continuations."""
+        return []
 
     @abstractmethod
     def name(self) -> str:

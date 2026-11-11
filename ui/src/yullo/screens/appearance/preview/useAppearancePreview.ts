@@ -46,6 +46,8 @@ export function useAppearancePreview(
   currentConfig: SpacePresentationConfig,
 ) {
   const [state, setState] = useState<PreviewState>(idleState)
+  const contentRef = useRef(state.content)
+  contentRef.current = state.content
   const abortRef = useRef<AbortController | null>(null)
   const requestRef = useRef(0)
   const configRef = useRef(currentConfig)
@@ -62,7 +64,7 @@ export function useAppearancePreview(
     try {
       const data = await appearanceApi.generatePreview(
         spaceId,
-        { currentConfig: configRef.current, force, sectionType },
+        { currentConfig: configRef.current, force, sectionType, currentContent: contentRef.current || undefined },
         controller.signal,
       )
       if (requestId !== requestRef.current) return

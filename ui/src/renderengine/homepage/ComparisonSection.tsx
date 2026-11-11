@@ -1,7 +1,7 @@
 import type { SectionProps } from './types'
 import { SectionHeading } from './SectionHeading'
 
-// Competitor comparison table (see app/renderengine/comparison.py). Admin-curated
+// Competitor comparison table (see app/orchestra/ai/appearance_preview/renderengine/comparison.py). Admin-curated
 // grids are verified (no disclaimer); AI/web grids show an illustrative disclaimer.
 // First row is highlighted as "this brand". Renders nothing when unset.
 export function ComparisonSection({ theme: t, comparison }: SectionProps) {

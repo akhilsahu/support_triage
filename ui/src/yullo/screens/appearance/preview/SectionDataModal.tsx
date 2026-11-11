@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
-import { Check, Loader2, Layers, X, AlertCircle } from 'lucide-react'
-import type { AppearancePreviewSection, PreviewSectionType } from './types'
+import { useEffect, useRef, useState } from 'react'
+import { Check, Loader2, Layers, X, AlertCircle, ImagePlus } from 'lucide-react'
+import type { AppearancePreviewItem, AppearancePreviewSection, PreviewSectionType } from './types'
+import type { AppearanceAsset } from '../../../api/appearance'
 
 export interface SectionDataModalProps {
   isOpen: boolean
@@ -13,6 +14,9 @@ export interface SectionDataModalProps {
   status?: 'idle' | 'ready' | 'insufficient_context' | 'unavailable'
   onConfirm: () => void
   onCancel: () => void
+  onChooseImage?: (item: AppearancePreviewItem) => void
+  onRemoveImage?: (item: AppearancePreviewItem) => void
+  assets?: AppearanceAsset[]
 }
 
 /**
@@ -30,14 +34,19 @@ export function SectionDataModal({
   status,
   onConfirm,
   onCancel,
+  onChooseImage,
+  onRemoveImage,
+  assets = [],
 }: SectionDataModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     const dialog = dialogRef.current
     if (!dialog) return
 
     if (isOpen && !dialog.open) {
+      setFailedImages({})
       dialog.showModal()
     } else if (!isOpen && dialog.open) {
       dialog.close()
@@ -56,7 +65,7 @@ export function SectionDataModal({
       className="appearance-confirm appearance-data-modal"
       aria-labelledby="section-data-modal-title"
       aria-describedby="section-data-modal-description"
-      onCancel={onCancel}
+      onCancel={(event) => { event.preventDefault(); if (!isApplying) onCancel() }}
       onClick={(event) => {
         if (event.target === event.currentTarget && !isApplying) {
           onCancel()
@@ -99,7 +108,7 @@ export function SectionDataModal({
             ? 'Aura is retrieving grounded details from your Space knowledge to draft this section.'
             : isFailed
             ? explanation || 'No approved items could be gathered for this section. Add or approve details in Space knowledge, then pull again.'
-            : 'Review the items pulled for this section. Choose "Add to section" to apply them, or "Cancel" to discard.'}
+            : 'Review the text and images. Change or remove any image, then choose "Add to section" to apply.'}
         </p>
 
         {/* Loading state skeleton */}
@@ -125,12 +134,36 @@ export function SectionDataModal({
             <div className="appearance-data-modal-items" role="list" aria-label={`Pulled items for ${sectionLabel}`}>
               {items.map((item, index) => (
                 <div key={item.key || index} className="appearance-data-item-card" role="listitem">
+                  {item.imageUrl && !failedImages[item.imageUrl] && (
+                    <img
+                      className="appearance-data-item-image"
+                      src={item.imageUrl}
+                      alt={`Image for ${item.title}`}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      onError={() => setFailedImages((current) => ({ ...current, [item.imageUrl!]: true }))}
+                    />
+                  )}
+                  {item.imageUrl && failedImages[item.imageUrl] && <p role="status">Image unavailable. Choose another image or remove it.</p>}
+                  {item.imageUrl && <span className="appearance-data-image-label">{assets.find((asset) => asset.id === item.assetId)?.altText || 'Existing Space image'}</span>}
                   <div className="appearance-data-item-header">
                     <span className="appearance-data-item-title">{item.title}</span>
                     {item.meta && <span className="appearance-data-item-meta">{item.meta}</span>}
                   </div>
                   {item.description && (
                     <p className="appearance-data-item-desc">{item.description}</p>
+                  )}
+                  {onChooseImage && (
+                    <div className="appearance-data-image-controls">
+                      <button type="button" disabled={isApplying} onClick={() => onChooseImage(item)} aria-label={`${item.imageUrl ? 'Change' : 'Choose'} image for ${item.title}`}>
+                        <ImagePlus size={16} aria-hidden="true" />
+                        {item.imageUrl ? 'Change image' : 'Choose image'}
+                      </button>
+                      {item.imageUrl && onRemoveImage && (
+                        <button type="button" disabled={isApplying} onClick={() => onRemoveImage(item)} aria-label={`Remove image for ${item.title}`}>Remove</button>
+                      )}
+                      {!item.imageUrl && <span>No image selected</span>}
+                    </div>
                   )}
                   <div className="appearance-data-item-footer">
                     <span className={`appearance-data-source-badge is-${item.source}`}>

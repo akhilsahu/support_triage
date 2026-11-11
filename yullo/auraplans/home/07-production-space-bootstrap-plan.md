@@ -1,5 +1,7 @@
 # Yullo Backend Demo Spaces Implementation Plan
 
+> Retired on 2026-11-11: the bootstrap CLI/runner and its dedicated tests were removed because they are outside the active product flow. This document is historical; its commands and file-creation steps no longer apply. Use the authenticated Space, source, entity and publication flows.
+
 > **For agentic workers:** Implement this plan after Home plans 01–06. Track work with the checkboxes in this document.
 
 **Goal:** Create three realistic Yullo Spaces for one existing user through the real backend services so Home can be exercised with healthy, attention, and draft states without UI automation or dashboard fixtures.

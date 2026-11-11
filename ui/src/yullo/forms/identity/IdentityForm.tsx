@@ -12,6 +12,7 @@ import {
 import { SourceItem } from '../../components/SourceUnderstandingCard';
 import { CategoryCombobox } from '../core/CategoryCombobox';
 import { ColouredIcon, getBrandIconFromUrl } from '../../components/ColouredIcon';
+import { getBaseDomain } from '../../config';
 
 /**
  * Validates whether the given value is a legitimate website URL.
@@ -376,7 +377,7 @@ interface IdentityChatMessage {
               </label>
               <div className="flex items-center justify-between gap-3 p-3 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl">
                 <div className="flex items-center min-w-0 font-mono text-[14px] truncate">
-                  <span className="text-[var(--text-muted)] select-none">yullo.com/</span>
+                  <span className="text-[var(--text-muted)] select-none">{getBaseDomain()}/</span>
                   <span className="font-semibold text-[var(--text-primary)] truncate">{slug || 'your-space'}</span>
                 </div>
                 {onChangeHandle && (
@@ -949,7 +950,7 @@ interface IdentityChatMessage {
 
                 <div className="mb-1 text-right">
                   <div className="inline-flex items-center gap-1 text-[12px] font-mono text-[var(--text-secondary)] bg-[var(--surface-soft)] px-2.5 py-1 rounded-lg border border-[var(--border)]">
-                    yullo.com/{slug || 'spacex'}
+                    {getBaseDomain()}/{slug || 'spacex'}
                   </div>
                 </div>
               </div>

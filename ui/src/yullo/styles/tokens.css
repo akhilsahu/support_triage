@@ -222,8 +222,8 @@ html {
   --ambient-glow: rgba(241,219,61,0.12);
   
   
-  --accent-solid: color-mix(in srgb, rgb(var(--accent-base)) 85%, black);
-  --accent-on-solid: #FFFFFF;
+  --accent-solid: rgb(var(--accent-base));
+  --accent-on-solid: var(--accent-on-solid-base);
   --accent-ink: rgb(var(--accent-base-light));
   --accent-soft: rgba(var(--accent-base), 0.15);
   --accent-border: rgba(var(--accent-base), 0.3);
@@ -268,11 +268,11 @@ html {
   --ambient-path-opacity: 0.10;
   --ambient-glow: rgba(241,219,61,0.12);
   
-  --accent-solid: color-mix(in srgb, rgb(var(--accent-base)) 80%, #3D2C1C);
-  --accent-on-solid: #FFFFFF;
-  --accent-ink: color-mix(in srgb, rgb(var(--accent-base-light)) 90%, #E2D5C3);
-  --accent-soft: color-mix(in srgb, rgba(var(--accent-base), 0.15) 80%, #473B31);
-  --accent-border: color-mix(in srgb, rgba(var(--accent-base), 0.3) 80%, #473B31);
+  --accent-solid: rgb(var(--accent-base));
+  --accent-on-solid: var(--accent-on-solid-base);
+  --accent-ink: rgb(var(--accent-base-light));
+  --accent-soft: rgba(var(--accent-base), 0.15);
+  --accent-border: rgba(var(--accent-base), 0.3);
   --accent-ring: rgba(var(--accent-base), 0.5);
   
   --focus: var(--accent-solid);

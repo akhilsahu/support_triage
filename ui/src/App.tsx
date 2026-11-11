@@ -7,6 +7,7 @@ import { DynamicHome, DynamicLogin, DynamicHowItWorks, DynamicPricing } from './
 import { NotFound } from './screens/NotFound'
 import { ForgotPassword } from './screens/ForgotPassword'
 import { ResetPassword } from './screens/ResetPassword'
+import { SlugResolver } from './SlugResolver'
 import { VerifyEmail } from './screens/VerifyEmail'
 import {
   AboutPage, WhatWeDoPage, FeaturesPage,
@@ -17,9 +18,9 @@ import { useAppStore } from './store/useAppStore'
 import { apiClient } from './api/client'
 import { RouteSeo } from './lib/RouteSeo'
 import { DataSourceFeatureGuard } from './features/data-sources/DataSourceFeatureGuard'
+import { YulloPrivateRoute } from './yullo/providers/YulloPrivateRoute'
 
 const Dashboard = lazy(() => import('./screens/Dashboard').then(module => ({ default: module.Dashboard })))
-const Chat = lazy(() => import('./screens/Chat').then(module => ({ default: module.Chat })))
 const Agents = lazy(() => import('./screens/Agents').then(module => ({ default: module.Agents })))
 const KnowledgeBase = lazy(() => import('./screens/KnowledgeBase').then(module => ({ default: module.KnowledgeBase })))
 const Analytics = lazy(() => import('./screens/Analytics').then(module => ({ default: module.Analytics })))
@@ -34,8 +35,16 @@ const TestChat = lazy(() => import('./screens/TestChat').then(module => ({ defau
 const EmbedWidget = lazy(() => import('./screens/EmbedWidget').then(module => ({ default: module.EmbedWidget })))
 const ChatbotProfile = lazy(() => import('./screens/ChatbotProfile').then(module => ({ default: module.ChatbotProfile })))
 const OnboardingWizard = lazy(() => import('./screens/OnboardingWizard').then(module => ({ default: module.OnboardingWizard })))
-const YulloHome = lazy(() => import('./screens/yullo/YulloHome').then(module => ({ default: module.YulloHome })))
-const YulloAuth = lazy(() => import('./screens/yullo/YulloAuth').then(module => ({ default: module.YulloAuth })))
+const YulloLanding = lazy(() => import('./yullo/screens/YulloLanding').then(module => ({ default: module.YulloLanding })))
+const YulloAuth = lazy(() => import('./yullo/screens/YulloAuth').then(module => ({ default: module.YulloAuth })))
+const YulloOnboarding = lazy(() => import('./yullo/screens/onboarding/YulloOnboarding').then(module => ({ default: module.YulloOnboarding })))
+const YulloHome = lazy(() => import('./yullo/screens/YulloHome').then(module => ({ default: module.YulloHome })))
+const PublicYulloLink = lazy(() => import('./yullo/screens/public/PublicYulloLink').then(module => ({ default: module.PublicYulloLink })))
+const SpaceDashboard = lazy(() => import('./yullo/screens/SpaceDashboard').then(module => ({ default: module.SpaceDashboard })))
+const NewSpaceScreen = lazy(() => import('./yullo/screens/NewSpaceScreen').then(module => ({ default: module.NewSpaceScreen })))
+const IdentityFormScreen = lazy(() => import('./yullo/screens/identity/IdentityFormScreen').then(module => ({ default: module.IdentityFormScreen })))
+const AuraKnowledgeScreen = lazy(() => import('./yullo/screens/knowledge/AuraKnowledgeScreen').then(module => ({ default: module.AuraKnowledgeScreen })))
+const AppearanceScreen = lazy(() => import('./yullo/screens/appearance/AppearanceScreen').then(module => ({ default: module.AppearanceScreen })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -111,8 +120,6 @@ export default function App() {
         <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-sm text-gray-500">Loading…</div>}><Routes>
           {/* ── Marketing / landing (root namespace, reserved) ── */}
           <Route path="/" element={<DynamicHome />} />
-          <Route path="/yullo" element={<YulloHome />} />
-          <Route path="/auth" element={<YulloAuth />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/what-we-do" element={<WhatWeDoPage />} />
           <Route path="/how-it-works" element={<DynamicHowItWorks />} />
@@ -131,7 +138,7 @@ export default function App() {
           <Route path="/app/reset-password" element={<ResetPassword />} />
           <Route path="/app/verify-email" element={<VerifyEmail />} />
           <Route path="/app/dashboard" element={<PrivateRoute><Layout><Dashboard /></Layout></PrivateRoute>} />
-          <Route path="/app/chat" element={<PrivateRoute><Layout><Chat /></Layout></PrivateRoute>} />
+          <Route path="/app/chat" element={<PrivateRoute><Navigate to="/app/agents/test" replace /></PrivateRoute>} />
           <Route path="/app/agents" element={<PrivateRoute><Layout><Agents /></Layout></PrivateRoute>} />
           <Route path="/app/agents/datasource" element={<PrivateRoute><Layout><DataSourceFeatureGuard><DataSourceSetup /></DataSourceFeatureGuard></Layout></PrivateRoute>} />
           <Route path="/app/agents/test" element={<PrivateRoute><Layout><TestChat /></Layout></PrivateRoute>} />
@@ -152,17 +159,32 @@ export default function App() {
           {/* ── Back-compat: old /s/:slug → /:slug ── */}
           <Route path="/s/:slug" element={<LegacyChatRedirect />} />
 
-          {/* ── Customer chat lives at the root namespace: /<slug> (default bot)
-                 and /<slug>/<chatbotSlug> for a specific bot. Registered after all
-                 static marketing routes so those win the match. ── */}
+          {/* ── SlugResolver handles routing to either Yullo Public Link or CustomerChat ── */}
           <Route 
             path="/:slug" 
-            element={<CustomerChat />} 
+            element={<SlugResolver />}
           />
           <Route 
             path="/:slug/:chatbotSlug" 
             element={<CustomerChat />} 
           />
+
+          {/* ── Explicit Localhost Routes (for development) ── */}
+          <Route path="/yullo/:handle" element={<PublicYulloLink />} />
+          <Route path="/support247/:slug" element={<CustomerChat />} />
+
+          {/* ── Yullo Isolated Routes ── */}
+          <Route path="/yullo" element={<YulloLanding />} />
+          <Route path="/yullo/auth" element={<YulloAuth />} />
+          <Route path="/yullo/onboarding" element={<YulloPrivateRoute><YulloOnboarding /></YulloPrivateRoute>} />
+          <Route path="/yullo/home" element={<YulloPrivateRoute><YulloHome /></YulloPrivateRoute>} />
+          <Route path="/yullo/spaces/new" element={<YulloPrivateRoute><NewSpaceScreen /></YulloPrivateRoute>} />
+          <Route path="/yullo/spaces/:spaceId/appearance" element={<YulloPrivateRoute><AppearanceScreen /></YulloPrivateRoute>} />
+          <Route path="/yullo/spaces/:spaceId" element={<YulloPrivateRoute><SpaceDashboard /></YulloPrivateRoute>}>
+            <Route path="identity/edit" element={<IdentityFormScreen />} />
+            <Route path="aura-knowledge" element={<AuraKnowledgeScreen />} />
+            <Route path="knowledge" element={<AuraKnowledgeScreen />} />
+          </Route>
 
           <Route path="*" element={<NotFound />} />
         </Routes></Suspense>

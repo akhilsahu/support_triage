@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.models.knowledge_base import KnowledgeBaseItem
-from app.yullo.services.appearance_assets import list_source_extracted_assets, list_assets
+from app.orchestra.ai.appearance_preview.asset_persistence import list_source_extracted_assets, list_assets
 
 
 @pytest.mark.asyncio

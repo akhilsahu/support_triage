@@ -36,7 +36,7 @@ from app.orchestra.ai.contracts import (
     ConversationEventType,
     ConversationExecutionContext,
 )
-from app.orchestra.ai.customer_runtime import build_customer_executor
+from app.orchestra.ai.inference.factory import build_customer_executor
 from app.services.conversation_events import record_conversation_event
 
 logger = structlog.get_logger()
@@ -82,7 +82,7 @@ class CustomerChatResponse(BaseModel):
     # ordinary message; see docs/structured-response-rendering-plan.md.
     clarify: Optional[ClarifyRequest] = None
     # Structured table/card/tabs the agent queued via RenderTools (see
-    # tools/render_tools.py). Loosely typed like citations -- shape matches
+    # ui_render/render_tools.py). Loosely typed like citations -- shape matches
     # ui/src/renderengine/chatblocks's ChatBlock.
     blocks: List[dict] = []
     # The chain-of-thought behind this reply, when the model produced one
@@ -1167,7 +1167,7 @@ async def get_chat_suggestions(slug: str,
                                chatbot_slug: Optional[str] = Query(None, alias="chatbot")):
     """Return 4 AI-generated suggestion chips for the customer chat page."""
     from app.utils.ai.chat_suggestions import get_suggestions
-    from app.rag.vector_store import get_vector_store
+    from app.orchestra.ai.knowledge.vector_store import get_vector_store
 
     # chatbot_slug MUST be forwarded: without it _get_brand falls back to the
     # space's default chatbot, and every sibling chatbot in the space was served

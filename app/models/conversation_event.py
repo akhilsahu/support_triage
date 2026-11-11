@@ -50,6 +50,7 @@ class ConversationEvent(Base):
     dedupe_key = Column(String(180), nullable=True)
     event_metadata = Column(JSONB, nullable=False, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     __table_args__ = (
         Index("ix_conversation_events_space_created", "space_id", "created_at"),

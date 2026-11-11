@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import asyncio
 import json
 from sse_starlette.sse import EventSourceResponse
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status, Request, BackgroundTasks
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Response, UploadFile, status, Request, BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,6 +29,7 @@ from app.schemas.yullo_onboarding import (
     SourceUrlRequest,
     SourceTextRequest,
     SourceUpdateRequest,
+    SourceDeleteRequest,
     PreviewRequest,
     SpaceSourceResponse,
     GenerateSummaryRequest,
@@ -39,7 +40,7 @@ from app.yullo.services.sources.contracts import FileSourceInput, UrlSourceInput
 from app.yullo.services.spaces.creation import create_or_resolve_yullo_space
 from app.yullo.services.spaces.publication import publish_space
 from app.yullo.services.spaces.handles import validate_handle_format_and_availability
-from app.yullo.services.about_generation import suggest_about
+from app.orchestra.ai.data_generation.identity_generate import suggest_about
 
 router = APIRouter(prefix="/yullo/onboarding", tags=["yullo-onboarding"])
 
@@ -287,12 +288,27 @@ async def add_source_url(
             command=command,
             idempotency_key=uuid.uuid5(uuid.NAMESPACE_URL, target_url)
         )
+        # This worker owns indexing and extraction; the dispatcher must not
+        # duplicate it. Repeated submissions return the existing job state.
+        preview_job = await db.get(IngestionJob, accepted.job_id)
+        preview_item = await db.get(KnowledgeBaseItem, accepted.item_id)
+        if preview_job and preview_job.status in ('running', 'done', 'failed', 'cancelled'):
+            await db.commit()
+            return await service.get_source(db, user_id=user.id, source_id=accepted.item_id)
+        if preview_job:
+            preview_job.status = 'running'
+            preview_job.stage_detail = 'Reading source...'
+            preview_job.progress = 25
+        if preview_item:
+            preview_item.ingestion_status = 'processing'
+            preview_item.source_metadata = {**(preview_item.source_metadata or {}),
+                                            'status': 'processing', 'stage': 'Reading source...', 'progress': 25}
         await db.commit()
 
         if req.background:
             # Mark job and item as processing in the background immediately
             preview_job = await db.get(IngestionJob, accepted.job_id)
-            if preview_job:
+            if preview_job and preview_job.status in ('pending_confirm', 'awaiting_confirmation'):
                 preview_job.status = "running"
                 preview_job.stage_detail = "Generating preview..."
                 preview_job.progress = 25
@@ -321,23 +337,24 @@ async def add_source_url(
                             item_id=item_id,
                             url=url,
                         )
-                        job = await session.get(IngestionJob, job_id)
-                        if job and (job.status or "").lower() == "running":
-                            job.status = "pending_confirm"
-                            job.stage_detail = "Finalizing" if preview_res.get("status") in ("ready", "ready_to_review") else "Preview ready"
-                            job.progress = 100
-                        await session.commit()
                     except Exception as bg_err:
                         logger.error(f"Background preview failed for {url}: {bg_err}", exc_info=True)
+                        await session.rollback()
+                        item = await session.scalar(select(KnowledgeBaseItem).where(
+                            KnowledgeBaseItem.id == item_id,
+                            KnowledgeBaseItem.space_id == space_id,
+                        ).with_for_update().execution_options(populate_existing=True))
+                        if not item:
+                            return
                         job = await session.get(IngestionJob, job_id)
-                        if job:
-                            job.status = "failed"
-                            job.stage_detail = str(bg_err)
-                        item = await session.get(KnowledgeBaseItem, item_id)
-                        if item:
-                            meta = item.source_metadata or {}
-                            meta.update({"status": "failed", "error_msg": str(bg_err)})
-                            item.source_metadata = meta
+                        if not job or (job.source_version or 1) != (item.source_version or 1):
+                            return
+                        if job and job.status == 'running':
+                            job.status = 'failed'
+                            job.stage_detail = 'Preview failed'
+                        meta = dict(item.source_metadata or {})
+                        meta.update({'status': 'failed', 'error_msg': 'Website preview failed'})
+                        item.source_metadata = meta
                         await session.commit()
 
             background_tasks.add_task(
@@ -358,7 +375,7 @@ async def add_source_url(
                 "facts": [],
                 "target_badges": ["About", "Category", "Aura knowledge"],
                 "preview_excerpt": "",
-                "is_confirmed": False,
+                "is_confirmed": True,
                 "prompt_version": "v1",
                 "source_version": 1,
                 "error_msg": None,
@@ -376,15 +393,6 @@ async def add_source_url(
             url=target_url
         )
 
-        # A URL preview is already available from the lightweight scraper.
-        # Hold the prepared ingestion job until the owner selects Add to Aura;
-        # this prevents indexing/fact extraction before explicit confirmation.
-        preview_job = await db.get(IngestionJob, accepted.job_id)
-        if preview_job and (preview_job.status or "").lower() == "queued":
-            preview_job.status = "pending_confirm"
-            preview_job.stage_detail = "Finalizing" if preview_res.get("status") in ("ready", "ready_to_review") else "Preview ready"
-            await db.commit()
-
         return {
             "id": accepted.item_id,
             "source_type": "url",
@@ -394,7 +402,7 @@ async def add_source_url(
             "facts": preview_res.get("facts", []),
             "target_badges": preview_res.get("target_badges", ["About", "Category", "Aura knowledge"]),
             "preview_excerpt": preview_res.get("raw_text", ""),
-            "is_confirmed": preview_res.get("is_confirmed", False),
+            "is_confirmed": preview_res.get("is_confirmed", True),
             "prompt_version": preview_res.get("prompt_version", "v1"),
             "source_version": preview_res.get("source_version", 1),
             "error_msg": None,
@@ -564,11 +572,32 @@ async def update_source(
         _enqueue_ingestion(job_id)
     return await service.get_source(db, user_id=user.id, source_id=source_id)
 
+@router.get("/sources/{source_id}/deletion-impact")
+async def get_source_deletion_impact(
+    source_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await SourceService().get_deletion_impact(db, user_id=user.id, source_id=source_id)
+
+
 @router.delete("/sources/{source_id}")
-async def delete_source(source_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+async def delete_source(
+    source_id: uuid.UUID,
+    req: SourceDeleteRequest | None = Body(default=None),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
     service = SourceService()
-    await service.delete_source(db, user_id=user.id, space_id=None, source_id=source_id)
-    return {"ok": True}
+    payload = req or SourceDeleteRequest()
+    return await service.delete_source(
+        db,
+        user_id=user.id,
+        space_id=None,
+        source_id=source_id,
+        derived_data=payload.derived_data,
+        expected_source_version=payload.expected_source_version,
+    )
 
 @router.post("/preview")
 async def generate_preview(req: PreviewRequest, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
@@ -686,4 +715,3 @@ async def delete_onboarding_space_endpoint(
 ):
     from app.yullo.services.persistence.identity import delete_or_archive_space
     return await delete_or_archive_space(db, space_id, user.id, action)
-

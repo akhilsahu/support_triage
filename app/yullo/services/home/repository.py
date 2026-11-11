@@ -151,7 +151,8 @@ class HomeSnapshotRepository:
             select(Space)
             .where(
                 Space.owner_user_id == user_id,
-                Space.product == 'yullo'
+                Space.product == 'yullo',
+                Space.status != 'archived'
             )
         )
         records = []

@@ -30,7 +30,10 @@ logger = structlog.get_logger()
 # PDF ran ~6 minutes in the reported case) is never mistaken for a dead one.
 STALE_AFTER_MINUTES = 30
 
-_NON_TERMINAL = ("queued", "parsing", "chunking", "indexing")
+# Non-terminal statuses the sweeper monitors. 'running' is the in-flight state
+# set by the worker after claiming a lease; it must be included so a crashed
+# worker doesn't leave a job stuck in that state forever.
+_NON_TERMINAL = ("queued", "running", "parsing", "chunking", "indexing")
 
 _RESTART_MSG = (
     "Interrupted by a server restart. Click Retry to resume, or upload the "

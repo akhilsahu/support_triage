@@ -3,7 +3,7 @@ import type { SectionProps } from './types'
 import { SectionHeading } from './SectionHeading'
 
 // "What this bot can help with" -- derived deterministically from the
-// chatbot's active agents (see app/renderengine/capabilities.py, no LLM
+// chatbot's active agents (see app/orchestra/ai/appearance_preview/renderengine/capabilities.py, no LLM
 // call). Renders nothing until populated -- safe no-op, same as before this
 // was wired up.
 export function CapabilitiesSection({ theme: t, capabilities }: SectionProps) {

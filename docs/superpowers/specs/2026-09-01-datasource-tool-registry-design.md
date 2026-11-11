@@ -349,10 +349,10 @@ listed above. Existing backend integration points include:
 app/main.py
 app/models/__init__.py
 app/models/space.py
-app/orchestra/ai/core/factory.py
+app/orchestra/ai/inference/factory.py
 app/orchestra/ai/core/config.py
-app/orchestra/ai/factories/tools.py
-app/orchestra/ai/factories/team.py
+app/orchestra/ai/inference/factories/tools.py
+app/orchestra/ai/inference/factories/team.py
 app/orchestra/ai/session/pool.py
 app/agents/dynamic_executor.py
 app/mcp/datasource_server.py

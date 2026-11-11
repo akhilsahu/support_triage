@@ -11,6 +11,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { FormActions } from '../../forms/core/FormActions';
 import { IdentityForm, identitySchema, IdentityFormValues } from '../../forms/identity/IdentityForm';
 import { X, Trash2, ArrowRight, Loader2, Check, AlertTriangle } from 'lucide-react';
+import { getBaseDomain } from '../../config';
 
 export function IdentityFormScreen() {
   const { spaceId } = useParams<{ spaceId: string }>();
@@ -41,6 +42,7 @@ export function IdentityFormScreen() {
 
   const form = useForm<IdentityFormValues>({
     resolver: zodResolver(identitySchema),
+    mode: 'onTouched',
     defaultValues: {
       purpose: 'business',
       display_name: '',
@@ -282,7 +284,7 @@ export function IdentityFormScreen() {
             </p>
             
             <div className="flex items-center bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl px-3.5 py-2.5 focus-within:border-[var(--accent)] transition-colors">
-              <span className="text-[14px] font-mono text-[var(--text-muted)] select-none">yullo.com/</span>
+              <span className="text-[14px] font-mono text-[var(--text-muted)] select-none">{getBaseDomain()}/</span>
               <input
                 type="text"
                 value={newHandle}

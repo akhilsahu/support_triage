@@ -157,7 +157,9 @@ class KnowledgeBaseItem(Base):
             "content":          self.content,
             "indexed_doc_id":   self.indexed_doc_id,
             "context_enriched": self.context_enriched or False,
-            "ai_cost_usd":      round(self.ai_cost_usd or 0.0, 6),
+            "ai_cost_usd":      (None if (self.source_metadata or {}).get("ai_cost_incomplete")
+                                 else round(self.ai_cost_usd or 0.0, 6)),
+            "ai_cost_details":  (self.source_metadata or {}).get("ai_cost_details"),
             "created_at":       self.created_at.isoformat() if self.created_at else None,
         }
 

@@ -50,11 +50,15 @@ class KBFact(Base):
     source_doc_id   = Column(String(500), nullable=True)
     source_filename = Column(String(500), nullable=True)
     source_page     = Column(Integer, nullable=True)
+    source_chunk_id = Column(String(500), nullable=True)
 
     # Hardening & Lifecycle
     review_status    = Column(String(30), default="extracted", nullable=False)
     source_item_id   = Column(UUID(as_uuid=True), nullable=True)
     source_version   = Column(Integer, nullable=True)
+    maintenance_mode = Column(String(20), nullable=True)
+    deleted_source_id = Column(UUID(as_uuid=True), nullable=True)
+    deleted_source_locator = Column(String(1000), nullable=True)
     valid_from       = Column(DateTime(timezone=True), nullable=True)
     valid_until      = Column(DateTime(timezone=True), nullable=True)
     last_verified_at = Column(DateTime(timezone=True), nullable=True)
@@ -79,7 +83,7 @@ class KBFact(Base):
         ForeignKeyConstraint(
             ['source_item_id', 'space_id', 'kb_id'],
             ['knowledge_base_items.id', 'knowledge_base_items.space_id', 'knowledge_base_items.kb_id'],
-            ondelete='SET NULL',
+            ondelete='CASCADE',
             name='fk_kb_facts_source_item_id'
         ),
         ForeignKeyConstraint(
@@ -125,10 +129,14 @@ class KBFact(Base):
             "source_doc_id":   self.source_doc_id,
             "source_filename": self.source_filename,
             "source_page":     self.source_page,
+            "source_chunk_id": self.source_chunk_id,
             "verified":        self.verified,
             "review_status":   self.review_status,
             "source_item_id":  str(self.source_item_id) if self.source_item_id else None,
             "source_version":  self.source_version,
+            "maintenance_mode": self.maintenance_mode,
+            "deleted_source_id": str(self.deleted_source_id) if self.deleted_source_id else None,
+            "deleted_source_locator": self.deleted_source_locator,
             "superseded_by_id": str(self.superseded_by_id) if self.superseded_by_id else None,
             "valid_from":      self.valid_from.isoformat() if self.valid_from else None,
             "valid_until":     self.valid_until.isoformat() if self.valid_until else None,

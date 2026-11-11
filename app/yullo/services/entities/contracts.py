@@ -1,7 +1,9 @@
-from typing import Optional, Dict, Any, List
-from uuid import UUID
-from pydantic import BaseModel, ConfigDict
 from datetime import datetime
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
 
 class SpaceEntityDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -10,7 +12,7 @@ class SpaceEntityDTO(BaseModel):
     identity_key: str
     entity_type: str
     schema_version: int
-    payload_json: Dict[str, Any]
+    payload_json: dict[str, Any]
     origin_type: str
     review_status: str
     is_active: bool
@@ -20,20 +22,45 @@ class SpaceEntityDTO(BaseModel):
     updated_at: datetime
 
 
+class EntityEvidenceDTO(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    source_item_id: UUID
+    source_version: int
+    source_title: str | None = None
+    source_locator: str | None = None
+    locator_metadata: dict[str, Any] | None = None
+
+
+class SourceEntityDTO(SpaceEntityDTO):
+    evidence: list[EntityEvidenceDTO] = Field(default_factory=list)
+
+
 class EntityCommand(BaseModel):
-    identity_key: Optional[str] = None
+    identity_key: str | None = None
     entity_type: str
     schema_version: int = 1
-    payload_json: Dict[str, Any]
+    payload_json: dict[str, Any]
     is_public: bool = False
 
+
 class EntityPatch(BaseModel):
-    payload_json: Optional[Dict[str, Any]] = None
-    is_active: Optional[bool] = None
-    is_public: Optional[bool] = None
+    payload_json: dict[str, Any] | None = None
+    is_active: bool | None = None
+    is_public: bool | None = None
+    review_status: str | None = None
+    expected_revision: int | None = None
+
+
+class BulkEntityPatch(BaseModel):
+    entity_ids: list[UUID]
+    is_active: bool | None = None
+    is_public: bool | None = None
+    review_status: str | None = None
+
 
 class ValidatedEntityCandidate(BaseModel):
     entity_type: str
     schema_version: int = 1
-    payload_json: Dict[str, Any]
-    evidence_locators: List[Dict[str, Any]]
+    payload_json: dict[str, Any]
+    evidence_locators: list[dict[str, Any]]

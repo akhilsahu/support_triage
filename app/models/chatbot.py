@@ -38,7 +38,7 @@ class Chatbot(Base):
     description  = Column(Text, default="")
 
     # Per-chatbot branding (falls back to org branding if null)
-    logo_url     = Column(String(500), nullable=True)
+    logo_url     = Column(Text, nullable=True)
     theme_color  = Column(String(20), nullable=True)
     show_logo    = Column(Boolean, default=True, nullable=False)
 
@@ -78,24 +78,24 @@ class Chatbot(Base):
 
     # Admin-authored quick-topic buttons for the homepage 'quick_topics'
     # section. JSON list: [{"label": "Term Insurance", "prompt": "..."}].
-    # NULL/empty = section doesn't render (see app/renderengine/quick_topics.py).
+    # NULL/empty = section doesn't render (see app/orchestra/ai/appearance_preview/renderengine/quick_topics.py).
     # Not AI-generated -- same treatment as homepage_sections_override's "promo".
     quick_topics = Column(Text, nullable=True)
 
     # Admin-authored trust badges for the homepage 'trust_badges' section.
     # JSON list of short strings (e.g. ["IRDAI Registered", "4.8★ Rating"]).
     # NULL/empty = section doesn't render. Not AI-generated -- same treatment
-    # as quick_topics/promo. See app/renderengine/trust_badges.py.
+    # as quick_topics/promo. See app/orchestra/ai/appearance_preview/renderengine/trust_badges.py.
     trust_badges = Column(Text, nullable=True)
 
     # Admin-authored trust metrics for the homepage 'stat_band' section live in
     # their own table (chatbot_stat_metrics) -- one row per {value,label}. No
     # rows = the section falls back to the AI/web generator. See stat_metrics
-    # relationship below and app/renderengine/stat_band.py.
+    # relationship below and app/orchestra/ai/appearance_preview/renderengine/stat_band.py.
 
     # Per-chatbot LLM override: which model answers this bot's customers, and
     # whether it reasons out loud first (chain-of-thought). NULL = inherit the
-    # env-configured default (AgnoConfig.llm_model / reasoning_effort). This is
+    # env-configured default (OrchestraConfig.llm_model / reasoning_effort). This is
     # the chatbot-level default every agent falls back to unless it sets its
     # own llm_model/reasoning_effort (see ResolvedAgent + LLMFactory.build).
     llm_model         = Column(String(120), nullable=True)

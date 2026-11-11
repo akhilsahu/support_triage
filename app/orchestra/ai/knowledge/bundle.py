@@ -11,7 +11,7 @@ The factory is the only place that knows the concrete types.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Optional
 
 

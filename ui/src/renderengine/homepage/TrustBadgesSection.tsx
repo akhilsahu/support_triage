@@ -2,7 +2,7 @@ import { ShieldCheck } from 'lucide-react'
 import type { SectionProps } from './types'
 import { SectionHeading } from './SectionHeading'
 
-// Admin-authored trust badges (see app/renderengine/trust_badges.py). Not
+// Admin-authored trust badges (see app/orchestra/ai/appearance_preview/renderengine/trust_badges.py). Not
 // AI-generated -- same treatment as QuickTopicsSection/PromoSection. Static,
 // non-interactive -- visually distinct from the clickable quick-topic chips.
 export function TrustBadgesSection({ theme: t, trustBadges }: SectionProps) {

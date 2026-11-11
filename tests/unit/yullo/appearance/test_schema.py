@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.yullo.schemas.appearance import SpacePresentationConfig, default_presentation_config
-from app.yullo.services.appearance_assets import config_references_asset
+from app.orchestra.ai.appearance_preview.asset_persistence import config_references_asset
 
 
 def test_default_config_round_trips_with_aliases():

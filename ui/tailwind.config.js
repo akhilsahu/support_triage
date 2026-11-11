@@ -10,6 +10,9 @@ export default {
         instrument: ['"Instrument Sans"', 'system-ui', 'sans-serif'],
         satoshi: ['Satoshi', 'system-ui', 'sans-serif'],
       },
+      spacing: {
+        '4.5': '1.125rem',
+      },
       letterSpacing: {
         'ultra-wide': '0.15em',
         'super-wide': '0.25em',

@@ -17,7 +17,7 @@ from app.config import settings
 from app.core.database import get_db
 from app.models.space import Space
 from app.services.datasource.availability import datasource_feature_enabled
-from app.rag.vector_store import get_vector_store
+from app.orchestra.ai.knowledge.vector_store import get_vector_store
 from app.api.db_utils import (
     platform_stats, list_orgs, get_org_by_id,
     list_agents_with_org, list_skills, count_agents, count_messages,
@@ -156,7 +156,7 @@ async def vectordb_endpoint():
     summary = store.stats()
 
     # Per-org breakdown from client_documents
-    from app.rag.vector_store import COLLECTION_CLIENT
+    from app.orchestra.ai.knowledge.vector_store import COLLECTION_CLIENT
     col = store._collection(COLLECTION_CLIENT)
     all_meta = col.get(include=["metadatas"]).get("metadatas", []) if col.count() > 0 else []
 

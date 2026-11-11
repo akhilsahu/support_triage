@@ -39,6 +39,7 @@ openpyxl>=3.1.0          # .xlsx parsing (XlsxParser)
 xlrd>=2.0.1              # .xls legacy Excel conversion
 python-pptx>=1.0.0       # .pptx / slide extraction (PptxParser)
 markdown-it-py>=3.0.0    # Markdown heading-aware parsing (TextParser)
+tiktoken>=0.9,<1        # Embedding-token budgets for all chunking strategies
 
 # Retrieval reranking (optional; off unless RERANK_ENABLED=true)
 cohere>=5.0.0            # RERANK_PROVIDER=cohere (hosted; needs COHERE_API_KEY)

@@ -37,7 +37,7 @@ from app.api.v1.space_agents import kb_router
 from app.api.v1 import knowledge_base
 from app.api.v1 import facts as kb_facts
 from app.api.v1 import fact_extraction
-from app.api import chat, auth, customer, space, chatbot_user
+from app.api import auth, customer, space, chatbot_user
 from app.api.v1 import dashboard, superadmin
 from app.api.v1.inbox import staff_auth, sessions, escalation, stream, canned_replies
 from app.api.v1 import yullo_auth, yullo_onboarding
@@ -101,7 +101,7 @@ async def lifespan(app: FastAPI):
         # `agno_sessions` DB at boot. Without it, chat still works but silently
         # loses history/memory/summaries (fail-safe degrade), so make it visible.
         try:
-            from app.orchestra.ai.core.config import build_config
+            from app.orchestra.ai.config import build_config
             from app.orchestra.ai.session.store import build_session_db
             _sess_cfg = build_config()
             if settings.ORCHESTRATOR == "agno" and _sess_cfg.session_store != "none":
@@ -401,13 +401,18 @@ async def root():
 # Include API routers
 from app.yullo.api import home as yullo_home
 from app.yullo.api import space_forms as yullo_space_forms
+from app.yullo.api import appearance as yullo_appearance
+from app.yullo.api import entities as yullo_entities
+from app.yullo.api import knowledge as yullo_knowledge
 
 app.include_router(yullo_auth.router, prefix="/api/v1", tags=["Yullo Auth"])
 app.include_router(yullo_onboarding.router, prefix="/api/v1", tags=["Yullo Onboarding"])
 app.include_router(yullo_home.router, prefix="/api/v1", tags=["Yullo Home"])
 app.include_router(yullo_space_forms.router, prefix="/api/v1", tags=["Yullo Space Forms"])
+app.include_router(yullo_appearance.router, prefix="/api/v1", tags=["Yullo Appearance"])
+app.include_router(yullo_entities.router, prefix="/api/v1", tags=["Yullo Entities"])
+app.include_router(yullo_knowledge.router, prefix="/api/v1", tags=["Yullo Knowledge Review"])
 app.include_router(auth.router, prefix="/api/v1", tags=["Auth"])
-app.include_router(chat.router, tags=["Chat"])
 app.include_router(agents.router, prefix="/api/v1", tags=["Agents"])
 app.include_router(workflows.router, prefix="/api/v1", tags=["Workflows"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"])

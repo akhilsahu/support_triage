@@ -3,6 +3,7 @@
 > **Status:** Planning — do not implement until items are picked from here.
 > Follows the same "plan → approve → implement" flow as CHUNKING_PLAN.md.
 > New code lives under `app/orchestra/ai/` (same move as ingestion + chunking).
+> Historical inventory below predates the completed 2026-11-09 directory migration. The canonical write store is now `app/orchestra/ai/knowledge/vector_store.py`; see [the migration record](../../../../docs/superpowers/plans/2026-11-09-rag-directory-migration.md). Vector contents, paths, collections and embedding behavior were preserved.
 
 ---
 

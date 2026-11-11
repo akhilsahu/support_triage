@@ -47,7 +47,7 @@ interface KBItem {
   content?: string
   indexed_doc_id?: string
   context_enriched?: boolean
-  ai_cost_usd?: number
+  ai_cost_usd?: number | null
   created_at?: string
 }
 

@@ -61,7 +61,7 @@ async def test_preview_without_mode_uses_quick_and_returns_quality(monkeypatch):
     monkeypatch.setattr("app.orchestra.ai.ingestion.scraper.fetch_url", fake_fetch)
     monkeypatch.setattr("app.orchestra.ai.ingestion.scraper.store_preview", lambda *_: "token")
     monkeypatch.setattr(
-        "app.orchestra.ai.ingestion.ingestion.IngestionService.parse",
+        "app.orchestra.ai.ingestion.parser_service.IngestionService.parse",
         lambda self, raw, filename: SimpleNamespace(
             full_text=raw.decode(), page_count=1
         ),
@@ -100,7 +100,7 @@ async def test_deep_preview_uses_lease_and_returns_provenance(monkeypatch):
     monkeypatch.setattr("app.orchestra.ai.ingestion.scraper.fetch_url", fake_fetch)
     monkeypatch.setattr("app.orchestra.ai.ingestion.scraper.store_preview", lambda *_: "token")
     monkeypatch.setattr(
-        "app.orchestra.ai.ingestion.ingestion.IngestionService.parse",
+        "app.orchestra.ai.ingestion.parser_service.IngestionService.parse",
         lambda self, raw, filename: SimpleNamespace(full_text=raw.decode(), page_count=1),
     )
 

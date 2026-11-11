@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import { yulloOnboardingApi } from '../../api/onboarding'
 import { DraftSpace } from './YulloOnboarding'
 import { Link as LinkIcon, FileText, Upload, Plus, Trash2, ArrowRight, ArrowLeft, X } from 'lucide-react'
+import { ColouredIcon } from '../../components/ColouredIcon'
 
 export function TeachStep({ draft, token, onContinue, onSourceAdded, onSourcesChange, onBack }: { draft: DraftSpace, token: string, onContinue: (d: DraftSpace) => void, onSourceAdded?: () => void, onSourcesChange?: (s: any[]) => void, onBack: () => void }) {
   const [sources, setSources] = useState<any[]>(draft.sources || [])
@@ -28,7 +29,7 @@ export function TeachStep({ draft, token, onContinue, onSourceAdded, onSourcesCh
     setAdding(true)
     try {
       const type = inferUrlType(urlValue)
-      const src = await yulloOnboardingApi.addSourceUrl(urlValue, type, draft.id, token)
+      const src = await yulloOnboardingApi.addSourceUrl(urlValue, type, draft.id)
       const newSources = [...sources, src]
       setSources(newSources)
       setUrlValue('')
@@ -47,7 +48,7 @@ export function TeachStep({ draft, token, onContinue, onSourceAdded, onSourcesCh
     if (!textValue) return
     setAdding(true)
     try {
-      const src = await yulloOnboardingApi.addSourceText(textValue, draft.id, token)
+      const src = await yulloOnboardingApi.addSourceText(textValue, draft.id)
       const newSources = [...sources, src]
       setSources(newSources)
       setTextValue('')
@@ -64,7 +65,7 @@ export function TeachStep({ draft, token, onContinue, onSourceAdded, onSourcesCh
 
   const handleDelete = async (id: string) => {
     try {
-      await yulloOnboardingApi.deleteSource(id, token)
+      await yulloOnboardingApi.deleteSource(id)
       const newSources = sources.filter(s => s.id !== id)
       setSources(newSources)
       onSourcesChange?.(newSources)
@@ -79,7 +80,7 @@ export function TeachStep({ draft, token, onContinue, onSourceAdded, onSourcesCh
   const handleContinue = async () => {
     setLoading(true)
     try {
-      await yulloOnboardingApi.generatePreview(false, token)
+      await yulloOnboardingApi.generatePreview(false)
       onContinue({ ...draft, sources, current_step: 'preview' })
     } catch (e) {
       console.error(e)
@@ -219,61 +220,65 @@ export function TeachStep({ draft, token, onContinue, onSourceAdded, onSourcesCh
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="space-y-3"
+              className="space-y-3 font-[Instrument_Sans]"
             >
-              <div className="bg-white p-2 rounded-2xl border border-gray-200 shadow-sm flex items-center gap-2">
-                <div className="pl-3 text-gray-400">
+              <div className="bg-[var(--surface)] p-2 rounded-2xl border border-[var(--border)] focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)]/15 shadow-xs flex items-center gap-2 transition-all">
+                <div className="pl-3.5 pr-1 text-[var(--text-muted)] flex items-center justify-center">
                   <LinkIcon className="w-5 h-5" />
                 </div>
                 <input
                   type="text"
                   value={urlValue}
                   onChange={e => setUrlValue(e.target.value)}
-                  placeholder="https://..."
-                  className="flex-1 py-3 bg-transparent focus:outline-none text-gray-900 placeholder:text-gray-400"
+                  placeholder="https://example.com or youtube.com/@channel"
+                  className="flex-1 py-3 px-2 bg-transparent focus:outline-none text-[var(--text-primary)] placeholder:text-[var(--text-muted)] text-[15px] font-[Instrument_Sans]"
                   autoFocus
                   onKeyDown={e => e.key === 'Enter' && handleAddUrl()}
                 />
                 <button 
                   onClick={() => setExpandedAction(null)}
-                  className="text-gray-400 hover:text-gray-900 px-3 transition-colors text-sm font-medium"
+                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-3 transition-colors text-sm font-medium cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button 
                   onClick={handleAddUrl}
                   disabled={!urlValue || adding}
-                  className="bg-[var(--accent-solid)] text-[var(--accent-on-solid)] px-5 py-2.5 rounded-xl font-semibold hover:opacity-90 transition-colors disabled:opacity-50 flex flex-shrink-0 items-center gap-2 text-sm"
+                  className="bg-[var(--accent-solid)] text-[var(--accent-on-solid)] px-5 py-2.5 rounded-xl font-semibold hover:opacity-90 transition-colors disabled:opacity-50 flex flex-shrink-0 items-center gap-2 text-sm cursor-pointer"
                 >
-                  {adding ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Add'}
+                  {adding ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : 'Add'}
                 </button>
               </div>
 
               {/* Suggestions */}
               <div className="flex flex-wrap gap-2 px-2">
-                <span className="text-xs text-gray-500 font-medium py-1.5 pr-1">Suggestions:</span>
+                <span className="text-xs text-[var(--text-muted)] font-medium py-1.5 pr-1">Suggestions:</span>
                 <button 
                   onClick={() => setUrlValue('https://youtube.com/@username')}
-                  className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-[var(--surface-soft)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] text-xs font-medium transition-colors inline-flex items-center gap-1.5 border border-[var(--border)] cursor-pointer"
                 >
+                  <ColouredIcon name="youtube" className="w-3.5 h-3.5" />
                   YouTube
                 </button>
                 <button 
                   onClick={() => setUrlValue('https://linkedin.com/in/username')}
-                  className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-[var(--surface-soft)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] text-xs font-medium transition-colors inline-flex items-center gap-1.5 border border-[var(--border)] cursor-pointer"
                 >
+                  <ColouredIcon name="linkedin" className="w-3.5 h-3.5" />
                   LinkedIn
                 </button>
                 <button 
                   onClick={() => setUrlValue('https://instagram.com/username')}
-                  className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-[var(--surface-soft)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] text-xs font-medium transition-colors inline-flex items-center gap-1.5 border border-[var(--border)] cursor-pointer"
                 >
+                  <ColouredIcon name="instagram" className="w-3.5 h-3.5" />
                   Instagram
                 </button>
                 <button 
                   onClick={() => setUrlValue('https://x.com/username')}
-                  className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-[var(--surface-soft)] hover:bg-[var(--surface-hover)] text-[var(--text-primary)] text-xs font-medium transition-colors inline-flex items-center gap-1.5 border border-[var(--border)] cursor-pointer"
                 >
+                  <ColouredIcon name="x" className="w-3.5 h-3.5" />
                   X (Twitter)
                 </button>
               </div>
@@ -286,28 +291,28 @@ export function TeachStep({ draft, token, onContinue, onSourceAdded, onSourcesCh
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="bg-white p-2 rounded-2xl border border-gray-200 shadow-sm"
+              className="bg-[var(--surface)] p-3 rounded-2xl border border-[var(--border)] focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)]/15 shadow-xs font-[Instrument_Sans] transition-all"
             >
               <textarea
                 value={textValue}
                 onChange={e => setTextValue(e.target.value)}
-                placeholder="Paste raw text here..."
-                className="w-full p-4 bg-transparent focus:outline-none text-gray-900 placeholder:text-gray-400 h-32 resize-none leading-relaxed"
+                placeholder="Paste FAQs, biography, customer guidelines, or internal notes..."
+                className="w-full p-3 bg-transparent focus:outline-none text-[var(--text-primary)] placeholder:text-[var(--text-muted)] text-[15px] font-[Instrument_Sans] h-36 resize-none leading-relaxed"
                 autoFocus
               />
-              <div className="flex justify-end items-center gap-2 pt-2 border-t border-gray-100 mt-2 px-2 pb-1">
+              <div className="flex justify-end items-center gap-2 pt-2 border-t border-[var(--border)] mt-2 px-2 pb-1">
                 <button 
                   onClick={() => setExpandedAction(null)}
-                  className="text-gray-500 hover:text-gray-900 px-4 py-2 transition-colors text-sm font-medium"
+                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-4 py-2 transition-colors text-sm font-medium cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button 
                   onClick={handleAddText}
                   disabled={!textValue || adding}
-                  className="bg-[var(--accent-solid)] text-[var(--accent-on-solid)] px-5 py-2.5 rounded-xl font-semibold hover:opacity-90 transition-colors disabled:opacity-50 flex items-center gap-2 text-sm"
+                  className="bg-[var(--accent-solid)] text-[var(--accent-on-solid)] px-5 py-2.5 rounded-xl font-semibold hover:opacity-90 transition-colors disabled:opacity-50 flex items-center gap-2 text-sm cursor-pointer"
                 >
-                  {adding ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Add Text'}
+                  {adding ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : 'Add Text'}
                 </button>
               </div>
             </motion.div>

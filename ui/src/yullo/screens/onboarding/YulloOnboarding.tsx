@@ -46,7 +46,7 @@ export function YulloOnboarding() {
 
     const init = async () => {
       try {
-        const data = await yulloOnboardingApi.getDraft(token)
+        const data = await yulloOnboardingApi.getDraft()
         setDraft(data)
       } catch (err: any) {
         // 404 means no draft, which is fine, they just start at 'choose'

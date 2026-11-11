@@ -5,16 +5,12 @@ export const API_CONFIG = {
   baseURL: import.meta.env.VITE_API_URL ?? '',
   endpoints: {
     health:     '/api/v1/health',
-    chat:       '/api/v1/chat',
-    agents:     '/api/v1/agents/status',
-    sentiment:  '/api/v1/empathy/analyze',
     // RAG
     ragUpload:  '/api/v1/documents/rag/upload',
     ragPreviewDoc: '/api/v1/documents/rag/preview-doc',
     ragChat:    '/api/v1/documents/rag/chat',
     ragList:    '/api/v1/documents/rag/list',
     ragDelete:  (id: string) => `/api/v1/documents/rag/${id}`,
-    ragClient:  (clientId: string) => `/api/v1/documents/rag/client/${clientId}`,
     // Knowledge Bases
     kbList:       '/api/v1/space/knowledge-bases',
     kbCreate:     '/api/v1/space/knowledge-bases',
@@ -28,6 +24,25 @@ export const API_CONFIG = {
     // Admin KB
     adminKB:    (clientId: string) => `/api/v1/admin/clients/${clientId}/knowledge-base`,
     adminStats: '/api/v1/admin/stats',
+    // Yullo Passwordless Auth & Handle Check
+    yulloAuthGoogle:     '/api/v1/yullo/auth/google',
+    yulloSendPhoneOtp:   '/api/v1/yullo/auth/phone/send-otp',
+    yulloVerifyPhoneOtp: '/api/v1/yullo/auth/phone/verify-otp',
+    yulloSendEmailOtp:   '/api/v1/yullo/auth/email/send-otp',
+    yulloVerifyEmailOtp: '/api/v1/yullo/auth/email/verify-otp',
+    yulloCheckHandle:    (slug: string) => `/api/v1/yullo/auth/check-handle?slug=${encodeURIComponent(slug)}`,
+    // Yullo Onboarding & Summary
+    yulloOnboardingDraft:   '/api/v1/yullo/onboarding/draft',
+    yulloValidateHandle:    '/api/v1/yullo/onboarding/validate-handle',
+    yulloReserveHandle:     '/api/v1/yullo/onboarding/reserve-handle',
+    yulloSourceUrl:         '/api/v1/yullo/onboarding/sources/url',
+    yulloSourceText:        '/api/v1/yullo/onboarding/sources/text',
+    yulloSourceDelete:      (id: string) => `/api/v1/yullo/onboarding/sources/${id}`,
+    yulloSourceUpdate:      (id: string) => `/api/v1/yullo/onboarding/sources/${id}`,
+    yulloOnboardingPreview: '/api/v1/yullo/onboarding/preview',
+    yulloOnboardingLaunch:  '/api/v1/yullo/onboarding/launch',
+    yulloGenerateSummary:   '/api/v1/yullo/onboarding/generate-summary',
+    yulloSpaceSources:      (spaceId: string) => `/api/v1/yullo/onboarding/spaces/${spaceId}/sources`,
   },
   timeout: 30000,
 } as const

@@ -181,7 +181,7 @@ async def extract(
     reviewer. Replacing means the pending list is always one run's worth of
     output, and re-running after fixing a parse is a safe thing to do.
     """
-    from app.orchestra.ai.facts import extract_facts
+    from app.orchestra.ai.knowledge.extraction.facts import extract_facts
 
     await _get_kb(kb_id, space, db)
 

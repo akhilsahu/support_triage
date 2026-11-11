@@ -13,7 +13,7 @@ import { ProcessStepsSection } from './ProcessStepsSection'
 import { ComparisonSection } from './ComparisonSection'
 import type { SectionProps } from './types'
 
-// Mirrors app/renderengine/homepage_sections.py's ALLOWED_SECTIONS -- keep
+// Mirrors app/orchestra/ai/appearance_preview/renderengine/homepage_sections.py's ALLOWED_SECTIONS -- keep
 // these two lists in sync. Adding a new section type means: one new
 // component file in this directory + one new entry here + one new entry in
 // the backend's ALLOWED_SECTIONS. CustomerChat.tsx never needs to change.

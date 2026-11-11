@@ -46,7 +46,22 @@ export interface CreateSpacePayload {
   website?: string;
 }
 
+export interface CategorySuggestionItem {
+  id: string;
+  name: string;
+  purpose?: string | null;
+  is_popular: boolean;
+  usage_count: number;
+}
+
 export const formsApi = {
+  getCategorySuggestions: async (query?: string, purpose?: string, limit: number = 30): Promise<CategorySuggestionItem[]> => {
+    const params: Record<string, any> = { limit };
+    if (query && query.trim()) params.query = query.trim();
+    if (purpose && purpose.trim()) params.purpose = purpose.trim();
+    const response = await yulloApiClient.get('/spaces/categories/suggestions', { params });
+    return response.data?.items || [];
+  },
   createSpace: async (data?: CreateSpacePayload): Promise<IdentityFormResponse> => {
     const response = await yulloApiClient.post('/spaces', data || { display_name: 'Unnamed Space' });
     return response.data;

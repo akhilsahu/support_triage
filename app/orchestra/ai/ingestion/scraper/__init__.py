@@ -17,12 +17,8 @@ Extend by registering another strategy (headless browser, per-domain handler)
 — see registry.py. Config lives in SCRAPER_* settings.
 """
 
-from app.orchestra.ai.ingestion.scraper.base import (
-    FetchedPage,
-    ScrapeError,
-    ScraperConfig,
-    get_scraper_config,
-)
+from app.orchestra.ai.ingestion.scraper.base import FetchedPage, ScrapeError
+from app.orchestra.ai.config import get_scraper_config
 from app.orchestra.ai.ingestion.scraper.registry import (
     register,
     fetch_url,
@@ -41,6 +37,13 @@ from app.orchestra.ai.ingestion.scraper.limits import (
     DeepPreviewLease,
     DeepPreviewLimitError,
 )
+from app.orchestra.ai.ingestion.scraper.service import (
+    SmartScrapeResult,
+    compute_page_slug,
+    is_known_dynamic_domain,
+    persist_raw_page_snapshot,
+    smart_scrape_url,
+)
 # Import built-in providers so they self-register on package import.
 from app.orchestra.ai.ingestion.scraper import providers  # noqa: F401
 from app.orchestra.ai.ingestion.scraper import firecrawl  # noqa: F401
@@ -48,7 +51,6 @@ from app.orchestra.ai.ingestion.scraper import firecrawl  # noqa: F401
 __all__ = [
     "FetchedPage",
     "ScrapeError",
-    "ScraperConfig",
     "get_scraper_config",
     "register",
     "fetch_url",
@@ -62,4 +64,9 @@ __all__ = [
     "preview_token_mode",
     "DeepPreviewLease",
     "DeepPreviewLimitError",
+    "smart_scrape_url",
+    "SmartScrapeResult",
+    "persist_raw_page_snapshot",
+    "compute_page_slug",
+    "is_known_dynamic_domain",
 ]

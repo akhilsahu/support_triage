@@ -8,8 +8,8 @@ type YulloUser = {
   onboarding_completed: boolean;
 };
 
-type YulloAppTheme = 'system' | 'light' | 'warm' | 'dark';
-type YulloAppAccent = 'yullo' | 'cyan' | 'blue' | 'violet' | 'coral' | 'forest' | 'graphite';
+type YulloAppTheme = 'system' | 'light' | 'warm' | 'dark' | 'dark-warm';
+type YulloAppAccent = 'yullo' | 'cyan' | 'blue' | 'violet' | 'coral' | 'forest' | 'graphite' | 'plum';
 
 interface YulloAppState {
   user: YulloUser | null;
