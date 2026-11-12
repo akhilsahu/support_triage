@@ -8,8 +8,24 @@ on:
 
 jobs:
   backend-tests:
-    name: Backend — unit tests + print hygiene
+    name: Backend — tests + print hygiene
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_DB: support247_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d support247_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:ci-only-password@localhost:5432/support247_ci
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:ci-only-password@localhost:5432/support247_ci
+      DEBUG: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,8 +34,10 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: pip install -r requirements.txt pytest pytest-asyncio ruff==0.1.14
-      - name: Unit tests (no DB required)
-        run: pytest tests/unit -q -o addopts=""
+      - name: API import check (no DB required)
+        run: python -c "from app.main import app; assert app.routes"
+      - name: Backend tests
+        run: pytest tests/unit -q -o addopts="" -o asyncio_default_test_loop_scope=session
       - name: print() hygiene (ruff T20)
         run: ruff check --select T20 app
 
@@ -109,5 +127,23 @@ jobs:
             cd ui && npm ci --prefer-offline && NODE_OPTIONS="--max-old-space-size=4096" npm run build && cd ..
             docker compose -f deploy/docker-compose.prod.yml --env-file .env up --build -d --remove-orphans
             docker compose -f deploy/docker-compose.prod.yml --env-file .env exec -T api alembic upgrade head
+            docker compose -f deploy/docker-compose.prod.yml --env-file .env exec -T api python - <<'PY'
+            import json
+            import time
+            from urllib.request import urlopen
+
+            for attempt in range(30):
+                try:
+                    with urlopen("http://localhost:8000/health", timeout=5) as response:
+                        health = json.load(response)
+                    if health.get("status") == "healthy":
+                        print("API, database and Redis are healthy")
+                        break
+                except (OSError, ValueError):
+                    pass
+                if attempt == 29:
+                    raise SystemExit("Deployment health check failed")
+                time.sleep(2)
+            PY
             docker image prune -f
             echo "Deploy complete"

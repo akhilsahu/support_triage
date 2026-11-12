@@ -10,16 +10,6 @@ from app.models.chatbot import Chatbot
 
 pytestmark = pytest.mark.asyncio
 
-@pytest.fixture
-async def db_session_fixture():
-    from app.core.database import engine
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-    async with engine.begin() as conn:
-        session_maker = async_sessionmaker(bind=conn, class_=AsyncSession, expire_on_commit=False)
-        session = session_maker()
-        yield session
-        await session.close()
-        await conn.rollback()
 
 @pytest.fixture
 async def setup_space(db_session_fixture: AsyncSession):
@@ -67,7 +57,8 @@ async def test_yullo_conversation_rejects_cross_product(db_session_fixture: Asyn
     chatbot = Chatbot(
         id=uuid.uuid4(),
         space_id=setup_space.id,
-        name="Test Chatbot"
+        slug="test-chatbot",
+        display_name="Test Chatbot"
     )
     db_session_fixture.add(chatbot)
     await db_session_fixture.flush()

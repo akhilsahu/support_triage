@@ -91,7 +91,7 @@ it('shows a verified source link on image cards', async () => {
   }), { status: 200 }))
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><AuraRenderer spaceId="space" node={{ type: 'images', imageIds: [imageId] }} /></QueryClientProvider>)
-  expect(await screen.findByRole('link', { name: 'View Jeans collection' })).toHaveAttribute('href', 'https://example.com/jeans')
+  expect(await screen.findByRole('link', { name: 'Visit example.com: Men jeans' })).toHaveAttribute('href', 'https://example.com/jeans')
   expect(screen.getByRole('heading', { name: 'Men jeans' })).toBeInTheDocument()
   expect(screen.getByRole('img', { name: 'Men jeans' })).toBeInTheDocument()
   fetchSpy.mockRestore()

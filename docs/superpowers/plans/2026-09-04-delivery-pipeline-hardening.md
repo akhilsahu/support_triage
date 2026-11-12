@@ -10,6 +10,20 @@
 
 **Spec:** Derived from the 2026-09-04 codebase analysis. Strategy context lives in `implementation.md` §13 (test/CI baseline is listed as P0 "Remaining first-sprint work").
 
+
+## 2026-11-12 CI repair
+
+- Removed four orphaned evaluation test modules. The implementation was deliberately retired in `48bd6053`; its table-removal migration already exists. Active test gates remain enabled.
+- Declared `aiofiles` and constrained SQLAlchemy to the supported 2.0 line in both dependency manifests. SQLAlchemy 2.1 changes the default PostgreSQL driver and breaks the existing sync database URLs.
+- Updated existing UI assertions, Firecrawl request expectations, usage metadata, retrieval authorization fixtures and appearance database mocks to match current behavior.
+- Consolidated eight repeated database session fixtures in `tests/conftest.py`. Database tests require matching explicit `TEST_DATABASE_URL`/`DATABASE_URL` and a `_ci`/`_test` database, build the current model schema, and roll each test back through savepoints. CI provides a disposable PostgreSQL service; no application database or index is used.
+- Removed three redundant ORM index declarations (the identical column-generated indexes remain). Fixed `_attach_kb_item` to persist the resolved KB's required `space_id`; the existing storage trace verifies the write.
+- Extended the existing CLI-only Ruff print exemption to `app/orchestra/demo/scrape_url.py`.
+- `.github/workflows/deploy.yml` now imports the API before tests and checks API/database/Redis health after production migration before reporting deployment success.
+- Verification: isolated Python 3.11 checkout, fresh requirements installation, **390 backend tests and 146 frontend tests passed**; frontend production build, API import without provider keys, Ruff T20 and diff checks passed. The committed migration graph has one head and no missing parents. Newer uncommitted feature work is excluded from this repair release.
+- Migration limitation: replaying the historical migration chain against an empty database encounters an existing duplicate `spaces.owner_user_id` column. Applied migrations were not rewritten; database tests initialize model metadata. Production still uses Alembic against its existing revision and must pass that deployment step.
+- Remote verification: use the associated `CI & Deploy` run to confirm both checks, VPS build, migration and health steps. Do not infer deployment success from the previous release's healthy public endpoint.
+
 ## Global Constraints
 
 - CI Python is **3.11** (repo floor per README/pyproject); local dev venv is 3.14 — everything must pass on both.

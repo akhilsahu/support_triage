@@ -34,7 +34,7 @@ async def test_firecrawl_returns_markdown_page_and_sends_expected_request(monkey
         assert json.loads(request.content) == {
             "url": "https://93.184.216.34/page",
             "formats": ["markdown", "links"],
-            "onlyMainContent": False,
+            "onlyMainContent": True,
             "timeout": max(1, min(300000, get_scraper_config("deep")['timeout_s'] * 1000 - 1000)),
         }
         return httpx.Response(200, json=_success_payload())

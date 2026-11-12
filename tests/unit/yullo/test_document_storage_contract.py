@@ -8,19 +8,9 @@ from app.models.space import Space
 from app.models.knowledge_base import KnowledgeBase, KnowledgeBaseItem
 from app.orchestra.ai.ingestion.jobs.tasks import _attach_kb_item
 
-from app.core.database import engine
 
 pytestmark = pytest.mark.asyncio
 
-@pytest.fixture
-async def db_session():
-    async with engine.begin() as conn:
-        from sqlalchemy.ext.asyncio import async_sessionmaker
-        session_maker = async_sessionmaker(bind=conn, class_=AsyncSession, expire_on_commit=False)
-        session = session_maker()
-        yield session
-        await session.close()
-        await conn.rollback()
 
 async def test_yullo_document_storage_trace(db_session: AsyncSession):
     """
@@ -58,7 +48,7 @@ async def test_yullo_document_storage_trace(db_session: AsyncSession):
     async def mock_session():
         yield db_session
 
-    with patch('app.core.database.AsyncSessionLocal', new=mock_session):
+    with patch('app.core.database.AsyncSessionLocal', new=mock_session), patch('app.orchestra.ai.knowledge.vector_store.get_vector_store'):
         await _attach_kb_item(
             kb_id=str(kb_id),
             doc_id=generated_doc_id,

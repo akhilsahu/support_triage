@@ -10,19 +10,9 @@ from app.models.knowledge_base import KnowledgeBase, KnowledgeBaseItem
 from app.models.kb_fact import KBFact
 from app.models.yullo_source import YulloSource
 from app.orchestra.ai.db_utils.get_facts import get_authoritative_facts
-from app.core.database import engine
 
 pytestmark = pytest.mark.asyncio
 
-@pytest.fixture
-async def db_session():
-    async with engine.begin() as conn:
-        from sqlalchemy.ext.asyncio import async_sessionmaker
-        session_maker = async_sessionmaker(bind=conn, class_=AsyncSession, expire_on_commit=False)
-        session = session_maker()
-        yield session
-        await session.close()
-        await conn.rollback()
 
 
 @pytest.fixture
@@ -157,7 +147,9 @@ async def test_fact_check_constraints_temporal(db_session: AsyncSession, setup_s
 async def test_authoritative_retrieval(db_session: AsyncSession, setup_spaces_kbs):
     s1, _, kb1, _ = setup_spaces_kbs
 
-    item = KnowledgeBaseItem(kb_id=kb1.id, space_id=s1.id, item_type="doc", doc_id="doc1")
+    item = KnowledgeBaseItem(kb_id=kb1.id, space_id=s1.id, item_type="doc", doc_id="doc1",
+                             ingestion_status="ready", source_version=2, published_version=2,
+                             source_metadata={"is_confirmed": True})
     db_session.add(item)
     await db_session.commit()
 
@@ -205,9 +197,9 @@ async def test_authoritative_retrieval(db_session: AsyncSession, setup_spaces_kb
     assert len(facts) == 1
     assert facts[0].id == f1.id
 
-    # If source status becomes removed, f1 is hidden
-    source.metadata_json = {"status": "removed"}
-    db_session.add(source)
+    # The canonical knowledge item controls whether its facts are eligible.
+    item.ingestion_status = "removed"
+    db_session.add(item)
     await db_session.commit()
     facts = await get_authoritative_facts(db_session, s1.id, kb1.id)
     assert len(facts) == 0

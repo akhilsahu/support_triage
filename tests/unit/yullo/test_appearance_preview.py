@@ -1,5 +1,6 @@
 from app.orchestra.ai.appearance_preview.generation import PreviewGenerationContext, build_preview_fingerprint
 import uuid
+from itertools import chain, repeat
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,6 +12,14 @@ from app.yullo.services.persistence.appearance import (
     collect_preview_context,
     merge_applied_sections,
 )
+
+
+def _preview_db():
+    db = AsyncMock()
+    db.scalars.return_value = SimpleNamespace(all=lambda: [])
+    db.scalar.return_value = {}
+    db.execute.return_value = MagicMock()
+    return db
 
 
 @pytest.mark.asyncio
@@ -30,7 +39,7 @@ async def test_section_build_calls_llm_with_only_requested_section(_facts):
     client = MagicMock()
     client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(content)))]))
     with patch("app.yullo.services.persistence.appearance.collect_preview_context", AsyncMock(return_value=context)), patch("app.orchestra.ai.appearance_preview.generation.get_async_openai_clients", return_value=[("test", client, "test-model")]):
-        result = await generate_appearance_preview(AsyncMock(), user_id=uuid.uuid4(), space_id=uuid.uuid4(), request=AppearancePreviewRequest(currentConfig=default_presentation_config(None), sectionType="services", force=True))
+        result = await generate_appearance_preview(_preview_db(), user_id=uuid.uuid4(), space_id=uuid.uuid4(), request=AppearancePreviewRequest(currentConfig=default_presentation_config(None), sectionType="services", force=True))
     sent = json.loads(client.chat.completions.create.call_args.kwargs["messages"][1]["content"])
     assert sent["requestedSection"] == "services"
     assert [entity["id"] for entity in sent["entities"]] == ["service"]
@@ -76,9 +85,8 @@ async def test_fact_only_service_draft_generation_apply_and_revocation():
     raw = {"schemaVersion": 1, "sections": [{"type": "services", "heading": "Services", "items": [{"key": "draft", "title": "Cargo transport", "source": "grounded", "sourceFactIds": [fact_id]}]}]}
     client = MagicMock()
     client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(raw)))]))
-    db = AsyncMock()
+    db = _preview_db()
     saved = SimpleNamespace(settings={})
-    db.scalar.return_value = saved
     with patch("app.yullo.services.persistence.appearance.collect_preview_context", AsyncMock(return_value=context)), patch("app.yullo.services.persistence.appearance.collect_preview_facts", AsyncMock(return_value=facts)), patch("app.orchestra.ai.appearance_preview.generation.get_async_openai_clients", return_value=[("test", client, "model")]), patch("app.yullo.services.persistence.appearance.finalize_space_mutation", AsyncMock()) as finalize:
         response = await generate_appearance_preview(db, user_id=uuid.uuid4(), space_id=uuid.uuid4(), request=AppearancePreviewRequest(currentConfig=default_presentation_config(None), sectionType="services"))
         assert response.status == "ready"
@@ -86,6 +94,7 @@ async def test_fact_only_service_draft_generation_apply_and_revocation():
         assert sent["facts"] == facts
         assert sent["entities"] == []
         assert saved.settings == {}  # Generation does not publish.
+        db.scalar.return_value = saved
         applied = await apply_appearance_preview_section(db, user_id=uuid.uuid4(), space_id=uuid.uuid4(), section=response.content.sections[0])
         assert applied.sections[0].items[0].title == "Cargo transport"
         finalize.assert_awaited_once()
@@ -220,7 +229,7 @@ async def test_forced_preview_rebuilds_from_confirmed_entities_without_provider(
     from app.yullo.schemas.appearance_preview import AppearancePreviewRequest, PreviewStatus
     from app.yullo.services.persistence.appearance import generate_appearance_preview
 
-    db = AsyncMock()
+    db = _preview_db()
     space = MagicMock(display_name="Test Space", purpose="business", logo_url=None)
     yullo_space = MagicMock(purpose="business")
     yullo_config = MagicMock(settings={})
@@ -235,7 +244,7 @@ async def test_forced_preview_rebuilds_from_confirmed_entities_without_provider(
     entity.revision = 1
     entity_rows = MagicMock()
     entity_rows.all.return_value = [entity]
-    db.scalars.return_value = entity_rows
+    db.scalars.side_effect = chain([entity_rows], repeat(SimpleNamespace(all=lambda: [])))
 
     response = await generate_appearance_preview(
         db,

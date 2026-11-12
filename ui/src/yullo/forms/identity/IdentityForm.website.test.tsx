@@ -78,7 +78,7 @@ describe('IdentityForm Website Input Behavior', () => {
     const user = userEvent.setup();
     render(<TestFormWrapper />);
 
-    const websiteInput = screen.getByPlaceholderText(/https:\/\/spacex\.com or spacex\.com/i);
+    const websiteInput = screen.getByRole('textbox', { name: /Official Website or Channel/i });
     await user.type(websiteInput, 'invalid website');
     await user.tab(); // trigger blur
 
@@ -91,14 +91,14 @@ describe('IdentityForm Website Input Behavior', () => {
     const user = userEvent.setup();
     render(<TestFormWrapper />);
 
-    const websiteInput = screen.getByPlaceholderText(/https:\/\/spacex\.com or spacex\.com/i);
+    const websiteInput = screen.getByRole('textbox', { name: /Official Website or Channel/i });
     await user.type(websiteInput, 'spacex.com');
     await user.tab(); // trigger blur
 
     await waitFor(() => {
       expect(websiteInput).toHaveValue('https://spacex.com');
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-      expect(screen.getByText('Valid URL')).toBeInTheDocument();
+      expect(screen.getByText('Validated link')).toBeInTheDocument();
     });
   });
 
@@ -107,7 +107,7 @@ describe('IdentityForm Website Input Behavior', () => {
     const user = userEvent.setup();
     render(<TestFormWrapper onSubmit={handleSubmit} />);
 
-    const websiteInput = screen.getByPlaceholderText(/https:\/\/spacex\.com or spacex\.com/i);
+    const websiteInput = screen.getByRole('textbox', { name: /Official Website or Channel/i });
     await user.type(websiteInput, 'spacex.com');
 
     // Submit form directly

@@ -6,20 +6,10 @@ from sqlalchemy import select
 from app.models.space import Space
 from app.models.yullo_source import YulloSource
 from app.yullo.adapters.ingestion import YulloIngestionAdapter
-from app.core.database import engine
 from unittest.mock import patch, MagicMock
 
 pytestmark = pytest.mark.asyncio
 
-@pytest.fixture
-async def db_session():
-    async with engine.begin() as conn:
-        from sqlalchemy.ext.asyncio import async_sessionmaker
-        session_maker = async_sessionmaker(bind=conn, class_=AsyncSession, expire_on_commit=False)
-        session = session_maker()
-        yield session
-        await session.close()
-        await conn.rollback()
 
 @patch('app.yullo.adapters.ingestion.fetch_url')
 @patch('app.yullo.adapters.ingestion.get_job_runner')

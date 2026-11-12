@@ -130,6 +130,6 @@ async def test_tracked_embedding_function_records_usage(monkeypatch):
     assert ev.kind == "embedding" and ev.estimated is True
     assert ev.prompt_tokens == 5                    # 23 chars // 4
     assert ev.completion_tokens == 0 and ev.total_tokens == 5
-    assert ev.meta == {"batch_size": 2}
+    assert ev.meta == {"batch_size": 2, "cost_basis": "unpriced"}
 
 

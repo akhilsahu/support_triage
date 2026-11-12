@@ -47,7 +47,7 @@ def test_images_follow_retrieved_source_and_question_not_all_space_images():
 
 
 @pytest.mark.parametrize('changes', [
-    {'source_version': 3}, {'published_version': None}, {'ingestion_status': 'processing'},
+    {'source_version': 3}, {'published_version': None}, {'source_metadata': {'chunks_enabled': False}},
     {'source_metadata': {'is_confirmed': False}},
     {'source_metadata': {'is_confirmed': True, 'visibility': 'private', 'assets': {'images': [{'url': 'https://example.com/image', 'caption': 'private'}]}}},
 ])
@@ -69,7 +69,7 @@ def test_image_ids_are_space_and_version_bound_and_urls_are_safe():
 
 
 @pytest.mark.asyncio
-async def test_scope_queries_require_active_space_kbs_and_published_confirmed_sources():
+async def test_scope_queries_require_active_space_kbs_and_enabled_indexed_sources():
     db = AsyncMock()
     db.scalars.return_value = NS(all=lambda: [])
     space_id = uuid4()
@@ -79,6 +79,10 @@ async def test_scope_queries_require_active_space_kbs_and_published_confirmed_so
     assert str(space_id).replace('-', '') in sql.replace('-', '')
     assert 'knowledge_bases.active IS true' in sql and "spaces.product = 'yullo'" in sql
     await load_published_chat_sources(db, space_id, [uuid4()], product="yullo")
+    sql = str(db.scalars.call_args.args[0].compile(compile_kwargs={'literal_binds': True}))
+    assert 'indexed_doc_id IS NOT NULL' in sql and 'chunks_enabled' in sql
+    assert 'knowledge_bases.active IS true' in sql and "spaces.product = 'yullo'" in sql
+    await load_published_chat_sources(db, space_id, [uuid4()], product="support247")
     sql = str(db.scalars.call_args.args[0].compile(compile_kwargs={'literal_binds': True}))
     assert "ingestion_status = 'ready'" in sql and 'published_version > 0' in sql and 'is_confirmed' in sql
 
@@ -102,7 +106,7 @@ async def test_public_chat_replaces_caller_kbs_with_space_kbs(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_retrieval_combines_verified_facts_and_published_chunks(monkeypatch, retrieve_for):
-    item = source(source_version=3, published_version=2)
+    item = source(source_version=2, published_version=2)
     db = AsyncMock()
     db.scalars.side_effect = [NS(all=lambda: [item.kb_id]), NS(all=lambda: [item])]
     db.execute.return_value = NS(all=lambda: [])  # Contact evidence
@@ -115,13 +119,13 @@ async def test_retrieval_combines_verified_facts_and_published_chunks(monkeypatc
         NS(content='Other tenant', meta_data={'doc_id': published_doc_id(item), 'client_id': str(uuid4())}),
     ]
     backend = MagicMock()
-    backend.for_agent.return_value = NS(has_knowledge=True, knowledge=NS(search=MagicMock(return_value=docs)), filters={})
+    backend.for_agent.return_value = NS(has_knowledge=True, knowledge=NS(search=MagicMock(return_value=docs), max_results=12), filters={})
     pack = await retrieve_for(db, backend)(YulloExecutionContext(space_id=item.space_id, kb_ids=[]), 'Cafe')
     assert [p['content'] for p in pack.passages] == ['Published cafe']
     assert pack.structured_facts[0]['value'] == '9–5'
-    assert pack.images == []  # New metadata cannot represent the previous published revision.
+    assert [image['sourceId'] for image in pack.images] == [str(item.id)]
     backend.for_agent.assert_called_once_with(space_id=str(item.space_id), specific_doc_ids=[published_doc_id(item)])
-    facts.assert_awaited_once_with(db, space_id=item.space_id, kb_id=item.kb_id)
+    facts.assert_awaited_once_with(db, space_id=item.space_id, kb_id=item.kb_id, product='yullo')
 
 
 @pytest.mark.asyncio

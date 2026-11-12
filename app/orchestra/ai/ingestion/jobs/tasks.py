@@ -77,9 +77,12 @@ async def _attach_kb_item(kb_id: str, doc_id: str, title: str,
         try:
             async with AsyncSessionLocal() as db:
                 kb = await db.get(KnowledgeBase, UUID(kb_id))
+                if kb is None:
+                    raise ValueError("Knowledge base is unavailable")
                 item_topic = topic or (kb.default_topic if kb else None) or None
                 db.add(KnowledgeBaseItem(
                     kb_id=UUID(kb_id),
+                    space_id=kb.space_id,
                     item_type=item_type,
                     title=title,
                     doc_id=doc_id,

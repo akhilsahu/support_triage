@@ -31,8 +31,6 @@ class Conversation(Base):
 
     # Indexes
     __table_args__ = (
-        Index('ix_conversations_user_id', 'user_id'),
-        Index('ix_conversations_agent_id', 'agent_id'),
         Index('ix_conversations_created_at', 'created_at'),
     )
 
@@ -76,7 +74,6 @@ class Message(Base):
 
     # Indexes
     __table_args__ = (
-        Index('ix_messages_conversation_id', 'conversation_id'),
         Index('ix_messages_role', 'role'),
         Index('ix_messages_created_at', 'created_at'),
     )
