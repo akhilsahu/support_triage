@@ -19,6 +19,46 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Supply missing shared tables before adding their timestamp columns.
+    if not sa.inspect(op.get_bind()).has_table("conversation_turns"):
+        op.create_table(
+            "conversation_turns",
+            sa.Column("id", sa.UUID(), primary_key=True),
+            sa.Column("space_id", sa.UUID(), sa.ForeignKey("spaces.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("session_id", sa.UUID(), sa.ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("client_turn_id", sa.UUID(), nullable=False),
+            sa.Column("request_hash", sa.String(64), nullable=False),
+            sa.Column("runtime_type", sa.String(20), nullable=False),
+            sa.Column("runtime_id", sa.String(100), nullable=False),
+            sa.Column("runtime_version_id", sa.UUID(), nullable=True),
+            sa.Column("status", sa.String(20), nullable=False),
+            sa.Column("user_message_id", sa.UUID(), sa.ForeignKey("conversation_logs.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("assistant_message_id", sa.UUID(), sa.ForeignKey("conversation_logs.id", ondelete="CASCADE"), nullable=True),
+            sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("lease_expires_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("error_code", sa.String(80), nullable=True),
+            sa.UniqueConstraint("session_id", "client_turn_id", name="uq_conv_turn_session_client"),
+        )
+        op.create_index("ix_conversation_turns_space_id", "conversation_turns", ["space_id"])
+        op.create_index("ix_conversation_turns_session_id", "conversation_turns", ["session_id"])
+
+    if not sa.inspect(op.get_bind()).has_table("yullo_home_events"):
+        op.create_table(
+            "yullo_home_events",
+            sa.Column("id", sa.UUID(), primary_key=True),
+            sa.Column("space_id", sa.UUID(), sa.ForeignKey("spaces.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("event_type", sa.String(50), nullable=False),
+            sa.Column("subject_type", sa.String(50), nullable=False),
+            sa.Column("subject_id", sa.String(100), nullable=False),
+            sa.Column("dedupe_key", sa.String(180), nullable=False),
+            sa.Column("event_metadata", sa.JSON(), nullable=True),
+            sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        )
+        op.create_index("ix_yullo_home_events_space_id", "yullo_home_events", ["space_id"])
+        op.create_index("uix_yullo_home_events_space_dedupe", "yullo_home_events", ["space_id", "dedupe_key"], unique=True)
+
     # Add created_at and updated_at timestamps with server_default=now() for full table consistency
     op.add_column('ai_usage_events', sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('now()')))
     op.add_column('auth_identities', sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')))
