@@ -1,3 +1,4 @@
+import '../styles/auth.css'
 import { useNavigate } from 'react-router-dom'
 import { yulloConfig } from '../config'
 import { AuthBrandPanel } from '../components/auth/AuthBrandPanel'
@@ -16,7 +17,7 @@ export function YulloAuth() {
   }
 
   return (
-    <div className="w-full min-h-[100dvh] bg-white selection:bg-[#FFDA2D] selection:text-[#0B1220]">
+    <div className="yullo-auth w-full min-h-[100dvh] bg-white selection:bg-[#FFDA2D] selection:text-[#0B1220]">
       {/* Desktop Layout (>= 960px): CSS Grid 58fr : 42fr */}
       <div className="hidden min-[960px]:grid min-[960px]:grid-cols-[minmax(0,58fr)_minmax(420px,42fr)] min-h-[100dvh] w-full overflow-hidden">
         <AuthBrandPanel />

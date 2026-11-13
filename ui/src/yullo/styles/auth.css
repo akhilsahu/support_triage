@@ -1,0 +1,38 @@
+/* Public authentication renders outside the dashboard theme provider. */
+.yullo-auth {
+  --accent-solid: #FFFC00;
+  --accent-on-solid: #151B27;
+  --accent: #FFFC00;
+  --accent-ink: #151B27;
+  --accent-soft: rgba(255, 252, 0, 0.18);
+}
+
+.yullo-auth button {
+  min-height: 44px;
+  padding: 0.625rem 1rem;
+  border: 1px solid #252525;
+  border-radius: 12px;
+  background: var(--accent-solid);
+  color: var(--accent-on-solid);
+  font-weight: 600;
+  box-shadow: 0 2px 0 rgba(21, 27, 39, 0.12);
+}
+
+.yullo-auth button:hover:not(:disabled) {
+  background: #FFFC00;
+  border-color: #151B27;
+  box-shadow: 0 3px 0 rgba(21, 27, 39, 0.18);
+}
+
+.yullo-auth button:focus-visible {
+  outline: 2px solid #151B27;
+  outline-offset: 3px;
+}
+
+.yullo-auth button:disabled {
+  background: #F1F5F9;
+  color: #64748B;
+  border-color: #94A3B8;
+  box-shadow: none;
+  cursor: not-allowed;
+}
