@@ -23,7 +23,7 @@ const Pricing1 = lazy(() => import('./home1/Pricing').then(m => ({ default: m.Pr
 const Pricing2 = lazy(() => import('./home2/Pricing').then(m => ({ default: m.Pricing2 })))
 const Pricing3 = lazy(() => import('./home3/Pricing').then(m => ({ default: m.Pricing3 })))
 
-const YulloHome = lazy(() => import('../../yullo/screens/YulloHome').then(m => ({ default: m.YulloHome })))
+const YulloLanding = lazy(() => import('../../yullo/screens/YulloLanding').then(m => ({ default: m.YulloLanding })))
 
 export function DynamicHome() {
   const activeHomepage = useHomepageVariant()
@@ -32,7 +32,7 @@ export function DynamicHome() {
   if (isYullo) {
     return (
       <Suspense fallback={null}>
-        <YulloHome />
+        <YulloLanding />
       </Suspense>
     )
   }
