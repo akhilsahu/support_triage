@@ -1,3 +1,4 @@
+import { spaceBranch, useSpaceHierarchy } from '../api/spaces';
 import React, { useState, useRef, useEffect } from 'react';
 import { Palette, Check, Monitor, Sun, Moon } from 'lucide-react';
 import { useYulloAppStore } from '../store/useYulloAppStore';
@@ -13,6 +14,9 @@ export function YulloAppHeader({ spaceId }: { spaceId?: string }) {
     enabled: !!spaceId,
   });
 
+  const hierarchy = useSpaceHierarchy();
+  const ancestors = spaceBranch(hierarchy.data ?? [], spaceId).slice(0, -1);
+
   return (
     <header className="relative z-[60] hidden md:flex items-center justify-between h-[72px] px-8 bg-[var(--canvas)] border-b border-[var(--border)]">
       <div className="flex items-center gap-6">
@@ -24,6 +28,10 @@ export function YulloAppHeader({ spaceId }: { spaceId?: string }) {
           <a href="/yullo/home" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
             Home
           </a>
+          {ancestors.map(parent => <React.Fragment key={parent.id}>
+            <span className="text-[var(--text-muted)]">/</span>
+            <a href={`/yullo/spaces/${parent.id}`} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">{parent.name}</a>
+          </React.Fragment>)}
           {spaceId && identity?.display_name && (
             <>
               <span className="text-[var(--text-muted)]">/</span>

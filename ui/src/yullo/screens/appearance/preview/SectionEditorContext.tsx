@@ -9,6 +9,7 @@ export interface ImagePickerTarget {
 }
 
 export const SectionEditorContext = createContext<{
+  bookingPreview?: import('../../../api/appearance').AppearanceSpaceSummary['previewBookingLinks']
   generating: boolean
   toggle: (type: PreviewSectionType) => void
   build: (type: PreviewSectionType) => void

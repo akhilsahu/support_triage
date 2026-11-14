@@ -39,6 +39,7 @@ from app.yullo.services.sources.service import SourceService
 from app.yullo.services.sources.contracts import FileSourceInput, UrlSourceInput, TextSourceInput
 from app.yullo.services.spaces.creation import create_or_resolve_yullo_space
 from app.yullo.services.spaces.publication import publish_space
+from app.yullo.services.spaces.hierarchy import lock_hierarchy, require_no_children
 from app.yullo.services.spaces.handles import validate_handle_format_and_availability
 from app.orchestra.ai.data_generation.identity_generate import suggest_about
 
@@ -48,7 +49,8 @@ router = APIRouter(prefix="/yullo/onboarding", tags=["yullo-onboarding"])
 async def _resolve_source_space(db: AsyncSession, *, user_id: uuid.UUID, space_id: uuid.UUID | None) -> Space:
     query = select(Space).where(Space.owner_user_id == user_id, Space.product == "yullo")
     if space_id is None:
-        query = query.where(Space.status == "draft")
+        await lock_hierarchy(db, user_id)
+        query = query.where(Space.status == "draft", Space.current_step != "managed")
     else:
         query = query.where(Space.id == space_id)
     space = (await db.execute(query)).scalars().first()
@@ -66,7 +68,7 @@ def _enqueue_ingestion(job_id: uuid.UUID) -> None:
 async def get_draft(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Space)
-        .where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft")
+        .where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft", Space.current_step != "managed")
     )
     draft = result.scalars().first()
     if not draft:
@@ -82,11 +84,13 @@ async def reset_draft(user: User = Depends(current_user), db: AsyncSession = Dep
     Deletes the current active draft space (and associated draft sources) for the user
     and initializes a clean, empty draft space.
     """
+    await lock_hierarchy(db, user.id)
     result = await db.execute(
-        select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft")
+        select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft", Space.current_step != "managed")
     )
     existing = result.scalars().first()
     if existing:
+        await require_no_children(db, existing.id)
         await db.delete(existing)
         await db.commit()
 
@@ -141,10 +145,11 @@ def _build_draft_response(draft: Space, sources=None):
 
 @router.post("/draft", response_model=DraftSpaceResponse)
 async def create_draft(req: OnboardingDraftCreate, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    await lock_hierarchy(db, user.id)
     # Idempotency: check if one already exists
     result = await db.execute(
         select(Space)
-        .where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft")
+        .where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft", Space.current_step != "managed")
     )
     existing = result.scalars().first()
     if existing:
@@ -179,9 +184,10 @@ async def create_draft(req: OnboardingDraftCreate, user: User = Depends(current_
 
 @router.patch("/draft", response_model=DraftSpaceResponse)
 async def update_draft(req: OnboardingDraftUpdate, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    await lock_hierarchy(db, user.id)
     result = await db.execute(
         select(Space)
-        .where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft")
+        .where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft", Space.current_step != "managed")
     )
     draft = result.scalars().first()
     if not draft:
@@ -228,10 +234,11 @@ async def validate_handle(req: HandleValidateRequest, user: User = Depends(curre
 
 @router.post("/reserve-handle")
 async def reserve_handle(req: HandleValidateRequest, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    await lock_hierarchy(db, user.id)
     clean_handle = req.handle.strip().lower()
     
     result = await db.execute(
-        select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft")
+        select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft", Space.current_step != "managed")
     )
     draft = result.scalars().first()
     if not draft:
@@ -243,10 +250,10 @@ async def reserve_handle(req: HandleValidateRequest, user: User = Depends(curren
         await db.commit()
         return {"ok": True}
         
-    collision = await db.execute(select(Space).where(Space.slug == clean_handle))
+    collision = await db.execute(select(Space).where(Space.slug == clean_handle).with_for_update())
     other_space = collision.scalars().first()
     if other_space:
-        if other_space.status == "live":
+        if other_space.status == "live" or other_space.current_step == "managed":
             raise HTTPException(status_code=400, detail="Handle is taken.")
         if other_space.handle_reserved_until and other_space.handle_reserved_until > datetime.utcnow():
             raise HTTPException(status_code=400, detail="Handle is taken.")
@@ -451,9 +458,9 @@ async def add_source_file(
     original_filename = (file.filename or "document").replace("\\", "/").split("/")[-1].strip()
     filename = re.sub(r"[^A-Za-z0-9._-]+", "_", original_filename)[:200] or "document"
     extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    allowed_extensions = {"pdf", "docx", "txt", "md", "markdown"}
+    allowed_extensions = {"pdf", "docx", "txt", "md", "markdown", "png", "jpg", "jpeg", "webp"}
     if extension not in allowed_extensions:
-        raise HTTPException(status_code=400, detail="Use a PDF, DOCX, TXT, or Markdown file")
+        raise HTTPException(status_code=400, detail="Use a PDF, DOCX, TXT, Markdown, PNG, JPG or WebP file")
 
     body = await file.read()
     max_bytes = 20 * 1024 * 1024
@@ -601,7 +608,8 @@ async def delete_source(
 
 @router.post("/preview")
 async def generate_preview(req: PreviewRequest, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft"))
+    await lock_hierarchy(db, user.id)
+    result = await db.execute(select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft", Space.current_step != "managed"))
     draft = result.scalars().first()
     if not draft:
         raise HTTPException(status_code=404, detail="No active draft found.")
@@ -614,8 +622,9 @@ async def generate_preview(req: PreviewRequest, user: User = Depends(current_use
 
 @router.post("/launch")
 async def launch_space(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    await lock_hierarchy(db, user.id)
     result = await db.execute(
-        select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft")
+        select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft", Space.current_step != "managed")
     )
     draft = result.scalars().first()
     if not draft:

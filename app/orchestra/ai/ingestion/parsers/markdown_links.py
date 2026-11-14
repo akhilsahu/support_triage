@@ -57,20 +57,22 @@ def _coalesce_links(links):
             current["title"] = f'{current["title"]} — {link["title"]}'[:240]
         if link.get("image_url") and not current.get("image_url"):
             current["image_url"] = link["image_url"]
+        for span in link.get('text_spans', []):
+            if span not in current.setdefault('text_spans', []):
+                current['text_spans'].append(span)
     return list(by_url.values())
 
 
 def _coalesce_images(images):
-    """Retain an image destination only when it is unambiguous in the block."""
-    by_url = {}
-    destinations = {}
+    """Deduplicate equal occurrences without merging different item destinations."""
+    unique = {}
     for image in images:
-        by_url.setdefault(image["url"], dict(image))
-        if image.get("destination_url"):
-            destinations.setdefault(image["url"], set()).add(image["destination_url"])
-    for url, values in destinations.items():
-        by_url[url]["destination_url"] = next(iter(values)) if len(values) == 1 else None
-    return list(by_url.values())
+        key = (image['url'], image.get('destination_url'), image.get('alt'), image.get('title'))
+        current = unique.setdefault(key, dict(image))
+        for span in image.get('text_spans', []):
+            if span not in current.setdefault('text_spans', []):
+                current['text_spans'].append(span)
+    return list(unique.values())
 
 
 def _is_noise_block(text, links, images):
@@ -196,6 +198,15 @@ def _markdown_content_blocks(text):
                 continue
             after_video_loading = False
 
+            # Offsets refer to the clean block text, not Markdown delimiters.
+            for assets, label_field in ((links, 'title'), (images, 'alt')):
+                cursor = 0
+                for asset in assets:
+                    label = asset.get(label_field) or ''
+                    start = semantic_text.find(label, cursor) if label else -1
+                    if start >= 0:
+                        asset['text_spans'] = [{'start': start, 'end': start + len(label)}]
+                        cursor = start + len(label)
             unique_links = _coalesce_links(links)
             unique_images = _coalesce_images(images)
             yield {

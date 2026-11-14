@@ -855,9 +855,11 @@ async def load_chat_sources(db, context, *, refresh=False):
     authorized = await resolve_space_kb_ids(db, context.space_id, product='yullo')
     kb_ids = [key for key in authorized if not context.kb_ids or key in context.kb_ids]
     items = await load_published_chat_sources(db, context.space_id, kb_ids, product='yullo', refresh=refresh)
-    return kb_ids, {
+    from app.yullo.services.sources.assets import load_registered_source_assets
+    sources = {
         doc_id: item for item in items
         if (doc_id := active_chunk_doc_id(item))
         and (item.source_metadata or {}).get('visibility', 'public') in ('public', 'public_aura')
         and (item.source_metadata or {}).get('disclosure_mode', 'direct') == 'direct'
     }
+    return kb_ids, await load_registered_source_assets(db, sources)

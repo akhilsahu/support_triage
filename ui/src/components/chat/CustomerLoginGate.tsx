@@ -6,38 +6,7 @@ import { loginWithGoogle, type CustomerAuth } from '../../lib/customerAuth'
 // Renders Google Identity Services' own button — this runs on the first-party
 // hosted chat page, so no FedCM/iframe workaround is needed.
 
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (cfg: { client_id: string; callback: (r: { credential: string }) => void }) => void
-          renderButton: (el: HTMLElement, opts: Record<string, unknown>) => void
-        }
-      }
-    }
-  }
-}
-
-const GIS_SRC = 'https://accounts.google.com/gsi/client'
-
-function loadGis(): Promise<void> {
-  if (window.google?.accounts?.id) return Promise.resolve()
-  const existing = document.querySelector<HTMLScriptElement>(`script[src="${GIS_SRC}"]`)
-  if (existing) {
-    return new Promise((resolve, reject) => {
-      existing.addEventListener('load', () => resolve())
-      existing.addEventListener('error', () => reject(new Error('Failed to load Google sign-in.')))
-    })
-  }
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script')
-    s.src = GIS_SRC; s.async = true; s.defer = true
-    s.onload = () => resolve()
-    s.onerror = () => reject(new Error('Failed to load Google sign-in.'))
-    document.head.appendChild(s)
-  })
-}
+import { loadGoogleIdentity } from '../../lib/googleIdentity'
 
 export function CustomerLoginGate({
   slug, clientId, sessionId, botQuery, isDark, message, onSignedIn,
@@ -64,7 +33,7 @@ export function CustomerLoginGate({
 
   useEffect(() => {
     let cancelled = false
-    loadGis()
+    loadGoogleIdentity()
       .then(() => {
         if (cancelled || !btnRef.current || !window.google) return
         window.google.accounts.id.initialize({

@@ -102,6 +102,7 @@ export function BookingForm({ spaceId, spaceName, entity, onClose, onSaved }: {
         });
       }
       void queryClient.invalidateQueries({ queryKey: ['yullo-home'] });
+      void queryClient.invalidateQueries({ queryKey: ['yullo', 'appearance', spaceId] });
       onSaved();
     } catch (failure) {
       const status = (failure as { response?: { status?: number } })?.response?.status;

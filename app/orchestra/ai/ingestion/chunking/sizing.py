@@ -152,6 +152,26 @@ def logical_chunk(text, page, section="", *, metadata=None, prefix="", repeat=""
                            "_segments": segments or []}, **flags)
 
 
+def slice_asset_metadata(metadata, start, end, *, offset=0):
+    """Rebase asset occurrences whenever source text is sliced, including tables."""
+    result = dict(metadata)
+    for field in ('links', 'images'):
+        if not isinstance(metadata.get(field), list):
+            continue
+        local = []
+        for asset in metadata[field]:
+            spans_for_asset = asset.get('text_spans') or []
+            overlaps = [{'start': max(span['start'], start) - start + offset,
+                         'end': min(span['end'], end) - start + offset}
+                        for span in spans_for_asset if span['start'] < end and span['end'] > start]
+            if overlaps:
+                local.append({**asset, 'text_spans': overlaps})
+            elif not spans_for_asset and start == 0:
+                local.append({**asset, 'context_scope': 'group'})
+        result[field] = local
+    return result
+
+
 def finalize(chunks: list[Chunk], cfg: ChunkConfig, filename: str) -> list[Chunk]:
     '''
         Chunk enrichment with metadata and keeps chunks under required limit
@@ -196,7 +216,7 @@ def finalize(chunks: list[Chunk], cfg: ChunkConfig, filename: str) -> list[Chunk
             if repeated:
                 locations = slice_segments(segments, 0, len(repeated)) + locations
             text = lead + source
-            meta = {**metadata, "chunking_version": CHUNKING_VERSION,
+            meta = {**slice_asset_metadata(metadata, start, end, offset=len(repeated)), "chunking_version": CHUNKING_VERSION,
                     "token_count": token_count(text, cfg), "tokenizer": cfg.tokenizer_name,
                     "source_spans": locations, "group_index": group_index,
                     "continues_previous": previous_end not in boundaries,

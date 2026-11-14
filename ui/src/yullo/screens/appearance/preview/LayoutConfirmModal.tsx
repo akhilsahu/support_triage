@@ -1,3 +1,4 @@
+import { YulloButton } from '../../../components/core/YulloButton'
 import { useEffect, useRef, useState } from 'react'
 import { Check, Loader2, X, LayoutGrid, Palette, AlignCenter, AlertCircle } from 'lucide-react'
 import type { SpacePresentationConfig } from '../presentation/schema'
@@ -70,7 +71,7 @@ export function LayoutConfirmModal({
       }}
     >
       <div className="appearance-confirm-body appearance-data-modal-body">
-        <button
+        <YulloButton variant="outline"
           type="button"
           className="appearance-confirm-close"
           aria-label="Close modal"
@@ -78,7 +79,7 @@ export function LayoutConfirmModal({
           onClick={onCancel}
         >
           <X size={18} />
-        </button>
+        </YulloButton>
 
         <div className="appearance-confirm-symbol">
           {isLoading ? (
@@ -186,16 +187,16 @@ export function LayoutConfirmModal({
 
         {/* Modal actions */}
         <div className="appearance-data-modal-actions">
-          <button
+          <YulloButton variant="outline"
             type="button"
             className="appearance-btn-cancel"
             onClick={onCancel}
             disabled={isLoading}
           >
             Cancel
-          </button>
+          </YulloButton>
           {!isFailed && (
-            <button
+            <YulloButton variant="primary"
               type="button"
               className="appearance-btn-confirm"
               onClick={onConfirm}
@@ -203,7 +204,7 @@ export function LayoutConfirmModal({
             >
               <Check size={16} />
               Confirm & Apply to Preview
-            </button>
+            </YulloButton>
           )}
         </div>
       </div>

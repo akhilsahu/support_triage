@@ -12,8 +12,10 @@ export const presentationConfigSchema = z.object({
   ]),
   landingEmphasis: z.enum(['balanced', 'visual', 'services', 'local', 'minimal']),
   accent: z.enum(['yullo', 'blue', 'cyan', 'violet', 'coral', 'forest', 'neutral']),
+  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
   backgroundTreatment: z.enum(['soft', 'light', 'dark', 'image']),
   hero: z.object({
+    visible: z.boolean().optional(),
     assetId: z.string().uuid().nullable().optional(),
     layout: z.enum(['centered', 'image_left', 'image_right', 'image_background']),
   }).strict(),

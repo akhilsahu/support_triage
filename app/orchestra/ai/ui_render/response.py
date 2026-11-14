@@ -11,7 +11,7 @@ logger = structlog.get_logger()
 
 
 def prepare_response_tools(available_entities, retrieved, *, expand, gallery_limit, search=None,
-                           format_passage=passage_context):
+                           format_passage=passage_context, references=None):
     """Build UI/continuation callbacks; callers own authorization of the supplied evidence."""
     from agno.tools.function import Function
     tools = ([SHOW_UI_CARD_TOOL] if available_entities or search else []) + (
@@ -68,6 +68,8 @@ def prepare_response_tools(available_entities, retrieved, *, expand, gallery_lim
 
 
     async def show_source_images(image_ids: list[str]):
+        if references is not None and isinstance(image_ids, list):
+            image_ids = [references.image_id(identifier) for identifier in image_ids]
         return add_node(validated_image_node(image_ids, retrieved.images, max_images=gallery_limit))
 
     async def expand_chunk_context(continuation_ids: list[str]):
@@ -113,7 +115,7 @@ def prepare_response_tools(available_entities, retrieved, *, expand, gallery_lim
                 for passage in retrieved.passages:
                     passage['continuation'] = {'status': 'expansion_closed', 'previous': None, 'next': None}
             pending_events.extend(citations(retrieved))
-            return {
+            payload = {
                 'status': retrieved.retrieval_status,
                 'facts': retrieved.structured_facts,
                 'passages': [json.loads(format_passage(p)) for p in retrieved.passages],
@@ -122,6 +124,7 @@ def prepare_response_tools(available_entities, retrieved, *, expand, gallery_lim
                 'images': [{key: image[key] for key in ('id', 'caption', 'sourceTitle')} for image in retrieved.images],
                 'instruction': 'Answer using supporting authorized evidence. If a requested detail is unsupported, explain what you cannot verify and offer a useful next step.',
             }
+            return references.compact(payload) if references is not None else payload
 
     handlers = {
         "show_ui_card": show_ui_card,
@@ -146,4 +149,5 @@ def prepare_response_tools(available_entities, retrieved, *, expand, gallery_lim
         gallery_limit=gallery_limit, pending_events=pending_events, nodes=nodes,
         displayed_images=displayed_images, add_node=add_node,
         deferred=lambda: bool(retrieved.continuations), reset_buffer_on_event=reset_buffer_on_event,
+        references=references,
     )

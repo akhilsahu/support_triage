@@ -35,6 +35,8 @@ async def validate_handle_format_and_availability(
     existing = result.scalars().first()
     
     if existing:
+        if existing.current_step == "managed":
+            return {"valid": False, "reason": "Handle is taken."}
         # If it's the user's own draft, they can keep it
         if existing.owner_user_id == owner_user_id and existing.status == "draft":
             return {"valid": True, "reason": None}

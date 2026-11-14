@@ -10,6 +10,8 @@ from app.models.yullo_space import YulloSpace
 from app.models.yullo_config import YulloConfig
 from app.models.knowledge_base import KnowledgeBase
 from app.models.user import User
+from app.yullo.schemas.spaces import SpaceType
+from app.yullo.services.spaces.hierarchy import lock_hierarchy, require_parent, mark_managed
 
 class CreatedYulloSpace:
     def __init__(self, space: Space, yullo_space: YulloSpace, yullo_config: YulloConfig, kb: KnowledgeBase):
@@ -26,7 +28,9 @@ async def create_or_resolve_yullo_space(
     purpose: str,
     title: str = "My Space",
     status: str = "draft",
-    current_step: str = "claim"
+    current_step: str = "claim",
+    parent_space_id: uuid.UUID | None = None,
+    space_type: SpaceType | str | None = None,
 ) -> CreatedYulloSpace:
     """
     Creates or resolves a canonical Yullo Space.
@@ -34,6 +38,17 @@ async def create_or_resolve_yullo_space(
     Raises conflict if the slug belongs to a different user or namespace.
     """
     
+    try:
+        canonical_type = SpaceType(space_type or "space").value
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Unsupported Space type")
+    if parent_space_id is not None:
+        await lock_hierarchy(db, owner_user_id)
+        await require_parent(db, owner_user_id, parent_space_id)
+        await mark_managed(db, parent_space_id)
+        # Managed child drafts must never be selected/reset by global onboarding.
+        current_step = "managed"
+
     # 1. Resolve existing space by slug
     stmt = select(Space).where(Space.slug == slug)
     result = await db.execute(stmt)
@@ -57,6 +72,10 @@ async def create_or_resolve_yullo_space(
         
         if not yullo_space or not yullo_config or not kb:
             raise HTTPException(status_code=500, detail="Space is corrupted, missing canonical extensions.")
+        if parent_space_id is not None and yullo_space.parent_space_id != parent_space_id:
+            raise HTTPException(status_code=409, detail="Space already exists under a different parent")
+        if space_type is not None and yullo_space.space_type != canonical_type:
+            raise HTTPException(status_code=409, detail="Space already exists with a different type")
             
         return CreatedYulloSpace(space=existing_space, yullo_space=yullo_space, yullo_config=yullo_config, kb=kb)
         
@@ -77,6 +96,8 @@ async def create_or_resolve_yullo_space(
     
     new_yullo_space = YulloSpace(
         space_id=new_space.id,
+        parent_space_id=parent_space_id,
+        space_type=canonical_type,
         purpose=purpose,
         onboarding_step=current_step,
         lifecycle_status=status

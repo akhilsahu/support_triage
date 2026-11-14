@@ -53,7 +53,7 @@ export function useAppearancePreview(
   const configRef = useRef(currentConfig)
   configRef.current = currentConfig
 
-  const generatePreview = useCallback(async (force = false, sectionType?: PreviewSectionType) => {
+  const generatePreview = useCallback(async (force = false, sectionType?: PreviewSectionType, currentContent?: AppearancePreviewContent) => {
     if (!spaceId) return
     abortRef.current?.abort()
     const controller = new AbortController()
@@ -64,7 +64,7 @@ export function useAppearancePreview(
     try {
       const data = await appearanceApi.generatePreview(
         spaceId,
-        { currentConfig: configRef.current, force, sectionType, currentContent: contentRef.current || undefined },
+        { currentConfig: configRef.current, force, sectionType, currentContent: currentContent || contentRef.current || undefined },
         controller.signal,
       )
       if (requestId !== requestRef.current) return

@@ -69,3 +69,31 @@ def get_source_extraction_options(*, features=None) -> dict:
         prompt=_SYSTEM + '\n' + SOURCE_KNOWLEDGE_SYSTEM_PROMPT,
         validate_entity=validate_entity_candidate,
     )
+
+
+def get_chat_model_config():
+    """Override Aura model settings without changing shared provider priority."""
+    from dataclasses import replace
+    from app.config import settings
+    from app.orchestra.ai.config import build_config
+
+    model = settings.YULLO_CHAT_MODEL.strip()
+    if not model:
+        raise ValueError('Aura chat model must not be empty')
+    return replace(build_config(), llm_model=model,
+                   reasoning_effort=settings.YULLO_CHAT_REASONING_EFFORT,
+                   max_tokens=settings.YULLO_CHAT_MAX_OUTPUT_TOKENS)
+
+
+class EventListingConfig(BaseModel):
+    enabled: bool = True
+    max_results: int = Field(default=10, ge=1, le=20)
+    max_candidates: int = Field(default=50, ge=20, le=100)
+
+
+def get_event_listing_config() -> EventListingConfig:
+    return EventListingConfig(
+        enabled=os.getenv('YULLO_EVENT_LISTING_ENABLED', 'true'),
+        max_results=os.getenv('YULLO_EVENT_LISTING_MAX_RESULTS', '10'),
+        max_candidates=os.getenv('YULLO_EVENT_LISTING_MAX_CANDIDATES', '50'),
+    )

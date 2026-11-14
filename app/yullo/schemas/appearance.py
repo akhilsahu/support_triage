@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from app.yullo.schemas.spaces import SubspaceFields
 
 
 class StrictModel(BaseModel):
@@ -85,6 +86,7 @@ THEME_PRESETS = {
 
 
 class HeroConfig(StrictModel):
+    visible: bool = True
     asset_id: UUID | None = Field(default=None, alias="assetId")
     layout: HeroLayout = HeroLayout.centered
 
@@ -100,6 +102,7 @@ class SpacePresentationConfig(StrictModel):
     theme_preset: str = Field(alias="themePreset", min_length=1, max_length=40)
     landing_emphasis: LandingEmphasis = Field(alias="landingEmphasis")
     accent: Accent
+    accent_color: str | None = Field(default=None, alias="accentColor", pattern=r"^#[0-9a-fA-F]{6}$")
     background_treatment: BackgroundTreatment = Field(alias="backgroundTreatment")
     hero: HeroConfig = Field(default_factory=HeroConfig)
     sections: list[PresentationSection]
@@ -143,7 +146,34 @@ class AppearanceCandidateResponse(StrictModel):
     changed_paths: list[str] = Field(default_factory=list, alias="changedPaths")
 
 
+class PageAction(StrictModel):
+    id: str
+    label: str
+    url: str
+
+
+class PreviewPageAction(PageAction):
+    visible_on_page: bool = Field(alias="visibleOnPage")
+
+
+class SpacePageDetails(StrictModel):
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    is_remote: bool = Field(default=False, alias="isRemote")
+    space_type: str = Field(default="space", alias="spaceType")
+    starts_at: str | None = Field(default=None, alias="startsAt")
+    ends_at: str | None = Field(default=None, alias="endsAt")
+    location_label: str | None = Field(default=None, alias="locationLabel")
+    location_url: str | None = Field(default=None, alias="locationUrl")
+
+
 class AppearanceSpaceSummary(StrictModel):
+    preview_booking_links: list[PreviewPageAction] = Field(default_factory=list, alias="previewBookingLinks")
+    prompt_starters: list[str] = Field(default_factory=list, alias="promptStarters")
+    booking_links: list[PageAction] = Field(default_factory=list, alias="bookingLinks")
+    page_details: SpacePageDetails | None = Field(default=None, alias="pageDetails")
+    subspace_fields: SubspaceFields | None = Field(default=None, alias="subspaceFields")
+    is_subspace: bool = Field(default=False, alias="isSubspace")
     id: UUID
     display_name: str = Field(alias="displayName")
     slug: str
@@ -188,7 +218,7 @@ PURPOSE_PRESETS: dict[str, tuple[str, ...]] = {
 }
 
 
-def default_presentation_config(purpose: str | None) -> SpacePresentationConfig:
+def default_presentation_config(purpose: str | None, *, is_subspace: bool = False) -> SpacePresentationConfig:
     normalized = (purpose or "business").lower()
     if normalized not in PURPOSE_PRESETS:
         normalized = "business"
@@ -204,7 +234,8 @@ def default_presentation_config(purpose: str | None) -> SpacePresentationConfig:
         landingEmphasis=emphasis,
         accent=Accent.yullo,
         backgroundTreatment=BackgroundTreatment.soft,
-        hero=HeroConfig(),
+        hero=HeroConfig(layout=HeroLayout.image_left if is_subspace else HeroLayout.centered),
+        contentLayout=ContentLayout.left if is_subspace else ContentLayout.center,
         sections=[
             PresentationSection(type=SectionType.identity),
             PresentationSection(type=SectionType.services),

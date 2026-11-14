@@ -1,3 +1,4 @@
+import { YulloButton } from '../components/core/YulloButton';
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, Plus, ExternalLink, Pencil, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
@@ -5,35 +6,36 @@ import { useSpaceEntities } from '../api/entityQueries';
 import type { SpaceEntity } from '../api/entities';
 import { BookingForm } from './BookingForm';
 
-export function BookingLinks({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
+export function BookingLinks({ spaceId, spaceName, itemLabel, compact = false }: { spaceId: string; spaceName: string; itemLabel?: string; compact?: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  if (compact) return <BookingList spaceId={spaceId} spaceName={spaceName} compact />;
   return (
     <section className="py-6 border-b border-[var(--border)]">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
-            <h3 className="font-[Satoshi] text-[18px] font-medium text-[var(--text-primary)]">Booking</h3>
+            <h3 className="font-[Satoshi] text-[18px] font-medium text-[var(--text-primary)]">{itemLabel ? `${itemLabel.charAt(0).toUpperCase() + itemLabel.slice(1)} links & actions` : 'Booking'}</h3>
           </div>
           <p className="text-[15px] font-[Instrument_Sans] text-[var(--text-secondary)]">
-            Manage your booking links and visitor access.
+            {itemLabel ? `Add booking or registration links for this ${itemLabel}.` : 'Manage your booking links and visitor access.'}
           </p>
         </div>
-        <button
+        <YulloButton variant="outline"
           type="button"
           aria-expanded={expanded}
           aria-controls="booking-links"
           onClick={() => setExpanded(!expanded)}
           className="min-h-11 px-5 rounded-lg text-[14px] font-[Instrument_Sans] font-medium transition-all cursor-pointer self-start md:self-auto bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 shadow-xs"
         >
-          {expanded ? 'Close booking links' : 'Manage booking links'}
-        </button>
+          {itemLabel ? (expanded ? 'Close links' : 'Manage links') : (expanded ? 'Close booking links' : 'Manage booking links')}
+        </YulloButton>
       </div>
       {expanded && <BookingList spaceId={spaceId} spaceName={spaceName} />}
     </section>
   );
 }
 
-function BookingList({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
+function BookingList({ spaceId, spaceName, compact = false }: { spaceId: string; spaceName: string; compact?: boolean }) {
   const query = useSpaceEntities(spaceId);
   const [editor, setEditor] = useState<SpaceEntity | 'new' | null>(null);
   const [saved, setSaved] = useState(false);
@@ -44,7 +46,7 @@ function BookingList({ spaceId, spaceName }: { spaceId: string; spaceName: strin
   const needsReview = bookings.some(entity => !['owner_confirmed', 'source_authoritative', 'rejected'].includes(entity.review_status));
 
   return (
-    <div id="booking-links" className="mt-6 pt-5 border-t border-[var(--border)] font-[Instrument_Sans]">
+    <div id="booking-links" className={compact ? "font-[Instrument_Sans]" : "mt-6 pt-5 border-t border-[var(--border)] font-[Instrument_Sans]"}>
       {query.isPending ? (
         <div role="status" className="py-6 flex items-center gap-2.5 text-[var(--text-secondary)] text-sm">
           <span className="w-4 h-4 border-2 border-[var(--accent-ink)] border-t-transparent rounded-full animate-spin" />
@@ -56,13 +58,13 @@ function BookingList({ spaceId, spaceName }: { spaceId: string; spaceName: strin
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>Could not load booking links.</span>
           </div>
-          <button
+          <YulloButton variant="outline"
             type="button"
             onClick={() => void query.refetch()}
             className="min-h-9 px-3 rounded-lg text-sm font-medium text-[var(--accent-ink)] hover:underline cursor-pointer"
           >
             Try again
-          </button>
+          </YulloButton>
         </div>
       ) : (
         <div className="space-y-4">
@@ -90,7 +92,7 @@ function BookingList({ spaceId, spaceName }: { spaceId: string; spaceName: strin
                 return (
                   <div
                     key={entity.id}
-                    className="p-4 sm:p-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border-strong,var(--border))] transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                    className={`rounded-2xl border border-[var(--border)] bg-[var(--surface)] flex gap-4 ${compact ? "flex-col p-3" : "flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5"}`}
                   >
                     <div className="flex items-start gap-3.5 min-w-0">
                       <div className="w-10 h-10 rounded-xl bg-[var(--accent-solid)]/10 text-[var(--accent-ink)] flex items-center justify-center shrink-0 mt-0.5">
@@ -131,7 +133,7 @@ function BookingList({ spaceId, spaceName }: { spaceId: string; spaceName: strin
                     </div>
 
                     <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                      <button
+                      <YulloButton variant="outline"
                         type="button"
                         aria-label={`Edit ${entity.payload_json.label}`}
                         onClick={() => {
@@ -142,7 +144,7 @@ function BookingList({ spaceId, spaceName }: { spaceId: string; spaceName: strin
                       >
                         <Pencil className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
                         <span>Edit</span>
-                      </button>
+                      </YulloButton>
                     </div>
                   </div>
                 );
@@ -161,7 +163,7 @@ function BookingList({ spaceId, spaceName }: { spaceId: string; spaceName: strin
           )}
 
           <div className="pt-2">
-            <button
+            <YulloButton variant="outline"
               type="button"
               onClick={() => {
                 setSaved(false);
@@ -170,8 +172,8 @@ function BookingList({ spaceId, spaceName }: { spaceId: string; spaceName: strin
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-[var(--surface)] hover:bg-[var(--surface-soft)] text-[var(--accent-ink)] border border-[var(--border)] hover:border-[var(--accent-solid)]/40 transition-all cursor-pointer shadow-2xs"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Add booking option</span>
-            </button>
+              <span>Add booking option</span>
+            </YulloButton>
           </div>
         </div>
       )}

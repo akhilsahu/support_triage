@@ -127,6 +127,10 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_TEMPERATURE: float = 0.7
     OPENAI_MAX_TOKENS: int = 2000
+    # Public Aura uses a server-controlled model, independent of extraction jobs.
+    YULLO_CHAT_MODEL: str = Field(default='gpt-6-luna', min_length=1, max_length=120)
+    YULLO_CHAT_REASONING_EFFORT: Literal['none', 'low', 'medium', 'high'] = 'low'
+    YULLO_CHAT_MAX_OUTPUT_TOKENS: int = Field(default=4096, ge=512, le=16384)
 
     # Together AI
     TOGETHER_API_KEY: Optional[str] = None
@@ -393,6 +397,8 @@ class Settings(BaseSettings):
     # it too, so it's exposed via the public settings endpoint. Empty = the
     # Google login option is unavailable (gate falls back to open chat).
     GOOGLE_CLIENT_ID: str = ""
+    # Optional Yullo override; empty keeps the shared Google client.
+    YULLO_GOOGLE_CLIENT_ID: str = ""
     CHATBOT_USER_JWT_TTL_HOURS: int = 24 * 30   # 30 days — history should persist
 
     # Super Admin

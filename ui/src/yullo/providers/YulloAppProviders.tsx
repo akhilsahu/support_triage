@@ -2,6 +2,7 @@ import React, { ReactNode, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useYulloAppStore } from '../store/useYulloAppStore';
 import '../styles/tokens.css';
+import { YulloLocationProvider } from './YulloLocationProvider';
 
 // Completely isolated from Support247 QueryClient
 const yulloQueryClient = new QueryClient({
@@ -46,6 +47,7 @@ export const YulloAppProviders = ({ children }: { children: ReactNode }) => {
 
   return (
     <QueryClientProvider client={yulloQueryClient}>
+      <YulloLocationProvider>
       <div
         data-theme={resolvedTheme}
         data-accent={appAccent}
@@ -53,6 +55,7 @@ export const YulloAppProviders = ({ children }: { children: ReactNode }) => {
       >
         {children}
       </div>
+      </YulloLocationProvider>
     </QueryClientProvider>
   );
 };

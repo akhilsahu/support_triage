@@ -154,6 +154,36 @@ export function RouteSeo() {
   const homepage = useHomepageVariant()
 
   useEffect(() => {
+    const isYullo = window.location.hostname === 'yullo.co' || window.location.hostname.endsWith('.yullo.co') || /^\/yullo(?:\/|$)/.test(pathname)
+    const icon = document.head.querySelector<HTMLLinkElement>('link[rel="icon"]')
+    if (icon) {
+      icon.href = isYullo ? '/yullo/favicon.svg' : '/favicon.jpg'
+      icon.type = isYullo ? 'image/svg+xml' : 'image/jpeg'
+    }
+    upsertMeta('name', 'theme-color', isYullo ? '#FFFC00' : '#6366f1')
+    if (isYullo) {
+      const title = 'Yullo'
+      const description = 'Your Space, powered by Aura.'
+      document.title = title
+      upsertMeta('name', 'description', description)
+      upsertMeta('name', 'author', 'Yullo')
+      upsertMeta('property', 'og:site_name', 'Yullo')
+      upsertMeta('property', 'og:title', title)
+      upsertMeta('property', 'og:description', description)
+      upsertMeta('property', 'og:url', `${window.location.origin}${pathname}`)
+      document.head.querySelector('meta[property="og:image"]')?.remove()
+      upsertMeta('name', 'twitter:title', title)
+      upsertMeta('name', 'twitter:description', description)
+      document.head.querySelector('meta[name="twitter:image"]')?.remove()
+      upsertMeta('name', 'robots', /^\/yullo\/(?:home|spaces|onboarding|auth)(?:\/|$)/.test(pathname) ? 'noindex, nofollow' : 'index, follow')
+      document.getElementById(STRUCTURED_DATA_ID)?.remove()
+      upsertCanonical(`${window.location.origin}${pathname}`)
+      return
+    }
+    upsertMeta('name', 'author', BRAND)
+    upsertMeta('property', 'og:site_name', BRAND)
+    upsertMeta('property', 'og:image', `${SITE}/favicon.jpg`)
+    upsertMeta('name', 'twitter:image', `${SITE}/favicon.jpg`)
     const meta = pathname === '/' ? HOMEPAGE_META[homepage]
       : pathname === '/pricing' && homepage === 'homepage5'
         ? { title: ROUTE_META['/pricing'].title, description: HOMEPAGE_META.homepage5.description }
@@ -175,6 +205,7 @@ export function RouteSeo() {
     }
 
     if (pathname.startsWith('/app')) {
+      document.title = BRAND
       // Private product — keep the dashboard out of the index entirely.
       upsertMeta('name', 'robots', 'noindex, nofollow')
       return

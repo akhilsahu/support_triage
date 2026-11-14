@@ -13,9 +13,7 @@ from sqlalchemy import select
 from app.models.kb_fact import KBFact
 from app.models.space import Space
 from app.models.yullo_space_entity import YulloSpaceEntityEvidence
-from app.orchestra.ai.db_utils.source_loader import (
-    active_chunk_doc_id, load_published_chat_sources, resolve_space_kb_ids,
-)
+from app.orchestra.ai.db_utils.source_loader import active_chunk_doc_id
 from app.orchestra.ai.knowledge.retrieval.images_retrieval import safe_image_url, select_chat_images
 from app.orchestra.ai.appearance_preview.asset_persistence import list_source_extracted_assets
 from app.yullo.config.inference import get_chat_image_config
@@ -23,11 +21,15 @@ from app.yullo.models.appearance_asset import YulloAppearanceAsset
 from app.yullo.schemas.appearance_preview import AppearancePreviewContent, AppearancePreviewSection
 from app.yullo.services.entities.payloads import project_public_entity_payload
 from app.yullo.services.entities.service import get_public_entities
+from app.yullo.services.persistence.appearance_evidence import chunk_reference_key
+from app.yullo.schemas.retrieval import YulloExecutionContext
 
 logger = logging.getLogger(__name__)
 
 
 def _reference(item):
+    if not item.source_entity_id and not item.source_fact_ids:
+        return 'chunks', tuple(sorted(chunk_reference_key(ref) for ref in item.source_chunks))
     return ('entity', item.source_entity_id) if item.source_entity_id else (
         'facts', tuple(sorted(str(value) for value in item.source_fact_ids)),
     )
@@ -82,6 +84,7 @@ class AppearanceImages:
                 if not urls:
                     refs = [('entity', item.source_entity_id)] if item.source_entity_id else []
                     refs.extend(('fact', str(value)) for value in item.source_fact_ids)
+                    refs.extend(('chunk', value.chunk_id) for value in item.source_chunks)
                     source_ids, passages = set(), []
                     for ref in refs:
                         for source_id, chunk_id in self.references.get(ref, []):
@@ -107,7 +110,8 @@ class AppearanceImages:
 
 async def load_appearance_images(db, *, space_id: UUID, content: AppearancePreviewContent, suggest=False) -> AppearanceImages:
     """Caller authorizes the Space; every image is rechecked against current public inputs."""
-    from app.yullo.services.sources.service import source_images, public_source_asset
+    from app.yullo.services.sources.service import source_images, load_chat_sources
+    from app.yullo.services.sources.assets import hydrate_passage_assets
 
     assets, aliases, media = {}, {}, {}
 
@@ -132,10 +136,8 @@ async def load_appearance_images(db, *, space_id: UUID, content: AppearancePrevi
         for url in media[str(entity.id)]:
             register(url)
 
-    kb_ids = await resolve_space_kb_ids(db, space_id, product='yullo')
-    sources = await load_published_chat_sources(db, space_id, kb_ids, product='yullo', refresh=True)
-    sources = {str(source.id): source for source in sources
-               if active_chunk_doc_id(source) and public_source_asset(source.source_metadata or {})}
+    _, sources_by_doc = await load_chat_sources(db, YulloExecutionContext(space_id=space_id, kb_ids=[]), refresh=True)
+    sources = {str(source.id): source for source in sources_by_doc.values()}
     images = {key: source_images(source) for key, source in sources.items()}
     for asset in await list_source_extracted_assets(db, space_id=space_id, source_items=list(sources.values()), public_only=True):
         if safe_image_url(asset.url):
@@ -165,6 +167,11 @@ async def load_appearance_images(db, *, space_id: UUID, content: AppearancePrevi
         for row in rows:
             reference('fact', row.id, row.source_item_id, row.source_version, row.source_chunk_id)
 
+    for section in content.sections:
+        for item in section.items:
+            for ref in item.source_chunks:
+                reference('chunk', ref.chunk_id, ref.source_item_id, ref.source_version, ref.chunk_id)
+
     indices = defaultdict(set)
     for values in references.values():
         for source_id, chunk_id in values:
@@ -178,8 +185,14 @@ async def load_appearance_images(db, *, space_id: UUID, content: AppearancePrevi
             from app.orchestra.ai.knowledge.vector_store import get_vector_store
             store = get_vector_store()
             for doc_id, values in indices.items():
-                for row in await asyncio.to_thread(store.get_chunks_by_indices, str(space_id), doc_id, sorted(values), content=False):
-                    chunks[row['id']] = row['metadata']
+                ordered = sorted(values)
+                for start in range(0, len(ordered), 20):
+                    rows = await asyncio.to_thread(store.get_chunks_by_indices, str(space_id), doc_id,
+                                                   ordered[start:start + 20], content=False)
+                    passages = [{'content': '', 'meta': row['metadata']} for row in rows]
+                    hydrate_passage_assets(sources_by_doc, passages)
+                    for row, passage in zip(rows, passages):
+                        chunks[row['id']] = passage['meta']
         except Exception as error:
             logger.warning('yullo.appearance.image_metadata_unavailable', extra={'space_id': str(space_id), 'error_type': type(error).__name__})
     return AppearanceImages(assets, aliases, media, sources, images, references, chunks)

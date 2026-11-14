@@ -180,3 +180,499 @@ Run focused bootstrap tests using the project interpreter. Run the existing inte
 Complete one real three-Space run, then authenticated Home GET, preference PATCH/reload, public Aura lookup and a foreign-owner denial. Verify disabled sections reflow and missing intelligence remains absent. Record commands, result counts and database revision without secrets or source bodies.
 
 Completion means this full path works: approved input -> shared creation/ingestion -> validated entity/evidence -> publication -> authenticated Home -> existing UI. A successful schema-only unit test is not sufficient evidence.
+
+## Nested Spaces — 2026-11-12
+
+User requested analysis and implementation of graph drill-down with typed subspaces. Selected design: each child is a canonical Space, with one optional parent and a Space type (`space`, `event`, `project`, `location`, `community`). This classification does not replace entity types or canonical event/location records. Hierarchy is owner-only navigation; each child retains its own sources, knowledge, Aura, appearance, permissions and publication. Parent membership is not published or added to model context.
+
+Alternatives considered: entity-only nodes cannot provide a full independent app; a multiple-parent graph adds ambiguous navigation and lifecycle semantics. Start with a single-parent tree, arbitrary nesting with cycle rejection, same-owner Yullo links only, independent globally unique handles, and explicit detach before parent archive/delete. No inherited knowledge or automatic creation from extracted entities.
+
+- [x] Add Yullo-only parent/type/revision columns and forward migration after verified code/applied head `b9c0d1e2f3a4`. Existing Spaces default to roots of type `space`. No shared Support247 columns change.
+- [x] Add owner-scoped hierarchy read/update services and routes; serialize hierarchy writes on the owner row, reject cycles/foreign/archived parents and stale revisions. Extend canonical Space creation for new children; guard archive/delete. Do not use or reset onboarding drafts.
+- [x] Add dashboard breadcrumb, typed children table, inline create/link/detach controls; Home graph root/child navigation with URL state and child counts. Keep existing Home metrics and features intact.
+- [x] Run static compilation/build/diff checks; inspect migration DDL and final file changes. Unit/integration tests require user approval; do not seed user data. Record applied versus unapplied migration and remaining integration gaps.
+
+Files: `app/models/yullo_space.py`, `app/yullo/{schemas/spaces.py,services/spaces/{hierarchy,creation,handles}.py,services/persistence/identity.py,schemas/forms/identity.py,api/space_forms.py}`, `app/api/v1/yullo_onboarding.py`, `alembic/versions/c0d1e2f3a4b5_yullo_subspaces.py`; `ui/src/yullo/{api/spaces.ts,api/forms.ts,forms/subspaces/Subspaces.tsx,components/home/SpaceNetwork.tsx,components/YulloPulse.tsx,home/sectionRegistry.tsx,screens/{SpaceDashboard,YulloHome}.tsx}`. Endpoints: authenticated no-store `GET /api/v1/yullo/spaces/hierarchy`, revision-checked `PATCH /api/v1/yullo/spaces/{space_id}/hierarchy`, extended `POST /api/v1/yullo/spaces`.
+
+Lifecycle safeguards: both ends of a hierarchy link become managed by explicit Space ID (`current_step`/`onboarding_step='managed'`), retained after detaching. Global onboarding draft selection excludes these Spaces; draft mutations share the owner lock, reset refuses parents with children, and handle reservation cannot reclaim managed Space handles. A stable client-generated child handle permits retrying creation after a lost response without overwriting an existing child. Hierarchy has an independent revision and does not change publication context, sources, extraction, review or Aura retrieval. Archived children remain visible to the owner in the parent table so they can be detached; graph nodes use the existing eligible Home list. Graph has an accessible full list and uses the existing section registry; reduced motion and keyboard focus are supported.
+
+Verification: TypeScript check, production UI build, Python parsing, router imports, ORM mapper configuration, generated PostgreSQL migration DDL, focused UI anti-slop/motion scans and `git diff --check` passed. Applied **only** the additive migration to the verified loopback development database; confirmed revision `c0d1e2f3a4b5` and all three columns. No user records were read or seeded for verification, and no production changes were made. Existing build warnings concern dependency annotations, Browserslist data and mixed imports.
+
+Pending approval: behavior tests and authenticated/browser integration. Exercise nested creation/retry, root linking/detach, type edits, stale writes, cycle and foreign-owner rejection, parent removal guards, private publication, and onboarding reset/handle isolation in an isolated test namespace. No tests were written or run. Public parent/child discovery, multiple parents, linked entity-to-Space conversion and inherited context are outside this first version. Recommendation: use a subspace when an event/project needs its own knowledge, audience and publishing; retain lightweight details as existing entities.
+
+### Approved simplification — 2026-11-13
+
+User approved the discussed quick flow and retaining the revision guard. This supersedes the table/breadcrumb UI above. Keep the existing single-parent column; no relation table or version-history subsystem.
+
+- [x] Node click immediately reveals its children. Replace branch breadcrumbs and Explore/Manage steps with Back, Open and an icon-only +. Retain the accessible full node list, existing Home details/metrics and section registry.
+- [x] One shared `AddSubspace` component serves graph and dashboard. + offers Event, Service, Job, Project, Other. A compact Radix dialog contains name, optional short description and only relevant optional date/place/application/booking fields. No onboarding wizard, reset, temporary draft or autosave requests. Save commits a normal independent Space; its existing unpublished lifecycle remains separate from persistence.
+- [x] Replace the dashboard table with simple child rows; keep link-existing in the + menu and classification/detach in secondary row options. Retain legacy Space/Location/Community classifications for existing records. Remove the unused ancestor helper and full dashboard breadcrumbs.
+- [x] Add Bot / Building2 / Undo icon actions with labels/tooltips. AI suggests a description from submitted details only through the existing configured provider fallback utility. Company fill explicitly previews the owner's company description; acceptance records source revision and allows undo. No automatic parent knowledge retrieval, inheritance, publication or overwrite of input.
+- [x] Add strict `QuickSpaceContext` input validation and persist quick details through canonical `SourceService.accept_source` as a child-local text source, in the creation transaction. Metadata records copied-company provenance; identifiers are kept out of source text. Extracted facts/entities still follow the existing ingestion/review pipeline; quick fields do not create duplicate event/job truth tables. Enqueue ingestion only after commit; dispatch failure leaves a durable job and logs safe IDs. Creation retries compare the existing canonical source request hash and reject differing details rather than silently losing edits.
+- [x] Extend `SpaceType`/database constraint with service, job and other using forward migration `d1e2f3a4b5c6`; previous migration untouched. Verified applied revision c0d1e2f3a4b5 before applying only to the verified loopback development database. Confirmed applied revision d1e2f3a4b5c6; no user fixtures, production changes or commits.
+
+Changed boundaries this pass: `app/yullo/schemas/{spaces.py,forms/identity.py}`, `services/{spaces/quick_context.py,persistence/identity.py}`, `api/space_forms.py`, `app/models/yullo_space.py`, `alembic/versions/d1e2f3a4b5c6_subspace_quick_types.py`; frontend `api/{spaces,forms}.ts`, `forms/subspaces/Subspaces.tsx`, `components/home/SpaceNetwork.tsx`, `screens/SpaceDashboard.tsx`. New owner/CSRF-protected, no-store endpoint: `POST /api/v1/yullo/spaces/{space_id}/subspace-description`.
+
+Verification: TypeScript and production UI build passed; Python parsing, route imports, ORM mapper configuration, focused UI anti-slop/motion scans and diff checks passed. No new tests written or behavior tests run, following the required approval gate. Pending: approve and exercise isolated integration/browser checks for graph expand/back, keyboard dialog/menu behavior, all quick types, transactional source persistence, retry/content conflict, worker extraction/review, company preview/undo/revision conflict and AI provider success/failure. Application semantics (including booking/application links) remain contextual source data until the normal entity/review flow permits structured public actions. AI output is an owner-reviewed suggestion, not automatically verified factual content.
+
+### Quick form visual refinement — 2026-11-13
+
+User requested a more serious, compact form and questioned date/time in the primary flow. Updated only `ui/src/yullo/forms/subspaces/Subspaces.tsx`: restrained modal header/footer, smaller desktop field padding/type, clearer labels (Event title, Event overview, Scheduled start, Venue or meeting link; Role title/Work location/Application URL; Service name/Booking URL), neutral compact assistance icons and Create event/Cancel actions. Parent name is a quiet subtitle; publication status appears once in the footer. Event schedule/location are retained under a collapsed optional disclosure so the primary form contains title and overview. Existing entered schedule values remain intact when collapsed. Mobile controls retain touch targets and readable input text; theme accent focus styles remain dynamic. AI/company preview, acceptance/undo and persistent Save path are preserved. No schema, API, ingestion or publication changes.
+
+Verification: TypeScript, production build, focused UI static scans and final diff checks passed. No new tests or browser behavior checks were performed; these await approval.
+
+### Header + menu and date/time library — 2026-11-13
+
+User requested a library date/time picker and removal of the visible Subspaces dashboard section. The dashboard now has a top-right icon-only + with a real hover/focus tooltip. Clicking opens four icon choices: Event, Posting, Service, Other. Job/Project and existing link/manage actions remain under More options. Linked child rows, classification, detach and parent navigation remain available in a secondary Linked Spaces dialog, preserving capabilities while removing the main-page heading/empty-state block. Existing #subspaces references target the header action. Graph uses the same shared + menu; its redundant empty hint was removed.
+
+Added `forms/core/DateTimeField.tsx`, using `react-aria-components` 1.22.1 and `@internationalized/date` 3.12.4. Theme-aware calendar, localized segmented date/time entry, 24-hour time, validation, clear schedule and keyboard controls replace the native datetime-local input. Calendar portal stays inside the enclosing Radix dialog's focus scope. Existing local-time-to-UTC saving remains intact. Added both dependencies explicitly; npm updated the shared React Aria/date/stately dependency family in ui/package-lock.json. No separate calendar framework or custom calendar arithmetic.
+
+Added Posting to the existing validated Space classification in API/model/frontend, preserving all previous types. Forward migration e2f3a4b5c6d7 extends only the classification constraint, after verifying code/applied head d1e2f3a4b5c6. Applied only to verified loopback development and confirmed e2f3a4b5c6d7. No records were seeded, production data changed, or applied migrations rewritten.
+
+Files: ui/package{,-lock}.json; ui/src/yullo/forms/{core/DateTimeField.tsx,subspaces/Subspaces.tsx}, screens/SpaceDashboard.tsx, components/home/SpaceNetwork.tsx, api/spaces.ts; app/yullo/schemas/spaces.py, app/models/yullo_space.py; alembic/versions/e2f3a4b5c6d7_posting_space_type.py. Creation, source ingestion/review, Aura isolation and publishing contracts preserved. TypeScript and backend parse/import/ORM checks passed; final build/scans recorded below. No new tests written or behavior tests run. Pending approval: calendar/segmented time inside Radix focus trap, touch layout, tooltip/popover dismissal, all four creation choices, management actions and timezone round-trip in isolated browser/integration checks.
+
+Completion verification: production UI build, TypeScript, backend imports/ORM configuration, focused UI scans and git diff checks passed. Root package files were unchanged; generated build output stays in ui/dist. Browser/behavior tests remain unrun pending approval.
+
+### Full-page event form and location formats — 2026-11-13
+
+User reported calendar clipping and requested a larger full-page event form, optional Online link, and Physical location through Google Maps.
+
+- [x] Event creation now uses a full-screen Radix dialog with a scrollable, bounded-width form body and fixed header/footer. Other quick forms keep their compact dialogs. Schedule/location are directly visible; no nested disclosure is needed on the larger event page.
+- [x] Replaced the date picker's nested popup with a library DateField and inline Calendar, retaining typed date/time entry, month navigation, selection, clear action, local-time-to-UTC conversion and keyboard controls. Calendar selection preserves an already-entered time. Inline normal flow removes the popup/scroll-container clipping mechanism entirely.
+- [x] Added optional Online/Physical mode selection and Clear. Online accepts a meeting URL or blank. Physical reuses existing LocationSearchField and GoogleLocationPicker, with address suggestions, map pin selection and a Google Maps link. Address edits clear stale coordinates; only the active location mode is submitted. A location may remain unspecified. Existing map configuration/failure fallback is preserved; no new Maps loader, key or provider integration.
+- [x] Extended QuickSpaceContext server/frontend contracts with location_mode, meeting_url, latitude/longitude and map_url. Validate mode, coordinate ranges/pairs, and conflicting online/physical fields. Legacy place-only requests remain compatible. The existing child-local source now records the explicitly entered event format, link/address and selected coordinates/map link, keeping ingestion, fact/entity review and hard-save creation intact. No database migration, new location table or direct entity insert.
+
+Changed: ui/src/yullo/forms/{subspaces/Subspaces.tsx,core/DateTimeField.tsx}, ui/src/yullo/api/spaces.ts; app/yullo/schemas/spaces.py and services/spaces/quick_context.py. Existing shared LocationSearchField/GoogleLocationPicker files were not modified. Verification: TypeScript and backend parsing/import/ORM checks passed; final build/scans recorded below. No tests written or behavior tests run. Pending approval: full-page scrolling/focus, inline calendar/time/clear behavior, Online blank/link, Physical search/pin/manual fallback, mode changes clearing submitted stale data, saved source context and UTC handling in isolated UI/integration checks. Real Google Maps availability depends on the existing configured browser API key.
+
+Completion verification: production UI build, focused UI static scans and final diff checks passed. Browser/Google Maps behavior and durable-save integration remain unverified pending test approval. No dependencies, migrations or production data changed in this refinement.
+
+### Quick-add icon colors — 2026-11-13
+
+User requested distinct colors for the Event/Posting/Service icons. Added four scoped category color tokens in ui/src/yullo/styles/tokens.css and subtle tinted icon containers in forms/subspaces/Subspaces.tsx: Event blue, Posting violet, Service teal, Other amber. Dark/dark-warm use lighter counterparts. Labels, focus and hover continue using dashboard/accent tokens; creation actions and APIs are unchanged. TypeScript and diff checks passed. Measured minimum icon-to-tinted-container contrast across all five theme surfaces: 4.07:1 (UI threshold 3:1). No unit or browser tests run; prior request for UI verification approval remains pending.
+
+### Event form reference alignment and separate pickers — 2026-11-13
+
+User supplied the current UI and a compact professional form reference, requesting a clearer layout, closed-by-default calendar, separate time picker and theme/accent adaptability. This supersedes the always-inline calendar design above.
+
+- [x] Retain full-page event creation, with a narrower aligned 680px content column, canvas backdrop, distinct surface-backed inputs, stronger placeholder/helper text and grouped Schedule/Location sections. Actions sit beneath the fields rather than in a full-width bottom bar. Header, errors and footer align with the form. Other quick dialogs retain their compact format. Existing AI/company suggestions, preview/undo, online link, Google Maps location and persistence paths remain available.
+- [x] Split schedule into Date and Start time. Date button opens a Radix portal calendar only on click; selection closes it. Time button opens a separate hour/minute picker using the installed Radix Select primitives; Set time explicitly commits the chosen 24-hour value. Each value can be cleared independently. Unique field IDs and keyboard/focus handling use the existing primitives. Portal stacking avoids the previous scroll-container clipping, without keeping a calendar permanently open.
+- [x] Keep date/time as separate form values and combine to the existing UTC starts_at contract only when both are entered. Neither value is required when scheduling is omitted; a partial schedule shows a clear completion hint and prevents Save instead of inventing midnight. Calendar date labels format in UTC to avoid date-only display shifts across browser time zones; saved event time retains the established local-time-to-UTC conversion. No API or database change.
+- [x] Use only the existing canvas/surface/border/text/accent CSS variables for new controls, calendar selections, time dropdown highlights, focus rings and actions. Online/Physical selections use accent-tinted surfaces. No hard-coded black/white/yellow palette or extra dependency.
+
+Changed: ui/src/yullo/forms/{core/DateTimeField.tsx,subspaces/Subspaces.tsx}. Verification: TypeScript/production UI build, focused UI static scans and diff checks passed. No new tests or browser tests were run. Pending approval: rendered desktop/mobile comparison with the reference, all configured themes/accents, date/time popup focus/dismissal, partial schedules, local-time/UTC round trip, online/physical flow and Save integration in an isolated namespace. Build success does not verify the rendered appearance.
+
+### Direct time entry and browser verification — 2026-11-13
+
+User approved read-only browser checks, then requested removing the time popup/Set time step. Updated only forms/core/DateTimeField.tsx to use the installed React Aria TimeField directly in the form: editable hour/minute segments, immediate value updates, 24-hour format, keyboard navigation, themed focus and clear-time action. Removed the temporary time-popup state, TimeUnit helper and Radix Select import; Date retains its on-click calendar. Existing date/time values, completeness check and UTC Save contract are preserved.
+
+Verified in native Chrome against the local authenticated dashboard: compact event layout visible, calendar closed initially and opened without clipping, earlier hour/minute popup functioning before the requested simplification; after simplification, hour 09 and minute 30 were typed directly into the field and the form showed 09:30 with no time popup or confirmation button. No event was saved, published or seeded. The browser access host was unavailable, so native Chrome was used; initial local connection refusal resolved when the existing frontend resumed. No backend restart or database action. TypeScript, production build, focused UI scans and diff checks passed. Only the current desktop dark/yellow appearance was visually inspected; mobile, other theme/accent combinations, Google Maps and durable Save integration remain unverified.
+
+### AM/PM display — 2026-11-13
+
+User requested 12-hour time. Changed the existing inline React Aria TimeField to hourCycle=12, exposing its editable AM/PM segment alongside hour/minute, and updated the helper copy. Internal Time serialization and UTC conversion remain unchanged, so AM/PM selection maps to the proper saved hour. TypeScript and diff checks passed. No new tests or repeat browser checks for this small display change.
+
+### Direct entry plus time chooser — 2026-11-13
+
+User requested both direct selection and an opening time picker. Retained editable AM/PM hour/minute segments; clicking them also opens a compact Hour/Minute/Period chooser while preserving input focus. A clock button provides a separate explicit trigger. Chooser changes apply immediately to the same time value; Done only dismisses it. Conversion correctly maps 12 AM to 00 and 12 PM to 12. Existing date calendar, validation, UTC saving and theme/accent variables remain intact. Changed forms/core/DateTimeField.tsx only. TypeScript and diff checks passed; no browser access, per the user's preference. Popup interaction remains unverified.
+
+### Event side panel — 2026-11-13
+
+User requested event creation open from the side like existing entity editors. Updated forms/subspaces/Subspaces.tsx to match the BookingForm drawer: right edge, full height, max 640px desktop width, full viewport width on mobile, left border/shadow and rounded left corners on wider screens. Header is compact with a separator; existing scrollable form, date/time chooser/direct entry, location modes, Google Maps, save and focus trap remain intact. Uses the existing motion/react library with a 200ms right-to-left entrance and reduced-motion support. Other quick forms retain their centered dialogs. TypeScript and diff checks passed; browser was not accessed per user preference.
+
+### Shared side panel for all quick forms — 2026-11-13
+
+User requested the same side-panel behavior for Posting, Service, Other and all remaining quick forms. Removed event-only presentation branches from AddSubspace: every quick-create type now shares the right-side 640px drawer, mobile full-width layout, entrance/reduced-motion behavior, header, scrollable body, spacing and footer. Classification-specific fields and existing save/context handling remain unchanged. TypeScript, motion and diff checks passed. No browser access, per user preference.
+
+### Space-page typed listings — 2026-11-13
+
+User requested the listing flow directly on the Space page, including the linked local dashboard. Added Events/Postings/Services/Other entry rows with actual owned-child counts to SpaceDashboard. Each opens a right-side list drawer, sharing the existing Subspaces component and owner-keyed hierarchy query; the header + category icons now open the same typed listings. A + inside each list opens its existing type-specific creation drawer. Clicking a listed item opens its normal Space dashboard. Other groups classifications outside Event/Posting/Service, preserving discovery of legacy Space/Job/Project/Location/Community children. Existing link, classification, detach, empty/loading/error/retry and reduced-motion behavior remain; existing-Space link choices respect the active category. No API, schema, source ingestion or publication changes. Graph navigation and its creation menu remain available.
+
+Changed ui/src/yullo/{forms/subspaces/Subspaces.tsx,screens/SpaceDashboard.tsx}. TypeScript passed; final build/diff checks recorded below. Browser not accessed per user instruction; listing/dialog integration remains unverified.
+
+Completion: production UI build, TypeScript, focused UI scans and diff checks passed. No browser access or durable test records created.
+
+### Bottom expandable listings — 2026-11-13
+
+User requested the typed listing links at the bottom under an expandable section matching the dashboard. Moved the existing listing component below Appearance inside a default-collapsed native details section titled “Events, posts & services.” Uses existing row typography, dividers, spacing, theme text and accent focus tokens, plus a stateful chevron. Existing header +, listing counts, category side panels, creation, link and detach functionality are preserved. Changed SpaceDashboard.tsx only; no duplicated listing implementation. TypeScript/diff checks passed; no browser access.
+
+### Single combined listing — 2026-11-13
+
+User found the empty per-category Posting sidebar confusing and requested a single listing option with a button opening a styled sidebar. Replaced the four category listing buttons with one All items row and View action inside the existing bottom expandable section. View opens one right-side drawer containing all child classifications; removed filter state/helpers and per-category empty-list flows. Sidebar uses the same theme-aware drawer, title/parent subtitle, one + for creation, linked item rows and a clear “Nothing added yet” empty state. Header + category icons create directly again; sidebar + uses the same four creation choices. Link-existing remains under More options, preserving functionality without presenting it as the primary action. Existing classification/detach actions remain. Raised the shared + popover above drawer stacking so it works inside the sidebar. Existing open-Space links, save and backend behavior unchanged.
+
+Changed forms/subspaces/Subspaces.tsx and SpaceDashboard.tsx copy. TypeScript passed; build/static checks recorded at completion. No browser access per user instruction.
+
+Completion: production build, TypeScript, UI static scans and diff checks passed. Combined-list/drawer interactions remain browser-unverified; no browser accessed or records created.
+
+### Direct listing row — 2026-11-13
+
+User explicitly removed the expand/collapse requirement. Replaced the bottom disclosure with one always-visible “Events, posts & services” row, matching Identity/Appearance typography, description, spacing and action alignment. View opens the existing combined sidebar directly. Removed the unused disclosure chevron import. No creation/listing/backend behavior changes. TypeScript and diff checks passed; no browser access.
+
+### Content listing empty state — 2026-11-13
+
+- Replaced `Nothing added yet` with an encouraging invitation and an inline + action reusing `AddSubspace` and its existing type menu/forms. Archived/inactive Space creation restrictions preserved.
+- File: `ui/src/yullo/forms/subspaces/Subspaces.tsx`. Type-check and whitespace check passed; browser/tests not run.
+
+- View panel empty-state copy refined to “What’s happening in your Space?” with an invitation to share an event, post or announcement. Copy only; whitespace check passed.
+
+- Events/posts/services empty-state section now uses the configured accent for its subtle background and border; existing text/surface/action tokens retained. `Subspaces.tsx`; type-check and whitespace check passed. No browser/tests run.
+
+### Add control polish — 2026-11-13
+
+- View panel shows one +: in the empty invitation when empty, in the header once items exist. Reuses the same action/menu and permission checks.
+- Shared Space add button has a bolder plus, translucent glass treatment, accent tint/border and theme-aware highlight; category icon strokes strengthened.
+- Files: `Subspaces.tsx`, `tokens.css`. Type-check and whitespace check passed; browser/tests not run.
+
+### Consistent form accent mapping — 2026-11-13
+
+- Fixed undefined `--accent` / `--accent-fg` aliases by mapping them to canonical Yullo tokens, with defaults for portal/form controls. This is scoped to Yullo and also fixes existing focus/selection references.
+- Warm theme retains warm surfaces but no longer blends brown into the chosen accent. Dark modes retain their readable accent ink mapping.
+- Space type menu and location icons follow the chosen accent; empty-state container uses neutral themed surfaces so the glass add action remains the focal point.
+- Files: `tokens.css`, `Subspaces.tsx`, `Locations.tsx`. Frontend type-check and whitespace check passed. Browser/tests not run; rendered combinations remain unverified. No data or flow changes.
+
+### Vivid yellow and category icon colors — 2026-11-13
+
+- Yellow accent is now #FFFC00; removed the brown yellow-ink variant, using neutral ink for readable light-theme labels and vivid yellow ink in dark themes.
+- Restored distinct theme-aware category colors in the multi-icon Space menu and knowledge source chooser. Actions/selection retain configured accent.
+- Files: `tokens.css`, `Subspaces.tsx`, `AddKnowledgeModal.tsx`. Type-check and whitespace check passed; no browser/tests run.
+
+### Yellow button edge — 2026-11-13
+
+- Approved 1px charcoal border for solid yellow buttons/links on light and warm themes; softer theme border in dark modes. Other accent selections unchanged. Rule is scoped to Yullo solid-accent actions.
+- `tokens.css`, `AddKnowledgeModal.tsx` (canonical action classes for shared styling). Whitespace check passed; no browser/tests run.
+
+### Generic editable description prompt — 2026-11-13
+
+- Moved the inline description-generation prompt into `app/orchestra/ai/prompts/yullo/quick_description.py`; `quick_context.py` imports it. Existing provider fallback, validation and owner-approved suggestion application remain intact.
+- Prompt handles any event without assuming food, audience or activities; requests an inviting opening, known When/Where details and bracketed placeholders for missing details. Other Space types retain appropriate copy rather than event formatting. No parent knowledge is injected.
+- Kept the existing shared 280-character overview contract to avoid changing main identity/profile schemas. UI suggestion includes a review/placeholder reminder. No auto-save or auto-publish introduced.
+- Files: prompt module, `app/yullo/services/spaces/quick_context.py`, `ui/src/yullo/forms/subspaces/Subspaces.tsx`.
+- Python syntax, frontend type-check and whitespace checks passed. No new tests, model calls, browser access or data writes; actual model output remains unverified.
+
+### Preserve theme on AI request token refresh — 2026-11-13
+
+- Traced event AI action: no direct theme mutation; shared CSRF refresh reapplied `/auth/me` server preference through `setAuth`, potentially replacing a locally selected theme during generation (also affects SSE token refresh).
+- `ui/src/yullo/api/client.ts`: refresh updates user/token while omitting optional theme argument, preserving current UI preference through existing store behavior. Initial sign-in preference loading and auth failure handling unchanged.
+- Type-check and whitespace check passed. No browser/tests run; actual user-reported trigger not reproduced, so this is a confirmed overwrite path fix rather than verified reproduction.
+
+### Fill overview placeholders from event selections — 2026-11-13
+
+- `Subspaces.tsx`: selecting a venue resolves explicit venue placeholders in both the overview and pending AI suggestion. Online links resolve placeholders on blur; completed date/time selections resolve `[Date and time]` using local formatting.
+- Only recognized bracketed placeholders change; custom prose and already concrete values remain untouched. No further AI call, save or publication. Replacements exceeding the existing 280-character limit leave the text unchanged for manual editing.
+- Frontend type-check and whitespace check passed. Browser/tests not run; interactive integration remains unverified.
+
+### Hide child Spaces from main Space list — 2026-11-13
+
+- Home snapshot carries canonical `parent_space_id`; Home response Space listing includes only parentless Spaces. Attached events/postings/services remain accessible in the parent's View panel.
+- All owned Spaces remain in the factual snapshot, preserving metrics, attention and knowledge behavior. Detached children naturally return to the main list. No data writes or migrations.
+- Files: `app/yullo/services/home/repository.py`, `app/yullo/services/home/service.py`. Python syntax and whitespace checks passed; no browser/tests run. Existing incorrectly parentless records are not modified.
+
+- Home error follow-up: confirmed current repository joins `YulloSpace` and reads the selected parent ID instead of accessing nonexistent `Space.parent_space_id`. Runtime traceback corresponds to earlier code. SQLAlchemy PostgreSQL query compilation passed without querying a database (local verification required `DEBUG=false` because shell DEBUG was `release`). Backend must reload corrected code; endpoint execution remains unverified.
+
+### Clear child listing rows — 2026-11-13
+
+- View drawer lists children with a colored semantic icon, separate title and type/status line, and Open arrow. One accessible link per item avoids the previous concatenated name/type appearance.
+- Existing header + creation action and classification/detach options retained; options trigger now uses a consistent MoreHorizontal icon and tooltip. No lifecycle or data changes.
+- File: `ui/src/yullo/forms/subspaces/Subspaces.tsx`. Type-check and whitespace check passed. No browser/tests run; rendered integration unverified.
+
+### Nested public URLs and parent breadcrumbs — 2026-11-13
+
+- Approved URL shape: `/parent-handle/child-handle`, extended to deeper hierarchy using existing globally unique handles. No handle rewrite or migration; existing flat URLs still work.
+- Added `GET /api/v1/yullo/public/paths/{public_path:path}`. Each segment must match a current parent link, same owner, active Yullo Space and live lifecycle; top segment must be parentless. Invalid/private paths return generic 404. Child rendering reuses canonical public projection and disclosure rules; no parent knowledge enters child Aura.
+- Shared root SlugResolver resolves nested Yullo URLs, preserving CustomerChat fallback for existing Support247 two-segment URLs. HttpAuraProvider encodes each path segment and uses the new endpoint only for nested paths.
+- Dashboard public link and Identity form handle display use a shared cycle-guarded hierarchy branch helper. Header breadcrumb includes ancestors: Home / parent / child.
+- Files: `app/yullo/api/public.py`; `ui/src/App.tsx`, `ui/src/SlugResolver.tsx`, `ui/src/yullo/api/spaces.ts`, `ui/src/yullo/services/aura/HttpAuraProvider.ts`, `ui/src/yullo/screens/SpaceDashboard.tsx`, `ui/src/yullo/components/YulloAppHeader.tsx`, `ui/src/yullo/forms/identity/IdentityForm.tsx`.
+- Python syntax, frontend type-check, production build and whitespace checks passed. No browser, new tests, live model calls or database writes. Pending: live verification of nested published child, draft/foreign/wrong-parent denial, old flat link and Support247 fallback. Changing parent/ancestor handles changes the nested URL; flat child links remain usable under their existing publication checks.
+
+### Aura public child-event listing tool — 2026-11-13
+
+- Approved exception to current-Space-only retrieval: `list_events` exposes only public listing summaries for direct event children. It does not retrieve child sources/facts, share Aura context, or delegate to child Aura. Publishing an active event and linking it to this published same-owner parent makes it listable; detach/archive/unpublish removes eligibility on the next call.
+- Reused hierarchy service (`list_public_child_events`, `build_event_listing_tools`), canonical `get_public_entities`, and public field-policy projection. The projection's optional `direct_only` flag excludes on-request fields for listings; defaults preserve existing callers. Public/active/review checks remain canonical. Current Space ID is bound outside model arguments.
+- Inputs: bounded title search, optional timezone-aware date bounds, bounded result count. Unknown/ambiguous schedules remain unknown and are excluded by date filters. Results carry title, public profile description, approved matching event schedule/location/registration details, working flat public URL, `as_of` and `has_more`. Date ordering uses absolute instants. No invented dates or copied parent context.
+- Bounded candidate scan (default 50) and result limit (default 10, maximum 20); incomplete scans set `has_more`. Failures report unavailable rather than empty. Structured logs contain only safe IDs/counts/error class.
+- Existing response preparation accepts optional product-injected tools, leaving retrieval/search/continuation/extraction/presentation unchanged. Yullo adapter supplies the tool; conditional instructions live in existing prompt composer. No new AI/provider pipeline, tables, migrations, endpoints or duplicate event store.
+- Configuration: `YULLO_EVENT_LISTING_ENABLED`, `YULLO_EVENT_LISTING_MAX_RESULTS`, `YULLO_EVENT_LISTING_MAX_CANDIDATES` in existing validated inference configuration and `.env.example`.
+- Files: `.env.example`, `app/yullo/config/inference.py`, `app/yullo/services/spaces/hierarchy.py`, `app/yullo/services/entities/payloads.py`, `app/yullo/api/public.py`, `app/orchestra/ai/inference/streaming.py`, `app/orchestra/ai/prompts/yullo/composer.py`.
+- Verification: Python syntax/imports, actual Agno Function construction/schema, preparation hook/configuration and conditional prompt inspection passed; whitespace check passed. No browser, database queries/writes, live model calls or test suite run. Pending approval: existing focused tests, isolated integration for draft/foreign/private/field-policy/date boundaries and real tool selection. Newly saved quick-form dates may remain unavailable until canonical extraction/review produces an approved matching event record.
+
+### Distinct child summary and event-local venue — 2026-11-13
+
+- Child dashboard leads with type/parent identification, description and, for Event children, schedule with AM/PM/local timezone and venue. Unknown details are clearly unconfirmed. Existing management rows remain mounted inside one animated, keyboard-accessible More options disclosure; reduced motion respected. Locations remains visible at the bottom. Main Spaces retain expanded management rows.
+- New event creation uses canonical `create_owner_entity` in its existing transaction to save owner-confirmed, private event-local venue (`event-venue`) and schedule (`space-event`) records. Event links to that location. No company locations copied; no ingestion/extraction/review steps bypassed or disabled. Existing source/outbox still saved/dispatched. Optional schedule remains optional.
+- Owner Identity response adds read-only `event_context`, derived only from the deterministic original saved-form source (current Space ID + stable creation key). Reads through existing blob storage when needed. No arbitrary source mining, no public disclosure, no durable duplicate context field.
+- Existing events can display source-backed venue previews in Locations when no location records exist. Save location opens the existing editor prefilled with that event venue, preserving publication choice and avoiding automatic writes on GET. Existing archived canonical venue suppresses fallback. GPS cannot overwrite the restored form values. Previously stored events are not silently backfilled.
+- Files: `app/yullo/services/spaces/quick_context.py`, `app/yullo/services/persistence/identity.py`, `app/yullo/schemas/forms/identity.py`; `ui/src/yullo/api/forms.ts`, `ui/src/yullo/api/entities.ts`, `ui/src/yullo/screens/SpaceDashboard.tsx`, `ui/src/yullo/forms/Locations.tsx`, `ui/src/yullo/forms/LocationForm.tsx`.
+- Python syntax/import checks, frontend type-check/production build and whitespace checks passed. No browser, test suite, database queries/writes, migrations or live AI calls. Pending approval: existing focused tests and interactive event creation/legacy venue restoration verification.
+
+### Always-visible child management sections — 2026-11-13
+
+- User reversed the More options disclosure decision. Removed its trigger, animation wrapper and state from `SpaceDashboard.tsx`; management sections are always visible again. Event summary and event-local location behavior retained.
+- Frontend type-check and whitespace check passed. No browser/tests run.
+
+### Event listing images, multi-image sources and saved-details parser fix — 2026-11-13
+
+- Approved four-part scope implemented in code: larger child listing rows with cover thumbnail, type/status, local date/AM-PM time/timezone and venue; optional cover image in all quick-create forms; multi-image knowledge uploads; source parser filename correction.
+- Shared `forms/core/ImageField.tsx` replaces Identity's duplicate upload/preview/replace/remove/URL code and is reused by quick-create. Uses existing `Space.logo_url` storage; service validates image formats, base64 and 5 MB limit / HTTP(S) image URLs. Stable create retries detect conflicting cover values. No new image table or storage pipeline.
+- Hierarchy endpoint accepts optional owner-checked `details_for` parent ID. Only that parent's children receive cover/schedule/location fields; graph and breadcrumb requests stay lightweight. Existing canonical entity data wins; original saved-form context provides legacy fallback. Details stay in the owner API, not general model/public responses.
+- Knowledge adds an Images tab and Add images shortcut. Up to 10 PNG/JPG/WebP files use existing single-file source acceptance, storage, jobs, image parser, extraction and review, bounded by the existing 20 MB per-file backend limit. Per-file queued/uploading/submitted/failed states; retry skips successes. No parallel ingestion implementation or new upload endpoint. Single-document flow remains available.
+- Read-only database diagnosis confirmed source error: unsupported parser filename `Saved Space details`. Yullo ingestion now parses using the stored blob suffix; optional `display_name` preserves human-readable indexing/citation labels. Support247 parsing unchanged. Text source UI says Saved text rather than exposing generated blob filenames.
+- Files: `app/orchestra/ai/ingestion/{orchestration,pipeline}.py`, `app/api/v1/yullo_onboarding.py`, `app/yullo/{api/space_forms.py,schemas/spaces.py,schemas/forms/identity.py,services/persistence/identity.py,services/spaces/hierarchy.py}`; `ui/src/yullo/{api/forms.ts,api/spaces.ts,forms/core/ImageField.tsx,forms/identity/IdentityForm.tsx,forms/subspaces/Subspaces.tsx,components/AddKnowledgeModal.tsx,screens/knowledge/AuraKnowledgeScreen.tsx}`.
+- Verification: backend imports (using normal jobs-first import order), frontend type-check/production build, whitespace checks passed. No browser or tests run. Read-only source status query completed; no database changes made.
+- BLOCKED pending explicit approval: automatic approval review rejected retrying the real source because retry updates DB and processes private content with configured providers. No retry executed or workaround attempted. Configured text destinations (configuration only, not availability verified): Modal `millionsilluminate--hierarchy-extractor-api-v2-serve.modal.run`, Fireworks, OpenAI, OpenRouter, Together. Source remains failed until an approved retry. Existing focused tests and live image/AI flow checks remain pending.
+
+### Generic subspace section copy — 2026-11-13
+
+- Child Spaces of any type use Details / Edit details, What Aura knows (page-focused helper text), Links & actions / Manage links, Page design / Customize page, Related spaces, and location guidance for physical/online places.
+- Main Space labels retain their previous wording. Shared BookingLinks and Locations accept a small optional subspace flag; hierarchy supplies the existing parent classification for Related spaces. Copy-only change; no storage, upload, booking or disclosure behavior changed.
+- Files: `SpaceDashboard.tsx`, `BookingLinks.tsx`, `Locations.tsx`, `subspaces/Subspaces.tsx`. Frontend type-check and whitespace check passed. No browser/tests run. Prior live source retry remains blocked pending explicit approval; no retry attempted by this change.
+
+### Type-specific child section wording — 2026-11-13
+
+- Approved change replaces generic child copy with the current type: Event/Post/Service/etc. details, Edit event/post/service, What Aura knows about this type, type-specific links/actions and page design, and type-specific location guidance. Related-spaces helper refers to the current type.
+- Summary retains Part of parent and adds “Changes here apply only to this {type}.” Main Spaces retain original wording.
+- Shared `spaceItemLabel` maps posting to post and Other to item. No custom Other label field currently exists; fallback is honest rather than inventing a type. Existing component flags replaced by a single optional item label for shared copy.
+- Files: `ui/src/yullo/api/spaces.ts`, `screens/SpaceDashboard.tsx`, `forms/BookingLinks.tsx`, `forms/Locations.tsx`, `forms/subspaces/Subspaces.tsx`. Frontend type-check and whitespace check passed. Copy-only; no browser/tests, data changes or source retry.
+
+### Yullo browser-tab branding — 2026-11-13
+
+- Shared HTML defaulted to Support247's title/favicon, and RouteSeo had no Yullo branch. Added yellow Y favicon and early product-aware title/icon selection for yullo.co/subdomains and explicit /yullo routes.
+- RouteSeo preserves Yullo title/icon/theme color on navigation, replaces Support247 social text with Yullo metadata, removes unrelated Support247 structured data/social images, and keeps known private Yullo routes noindex. Support247 icon/metadata restored outside Yullo; existing tenant title handling retained.
+- Files: `ui/public/yullo/favicon.svg`, `ui/index.html`, `ui/src/lib/RouteSeo.tsx`. Type-check, production build and whitespace check passed. No browser or tests run; no deployment performed. Screenshot's CORS/auth failures are separate and unchanged.
+
+### Production Yullo CORS configuration applied — 2026-11-13
+
+- User authorized updating GitHub Secrets and applying existing deployment. Updated repository `akhilsahu/support_triage` secret `CORS_ORIGINS` to allow https://support247.chat, https://www.support247.chat, https://yullo.co and https://www.yullo.co. Other secrets unchanged; no secret values read or logged.
+- Confirmed current remote main equals latest successful deployment commit `1973fa12c1f15746e4b7b6f28b7d626ac65be257`. Reran only Build on VPS and restart from Actions run 43235384324. Deployment completed successfully; no local source changes committed/pushed.
+- Live verification: health endpoint returned HTTP 200 with exact matching Access-Control-Allow-Origin and credentials=true for all four origins. Yullo Home OPTIONS preflight returned 200 permitting https://yullo.co. No browser session or authenticated Home request tested.
+- Remaining distinction: CORS is fixed live; cross-site SameSite cookie behavior is independent. Vercel same-origin proxy/VITE_API_URL configuration and authenticated sign-in verification remain separate follow-up if 401 persists.
+
+### Public landing incorrectly fetching private Home — 2026-11-13
+
+- Root cause of Home 401 on landing: `DynamicHome` in shared `screens/home/ThemeSwitcher.tsx` directly rendered private `YulloHome` for Yullo hostnames without the private route guard. Public `/` therefore fetched `/api/v1/yullo/home` even for visitors.
+- Changed only that product branch to render existing `YulloLanding`. Protected `/yullo/home` route remains unchanged; no auth check removed and no API made public. Support247 homepage variants unchanged.
+- Frontend type-check and whitespace check passed. No browser/tests run. Local code fix only: no commit/push/frontend deployment performed. Existing cross-site session issue remains separate for authenticated dashboard requests.
+
+### Landing fix deployed to production — 2026-11-13
+
+- User explicitly authorized deployment. Published only the two-line `ThemeSwitcher.tsx` fix against current remote main using GitHub Contents API; all unrelated local changes excluded. Commit: `a4960174052d06b1ec39708b4a6963f60801e527`.
+- Vercel production deployment EEWv57ikCmsi7ExFvMkFDW7azkBj succeeded; deployment record 7773071536. Verified https://yullo.co/ HTTP 200, new entry `/assets/index-DGwpufMD.js`, Yullo hostname branch rendering `YulloLanding`, and public landing chunk HTTP 200. No browser/session automation used.
+- Automatic CI & Deploy run 43481743761 completed successfully: backend tests/print hygiene, frontend type-check/lint/tests and VPS build/restart. Live API health returned 200 with https://yullo.co allowed and credentials enabled after deployment.
+- No unrelated local changes committed or pushed. Local workspace remains dirty and was not reset/rebased; remote main now contains the isolated deployment commit. Authenticated cross-site session/proxy behavior remains a separate follow-up.
+
+### Auth button visibility deployed — 2026-11-14
+
+- User approved immediate styling/deployment for /yullo/auth. Root cause: public auth sits outside dashboard token provider, so accent variables were undefined; deployed Google button also had invalid transparent-border utility classes.
+- Added isolated `ui/src/yullo/styles/auth.css`: explicit #FFFC00 and dark ink variables, 1px charcoal borders for auth buttons, visible focus/disabled states. Auth root imports stylesheet and carries `yullo-auth` class. No auth behavior changes or Support247 styling changes.
+- Built/type-checked locally. Released only the stylesheet plus root import/class against remote main, excluding unrelated dirty workspace files. Commit c13f43cde66ebb9c015ca7bd05dc16ab15d074ca; Vercel AX1abhTMkmbCk3bEUVrVYVqLtRze production succeeded.
+- Verified live auth HTTP 200, root class in deployed JS and #FFFC00/charcoal border rules in deployed YulloAuth-DU527pRK.css. No browser/login attempted. Frontend and backend CI checks passed; automatic VPS rebuild was still running at verification time (Actions 43483048084).
+- Confirmed separate existing issue: remote production GoogleAuthButton still simulates a mock sign-in payload. User informed; this release deliberately changes visual styling only. Real Google Identity integration exists among local unrelated/unreleased changes and was not swept into this deployment.
+
+- Follow-up: Actions run 43483048084, including the automatic VPS build/restart, completed successfully. Auth styling release and associated CI/deployment are complete.
+
+### Optional event booking link — 2026-11-14
+
+- Event quick-create now includes an optional Booking or registration link alongside existing service/job link fields, reusing `QuickSpaceContext.destination_url` and its existing source text. Blank remains valid; event input requests HTTPS, with authoritative server validation through the action schema.
+- `save_event_records` creates a canonical owner-confirmed/private booking action (`event-booking`) through `create_owner_entity`, inside the same event creation transaction. It appears in the existing links manager; no duplicate URL field in the event entity, new schema, table or endpoint.
+- Files: `ui/src/yullo/forms/subspaces/Subspaces.tsx`, `app/yullo/services/spaces/quick_context.py`. Frontend type-check, backend syntax/import and whitespace checks passed. No tests/browser/data writes/deployment run; optional-link flow remains live-unverified.
+
+### Local Celery startup diagnosis — 2026-11-14
+
+- Inspected local worker logs: exits with ModuleNotFoundError for aiofiles. Dependency already exists in requirements.txt/pyproject.toml; running Docker image needs rebuilding, rather than another dependency declaration.
+- `docker-compose.yml`: removed obsolete version key and replaced inherited API HTTP healthcheck on celery-worker with a targeted Celery ping using escaped container HOSTNAME. Compose config/whitespace validation passed.
+- No containers stopped/rebuilt/restarted and no data jobs triggered. For debugger-based API development, start only postgres/redis/adminer/celery-worker with --build --wait; leave the separate Python API on 8001. Actual rebuilt-worker startup remains unverified.
+
+### Local Celery worker repaired and verified — 2026-11-14
+
+- User explicitly requested runtime fix. Rebuilt/started only postgres, redis, adminer and celery-worker. First rebuild fixed missing aiofiles but revealed Kombu's newer transport requiring redis-py >=6.1 while project pins redis-py 5.0.1.
+- Constrained Celery >=5.3.6,<5.4 and Kombu >=5.3.4,<5.4 in requirements.txt and pyproject.toml, preserving Redis client 5.0.1 and existing queue contracts. Rebuilt worker again; Compose --wait succeeded.
+- Verified actual installed aiofiles 25.1.0, Celery 5.3.6, Kombu 5.3.7, redis-py 5.0.1. Worker status running/healthy using Celery ping. Postgres/Redis/Adminer healthy. Python debugger still listens on 8001.
+- Files: docker-compose.yml (previous healthcheck/version fix), requirements.txt, pyproject.toml. Whitespace and Compose validation passed; no new tests or synthetic ingestion jobs added. Worker resumes normal existing queue processing.
+- Existing unused multiagent-api container remains unhealthy and untouched; targeted startup command excludes it. No production changes/deployment or database deletion performed.
+
+### Creation form icon tooltips — 2026-11-14
+
+- Replaced native-title-only assistance hints with Radix tooltips: Generate description with AI, Copy parent Space description, Undo last fill, creation close, cover removal, time picker/clear and calendar month navigation. Shared form controls benefit across event/post/service/other creation.
+- Added small reusable `forms/core/IconTooltip.tsx`, using existing Radix library, portal z-index above drawers and existing theme tokens. Disabled assistance controls can expose a reason through a focusable wrapper; native button disabled state preserved. Tooltips appear on hover/focus without changing click actions.
+- Files: `forms/core/IconTooltip.tsx`, `forms/core/DateTimeField.tsx`, `forms/core/ImageField.tsx`, `forms/subspaces/Subspaces.tsx`. Frontend type-check and whitespace checks passed. No browser/tests/deployment run; interactive tooltip integration remains unverified.
+
+### Auth alignment refinement — 2026-11-14
+
+- Local screenshot showed 360px Google button alongside 420px fields and a second vertical divider caused by nested auth layout. Auth form now uses one centered responsive max-400px column on desktop/mobile; main owns the single desktop divider, and AuthPanel no longer adds another viewport-height/border layer.
+- Google Identity render width tracks its actual container through ResizeObserver, capped at Google's documented 400px maximum. Button re-renders only on a width change; observer disconnects on unmount. Existing provider initialization/token callback unchanged; no iframe CSS or fake auth substitution.
+- Files: `components/auth/GoogleAuthButton.tsx`, `components/auth/AuthPanel.tsx`, `screens/YulloAuth.tsx`. Frontend type-check and whitespace checks passed. No browser/tests/deployment run; visual responsive verification pending.
+
+### Write or improve overview with AI — 2026-11-14
+
+- Overview helper renamed Write or improve with AI. Dedicated static accent/category tint and small glow distinguish Bot icon without sparkles or looping motion. Persistent explanatory tooltip is shown per newly opened form until the AI action is used; Escape dismisses the hint without closing the creation form. Other icon tooltips retain normal hover/focus behavior.
+- Request reuses existing description generation endpoint/provider chain, with current overview, name/type, schedule, venue/format/coordinates, online and booking links. Existing context already included these fields; no second generation pipeline added. Added optional validated IANA time_zone to generation request only, converting starts_at server-side to the supplied local offset for readable AM/PM copy. Saved schedule/storage unchanged.
+- Prompt in existing Yullo prompt directory explicitly rewrites rough notes or existing copy for grammar/clarity and creates fresh copy when blank, combining supplied context and retaining facts without inventing details. Existing 280-character contract, suggestion review, explicit Use description and Undo behavior retained.
+- Files: `forms/core/IconTooltip.tsx`, `forms/subspaces/Subspaces.tsx`, `styles/tokens.css`, `app/yullo/schemas/spaces.py`, `app/yullo/services/spaces/quick_context.py`, `app/orchestra/ai/prompts/yullo/quick_description.py`.
+- Frontend type-check, backend schema/service imports and whitespace checks passed. No tests/browser/provider calls/data writes/deployment run. Live AI output and visual hint placement remain unverified.
+
+### Stronger AI helper emphasis — 2026-11-14
+
+- User screenshot showed previous yellow halo was too faint. Replaced it with a visible 2px blue/violet/teal/accent border, distinct static colored shadows, neutral theme surface and larger 18px Bot icon in a minimum 36px desktop target. Mobile retains larger existing target. No animated/looping glow.
+- Increased tooltip separation to 14px and prevented incidental hint text selection. Tooltip/action behavior unchanged.
+- Files: `styles/tokens.css`, `forms/core/IconTooltip.tsx`, `forms/subspaces/Subspaces.tsx`. Frontend type-check and whitespace check passed; no browser/tests/deployment run. Rendered appearance remains unverified.
+
+### Compact accent-tinted tooltips — 2026-11-14
+
+- Shared icon tooltip now uses a thin charcoal border (theme-visible neutral in dark modes), selected-accent tint over theme surface, smaller 224px max width/padding and 11px/16px type. AI hint description shortened without changing input context or behavior.
+- Files: `forms/core/IconTooltip.tsx`, `forms/subspaces/Subspaces.tsx`, `styles/tokens.css`. Type-check and whitespace check passed. No browser/tests/deployment run; rendered appearance unverified.
+
+### AI hint follows overview content — 2026-11-14
+
+- Removed always-open AI tooltip behavior and its per-form hint state. AI glow now appears only when overview contains non-whitespace text; clearing the overview removes it. Tooltip is available on hover/focus only when that text exists. Empty-overview generation remains available using the existing name/context validation.
+- Simplified shared IconTooltip by removing unused persistent-hint controls and adding a small enabled guard. Other icon tooltips retain their existing hover/focus behavior.
+- Files: `subspaces/Subspaces.tsx`, `core/IconTooltip.tsx`. Type-check and whitespace check passed. No browser/tests/deployment run.
+
+### AI tooltip on hover and first overview entry — 2026-11-14
+
+- Clarified behavior: AI tooltip always available on hover/focus, including empty overview. First non-whitespace typed/pasted overview text in each newly opened form also shows the hint automatically for 3 seconds. It is not retriggered on every keystroke. Clearing text, dismissal or clicking AI closes the automatic hint; timers clean up.
+- Glow remains conditional on nonempty overview. Shared tooltip now supports the small timed external hint instead of the unused enabled guard. Other icon behavior unchanged.
+- Files: `forms/core/IconTooltip.tsx`, `forms/subspaces/Subspaces.tsx`. Frontend type-check and whitespace check passed. No browser/tests/deployment run.
+
+### Enriched subspace descriptions — 2026-11-14
+
+- User approved 200–300-word descriptions rather than 280-character summaries. Existing canonical description JSON field now supports up to 4,000 characters for attached subspaces; main Space profile remains 280. No parallel long-description store, table or migration.
+- Introduced bounded description constants and authoritative scope-aware validation in create/update services (including non-UI entry points). Create/update request envelopes and owner response accept child-length content; main profile base schema remains unchanged. Owner response includes canonical parent_space_id so the editor selects the correct limit.
+- Child editor uses an extended frontend validation schema and larger text area/counter; main editor uses original 280-character schema. Quick-create/helper placeholder filling and AI response validation now share the 4,000-character child bound. Long suggestions use a bounded scrollable preview.
+- Dedicated quick-description prompt requests approximately 200–300 words with engaging narrative, purposeful details and invitation, plus supplied schedule/location. Allows creative language while forbidding fabricated concrete facts/guarantees. Sparse input may produce a shorter useful draft rather than filler. Main public-profile prompt remains unchanged.
+- Subspace editor AI assistance reuses that same endpoint/prompt rather than the main short-profile generator; generated text is a reviewable suggestion, not an automatic replacement. Current form description/context and local timezone retained. Main AI/category/website workflows unchanged.
+- Aura profile schema/context composition accepts full bounded child descriptions, retaining main truncation/limit; child retrieval does not silently cut the accepted description to 280 characters. Existing values are not rewritten.
+- Files: `app/yullo/schemas/{spaces.py,forms/identity.py,inference.py}`, `app/yullo/services/{persistence/identity.py,spaces/quick_context.py}`, `app/orchestra/ai/prompts/yullo/{quick_description.py,composer.py}`; `ui/src/yullo/api/{spaces.ts,forms.ts}`, `forms/subspaces/Subspaces.tsx`, `forms/identity/IdentityForm.tsx`, `screens/identity/IdentityFormScreen.tsx`.
+- Frontend production build/type-check, backend API/persistence/prompt imports and whitespace checks passed. No tests, live model calls, browser, database writes or deployment run. Live generation, boundary behavior and save/edit round trip remain unverified pending focused checks approval.
+
+### Publication-readiness error diagnosis and feedback — 2026-11-14
+
+- User reported repeated toggle-live 503s for local Space de3f17eb-52dc-4a9c-a920-6b907f23cd41. Read-only checks found valid setup, one ready source with published index, readiness=True and current status still private. Historical failure likely occurred during processing, but its exact old status was not captured. No publication/data write performed.
+- Readiness now accepts ready_to_review only with a published/indexed source, consistent with current ingestion and canonical review boundaries; review candidates are not auto-approved. Existing readiness states and setup/ownership guards retained. Source query explicitly constrains same-Space rows.
+- Not-ready returns actionable HTTP 409 instead of misleading infrastructure 503 and emits a safe status log. Dashboard displays publishing failures inline, scoped to the current Space; pending click guard remains.
+- Files: `app/yullo/services/spaces/publication.py`, `ui/src/yullo/screens/SpaceDashboard.tsx`. Backend import, frontend type-check and whitespace checks passed. Existing publication tests not run pending approval; no new tests, browser, database writes or deployment. Retry Make live explicitly once checks pass; no readiness bypass implemented.
+
+- Follow-up read-only check: reported Space de3f17eb-52dc-4a9c-a920-6b907f23cd41 now has Space.status=live, lifecycle_status=live and readiness=True with one ready source. User's subsequent publication succeeded; assistant performed no publish/write.
+- Two older sibling subspaces ffd50a03-4173-44ce-9392-169e40005721 and 3cdf9617-9bc4-4add-8b46-c59ffb949847 remain draft/not-ready with preview_failed source. Prior live source retry approval block remains; no recovery job triggered.
+
+### Repeat publication conflict — 2026-11-14
+
+- Follow-up 500 diagnosis: read-only inspection found the reported Space back in draft, context_version=published_version=6, and an existing publication event for that exact version. Identity response construction succeeds. The previous live snapshot did not establish that subsequent publication attempts succeeded.
+- Publishing again inserted the same unique (space_id, dedupe_key), causing a database conflict. Reused the existing PostgreSQL conflict-safe insert pattern, ignoring only that precise duplicate event. Other database failures still propagate; readiness, ownership and transaction behavior retained.
+- File: `app/yullo/services/spaces/publication.py`. Backend import and diff whitespace checks passed. No user data changed, browser used, tests run or deployment performed. End-to-end retry remains unverified; existing publication tests await user approval.
+
+### Space dashboard cover — 2026-11-14
+
+- Approved: display the existing uploaded image above the Space title. Reused identity.logo_url; no extra storage, upload field or backend change.
+- Responsive bounded cover (160px mobile / 192px larger screens) uses object-contain to preserve the whole image and its proportions for portrait, square and landscape uploads. Theme surface fills unused space; existing theme border and rounded corners retained. Missing or failed images leave no cover box.
+- File: `ui/src/yullo/screens/SpaceDashboard.tsx`. TypeScript check and diff whitespace check passed. No browser, tests, data writes or deployment; rendered appearance remains unverified.
+
+### Image-inspired subspace appearance — approved 2026-11-14
+
+Goal: responsive image/title header without letterboxed whitespace; one saved appearance for dashboard accents, Studio preview and public chatbot.
+
+- [x] Replace wide dashboard cover with intrinsic-ratio bounded artwork beside title on desktop / above on mobile. Keep whole image, hide failed images.
+- [x] Extend existing presentation JSON and frontend schema with optional validated hex accent; derive readable text/button colors in existing themeTokens. No new table or palette store. Dashboard reads saved presentation through identity, retains interface light/dark setting.
+- [x] Extend existing appearance assistant and dedicated prompt with same-Space type/description and bounded image context from uploaded cover or selected Studio asset. Reuse configured provider fallback. Suggestions remain previewable and explicitly saved; manual preset/custom-color controls remain available.
+- [x] Reuse uploaded cover as hero fallback in existing Studio/public renderer; fit images without cropping, without duplicating the hero renderer.
+- [x] Verify frontend type/build and backend imports; inspect diff. Ask before tests/live model calls. Record verification and remaining limits here. No deployment authorized.
+
+Implementation: optional `accentColor` remains in existing appearance JSON (no migration); presets and custom accents share one contrast resolver. Resetting a preset clears the custom override. Yullo preset/swatch uses #FFFC00. Identity response reuses the canonical appearance parser and Studio Save invalidates its cache. Header accents apply to subspaces only and do not replace interface light/dark colors. Foreground hero fallback uses the existing cover for side-image/image-background layouts; centered main Space identity stays unchanged. Chat send control uses accent contrast rather than link ink.
+
+Existing appearance recommendation/command endpoints now supply type/name/description plus a maximum 768px raster thumbnail from selected same-Space active Studio asset or inline uploaded cover. Uses existing byte/pixel limits/storage/provider fallback, validates returned hero asset IDs, and keeps prompts in the existing prompt directory. No arbitrary remote URL fetch; URL-only or unsupported images fall back to text context. Configurable via `YULLO_APPEARANCE_ASSISTANT_IMAGE_ENABLED`; no image or content logging. No new endpoint, service, upload field or image copy persisted.
+
+Files: `schemas/appearance.py`, `schemas/forms/identity.py`, `services/persistence/identity.py`, `config/appearance.py`, existing `appearance_preview/generate_appearance_suggestions.py` and `prompts/yullo/appearance.py`; frontend `api/forms.ts`, `SpaceDashboard.tsx`, existing appearance schema/themeTokens/AccentPicker/AppearanceInspector/AuraDesigner/SuggestionChips/AppearanceScreen/styles, public experience/AuraIntro/AuraComposer; `.env.example`, `DESIGN.md`.
+
+Verification: frontend production build and subsequent TypeScript check passed; backend identity/appearance/public API imports and diff whitespace check passed. No tests, browser, live model request, saved appearance changes or deployment. Pending with approval: existing focused tests, live multimodal suggestion and visual/save round trip. To apply an image-derived look: Studio → Recommend an appearance (or Match my cover and content) → review preview → Save.
+
+### Automatic artwork tint correction — 2026-11-14
+
+- Follow-up approved gradient: header now uses a clearer 125° three-stop fade (28% artwork color → 12% → theme surface). Reuses the same derived/saved accent and surface tokens; no new palette, animation or setting. Whitespace check passed; rendered result not browser-verified.
+
+- Screenshot showed global yellow fallback clashing with the red poster before Studio customization. Replaced that fallback with one shared local image-color hook (32×32 sample, saturated hue grouping, ignores transparent/neutral pixels). No model call or Save required for this default visual adaptation. Stale image samples are ignored on navigation; unreadable/CORS-restricted/grayscale images fall back to neutral instead of yellow.
+- Dashboard subspace header uses a restrained image-colored gradient and border; removed description card's bright top stripe. Public link stays on one truncated line with full native title. Actual image proportions and interface light/dark mode retained.
+- Shared hook also feeds Studio's existing public renderer and public chatbot for uncustomized subspaces. A derived isSubspace flag is projected by existing appearance/public responses; no new database field. Main Spaces keep their defaults. Saved owner/Aura choices and explicit custom colors override extraction; manual inspector changes mark owner provenance immediately so preview honors their choice.
+- Files: new `appearance/hooks/useArtworkAccent.ts`; existing dashboard/public experience, appearance themeTokens/AppearanceScreen/PublicLinkPreview/API types, public Space type; backend appearance summary/public projection. Documentation updated. Frontend production build, backend appearance/public imports and whitespace check passed. No tests, browser, model calls, database writes or deployment; rendered red tint and cross-origin fallback remain unverified pending approved checks.
+
+### Optional pricing and quick detail templates — 2026-11-14
+
+- User authorized implementation: pricing initially unchecked; enabling shows fixed amount/currency, zero displays Free. No range/subscription/payment collection in this scope. Optional quick templates can be clicked or dragged into a detail area, edited and removed; custom labels/values supported, max eight. Keyboard/touch use the same add buttons, without a drag library.
+- One shared DetailFields editor in quick-create and child Identity editing; one SubspaceInfo renderer in dashboard and existing public IdentityBlock, automatically shared by Studio preview. The editor uses existing accent/surface tokens. Native input validation plus shared frontend schema and authoritative backend models bound money/labels/values/unique IDs. Removing price clears amount/currency together.
+- Canonical owner-authored page fields live in existing YulloConfig.settings.identity.subspace_fields, saved through current create/update/revision/owner transactions; main Space writes reject these fields. QuickSpaceContext carries creation/AI inputs but does not create a second persisted copy. Existing Offering amount/currency validation extracted into reusable PriceFields with unchanged validation behavior; no new table/migration or parallel pricing entity.
+- Existing public Space/appearance summaries project this declared public profile content only for child Spaces; Aura profile reads the same current canonical values under existing Space live/authorization gates. No cross-Space context, automatic source approval or ingestion changes. Editing removes stale details from these consumers immediately through existing identity cache/revision flow.
+- Files: existing entity payload/schema/identity services, public projection, appearance summary, Aura profile/composer; frontend Space/form/appearance/public types, create and Identity forms, dashboard/public IdentityBlock; new `forms/subspaces/{DetailFields,SubspaceInfo}.tsx`. No root artifacts or dependencies added.
+- Verification: frontend TypeScript/production build, backend identity/appearance/public imports and whitespace check passed. No tests, browser, model requests, database writes or deployment. Pending approval: focused existing tests and create/edit/remove/public/Aura round trip. Broader subspace landing-page redesign remains separate from this pricing/detail-fields change.
+
+### Content-first subspace public layout — approved 2026-11-14
+
+- [x] Reuse one static-page detail projection for public endpoint and owner Studio summary; public/direct approved entities only, including booking links, event schedule and venue. Do not expose private setup fields in preview.
+- [x] Add one subspace identity renderer inside existing AuraIntro identity section, preserving other sections, editing, chat/history and main Space layout. Type/title/short summary; complete artwork beside compact date/location/price/action panel; About read-more; existing custom details and type-relevant Aura prompts.
+- [x] Remove poster-as-background treatment for subspaces, retain selected image-derived accent/background/theme controls through a restrained gradient. One primary booking/action; configured alternatives stay accessible. Mobile stacks content.
+- [x] Verify TypeScript/build/backend imports and diff; ask before tests. No migrations, live model requests, user-data writes or deployment. Update completion evidence below.
+
+Completed: `SubspaceLanding` replaces only the existing AuraIntro identity section for child Spaces. Type/title/summary, intrinsic-ratio artwork, compact date/time/location and canonical pricing/custom-detail panel, one primary configured action, secondary action links, and About read-more. Missing data produces no example values or empty cards. Existing AuraIntro sections/editor controls, prompts/composer, chat history, streaming and main Space rendering remain in place. Owner-configured prompts are carried into Studio; type-specific prompts fill only missing defaults.
+
+Backend: moved the existing booking filter into `entities/presentation.py` and reused it from public API and Studio summary. Shared page projection applies approved public/direct entity and field rules, excluding private/Aura-only/on-request fields. Existing get_public_entities supplies Studio data; public endpoint reuses its already-loaded entities. Event schedule and referenced venue come only from eligible records. Subspaces may use configured booking/enquiry/external actions; main Space booking behavior retained. Existing `_public_booking_links` import alias remains compatible. No changes to entity visibility or saved user records.
+
+Appearance: uploaded or selected artwork remains in the hero for subspaces; image-color gradients provide atmosphere without a full-page poster. Existing image background setting becomes Artwork tint in subspace Studio; light/dark, accents, typography and radii still use the shared resolver. Main Space backdrop behavior retained. Existing image sampler is reused for ambient artwork color while explicit saved action accents retain priority. Dedicated AI prompt now guides recommendations toward structured subspace heroes.
+
+Files: public API, appearance summary/schema/service and existing appearance AI context/prompt; new `entities/presentation.py` and public `SubspaceLanding.tsx`; existing PublicSpaceExperience/AuraIntro, Studio preview/inspector/background picker, appearance/PublicSpace API types, DESIGN.md.
+
+Verification: frontend production build plus subsequent TypeScript check; backend public/appearance API imports and whitespace check passed. No browser, tests, live model requests, database writes, migrations or deployment. Visual/mobile behavior and authenticated public/Studio round trip remain unverified. Focused existing tests await user approval.
+
+### Appearance header nested public link — 2026-11-14
+
+- Fixed AppearanceHeader's slug-only link to reuse existing useSpaceHierarchy/spaceBranch, matching Space dashboard and Identity editing. Both displayed URL and destination include all ancestor handles. Main Spaces retain their top-level path; child links wait for hierarchy instead of briefly showing a flat URL.
+- File: `ui/src/yullo/screens/appearance/components/AppearanceHeader.tsx`. TypeScript and whitespace checks passed. No browser/tests/data writes/deployment; click-through remains unverified.
+
+### Editable subspace presentation and shared actions — approved 2026-11-14
+
+- [x] Make existing hero layout, content alignment and density control the shared subspace renderer; AI recommends the approved split default and users can override via current history/Save flow.
+- [x] Reuse existing image picker/upload/storage for cover/alternate image selection; add optional hero visibility to existing JSON so None can actually hide the fallback cover. No new image store or table.
+- [x] Fix and adopt existing YulloButton for Appearance action buttons and common form actions. Central token-based primary/outline/ghost/danger styles, #FFFC00 default primary and defined charcoal edge; replace competing local action paint rules. Preserve specialized radio/image selection controls and public page accent.
+- [x] Check frontend build/type-check, backend imports and diff; no tests without approval, no database writes/model requests/deployment. Record remaining gaps.
+
+Completed: default child presentation now selects the existing image_left/left alignment while main defaults stay unchanged. SubspaceLanding consumes hero layout (above/left/right), alignment and density rather than hardcoding them. Existing JSON accepts optional hero.visible; legacy configs remain supported. Uploaded-cover selection, hide/None, replace/select/upload and picker removal all update that same hero config with history/Save. Replacing an image preserves the chosen child layout. No duplicate asset store or migration. AI prompt/allowed values start from the standard structured preset and preserve unrequested visibility/layout choices.
+
+Shared actions: adopted existing YulloButton instead of adding a new primitive. Styling now lives in tokens.css under data-variant/data-size; primary defaults to vivid #FFFC00 with charcoal edges, and shared outline/focus/loading/disabled/reduced-motion behavior. Converted Appearance toolbar, recommendation/command/chips, rebuild, image-picker footer, layout/section confirmations, inspector row actions and add-image action; common FormActions now reuses it across forms. Removed conflicting local Save/primary/cancel paint rules and unused SVG spinner styling. Specialized image/radio controls and public page booking links retain their semantics/presentation accent. Other pre-existing Yullo native action buttons have not been exhaustively migrated; use this component for future edits.
+
+Files: existing appearance schema/defaults/public parser, appearance recommendation prompt/allowed values; hero frontend schema, SubspaceLanding/AuraIntro/PublicSpaceExperience, existing inspector/assets/picker wiring; YulloButton, tokens.css, FormActions and Appearance action consumers/CSS; DESIGN.md. No new dependencies or root artifacts.
+
+Verification: TypeScript/production build, backend public/appearance API imports and diff whitespace checks passed. No tests, browser, live model calls, database writes or deployment. Interactive undo/redo/save, image hide/replace round trip and visual light/dark/accent QA remain unverified; existing focused tests await approval.
+
+### Booking/map completion, readability and dynamic rebuild — 2026-11-14
+
+- Existing quick-created event booking/schedule/venue records are private by default; no stored visibility changed. Reused BookingLinks/BookingForm inside Studio inspector with a compact layout, existing visitor-enabled toggle and shared YulloButton actions. Booking saves invalidate the appearance summary so the preview can reflect newly public links. No duplicated booking service or inferred private links.
+- Public/direct venue projection now supplies permitted coordinates and remote flag. Subspace details reuse the thin LocationMapPreview for physical locations, with existing lazy Google Maps loader and directions fallback when unavailable. Map token fallbacks adapt to presentation/interface themes. Online locations do not show map placeholders.
+- Improved top alignment and image/details proportions; descriptions up to 1,200 characters remain expanded. Body text uses primary text tokens, custom-detail labels no longer use opacity, and supporting light/dark tokens have stronger contrast. Declared supporting-text pairs measured 7.17:1 (light canvas) and 11.11:1 (dark surface); actual rendered gradient/map pairs not browser-verified.
+- Initial setup keeps the standard preset. Explicit AI Rebuild receives current unsaved config via existing endpoint, uses distinct rebuild prompt instructions to reconsider composition, and returns a reviewable candidate. Unchanged appearance candidates are rejected; provider failure leaves current layout intact with an actionable error instead of silently presenting a fixed fallback as a rebuild. Initial fallback remains available. Existing validation, same-Space asset selection, provider fallback and Save/history flows preserved. Stale cross-Space rebuild responses are ignored.
+- Files: existing page projection/DTO/types, SubspaceLanding/SubspaceInfo/LocationMapPreview/themeTokens; BookingLinks/BookingForm/inspector; rebuild request/API/client/AppearanceScreen and existing appearance suggestion service/prompt. Removed an unused duplicate context read. No migrations or new dependencies.
+- Verification: frontend TypeScript and production build, backend public/appearance imports and diff whitespace checks passed. No tests, browser, live model requests, user-data writes or deployment. Pending approval: existing focused tests and live AI/maps/booking-publication visual round trip.
+
+### Production Google sign-in diagnosis and auth-only release preparation — 2026-11-14
+
+- Read-only deployed bundle/OpenAPI inspection confirmed production main c13f43cde66ebb9c015ca7bd05dc16ab15d074ca still ships a demo Google handler submitting hardcoded profile fields (not a Google token). Production provider endpoint returns 404. Current verified Google SDK/id_token flow exists only locally. No sign-in or account-creation request was made during diagnosis.
+- Production frontend points at api.support247.chat while Yullo uses host-only SameSite=Lax cookies; this cross-site configuration can cause session loss after navigation. Existing Vercel /api proxy already targets that backend. Yullo production JSON transport now uses this same-origin proxy, and local Aura transport shares that origin; Support247 transport/environment remains unchanged. Dev overrides retained.
+- Redirect now uses a cleaned-up mount timer independent of animation completion. Google success confirms /auth/me before updating UI/navigating and shows a readable cookie/session failure for 401. Backend verifies real Google ID tokens using existing provider/client utility; no demo fallback. This switches production's old yellow demo control to the existing real Google-rendered control when released; other auth styling stays unchanged.
+- GitHub secret names show no GOOGLE_CLIENT_ID/YULLO_GOOGLE_CLIENT_ID configured; local Settings has an existing client. Prepared optional workflow passthrough for those secret names without writing secret values. Google Web client must permit https://yullo.co (and www if used); console configuration not verified.
+- Prepared a nine-file auth-only patch against production main under `/tmp/yullo-google-auth-release/auth-only.patch`, with base SHA and changed-file manifest beside it. This excludes unrelated local subspace/AI changes. Patch dry-run against fetched production files and targeted backend compilation passed; google-auth already present in production requirements. Current frontend production build, backend auth imports and whitespace checks passed.
+- No tests, browser, real Google login, secret writes, commit, push or deployment performed. Await explicit approval to configure the existing Google client in GitHub Secrets and deploy the auth-only change. Production remains unchanged; OAuth-origin eligibility and end-to-end sign-in must be verified after deployment.
+
+- Booking visibility follow-up: read-only local inspection of all-out-on-mic-8c47881b found live Space, one active owner_confirmed booking with URL but is_public=False, and one private extracted candidate. Public projection returns zero booking buttons. Owner must enable the confirmed booking for visitors using the existing editor; no visibility/data write performed. Publishing the Space does not automatically publish private entities.
+
+### Owner Studio preview of private bookings — 2026-11-14
+
+- User clarified that a saved booking must appear in owner Studio even when private. This supersedes the earlier policy of making owner preview strictly identical to public booking visibility.
+- Added previewBookingLinks only to authenticated/owner-checked AppearanceSpaceSummary. Reads same-Space active, approved owner/source-authoritative actions; unreviewed extracted candidates remain excluded. HTTPS/label normalization is shared with the unchanged public projection rather than duplicated.
+- Existing SectionEditorContext carries owner-only metadata into SubspaceLanding. Studio merges saved links with public actions, deduplicates IDs, and marks private links as Studio preview only with instructions to enable visitor visibility. Public Space type/API/model context does not receive this metadata; public page still renders only public/direct links. No visibility writes or automatic publication.
+- Files: existing entity presentation helper, appearance summary/schema/service, frontend appearance API type/SectionEditorContext/AppearanceScreen/SubspaceLanding and DESIGN.md. No new table/endpoint/provider or migration.
+- Verification: frontend TypeScript/production build, backend public/appearance imports and whitespace checks passed. No tests, browser, model calls, database writes or deployment. Owner preview/public isolation and rendered label remain unverified in a browser; existing focused tests await approval.
+
+### Compact subspace booking action — 2026-11-15
+
+- Replaced the full-width booking strip with an intrinsic-width, 44px minimum-height action, compact radius/padding and stable icon. Grouped it at the bottom of the details panel with a separator only when metadata exists. Shortened the owner-only visibility note; configured label, URL, theme accent and visibility boundaries unchanged.
+- File: `ui/src/yullo/screens/public/components/SubspaceLanding.tsx`, shared by Studio/public renderer. TypeScript and whitespace checks passed. No tests, browser or deployment; rendered result remains unverified.
+
+### Full code push authorization and validation — 2026-11-15
+
+- User explicitly requested pushing all pending code. Scope includes the accumulated tracked/untracked feature code, migrations, configuration and documentation. Main push triggers existing GitHub CI/VPS deployment and git-linked Vercel deployment; no manual production data/secret changes authorized or performed.
+- Pre-push checks: frontend production build passed; full app.main import passed (51 routes); Alembic has a single head e2f3a4b5c6d7; diff whitespace passed. New six-migration chain remains intact. Existing credential-shaped value in tracked .env.example was cleared without modifying runtime .env. Ignored private environment files and temporary auth-release artifacts remain excluded.
+- Fetched remote main: two earlier production commits (landing routing and yellow auth styling) must be preserved while integrating all local changes. No force push. Deployment checks, migration application and live behavior must be assessed separately from successful push.
+- Production Google client configuration remains pending: GOOGLE_CLIENT_ID/YULLO_GOOGLE_CLIENT_ID are absent in GitHub Secrets. The new real sign-in flow will show an unavailable/provider fallback until configured. User's push request does not itself supply secret values or verify Google Cloud allowed origins.

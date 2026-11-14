@@ -142,21 +142,21 @@ from app.models.user import User
 
 from app.yullo.services.auth.session_service import resolve_yullo_session, validate_yullo_csrf
 
-async def current_user(
+async def optional_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
-):
+) -> User | None:
     """
     Dependency that extracts the token from the strict Yullo HTTP-only session cookie.
     Validates it against the `YulloUserSession` table and ensures CSRF match on mutating requests.
     """
     result = await resolve_yullo_session(db, request)
+    expected = request.headers.get('X-Yullo-Chat-Account')
+    actual = str(result[0].id) if result else 'guest'
+    if expected and expected != actual:
+        raise HTTPException(status_code=401, detail='Your account changed. Please try again.')
     if not result:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Cookie"},
-        )
+        return None
         
     user, session = result
     
@@ -168,4 +168,11 @@ async def current_user(
                 detail="Invalid CSRF token",
             )
             
+    return user
+
+
+async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
+    user = await optional_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail='Not authenticated', headers={'WWW-Authenticate': 'Cookie'})
     return user

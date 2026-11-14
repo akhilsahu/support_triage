@@ -23,12 +23,17 @@ export const AppearancePreviewItemSchema = z
     source: PreviewContentSourceSchema,
     sourceEntityId: z.string().nullable().optional(),
     sourceFactIds: z.array(z.string().uuid()).max(8).optional(),
+    sourceChunks: z.array(z.object({
+      sourceItemId: z.string().uuid(),
+      sourceVersion: z.number().int().positive(),
+      chunkId: z.string().min(1).max(768),
+    }).strict()).max(8).optional(),
     imageUrl: z.string().nullable().optional(),
     assetId: z.string().nullable().optional(),
   })
   .strict()
-  .refine((data) => !(data.source === 'grounded' && !data.sourceEntityId && !data.sourceFactIds?.length), {
-    message: 'Grounded items require entity or fact references',
+  .refine((data) => !(data.source === 'grounded' && !data.sourceEntityId && !data.sourceFactIds?.length && !data.sourceChunks?.length), {
+    message: 'Grounded items require entity, fact or chunk references',
     path: ['sourceEntityId'],
   });
 

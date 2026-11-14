@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import asyncio
+import base64
+import io
 from collections import Counter
 from uuid import UUID
 
@@ -16,6 +19,9 @@ from app.models.yullo_space import YulloSpace
 from app.models.yullo_space_entity import YulloSpaceEntity
 from app.yullo.config.appearance import get_appearance_runtime_config
 from app.yullo.models.appearance_asset import YulloAppearanceAsset
+from PIL import Image, ImageOps
+from app.orchestra.ai.ingestion.storage import materialize
+from app.yullo.schemas.forms.identity import validate_logo_url
 from app.yullo.schemas.appearance import (
     AppearanceCandidateResponse,
     AppearanceCommandRequest,
@@ -29,7 +35,8 @@ from app.orchestra.ai.prompts.yullo.appearance import ASSISTANT_SYSTEM_PROMPT as
 
 
 async def _appearance_context(
-    db: AsyncSession, *, user_id: UUID, space_id: UUID
+    db: AsyncSession, *, user_id: UUID, space_id: UUID,
+    include_image: bool = False, hero_asset_id: UUID | None = None,
 ) -> dict:
     row = (
         await db.execute(
@@ -64,13 +71,21 @@ async def _appearance_context(
             )
         )
     ).all()
+    reference_image = None
+    if include_image and get_appearance_runtime_config().assistant_image_enabled:
+        selected_asset = next((asset for asset in assets if asset.id == hero_asset_id), None)
+        reference_image = await _reference_image(space.logo_url, selected_asset)
     return {
+        "referenceImage": reference_image,
         "space": {
             "name": space.display_name,
             "purpose": yullo_space.purpose or space.purpose or "business",
             "category": identity.get("category") or identity.get("subtype"),
-            "description": identity.get("description"),
+            "description": identity.get("description") or space.description,
             "hasLogo": bool(space.logo_url),
+            "type": yullo_space.space_type,
+            "isSubspace": yullo_space.parent_space_id is not None,
+            "hasReferenceImage": bool(reference_image),
         },
         "reviewedEntityCounts": dict(Counter(entity_types)),
         "eligibleAssets": [
@@ -85,13 +100,48 @@ async def _appearance_context(
     }
 
 
+async def _reference_image(cover: str | None, asset: YulloAppearanceAsset | None) -> str | None:
+    """Bounded thumbnail of the authorized cover/asset; never fetch arbitrary URLs."""
+    runtime = get_appearance_runtime_config()
+
+    def thumbnail(body: bytes) -> str:
+        if len(body) > runtime.max_asset_bytes:
+            raise ValueError("Image exceeds appearance limit")
+        with Image.open(io.BytesIO(body)) as image:
+            if image.width * image.height > runtime.max_asset_pixels:
+                raise ValueError("Image exceeds pixel limit")
+            image = ImageOps.exif_transpose(image)
+            image.thumbnail((768, 768))
+            rgba = image.convert("RGBA")
+            flattened = Image.new("RGB", rgba.size, "white")
+            flattened.paste(rgba, mask=rgba.getchannel("A"))
+            output = io.BytesIO()
+            flattened.save(output, "JPEG", quality=80)
+        return "data:image/jpeg;base64," + base64.b64encode(output.getvalue()).decode("ascii")
+
+    try:
+        if asset:
+            async with materialize(asset.storage_key) as path:
+                if path.stat().st_size > runtime.max_asset_bytes:
+                    raise ValueError("Image exceeds appearance limit")
+                return await asyncio.to_thread(lambda: thumbnail(path.read_bytes()))
+        if cover and cover.startswith("data:"):
+            validate_logo_url(cover)
+            return await asyncio.to_thread(thumbnail, base64.b64decode(cover.partition(",")[2], validate=True))
+    except (OSError, ValueError, Image.DecompressionBombError) as exc:
+        logger.info("yullo.appearance.reference_image_unavailable", extra={"error_type": type(exc).__name__})
+    return None
+
+
 def _allowed_values() -> dict:
     return {
         "themePreset": ["clean", "professional", "technical", "warm", "editorial", "visual", "bold", "minimal", "personal", "community", "trustworthy"],
         "landingEmphasis": ["balanced", "visual", "services", "local", "minimal"],
         "accent": ["yullo", "blue", "cyan", "violet", "coral", "forest", "neutral"],
+        "accentColor": "Optional #RRGGBB from reference artwork; null uses the named accent",
         "backgroundTreatment": ["soft", "light", "dark", "image"],
         "heroLayout": ["centered", "image_left", "image_right", "image_background"],
+        "heroVisible": [True, False],
         "visualDensity": ["minimal", "balanced", "expressive"],
         "networkIntensity": ["none", "very_low", "low"],
         "contentLayout": ["left", "center", "right", "stretch"],
@@ -114,13 +164,21 @@ async def _complete(payload: dict) -> AppearanceCandidateResponse:
         raise HTTPException(status_code=503, detail="Appearance assistant is unavailable")
 
     last_error: Exception | None = None
+    context = dict(payload.get("context", {}))
+    reference_image = context.pop("referenceImage", None)
+    payload = {**payload, "context": context}
+    message = json.dumps(payload, separators=(",", ":"))
+    user_content = [
+        {"type": "text", "text": message},
+        {"type": "image_url", "image_url": {"url": reference_image, "detail": "low"}},
+    ] if reference_image else message
     for provider_name, client, model in clients:
         try:
             response = await client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": json.dumps(payload, separators=(",", ":"))},
+                    {"role": "user", "content": user_content},
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.1,
@@ -128,6 +186,18 @@ async def _complete(payload: dict) -> AppearanceCandidateResponse:
             )
             content = response.choices[0].message.content or "{}"
             candidate = AppearanceCandidateResponse.model_validate_json(content)
+            if payload.get("mode") == "rebuild":
+                before = dict(payload["currentConfig"])
+                before.pop("presentationSource", None)
+                after = candidate.config.model_dump(mode="json", by_alias=True, exclude={"presentation_source"})
+                for config in (before, after):
+                    if config.get("accentColor"):
+                        config["accentColor"] = config["accentColor"].lower()
+                if before == after:
+                    raise ValueError("Rebuild did not propose an appearance change")
+            eligible_ids = {asset["id"] for asset in context.get("eligibleAssets", [])}
+            if candidate.config.hero.asset_id and str(candidate.config.hero.asset_id) not in eligible_ids:
+                raise ValueError("Suggested hero asset is not eligible for this Space")
             candidate = candidate.model_copy(update={"config": candidate.config.model_copy(
                 update={"presentation_source": PresentationSource.aura}
             )})
@@ -142,12 +212,12 @@ async def _complete(payload: dict) -> AppearanceCandidateResponse:
 
 
 async def recommend_appearance(
-    db: AsyncSession, *, user_id: UUID, space_id: UUID, current: SpacePresentationConfig
+    db: AsyncSession, *, user_id: UUID, space_id: UUID, current: SpacePresentationConfig, mode: str = "recommendation"
 ) -> AppearanceCandidateResponse:
-    context = await _appearance_context(db, user_id=user_id, space_id=space_id)
+    context = await _appearance_context(db, user_id=user_id, space_id=space_id, include_image=True, hero_asset_id=current.hero.asset_id)
     return await _complete(
         {
-            "mode": "recommendation",
+            "mode": mode,
             "context": context,
             "currentConfig": current.model_dump(mode="json", by_alias=True),
             "allowedValues": _allowed_values(),
@@ -162,7 +232,7 @@ async def apply_appearance_command(
     space_id: UUID,
     request: AppearanceCommandRequest,
 ) -> AppearanceCandidateResponse:
-    context = await _appearance_context(db, user_id=user_id, space_id=space_id)
+    context = await _appearance_context(db, user_id=user_id, space_id=space_id, include_image=True, hero_asset_id=request.current_config.hero.asset_id)
     return await _complete(
         {
             "mode": "command",
@@ -180,6 +250,7 @@ async def rebuild_space_layout(
     user_id: UUID,
     space_id: UUID,
     force: bool = False,
+    current_config: SpacePresentationConfig | None = None,
 ):
     from app.yullo.services.persistence.appearance import (
         get_appearance, generate_appearance_preview,
@@ -191,24 +262,26 @@ async def rebuild_space_layout(
     )
 
     appearance = await get_appearance(db, user_id=user_id, space_id=space_id)
+    current = current_config or appearance.effective_config
 
     candidate_config: SpacePresentationConfig
     explanation = ""
     try:
         candidate = await recommend_appearance(
-            db, user_id=user_id, space_id=space_id, current=appearance.effective_config
+            db, user_id=user_id, space_id=space_id, current=current, mode="rebuild" if force else "initial"
         )
         candidate_config = candidate.config
         explanation = candidate.explanation
     except Exception as exc:
         logger.warning(
             "yullo.appearance.rebuild_layout_recommend_fallback",
-            extra={"space_id": str(space_id), "error_type": type(exc).__name__, "error": str(exc)},
+            extra={"space_id": str(space_id), "error_type": type(exc).__name__},
         )
-        candidate_config = appearance.effective_config.model_copy()
+        if force:
+            raise HTTPException(503, "Could not rebuild the appearance. Your current layout is unchanged.") from exc
+        candidate_config = current.model_copy()
 
     # Intelligently ensure grid box layouts (2x2, 2x3 cards) for services and products
-    context = await _appearance_context(db, user_id=user_id, space_id=space_id)
     updated_sections = []
     for s in candidate_config.sections:
         if s.type.value in ("services", "products") and not s.variant:

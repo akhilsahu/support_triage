@@ -3,11 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { Moon, Sun, ArrowRight, Plus, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { YulloPulse, PulseSpace } from '../components/YulloPulse';
 import { AmbientWorldField } from '../components/AmbientWorldField';
 import { RightNow } from '../components/home/RightNow';
 import { ForYou } from '../components/home/ForYou';
 import { QuickInsight } from '../components/home/QuickInsight';
+import { Nearby } from '../components/home/Nearby';
 import { YulloAppHeader } from '../components/YulloAppHeader';
 
 import { yulloConfig } from '../config';
@@ -105,6 +105,7 @@ export const YulloHome = () => {
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
   const [deleteTargetSpace, setDeleteTargetSpace] = useState<HomeSpace | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteFailure, setDeleteFailure] = useState('');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -114,6 +115,8 @@ export const YulloHome = () => {
   useEffect(() => {
     document.title = `${yulloConfig.nomenclature.title} — Home`;
   }, []);
+
+  useEffect(() => { setDeleteFailure(''); }, [deleteTargetSpace?.id]);
 
   if (error) {
     return (
@@ -234,7 +237,7 @@ export const YulloHome = () => {
                       </motion.div>
 
                       <div className="relative z-10 w-full max-w-[600px] mx-auto lg:mx-0 lg:max-w-none lg:w-[110%] lg:-ml-[5%]">
-                        <PulseComponent 
+                        <PulseComponent
                           spaces={data.spaces} 
                           selectedId={selectedSpaceId}
                           onSelect={setSelectedSpaceId}
@@ -527,6 +530,7 @@ export const YulloHome = () => {
 
             </div>
           )}
+          <Nearby key={rawData?.account.id} />
         </main>
       </div>
 
@@ -561,16 +565,20 @@ export const YulloHome = () => {
               </p>
 
               <div className="flex flex-col gap-3">
+                {deleteFailure && <p role="alert" className="text-sm text-[var(--attention)]">{deleteFailure} <Link to={`/yullo/spaces/${deleteTargetSpace.id}#subspaces`} className="underline">Manage subspaces</Link></p>}
                 <button
                   disabled={isDeleting}
                   onClick={async () => {
                     setIsDeleting(true);
+                    setDeleteFailure('');
                     try {
                       await formsApi.archiveOrDelete(deleteTargetSpace.id, 'archive');
                       setSelectedSpaceId(null);
                       setDeleteTargetSpace(null);
                       queryClient.invalidateQueries({ queryKey: ['yullo-home'] });
-                    } catch (err) {
+                      queryClient.invalidateQueries({ queryKey: ['yullo-space-hierarchy'] });
+                    } catch (err: any) {
+                      setDeleteFailure(err.response?.status === 409 ? 'Detach subspaces before removing this Space.' : 'Could not archive this Space. Please try again.');
                       console.error('Failed to archive space:', err);
                     } finally {
                       setIsDeleting(false);
@@ -589,12 +597,15 @@ export const YulloHome = () => {
                   disabled={isDeleting}
                   onClick={async () => {
                     setIsDeleting(true);
+                    setDeleteFailure('');
                     try {
                       await formsApi.archiveOrDelete(deleteTargetSpace.id, 'delete');
                       setSelectedSpaceId(null);
                       setDeleteTargetSpace(null);
                       queryClient.invalidateQueries({ queryKey: ['yullo-home'] });
-                    } catch (err) {
+                      queryClient.invalidateQueries({ queryKey: ['yullo-space-hierarchy'] });
+                    } catch (err: any) {
+                      setDeleteFailure(err.response?.status === 409 ? 'Detach subspaces before removing this Space.' : 'Could not delete this Space. Please try again.');
                       console.error('Failed to delete space:', err);
                     } finally {
                       setIsDeleting(false);

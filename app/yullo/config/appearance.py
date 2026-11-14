@@ -11,6 +11,7 @@ class AppearanceRuntimeConfig(BaseModel):
 
     enabled: bool = True
     assistant_enabled: bool = True
+    assistant_image_enabled: bool = True
     model: str = "gpt-4o-mini"
     timeout_seconds: float = Field(default=15.0, ge=1, le=60)
     max_context_characters: int = Field(default=6000, ge=500, le=20000)
@@ -38,6 +39,7 @@ def get_appearance_runtime_config() -> AppearanceRuntimeConfig:
     return AppearanceRuntimeConfig(
         enabled=_env_bool("YULLO_APPEARANCE_ENABLED", True),
         assistant_enabled=_env_bool("YULLO_APPEARANCE_ASSISTANT_ENABLED", True),
+        assistant_image_enabled=_env_bool("YULLO_APPEARANCE_ASSISTANT_IMAGE_ENABLED", True),
         model=os.getenv("YULLO_APPEARANCE_MODEL", "gpt-4o-mini"),
         timeout_seconds=float(os.getenv("YULLO_APPEARANCE_TIMEOUT_SECONDS", "15")),
         max_context_characters=int(os.getenv("YULLO_APPEARANCE_MAX_CONTEXT_CHARACTERS", "6000")),

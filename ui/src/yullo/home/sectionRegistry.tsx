@@ -4,7 +4,7 @@ import { RightNow } from '../components/home/RightNow';
 import { ForYou } from '../components/home/ForYou';
 import { QuickInsight } from '../components/home/QuickInsight';
 import InYourOrbit from '../components/home/InYourOrbit';
-import { YulloPulse } from '../components/YulloPulse';
+import { SpaceNetwork } from '../components/home/SpaceNetwork';
 // Note: Some sections like Attention, Spaces, Recent, and Pattern are currently 
 // rendered inline or use smaller components in YulloHome.tsx. 
 // This registry provides a structured map for the additive Yullo components.
@@ -14,5 +14,5 @@ export const SectionComponents: Partial<Record<HomeSectionId, React.ElementType>
   forYou: ForYou,
   quickInsight: QuickInsight,
   orbit: InYourOrbit,
-  pulse: YulloPulse,
+  pulse: SpaceNetwork,
 };

@@ -87,6 +87,8 @@ jobs:
       OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
       SUPER_ADMIN_KEY:     ${{ secrets.SUPER_ADMIN_KEY }}
       CORS_ORIGINS:        ${{ secrets.CORS_ORIGINS }}
+      GOOGLE_CLIENT_ID:    ${{ secrets.GOOGLE_CLIENT_ID }}
+      YULLO_GOOGLE_CLIENT_ID: ${{ secrets.YULLO_GOOGLE_CLIENT_ID }}
 
     steps:
       - name: Deploy via SSH
@@ -99,7 +101,8 @@ jobs:
             SECRET_KEY,FRONTEND_URL,
             POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,
             SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,SMTP_FROM,
-            ANTHROPIC_API_KEY,OPENAI_API_KEY,SUPER_ADMIN_KEY,CORS_ORIGINS
+            ANTHROPIC_API_KEY,OPENAI_API_KEY,SUPER_ADMIN_KEY,CORS_ORIGINS,
+            GOOGLE_CLIENT_ID,YULLO_GOOGLE_CLIENT_ID
           script: |
             set -e
             cd /var/www/support247
@@ -125,6 +128,8 @@ jobs:
               "OPENAI_API_KEY=${OPENAI_API_KEY}" \
               "SUPER_ADMIN_KEY=${SUPER_ADMIN_KEY}" \
               "CORS_ORIGINS=${CORS_ORIGINS}" \
+              "GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}" \
+              "YULLO_GOOGLE_CLIENT_ID=${YULLO_GOOGLE_CLIENT_ID}" \
               > .env
             cd ui && npm ci --prefer-offline && NODE_OPTIONS="--max-old-space-size=4096" npm run build && cd ..
             docker compose -f deploy/docker-compose.prod.yml --env-file .env build api

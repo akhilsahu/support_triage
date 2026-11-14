@@ -38,6 +38,9 @@ async def get_yullo_home(db: AsyncSession, user: User, now: datetime) -> YulloHo
     home_spaces = []
     
     for space in snapshot.spaces:
+        # Children remain in the snapshot for metrics, but are opened through their parent.
+        if space.parent_space_id is not None:
+            continue
         # Re-derive space status from snapshot capabilities & source states
         caps = snapshot.capabilities.get(space.id)
         source_metrics = snapshot.source_metrics.get(space.id)

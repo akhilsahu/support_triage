@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator
 import structlog
 from typing import List, Optional
 import uuid
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, asc
 
@@ -23,7 +24,7 @@ class YulloConversationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def start(self, space_id: uuid.UUID, runtime_id: str) -> ChatSession:
+    async def start(self, space_id: uuid.UUID, runtime_id: str, *, user_id=None, guest_token_hash=None) -> ChatSession:
         """
         Start a new Aura session.
         Leaves chatbot_id and escalation fields null.
@@ -34,7 +35,9 @@ class YulloConversationRepository:
             runtime_type="aura",
             runtime_id=runtime_id,
             status="open",
-            message_count=0
+            message_count=0,
+            yullo_user_id=user_id,
+            guest_token_hash=guest_token_hash,
         )
         self.db.add(session)
         await self.db.flush()
@@ -58,6 +61,9 @@ class YulloConversationRepository:
         self.db.add(log)
         
         session.message_count += 1
+        session.last_message_at = datetime.utcnow()
+        if not session.title:
+            session.title = message.strip()[:200]
         self.db.add(session)
         await self.db.flush()
         
@@ -90,6 +96,7 @@ class YulloConversationRepository:
         self.db.add(log)
         
         session.message_count += 1
+        session.last_message_at = datetime.utcnow()
         self.db.add(session)
         await self.db.flush()
         
@@ -120,7 +127,7 @@ class YulloConversationRepository:
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def stream_response(self, request: AuraInferenceRequest, *, generate, cfg) -> AsyncGenerator[str, None]:
+    async def stream_response(self, request: AuraInferenceRequest, *, generate, cfg, user_id=None, guest_token=None) -> AsyncGenerator[str, None]:
         try:
             # An empty history is valid for a newly created conversation.
             from sqlalchemy import select
@@ -132,10 +139,9 @@ class YulloConversationRepository:
                 ChatSession.space_id == request.space_id,
                 ChatSession.runtime_type == "aura",
             ).with_for_update().execution_options(populate_existing=True)
-            result = await self.db.execute(stmt)
-            session = result.scalars().first()
-            if not session:
-                raise ValueError("Session not found, expired, or belongs to another Space")
+            from app.yullo.services.conversations.history import authorize_session
+            session = await authorize_session(self.db, space_id=request.space_id, session_id=request.session_id,
+                                              user_id=user_id, guest_token=guest_token, lock=True, allow_legacy=True)
 
             from app.orchestra.ai.session.store import StagedHistory
             from types import SimpleNamespace
@@ -199,7 +205,9 @@ class YulloConversationRepository:
                         if data.get("type") == "text.delta":
                             full_response += data.get("delta", "")
                         elif data.get("type") == "citation.add":
-                            citation_refs.append({"source": "retrieval", "count": 1})
+                            from app.yullo.services.conversations.history import stored_citation
+                            citation = stored_citation(data.get('citation'))
+                            citation_refs.append({"source": "retrieval", "count": 1, **(citation or {})})
                         elif data.get("type") == "ui.add" and data.get("node"):
                             ui_blocks.append(data["node"])
                     except Exception:
@@ -211,9 +219,6 @@ class YulloConversationRepository:
                     return
 
                 # 6. Commit assistant response
-                if citation_refs:
-                    citation_refs = [{"source": "retrieval", "count": len(citation_refs)}]
-
                 await self.append_aura(
                     session,
                     message=full_response,

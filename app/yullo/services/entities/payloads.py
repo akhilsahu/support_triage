@@ -23,26 +23,33 @@ def _ensure_https_url(url: Optional[HttpUrl]) -> Optional[str]:
         raise ValueError("URL must use secure HTTPS protocol (https://)")
     return url_str
 
-class OfferingPayload(BaseEntityPayload):
-    name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=4000)
+class PriceFields(BaseEntityPayload):
     price_amount: Optional[str] = Field(None, pattern=r'^\d+(\.\d+)?$')
     currency: Optional[str] = Field(None, min_length=3, max_length=3, pattern=r'^[A-Z]{3}$')
-    duration_minutes: Optional[int] = Field(None, gt=0)
 
     @model_validator(mode='after')
-    def check_price_and_currency(self) -> 'OfferingPayload':
+    def check_price_and_currency(self) -> 'PriceFields':
         if self.price_amount is not None and not self.currency:
             raise ValueError('currency must be provided if price_amount is set')
         if self.currency is not None and self.price_amount is None:
             raise ValueError('price_amount must be provided if currency is set')
         return self
 
+class OfferingPayload(PriceFields):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=4000)
+    duration_minutes: Optional[int] = Field(None, gt=0)
+
 class LocationPayload(BaseEntityPayload):
     name: str = Field(..., min_length=1, max_length=200)
-    address: str = Field(..., min_length=1, max_length=1000)
-    latitude: Optional[float] = Field(None, ge=-90, le=90)
-    longitude: Optional[float] = Field(None, ge=-180, le=180)
+    address: str = Field("", max_length=1000)
+    latitude: Optional[float] = Field(None, ge=-90, le=90, allow_inf_nan=False)
+    longitude: Optional[float] = Field(None, ge=-180, le=180, allow_inf_nan=False)
+    city: Optional[str] = Field(None, min_length=1, max_length=120)
+    region: Optional[str] = Field(None, min_length=1, max_length=120)
+    postal_code: Optional[str] = Field(None, min_length=1, max_length=32, pattern=r'^[A-Za-z0-9][A-Za-z0-9 -]*$')
+    country_code: Optional[str] = Field(None, pattern=r'^[A-Z]{2}$')
+    is_remote: bool = False
     map_url: Optional[HttpUrl] = None
 
     @field_validator('map_url')
@@ -58,6 +65,12 @@ class LocationPayload(BaseEntityPayload):
         lng = self.longitude
         if (lat is not None and lng is None) or (lat is None and lng is not None):
             raise ValueError('Both latitude and longitude must be provided together')
+        if not self.is_remote and not self.address.strip():
+            raise ValueError('Physical locations require an address')
+        if self.is_remote and (lat is not None or lng is not None):
+            raise ValueError('Remote locations cannot have coordinates')
+        if (self.city or self.region) and not self.country_code:
+            raise ValueError('City or region requires a country code')
         return self
 
 class PortfolioItemPayload(BaseEntityPayload):
@@ -124,6 +137,7 @@ class EventPayload(BaseEntityPayload):
     ends_at: Optional[str] = None
     location_entity_id: Optional[str] = None
     registration_url: Optional[HttpUrl] = None
+    is_remote: bool = False
 
     @field_validator('registration_url')
     @classmethod
@@ -203,7 +217,7 @@ def _remove_payload_path(payload: dict[str, Any], path: str) -> None:
 
 
 
-def project_public_entity_payload(entity: YulloSpaceEntity) -> dict[str, Any]:
+def project_public_entity_payload(entity: YulloSpaceEntity, *, direct_only: bool = False) -> dict[str, Any]:
     """Apply field policies before entity data reaches a public browser or model."""
     payload = deepcopy(entity.payload_json or {})
     raw_policies = entity.field_policies or {}
@@ -214,7 +228,8 @@ def project_public_entity_payload(entity: YulloSpaceEntity) -> dict[str, Any]:
         if not isinstance(path, str):
             continue
         visibility = policy.get("visibility") if isinstance(policy, dict) else policy
-        if visibility and visibility not in PUBLIC_VISIBILITIES:
+        disclosure = policy.get("disclosure_mode", policy.get("disclosureMode")) if isinstance(policy, dict) else None
+        if (visibility and visibility not in PUBLIC_VISIBILITIES) or (direct_only and disclosure not in (None, "direct")):
             _remove_payload_path(payload, path)
     return payload
 

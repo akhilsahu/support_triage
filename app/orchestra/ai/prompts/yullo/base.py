@@ -38,6 +38,11 @@ Contact/booking/purchase links offer next steps, not completed transactions.
 
 PRESENTATION_PROMPT = """Presentation contract:
 Use only the tools provided on this request. Their presence permits presentation, not transactions.
+Source destinations may be compact references. Use [item name](link:L1) with the exact
+supplied link reference; the server supplies the full destination. Never invent a reference
+or copy one from another item. Select supplied image IDs through show_source_images;
+image references are for existing photos, not generated content. Keep each item's supported
+price and attributes beside its matching name/link/image. Missing prices stay unknown.
 For lists of products, services or categories, write each name with a matching supplied
 destination as a Markdown link: [item name](exact supplied URL), followed by its supported
 details. Use passage metadata.links and supplementary source links; do not leave a matching

@@ -5,7 +5,8 @@ import { PublicYulloLink } from './yullo/screens/public/PublicYulloLink'
 import { auraProvider } from './yullo/services/aura'
 
 export function SlugResolver() {
-  const { slug } = useParams<{ slug: string }>()
+  const { slug, chatbotSlug, '*': rest } = useParams<{ slug: string; chatbotSlug?: string; '*': string }>()
+  const publicPath = [slug, chatbotSlug || rest].filter(Boolean).join('/')
   const [resolvedTo, setResolvedTo] = useState<'loading' | 'yullo' | 'support247'>('loading')
   const [yulloSpace, setYulloSpace] = useState<Awaited<ReturnType<typeof auraProvider.getPublicSpace>>>(null)
 
@@ -21,7 +22,7 @@ export function SlugResolver() {
     let isMounted = true
     
     // Prioritize checking if this slug is a Yullo space (useful for localhost testing)
-    auraProvider.getPublicSpace(slug)
+    auraProvider.getPublicSpace(publicPath)
       .then(space => {
         if (!isMounted) return
         if (space) {
@@ -38,7 +39,7 @@ export function SlugResolver() {
       })
 
     return () => { isMounted = false }
-  }, [slug])
+  }, [slug, publicPath])
 
   if (resolvedTo === 'loading') {
     return (

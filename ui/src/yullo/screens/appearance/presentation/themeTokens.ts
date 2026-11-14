@@ -1,21 +1,21 @@
 import type { CSSProperties } from 'react'
 import type { SpacePresentationConfig } from './schema'
 
-const accents: Record<SpacePresentationConfig['accent'], { solid: string; soft: string; ink: string; contrast: string }> = {
-  yullo: { solid: '#E4CC32', soft: 'rgba(228,204,50,.10)', ink: '#514600', contrast: '#151B27' },
-  blue: { solid: '#3F73D8', soft: 'rgba(63,115,216,.09)', ink: '#17376F', contrast: '#FFFFFF' },
-  cyan: { solid: '#2589A7', soft: 'rgba(37,137,167,.09)', ink: '#104A5C', contrast: '#FFFFFF' },
-  violet: { solid: '#7759C8', soft: 'rgba(119,89,200,.09)', ink: '#3B286F', contrast: '#FFFFFF' },
-  coral: { solid: '#C85F50', soft: 'rgba(200,95,80,.09)', ink: '#6C2C24', contrast: '#FFFFFF' },
-  forest: { solid: '#377A58', soft: 'rgba(55,122,88,.09)', ink: '#19452F', contrast: '#FFFFFF' },
-  neutral: { solid: '#596273', soft: 'rgba(89,98,115,.08)', ink: '#252B36', contrast: '#FFFFFF' },
+const accents: Record<SpacePresentationConfig['accent'], string> = {
+  yullo: '#FFFC00',
+  blue: '#3F73D8',
+  cyan: '#2589A7',
+  violet: '#7759C8',
+  coral: '#C85F50',
+  forest: '#377A58',
+  neutral: '#596273',
 }
 
 const backgrounds: Record<SpacePresentationConfig['backgroundTreatment'], { canvas: string; surface: string; text: string; muted: string; border: string }> = {
-  soft: { canvas: '#F6F7F8', surface: '#FFFFFF', text: '#151B27', muted: '#667085', border: 'rgba(21,27,39,.10)' },
-  light: { canvas: '#FFFFFF', surface: '#F8F9FA', text: '#111827', muted: '#626B79', border: 'rgba(17,24,39,.10)' },
-  dark: { canvas: '#11151C', surface: '#181D25', text: '#F5F7FA', muted: '#A7B0BD', border: 'rgba(245,247,250,.12)' },
-  image: { canvas: '#F2F2EF', surface: 'rgba(255,255,255,.88)', text: '#171914', muted: '#6D7167', border: 'rgba(23,25,20,.10)' },
+  soft: { canvas: '#F6F7F8', surface: '#FFFFFF', text: '#151B27', muted: '#475467', border: 'rgba(21,27,39,.10)' },
+  light: { canvas: '#FFFFFF', surface: '#F8F9FA', text: '#111827', muted: '#475467', border: 'rgba(17,24,39,.10)' },
+  dark: { canvas: '#11151C', surface: '#181D25', text: '#F5F7FA', muted: '#CBD2DC', border: 'rgba(245,247,250,.12)' },
+  image: { canvas: '#F2F2EF', surface: 'rgba(255,255,255,.88)', text: '#171914', muted: '#4B5146', border: 'rgba(23,25,20,.10)' },
 }
 
 const presets: Record<SpacePresentationConfig['themePreset'], { heading: string; radius: string; weight: string; tracking: string; width: string; gap: string; shadow: string; heroScale: string }> = {
@@ -34,13 +34,47 @@ const presets: Record<SpacePresentationConfig['themePreset'], { heading: string;
 
 export type PresentationStyle = CSSProperties & Record<`--presentation-${string}`, string>
 
+function luminance(hex: string): number {
+  const channels = hex.slice(1).match(/../g)!.map(value => {
+    const channel = Number.parseInt(value, 16) / 255
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  })
+  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+}
+
+// Keep accent text readable on its actual surface, including very pale artwork colors.
+function readableAccent(color: string, surface: string): string {
+  const background = luminance(surface)
+  for (let step = 0; step <= 20; step++) {
+    const amount = step / 20
+    const target = background > 0.179 ? 0 : 255
+    const mixed = '#' + color.slice(1).match(/../g)!.map(value =>
+      Math.round(Number.parseInt(value, 16) * (1 - amount) + target * amount).toString(16).padStart(2, '0'),
+    ).join('')
+    const foreground = luminance(mixed)
+    if ((Math.max(background, foreground) + 0.05) / (Math.min(background, foreground) + 0.05) >= 4.5) return mixed
+  }
+  return background > 0.179 ? '#000000' : '#FFFFFF'
+}
+
+export function presentationAccent(config: SpacePresentationConfig, dark = config.backgroundTreatment === 'dark') {
+  const solid = config.accentColor || accents[config.accent]
+  return {
+    solid,
+    soft: `color-mix(in srgb, ${solid} 12%, transparent)`,
+    ink: readableAccent(solid, dark ? '#181D25' : '#FFFFFF'),
+    contrast: luminance(solid) > 0.179 ? '#000000' : '#FFFFFF',
+  }
+}
+
 export function presentationThemeStyle(config: SpacePresentationConfig): PresentationStyle {
-  const accent = accents[config.accent]
+  const accent = presentationAccent(config)
   const background = backgrounds[config.backgroundTreatment]
   const preset = presets[config.themePreset]
   const isStretch = config.contentLayout === 'stretch'
   return {
-    '--presentation-canvas': background.canvas,
+    '--presentation-canvas': config.accentColor && config.presentationSource === 'default'
+      ? `color-mix(in srgb, ${accent.solid} 5%, ${background.canvas})` : background.canvas,
     '--presentation-surface': background.surface,
     '--presentation-text': background.text,
     '--presentation-muted': background.muted,

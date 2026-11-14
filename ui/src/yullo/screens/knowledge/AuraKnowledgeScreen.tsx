@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, Plus, Upload, FileText, Globe,
+  ArrowLeft, Plus, Upload, FileText, Globe, ImagePlus,
   FolderOpen, HelpCircle, Clock, MoreHorizontal, Trash2, Eye, RefreshCw, AlertCircle,
   CheckCircle2, Loader2, Check, X, Bell, Database
 } from 'lucide-react';
@@ -400,6 +400,8 @@ export const AuraKnowledgeScreen: React.FC = () => {
                 <Database className="w-4 h-4" />
               </button>
 
+              <button type="button" onClick={() => openAddModal('images')} className="flex h-11 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-3 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--surface)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"><ImagePlus size={17} aria-hidden="true" />Add images</button>
+
               <button
                 onClick={() => openAddModal('text')}
                 className="px-5 h-[44px] rounded-xl text-[14px] font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer hover:opacity-90 active:scale-[0.99]"
@@ -547,8 +549,8 @@ export const AuraKnowledgeScreen: React.FC = () => {
                             }}
                             className="px-4 py-2 rounded-xl text-[13px] font-bold shadow-xs hover:opacity-90 active:scale-[0.99] transition-all cursor-pointer flex items-center gap-1.5"
                             style={{
-                              backgroundColor: 'var(--accent)',
-                              color: 'var(--accent-fg)'
+                              backgroundColor: 'var(--accent-solid)',
+                              color: 'var(--accent-on-solid)'
                             }}
                           >
                             <Check className="w-3.5 h-3.5 stroke-[3]" /> Approve all facts
@@ -603,7 +605,7 @@ export const AuraKnowledgeScreen: React.FC = () => {
                       let displayTitle = rawTitle.includes('/') ? rawTitle.split('/').pop() || rawTitle : rawTitle;
                       displayTitle = displayTitle.replace(/^file_[a-f0-9]+_/i, '').replace(/^https?:\/\//, '').replace(/\/$/, '');
 
-                      let displayRef = source.content_ref || '';
+                      let displayRef = source.source_type === 'text' ? 'Saved text' : source.content_ref || '';
                       if (!displayRef.startsWith('http://') && !displayRef.startsWith('https://')) {
                         displayRef = displayRef.includes('/') ? displayRef.split('/').pop() || displayRef : displayRef;
                         displayRef = displayRef.replace(/^file_[a-f0-9]+_/i, '');

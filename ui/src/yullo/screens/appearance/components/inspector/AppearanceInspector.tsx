@@ -1,3 +1,5 @@
+import { YulloButton } from '../../../../components/core/YulloButton'
+import { BookingLinks } from '../../../../forms/BookingLinks'
 import { motion } from 'motion/react'
 import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import type { AppearanceAsset, AppearanceCandidate } from '../../../../api/appearance'
@@ -42,12 +44,12 @@ function SectionRow({ section, index, config, update, moveSection, previewConten
         ) : (
           <div style={{ width: 23 }} />
         )}
-        <button type="button" aria-pressed={section.visible} onClick={() => update('sections', config.sections.map((item: any) => item.type === section.type ? { ...item, visible: !item.visible } : item))}>
+        <YulloButton variant="outline" size="sm" type="button" aria-pressed={section.visible} onClick={() => update('sections', config.sections.map((item: any) => item.type === section.type ? { ...item, visible: !item.visible } : item))}>
           <span>{section.type.replace(/_/g, ' ')}</span><i />
-        </button>
+        </YulloButton>
         <span className="appearance-order-actions">
           {editable && section.visible && (
-            <button
+            <YulloButton variant="outline" size="sm"
               type="button"
               className="appearance-section-pull-btn"
               onClick={onBuild}
@@ -56,10 +58,10 @@ function SectionRow({ section, index, config, update, moveSection, previewConten
               aria-label={`Pull data for ${section.type}`}
             >
               <RefreshCw size={13} />
-            </button>
+            </YulloButton>
           )}
-          <button type="button" onClick={() => moveSection(index, -1)} disabled={index === 0} aria-label={`Move ${section.type} up`}><ChevronUp size={15} /></button>
-          <button type="button" onClick={() => moveSection(index, 1)} disabled={index === config.sections.length - 1} aria-label={`Move ${section.type} down`}><ChevronDown size={15} /></button>
+          <YulloButton variant="outline" size="sm" type="button" onClick={() => moveSection(index, -1)} disabled={index === 0} aria-label={`Move ${section.type} up`}><ChevronUp size={15} /></YulloButton>
+          <YulloButton variant="outline" size="sm" type="button" onClick={() => moveSection(index, 1)} disabled={index === config.sections.length - 1} aria-label={`Move ${section.type} down`}><ChevronDown size={15} /></YulloButton>
         </span>
       </div>
       {expanded && hasData && (
@@ -73,9 +75,9 @@ function SectionRow({ section, index, config, update, moveSection, previewConten
       )}
       {editable && section.visible && hasDraft && (
         <div className="appearance-section-controls">
-          <button type="button" onClick={onReviewDraft || onBuild}>Review pulled data</button>
-          <button type="button" className="is-primary" onClick={onApply} disabled={applying}>{applying ? 'Adding…' : 'Add to section'}</button>
-          <button type="button" onClick={onDiscard} disabled={applying}>Cancel</button>
+          <YulloButton variant="outline" size="sm" type="button" onClick={onReviewDraft || onBuild}>Review pulled data</YulloButton>
+          <YulloButton variant="primary" size="sm" type="button" className="is-primary" onClick={onApply} disabled={applying}>{applying ? 'Adding…' : 'Add to section'}</YulloButton>
+          <YulloButton variant="outline" size="sm" type="button" onClick={onDiscard} disabled={applying}>Cancel</YulloButton>
         </div>
       )}
     </div>
@@ -87,12 +89,12 @@ function Group({ title, children, open = false }: { title: string; children: Rea
 }
 
 export function AppearanceInspector({ 
-  spaceId, purpose, config, assets, assetUploading, assetError, assetNotice,
+  spaceId, purpose, config, assets, coverUrl, isSubspace, assetUploading, assetError, assetNotice,
   previewStatus, previewGenerating, previewGroundedCount, previewLastUpdate, previewExplanation, previewContent, onPreviewRebuild,
   previewDraftType, previewDraftTypes, previewApplying, exampleSections, onToggleExample, onBuildSection, onApplySection, onDiscardSection, onReviewDraftSection,
   onChange, onAuraApply, onUpload, onRemoveAsset, onAssetAltText, onOpenAssetPicker
 }: { 
-  spaceId: string; purpose: SpacePurpose; config: SpacePresentationConfig; assets: AppearanceAsset[]; assetUploading?: boolean; assetError?: string; assetNotice?: string;
+  spaceId: string; purpose: SpacePurpose; config: SpacePresentationConfig; assets: AppearanceAsset[]; coverUrl?: string | null; isSubspace?: boolean; assetUploading?: boolean; assetError?: string; assetNotice?: string;
   previewStatus: 'idle' | 'ready' | 'insufficient_context' | 'unavailable'; previewGenerating: boolean; previewGroundedCount: number; previewLastUpdate: number; previewExplanation?: string; previewContent?: AppearancePreviewContent; onPreviewRebuild: () => void;
   previewDraftType?: PreviewSectionType; previewDraftTypes?: PreviewSectionType[]; previewApplying: boolean; exampleSections: PreviewSectionType[]; onToggleExample: (type: PreviewSectionType) => void; onBuildSection: (type: PreviewSectionType) => void; onApplySection: (type?: PreviewSectionType) => void; onDiscardSection: (type?: PreviewSectionType) => void; onReviewDraftSection?: (type: PreviewSectionType) => void;
   onChange: (next: SpacePresentationConfig) => void; onAuraApply: (candidate: AppearanceCandidate) => void; onUpload: (files: File[]) => void; onRemoveAsset: (asset: AppearanceAsset) => void; onAssetAltText: (asset: AppearanceAsset, altText: string) => void;
@@ -114,8 +116,9 @@ export function AppearanceInspector({
         <Section title="Theme"><ThemePresetPicker purpose={purpose} value={config.themePreset} onChange={(value) => update('themePreset', value)} /></Section>
         <Section title="Content layout"><ContentLayoutPicker value={config.contentLayout || 'center'} onChange={(value) => update('contentLayout', value)} /></Section>
         <Section title="Landing emphasis"><LandingEmphasisPicker purpose={purpose} value={config.landingEmphasis} onChange={(value) => update('landingEmphasis', value)} /></Section>
-        <Section title="Accent"><AccentPicker value={config.accent} onChange={(value) => update('accent', value)} /></Section>
-        <Section title="Background"><BackgroundPicker value={config.backgroundTreatment} imageEnabled={Boolean(config.hero.assetId)} onChange={(value) => update('backgroundTreatment', value)} /></Section>
+        <Section title="Accent"><AccentPicker value={config.accent} customColor={config.accentColor} onChange={(value) => onChange({ ...config, accent: value, accentColor: null })} onCustomColor={value => update('accentColor', value)} /></Section>
+        <Section title="Background"><BackgroundPicker value={config.backgroundTreatment} imageEnabled={Boolean(config.hero.assetId) || Boolean(coverUrl)} imageLabel={isSubspace ? 'Artwork tint' : undefined} onChange={(value) => update('backgroundTreatment', value)} /></Section>
+        {isSubspace && <Section title="Booking button"><p className="mb-2 text-xs leading-relaxed text-[var(--text-secondary)]">Enable a booking link for visitors to show its button on this page.</p><BookingLinks spaceId={spaceId} spaceName="this page" itemLabel="item" compact /></Section>}
         <Group title="Content and order" open>
         <Section title="Opening sections">
           <div className="appearance-section-list">
@@ -143,8 +146,8 @@ export function AppearanceInspector({
         </Section>
         </Group>
         <Group title="Images and layout">
-        <Section title="Assets"><AssetManager assets={assets} selectedId={config.hero.assetId} uploading={assetUploading} error={assetError} notice={assetNotice} onUpload={onUpload} onSelect={(asset) => onChange({ ...config, hero: { ...config.hero, assetId: asset ? asset.id : null }, backgroundTreatment: config.backgroundTreatment === 'image' && !asset ? 'soft' : config.backgroundTreatment })} onRemove={onRemoveAsset} onAltText={onAssetAltText} onOpenPicker={onOpenAssetPicker} /></Section>
-        {config.hero.assetId && <Section title="Opening image"><div className="appearance-choice-row" role="radiogroup" aria-label="Opening image layout">{(['centered', 'image_left', 'image_right', 'image_background'] as const).map((value) => <button type="button" key={value} role="radio" aria-checked={config.hero.layout === value} onClick={() => onChange({ ...config, hero: { ...config.hero, layout: value } })}>{value.replace(/_/g, ' ')}</button>)}</div></Section>}
+        <Section title="Assets"><AssetManager assets={assets} coverUrl={isSubspace ? coverUrl : undefined} imageVisible={config.hero.visible !== false} onUseCover={() => onChange({ ...config, hero: { ...config.hero, assetId: null, visible: true } })} selectedId={config.hero.assetId} uploading={assetUploading} error={assetError} notice={assetNotice} onUpload={onUpload} onSelect={(asset) => onChange({ ...config, hero: { ...config.hero, assetId: asset ? asset.id : null, visible: Boolean(asset) }, backgroundTreatment: config.backgroundTreatment === 'image' && !asset ? 'soft' : config.backgroundTreatment })} onRemove={onRemoveAsset} onAltText={onAssetAltText} onOpenPicker={onOpenAssetPicker} /></Section>
+        {(config.hero.assetId || coverUrl) && <Section title="Opening image"><div className="appearance-choice-row" role="radiogroup" aria-label="Opening image layout">{(isSubspace ? ['centered', 'image_left', 'image_right'] as const : ['centered', 'image_left', 'image_right', 'image_background'] as const).map((value) => <button type="button" key={value} role="radio" aria-checked={config.hero.layout === value || (isSubspace && value === 'centered' && config.hero.layout === 'image_background')} onClick={() => onChange({ ...config, hero: { ...config.hero, layout: value } })}>{isSubspace ? ({ centered: 'Artwork above', image_left: 'Artwork left', image_right: 'Artwork right', image_background: 'Artwork tint' })[value] : value.replace(/_/g, ' ')}</button>)}</div></Section>}
         </Group>
         <Group title="Advanced">
         <Section title="Layout details">

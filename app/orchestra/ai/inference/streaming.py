@@ -13,14 +13,17 @@ async def stream_prepared_response(
     executor, message, *, cfg, messages, images, gallery_limit,
     pending_events, nodes, displayed_images, add_node, deferred, started,
     reset_buffer_on_event=None,
+    references=None,
 ):
     """Stream text/UI events using request-local state shared with validated tools.
 
     Completion here means generation finished. The caller must persist the turn
     before forwarding message.done to its public client.
     """
-    presentation = ChatImagePresentation(images)
-    buffered, generated = '', ''
+    from app.orchestra.ai.ui_render.source_assets import LinkReferencePresentation
+    presentation = ChatImagePresentation(images, references=references)
+    links = LinkReferencePresentation(references) if references is not None else None
+    buffered, generated, model_text = '', '', ''
     success, error_type = False, None
     try:
         async for kind, value in executor.stream(message):
@@ -28,16 +31,21 @@ async def stream_prepared_response(
                 # The adapter decides which events invalidate buffered text.
                 buffered = ''
             elif kind == 'content':
+                model_text += value
                 if (deferred() if callable(deferred) else deferred):
                     buffered += value
                 else:
                     visible = presentation.feed(value)
+                    if links is not None:
+                        visible = links.feed(visible)
                     generated += visible
                     if visible:
                         yield json.dumps({'type': 'text.delta', 'delta': visible}) + '\n'
             while pending_events:
                 yield json.dumps(pending_events.pop(0)) + '\n'
         visible = presentation.feed(buffered, final=True)
+        if links is not None:
+            visible = links.feed(visible, final=True)
         generated += visible
         if visible:
             yield json.dumps({'type': 'text.delta', 'delta': visible}) + '\n'
@@ -62,7 +70,7 @@ async def stream_prepared_response(
                  'completion_tokens': getattr(metrics, 'output_tokens', 0)}
         if metrics is None:
             usage = {'prompt_tokens': estimate_tokens(json.dumps(messages)),
-                     'completion_tokens': estimate_tokens(generated)}
+                     'completion_tokens': estimate_tokens(model_text)}
         event = build_usage_event(
             kind='chat', provider=(getattr(output, 'model_provider', None) or cfg.llm_provider).lower(),
             model=getattr(output, 'model', None) or cfg.llm_model, usage=usage,
@@ -111,7 +119,7 @@ async def generate_response(context, message, history, request_model=None, execu
 
 async def prepare_response(context, message, history, *, retrieve, expand, load_profile,
                            load_entities, compose, gallery_limit, select_records=None, allow_search=False,
-                           format_passage=None):
+                           format_passage=None, references=None, extra_tools=None):
     """Prepare one response from product callbacks; execute no product-specific queries."""
     from app.orchestra.ai.knowledge.base import prepare_retrieval_query
     from app.orchestra.ai.knowledge.retrieval.retrieve_chunks import passage_context
@@ -134,10 +142,15 @@ async def prepare_response(context, message, history, *, retrieve, expand, load_
         gallery_limit=gallery_limit,
         search=(lambda query: load_context(query, refresh=True)) if allow_search else None,
         format_passage=format_passage or passage_context,
+        references=references,
     )
+    if extra_tools is not None:
+        prepared['tools'].extend(extra_tools(context))
     tool_names = [tool.name for tool in prepared['tools']]
+    prepared['messages'] = compose(profile, retrieved, entities, tool_names)
     logger.info('inference.context_prepared', space_id=str(context.space_id), tools=tool_names,
                 passages=len(retrieved.passages), source_links=len(retrieved.links),
-                images=len(retrieved.images), cards=len(entities), prompt_version='common-v3')
-    prepared['messages'] = compose(profile, retrieved, entities, tool_names)
+                images=len(retrieved.images), cards=len(entities),
+                compact_references=len(references.destinations) if references else 0,
+                prompt_version='common-v4-asset-refs')
     return prepared

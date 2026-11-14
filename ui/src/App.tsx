@@ -166,8 +166,10 @@ export default function App() {
           />
           <Route 
             path="/:slug/:chatbotSlug" 
-            element={<CustomerChat />} 
+            element={<SlugResolver />}
           />
+
+          <Route path="/:slug/*" element={<SlugResolver />} />
 
           {/* ── Explicit Localhost Routes (for development) ── */}
           <Route path="/yullo/:handle" element={<PublicYulloLink />} />

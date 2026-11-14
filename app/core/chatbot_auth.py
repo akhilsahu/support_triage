@@ -128,44 +128,7 @@ async def current_customer(
 
 # ── Google ID-token verification ──────────────────────────────────────────────
 
-def verify_google_id_token(id_token_str: str) -> dict:
-    """Verify a Google ID token against Google's public keys and our client id.
-
-    Returns {sub, email, name, picture}. Raises HTTPException(401) on anything
-    untrusted -- bad signature, wrong audience, or an unverified email address.
-    """
-    if not settings.GOOGLE_CLIENT_ID:
-        raise HTTPException(503, "Google sign-in is not configured on this server.")
-    try:
-        from google.auth.transport import requests as google_requests
-        from google.oauth2 import id_token as google_id_token
-    except ImportError as e:
-        raise HTTPException(503, f"Google sign-in dependency missing: {e}")
-
-    try:
-        info = google_id_token.verify_oauth2_token(
-            id_token_str, google_requests.Request(), settings.GOOGLE_CLIENT_ID,
-        )
-    except Exception as e:
-        logger.warning("chatbot_auth.google_verify_failed", error=str(e))
-        raise HTTPException(401, "Could not verify Google sign-in.")
-
-    # verify_oauth2_token already checks signature, expiry and audience; the
-    # issuer and a verified email are ours to enforce.
-    if info.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
-        raise HTTPException(401, "Could not verify Google sign-in.")
-    if not info.get("email_verified"):
-        raise HTTPException(401, "Your Google email is not verified.")
-    sub = info.get("sub")
-    if not sub:
-        raise HTTPException(401, "Could not verify Google sign-in.")
-
-    return {
-        "sub": sub,
-        "email": info.get("email"),
-        "name": info.get("name"),
-        "picture": info.get("picture"),
-    }
+from app.core.google_identity import verify_google_id_token as verify_google_id_token
 
 
 # ── Login gate ────────────────────────────────────────────────────────────────

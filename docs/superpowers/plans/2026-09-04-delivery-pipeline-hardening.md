@@ -13,6 +13,8 @@
 
 ## 2026-11-12 CI repair
 
+**Deployment verified:** `1973fa12`, [successful run 43235384324](https://github.com/akhilsahu/support_triage/actions/runs/43235384324). Both CI jobs and VPS deployment succeeded. Production logs show the migration chain reaching `e6a7b8c9d0e1`, followed by API/database/Redis health confirmation and `Deploy complete`. Vercel reports the frontend deployment successful for the same commit. Live API health, frontend and frontend API proxy returned HTTP 200 with database/Redis connected. The existing 390 backend and 146 frontend tests passed. Signed-in application flows and the broader legacy schema audit below remain unverified. Unrelated local feature work was not included in this release.
+
 - Removed four orphaned evaluation test modules. The implementation was deliberately retired in `48bd6053`; its table-removal migration already exists. Active test gates remain enabled.
 - Declared `aiofiles` and constrained SQLAlchemy to the supported 2.0 line in both dependency manifests. SQLAlchemy 2.1 changes the default PostgreSQL driver and breaks the existing sync database URLs.
 - Updated existing UI assertions, Firecrawl request expectations, usage metadata, retrieval authorization fixtures and appearance database mocks to match current behavior.

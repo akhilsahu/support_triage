@@ -13,6 +13,8 @@ export type PulseSpace = {
     outcome: string;
   };
   accentColor?: string;
+  childCount?: number;
+  spaceType?: string;
 };
 
 type YulloPulseProps = {
@@ -65,6 +67,7 @@ export const YulloPulse: React.FC<YulloPulseProps> = ({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const isReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const supportsHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
   // Sort: attention → live high demand → live → draft
   const sortedSpaces = [...spaces].sort((a, b) => {
@@ -152,7 +155,7 @@ export const YulloPulse: React.FC<YulloPulseProps> = ({
           fill="var(--text-primary)"
           className="pointer-events-none"
         >
-          {userName}
+          {userName.length > 28 ? `${userName.slice(0, 27)}…` : userName}
         </text>
 
         {/* ── Per-space connections, rings, dots, labels ───────────────── */}
@@ -177,7 +180,7 @@ export const YulloPulse: React.FC<YulloPulseProps> = ({
           return (
             <g
               key={node.id}
-              style={{ opacity: isFaded ? 0.2 : 1, transition: 'opacity 250ms ease' }}
+              style={{ opacity: isFaded ? 0.2 : 1, transition: isReducedMotion ? 'none' : 'opacity 250ms ease' }}
             >
               {/* Connector: center → node */}
               <motion.line
@@ -186,7 +189,7 @@ export const YulloPulse: React.FC<YulloPulseProps> = ({
                 strokeWidth={1}
                 initial={{ pathLength: isReducedMotion ? 1 : 0 }}
                 animate={{ pathLength: 1 }}
-                transition={{ duration: 0.55, delay: i * 0.08, ease: 'easeOut' }}
+                transition={{ duration: isReducedMotion ? 0 : 0.22, delay: isReducedMotion ? 0 : i * 0.01, ease: 'easeOut' }}
                 className="pointer-events-none"
               />
 
@@ -232,9 +235,9 @@ export const YulloPulse: React.FC<YulloPulseProps> = ({
                 strokeWidth={1.5}
                 strokeDasharray={ringDash}
                 opacity={ringOpacity}
-                initial={{ scale: 0.8, opacity: 0 }}
+                initial={isReducedMotion ? false : { scale: 0.92, opacity: 0 }}
                 animate={{ scale: 1, opacity: ringOpacity }}
-                transition={{ duration: 0.4, delay: i * 0.08 + 0.15 }}
+                transition={{ duration: isReducedMotion ? 0 : 0.22, delay: isReducedMotion ? 0 : i * 0.01 }}
                 className="pointer-events-none"
               />
 
@@ -247,7 +250,12 @@ export const YulloPulse: React.FC<YulloPulseProps> = ({
                 stroke={strokeColor}
                 strokeWidth={isSelected ? 0 : 1.5}
                 className="pointer-events-auto cursor-pointer focus:outline-none"
+                role="button"
+                aria-label={`${node.name}${node.spaceType ? `, ${node.spaceType}` : ''}${node.childCount ? `, ${node.childCount} subspaces` : ''}`}
+                aria-pressed={isSelected}
                 tabIndex={0}
+                onFocus={() => setHoveredId(node.id)}
+                onBlur={() => setHoveredId(null)}
                 onMouseEnter={() => setHoveredId(node.id)}
                 onMouseLeave={() => setHoveredId(null)}
                 onClick={(e) => { e.stopPropagation(); onSelect(isSelected ? null : node.id); }}
@@ -257,18 +265,20 @@ export const YulloPulse: React.FC<YulloPulseProps> = ({
                     onSelect(isSelected ? null : node.id);
                   }
                 }}
-                initial={{ scale: 0 }}
+                initial={isReducedMotion ? false : { scale: 0.92 }}
                 animate={hasHighDemand && !isSelected && !isReducedMotion
                   ? { scale: [1, 1.04, 1] }
                   : { scale: 1 }
                 }
-                whileHover={{ scale: 1.08 }}
-                whileTap={{ scale: 0.94 }}
+                whileHover={supportsHover && !isReducedMotion ? { scale: 1.04 } : undefined}
+                whileTap={isReducedMotion ? undefined : { scale: 0.98 }}
                 transition={hasHighDemand && !isSelected && !isReducedMotion
                   ? { duration: 4, repeat: Infinity, ease: 'easeInOut', delay: i * 0.5 }
                   : { duration: 0.2, ease: 'easeOut' }
                 }
               />
+
+              {isHovered && <circle cx={node.x} cy={node.y} r={node.nodeRadius + 9} fill="none" stroke="var(--accent)" strokeWidth={2} className="pointer-events-none" />}
 
               {/* Selected indicator */}
               {isSelected && (
@@ -293,7 +303,8 @@ export const YulloPulse: React.FC<YulloPulseProps> = ({
                 fill="var(--text-primary)"
                 className="pointer-events-none"
               >
-                {node.name}
+                <title>{node.name}</title>
+                {node.name.length > 24 ? `${node.name.slice(0, 23)}…` : node.name}
               </text>
 
               {/* Status sub-label, visible on hover/select */}
@@ -309,11 +320,13 @@ export const YulloPulse: React.FC<YulloPulseProps> = ({
                     ? 'var(--attention)'
                     : 'var(--text-secondary)'
                 }
-                opacity={isHovered || isSelected ? 1 : 0}
-                style={{ transition: 'opacity 200ms ease' }}
+                opacity={node.spaceType || node.childCount || isHovered || isSelected ? 1 : 0}
+                style={{ transition: isReducedMotion ? 'none' : 'opacity 200ms ease' }}
                 className="pointer-events-none"
               >
-                {node.auraStatus === 'ready'
+                {node.spaceType || node.childCount
+                  ? [node.spaceType ? node.spaceType.charAt(0).toUpperCase() + node.spaceType.slice(1) : '', node.childCount ? `${node.childCount} subspace${node.childCount === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ')
+                  : node.auraStatus === 'ready'
                   ? 'Aura ready'
                   : node.auraStatus === 'attention'
                   ? 'Needs attention'

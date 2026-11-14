@@ -502,3 +502,41 @@ The system uses **hairline + soft drop**. Cards float above the off-white canvas
 - Animation timings (orb drift, waveform pulse, hero entrance) out of scope.
 - In-product surfaces (voice library editor, agent playground) only partially captured via marketing mockups.
 - Form validation states beyond focus not visible on captured surfaces.
+
+## Yullo product UI — approved pattern (2026-11-13)
+
+This section governs Yullo dashboard, forms and drawers. It takes precedence over the ElevenLabs marketing reference above for Yullo product screens; do not copy that reference's ink-only CTAs, fonts or palette into Yullo. Keep Support247 styling isolated.
+
+### Color and button edges
+
+- Use Yullo semantic CSS tokens in `ui/src/yullo/styles/tokens.css`: `--canvas`, `--surface`, `--surface-soft`, `--text-primary`, `--text-secondary`, `--border`, `--accent-solid`, `--accent-on-solid`, `--accent-ink` and `--accent-soft`. Custom accent and light/dark/warm selections must work in pages and portaled drawers alike.
+- Default yellow is vivid **#FFFC00**, matching the approved Snapchat-style reference. Do not mix brown into yellow fills or icons. Use neutral ink for readable labels on light surfaces and yellow ink in dark themes.
+- Solid yellow actions have a **1px charcoal border (#252525)** in light/warm themes, with dark text/icons. Dark themes use a softer theme border. Keep this treatment specific to yellow; preserve other selected accents.
+- Use rounded controls with clear edges and restrained depth. Primary actions use the solid accent; secondary actions use neutral surfaces. Focus and selected states use the configured accent. Prefer the existing canonical action classes and shared controls over per-screen color overrides.
+- Use `components/core/YulloButton.tsx` for Yullo editor/form actions. Primary/outline/ghost/danger variants, sizing, loading and focus are styled centrally by `.yullo-button` data attributes in `styles/tokens.css`; do not duplicate action fills or borders in feature CSS. Default primary is #FFFC00; defined charcoal borders apply to default-yellow actions in light themes, with theme-visible edges in dark themes. Keep visitor booking links on their saved presentation accent and specialized image/radio selection controls on their own selection styles.
+
+### Icons and add actions
+
+- Subspace artwork sits beside its title on desktop and above on mobile, at its natural proportions with bounded dimensions. Avoid fixed-width letterboxed covers. Missing images leave no empty box.
+- Image-inspired styling uses the existing saved presentation config and theme token resolver for Studio/public chatbot; the dashboard uses subtle matching accents and retains its interface light/dark mode. AI appearance suggestions require review and Save. Support optional hex accents with derived readable text and button contrast; retain preset/manual controls.
+- Before an appearance is customized, infer a subtle accent from the uploaded subspace artwork locally using the shared `useArtworkAccent` hook. Ignore transparent/neutral pixels so white margins and black backdrops do not drown out the artwork color. Apply a restrained header/background tint, not the global yellow; use neutral surfaces if pixels are unavailable. This derived visual fallback is not another persisted palette and never overrides owner/Aura appearance choices.
+- Public subspaces use a content-first identity section: type, title, short summary, complete artwork beside date/location/pricing/action information, and expandable About text. Stack on mobile. Keep one primary configured action and offer alternatives as secondary links. Use artwork colors in restrained gradients; show artwork clearly in the hero. Subspace Studio's Image background option is labelled Artwork tint. Keep the main Space presentation behavior and existing Aura/chat sections intact.
+- Treat that layout as an editable preset: existing hero layout selects artwork above/left/right, content layout controls heading alignment/width, and visual density controls spacing/image size. Reuse the existing asset picker and uploaded-cover tile. Hero visibility is independent of asset selection so None hides the fallback cover without deleting it. AI starts with the standard split layout; owner overrides remain reviewable, undoable and explicitly saved.
+- Studio and public pages share the same subspace renderer and public/direct field projection. Private, on-request and Aura-only fields stay out of public responses. Studio may additionally show saved, approved private booking links through authenticated owner-only preview metadata, clearly labelled as absent from the public page. Never forward that preview metadata into public Space data or Aura context. Display only actual configured pricing and dates; never fill missing ticket prices, venue details or actions with examples.
+- Keep normal subspace descriptions expanded; reserve Read more for long content. Use primary text for the overview/About body and explicit supporting-text tokens rather than opacity. Physical public locations reuse the compact map/directions component; remote locations remain a compact label.
+- First-time setup can start from the standard preset. Later AI rebuilds use the current draft, image and authorized content to suggest a revised supported composition. Always review before applying/saving; failures retain the current layout and must not claim a successful rebuild of an unchanged preset.
+
+- Use distinct theme-aware category colors where several icons appear together (event, posting, service, other; knowledge source types). Action backgrounds, focus and selection still follow the configured accent.
+- Use grounded Lucide icons with confident strokes (about 2–2.75px for compact action icons). No sparkle or magic-wand icons.
+- Compact add controls may use a subtle translucent/glass surface, accent border/tint and restrained inset highlight. Always provide an accessible name, tooltip and visible keyboard focus.
+- Show one add action per panel state: centered with the invitation when empty, in the header when populated. Avoid duplicate plus buttons in the same panel.
+
+### Layout and feedback
+
+- Keep forms compact and serious, with clear labels, restrained type sizes and consistent spacing. Reuse the existing right-side drawer pattern; mobile adapts to full width.
+- Keep location cards at the dashboard bottom: one physical location fills the width; two or more use two desktop columns; mobile stacks. Maps are thin previews (112–128px), not dominant blocks.
+- Online-only locations use a compact row with a monitor icon and **Online / Remote** label, rather than an empty map-sized card. Preserve visibility and edit controls.
+- Empty states invite action: **“What’s happening in your Space?”** followed by **“Have an event, post or announcement to share? Click + to add it.”** Reuse the existing creation menu.
+- Keep motion brief and purposeful; respect reduced motion. No looping decoration. Preserve existing data, permissions, extraction and save behavior during visual changes.
+
+Reference implementation: `ui/src/yullo/styles/tokens.css`, `ui/src/yullo/forms/subspaces/Subspaces.tsx`, `ui/src/yullo/forms/Locations.tsx`, and `ui/src/yullo/components/AddKnowledgeModal.tsx`.

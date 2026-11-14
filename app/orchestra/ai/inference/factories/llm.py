@@ -24,7 +24,7 @@ def _uses_max_completion_tokens(model_id: str) -> bool:
     max_tokens failure is addressed.
     """
     m = (model_id or "").lower()
-    return m.startswith(("gpt-5", "o1", "o3", "o4"))
+    return m.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4"))
 
 
 def _supports_reasoning_effort(model_id: str) -> bool:
@@ -43,7 +43,7 @@ def _supports_reasoning_effort(model_id: str) -> bool:
     m = (model_id or "").lower()
     if "/" in m:
         m = m.split("/", 1)[1]
-    return m.startswith(("gpt-5", "o1", "o3", "o4"))
+    return m.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4"))
 
 
 def _build_anthropic(
@@ -98,7 +98,7 @@ class LLMFactory:
         from app.config import settings
         from app.core.llm_provider import get_async_openai_clients, resolve_provider_order
         try:
-            from agno.models.openai.like import OpenAILike
+            from agno.models.openai import OpenAILike, OpenAIResponses
         except ImportError:
             logger.warning('llm.missing_agno')
             return []
@@ -110,7 +110,7 @@ class LLMFactory:
                 client_cache[key] = get_async_openai_clients(override_model=requested, providers=[name])
             return client_cache[key]
 
-        class ConfiguredClientModel(OpenAILike):
+        class ConfiguredClientMixin:
             def __deepcopy__(self, memo):
                 cloned = super().__deepcopy__(memo)
                 cloned.async_client = self.async_client
@@ -126,6 +126,14 @@ class LLMFactory:
                     if emitted:
                         raise RuntimeError('Model stream interrupted') from error
                     raise
+
+        class ConfiguredClientModel(ConfiguredClientMixin, OpenAILike):
+            pass
+
+        class ConfiguredResponsesModel(ConfiguredClientMixin, OpenAIResponses):
+            def get_provider(self):
+                # Keep usage attribution/pricing keyed to the configured provider.
+                return self.provider or 'openai'
 
         t = self.cfg.temperature if temperature is None else temperature
         tokens = self.cfg.max_tokens if max_tokens is None else max_tokens
@@ -169,6 +177,13 @@ class LLMFactory:
                 return None
             options = dict(id=selected, provider=name, name=name, async_client=client,
                            api_key=client.api_key, base_url=str(client.base_url), temperature=t)
+            if selected.removeprefix('openai/').startswith('gpt-6'):
+                if name not in ('openai', 'openrouter'):
+                    return None
+                options.pop('temperature')
+                return ConfiguredResponsesModel(
+                    **options, max_output_tokens=tokens, reasoning={'effort': effort or 'low'}, store=False,
+                )
             key = 'max_completion_tokens' if name == 'openai' and _uses_max_completion_tokens(selected) else 'max_tokens'
             options[key] = tokens
             if name in ('openai', 'openrouter') and effort and _supports_reasoning_effort(selected):

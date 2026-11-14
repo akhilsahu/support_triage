@@ -7,6 +7,7 @@ import { LocationForm } from './LocationForm';
 import { entitiesApi, type SpaceEntity } from '../api/entities';
 vi.mock('../api/entities', () => ({ entitiesApi: { createEntity: vi.fn(), updateEntity: vi.fn() } }));
 vi.mock('./GoogleLocationPicker', () => ({ GoogleLocationPicker: ({ onSelect }: { onSelect: (value: object) => void }) => <button type="button" onClick={() => onSelect({ lat: 12, lng: 77, address: 'Selected address' })}>Use test pin</button> }));
+vi.mock('./LocationSearchField', () => ({ LocationSearchField: ({ id, label, value, onChange }: { id?: string; label: string; value: string; onChange: (value: string) => void }) => <label>{label}<input id={id} value={value} onChange={event => onChange(event.target.value)} /></label> }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 function setup(entity?: SpaceEntity) {
   const onSaved = vi.fn();
@@ -17,7 +18,7 @@ it('requires name/address and saves explicitly selected coordinates with private
   const { user, onSaved } = setup();
   await user.click(screen.getByRole('button', { name: 'Save location' }));
   expect(entitiesApi.createEntity).not.toHaveBeenCalled();
-  await user.type(screen.getByRole('textbox', { name: 'Place name' }), 'Branch A');
+  await user.type(screen.getByRole('textbox', { name: 'Location name' }), 'Branch A');
   await user.click(screen.getByRole('button', { name: 'Use test pin' }));
   await user.click(screen.getByRole('button', { name: 'Save location' }));
   await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
@@ -33,7 +34,7 @@ it('clears stale coordinates when an address is manually changed', async () => {
 it('preserves entered data after save failure', async () => {
   vi.mocked(entitiesApi.createEntity).mockRejectedValueOnce(new Error('offline'));
   const { user, onSaved } = setup();
-  await user.type(screen.getByRole('textbox', { name: 'Place name' }), 'Branch B');
+  await user.type(screen.getByRole('textbox', { name: 'Location name' }), 'Branch B');
   await user.type(screen.getByRole('textbox', { name: 'Address' }), 'Manual address');
   await user.click(screen.getByRole('button', { name: 'Save location' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Could not save');

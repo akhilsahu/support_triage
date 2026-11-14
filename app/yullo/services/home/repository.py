@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, and_, or_, func, text, case
 
 from app.models.space import Space
+from app.models.yullo_space import YulloSpace
 from app.models.yullo_user_preference import YulloUserPreference
 from app.models.conversation_turn import ConversationTurn
 from app.models.conversation_event import ConversationEvent
@@ -27,6 +28,7 @@ class SpaceRecord(BaseModel):
     description: str | None = None
     logo_url: str | None = None
     status: str = "draft"
+    parent_space_id: uuid.UUID | None = None
 
 class SessionMetrics(BaseModel):
     space_id: uuid.UUID
@@ -148,7 +150,8 @@ class HomeSnapshotRepository:
     @staticmethod
     def _load_owned_spaces(db: Session, user_id: uuid.UUID) -> List[SpaceRecord]:
         stmt = (
-            select(Space)
+            select(Space, YulloSpace.parent_space_id)
+            .outerjoin(YulloSpace, YulloSpace.space_id == Space.id)
             .where(
                 Space.owner_user_id == user_id,
                 Space.product == 'yullo',
@@ -156,7 +159,7 @@ class HomeSnapshotRepository:
             )
         )
         records = []
-        for space in db.scalars(stmt).all():
+        for space, parent_space_id in db.execute(stmt).all():
             records.append(SpaceRecord(
                 id=space.id,
                 slug=space.slug,
@@ -166,6 +169,7 @@ class HomeSnapshotRepository:
                 is_active=space.active,
                 description=getattr(space, 'description', None),
                 logo_url=space.logo_url,
+                parent_space_id=parent_space_id,
                 status=space.status
             ))
         return records

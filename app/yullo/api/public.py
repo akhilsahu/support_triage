@@ -2,10 +2,13 @@ from functools import partial
 from collections.abc import AsyncIterator, Callable
 import uuid
 import functools
-from urllib.parse import urlsplit
 
 import anyio
 from fastapi import APIRouter, Request, Depends, HTTPException
+from pydantic import BaseModel, Field
+from fastapi import Query
+from app.core.auth import current_user, optional_current_user
+from app.yullo.services.conversations.history import authorize_session, claim_sessions, list_sessions, read_transcript, proof_hash
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +18,6 @@ from app.models.space import Space
 from app.models.yullo_config import YulloConfig
 from app.models.yullo_space import YulloSpace
 from app.models.yullo_space_entity import YulloSpaceEntity
-from app.orchestra.ai.config import build_config
 from app.orchestra.ai.ingestion.storage import materialize as materialize_blob
 from app.orchestra.ai.knowledge.factory import build_knowledge_backend
 from app.yullo.adapters.conversations import YulloConversationRepository
@@ -24,7 +26,8 @@ from app.yullo.schemas.appearance import SpacePresentationConfig, default_presen
 from app.yullo.schemas.inference import AuraInferenceRequest
 from app.orchestra.ai.appearance_preview.asset_persistence import config_references_asset, list_source_extracted_assets
 from app.yullo.services.persistence.appearance import build_deterministic_landing_content, merge_applied_sections, collect_preview_facts, get_live_appearance_preview
-from app.yullo.services.persistence.appearance_images import resolve_preview_images
+from app.yullo.services.persistence.appearance_images import resolve_preview_images, applied_preview
+from app.yullo.services.persistence.appearance_evidence import eligible_preview_chunks
 from app.yullo.services.entities.payloads import (
     entity_title,
     project_public_entity_payload,
@@ -33,42 +36,11 @@ from app.yullo.services.entities.payloads import (
 from app.yullo.services.entities.service import public_entity_predicates
 from app.orchestra.ai.inference.streaming import generate_response, prepare_response
 
+from app.yullo.services.entities.presentation import public_booking_links as _public_booking_links, public_page_details
+
 router = APIRouter(tags=["Aura"])
 
 
-def _public_booking_links(entities: list[YulloSpaceEntity]) -> list[dict[str, str]]:
-    """Project static-page links; public-Aura permission alone is insufficient."""
-    links = []
-    for entity in entities:
-        if (entity.entity_type != "action" or not entity.is_active or not entity.is_public
-                or entity.review_status not in ("owner_confirmed", "source_authoritative")
-                or entity.visibility not in (None, "public")):
-            continue
-        payload = project_public_entity_payload(entity)
-        if payload.get("kind") != "booking":
-            continue
-        policies = entity.field_policies or {}
-        fields = policies.get("fields", policies) if isinstance(policies, dict) else None
-        if not isinstance(fields, dict):
-            continue
-        permitted = True
-        for key in ("label", "destination_url", "kind"):
-            policy = fields.get(key)
-            visibility = policy.get("visibility") if isinstance(policy, dict) else policy
-            disclosure = policy.get("disclosureMode", policy.get("disclosure_mode")) if isinstance(policy, dict) else None
-            if visibility not in (None, "public") or disclosure not in (None, "direct"):
-                permitted = False
-        label, url = payload.get("label"), payload.get("destination_url")
-        if not permitted or not isinstance(label, str) or not label.strip() or not isinstance(url, str):
-            continue
-        try:
-            parsed = urlsplit(url)
-            if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-                continue
-        except ValueError:
-            continue
-        links.append({"id": str(entity.id), "label": label.strip(), "url": url})
-    return links
 
 
 async def _require_public_space(db: AsyncSession, space_id: uuid.UUID) -> None:
@@ -88,7 +60,8 @@ async def _require_public_space(db: AsyncSession, space_id: uuid.UUID) -> None:
 
 def get_aura_chat(db: AsyncSession = Depends(get_db)) -> Callable[[AuraInferenceRequest], AsyncIterator[str]]:
     conversations = YulloConversationRepository(db)
-    cfg = build_config()
+    from app.yullo.config.inference import get_chat_model_config
+    cfg = get_chat_model_config()
     backend = build_knowledge_backend(cfg)
     from app.orchestra.ai.knowledge.retrieval.retrieve_chunks import (
         retrieve_evidence, expand_continuations, select_records, passage_context,
@@ -96,22 +69,48 @@ def get_aura_chat(db: AsyncSession = Depends(get_db)) -> Callable[[AuraInference
     from app.orchestra.ai.knowledge.retrieval.images_retrieval import attach_source_assets
     from app.orchestra.ai.db_utils.source_loader import published_doc_id
     from app.yullo.schemas.retrieval import RetrievedContext
-    from app.yullo.config.inference import get_knowledge_features, get_chat_image_config
+    from app.yullo.config.inference import get_knowledge_features, get_chat_image_config, get_event_listing_config
     from app.yullo.services.sources.service import load_chat_sources, source_images, public_source_asset
     from app.yullo.services.entities.service import get_chat_fact_evidence, get_chat_entities
     from app.orchestra.ai.prompts.yullo.composer import load_chat_profile, compose_reply_messages
+    from app.yullo.services.sources.assets import hydrate_passage_assets
+    from app.orchestra.ai.ui_render.source_assets import SourceAssetReferences
 
+    from app.yullo.services.spaces.hierarchy import build_event_listing_tools
+    event_config = get_event_listing_config()
     features, image_config = get_knowledge_features(), get_chat_image_config()
-    format_passage = partial(passage_context, asset_visible=public_source_asset)
-    load_sources = partial(load_chat_sources, db)
+    references = SourceAssetReferences()
+    current_sources = {}
+
+    async def load_sources(context, *, refresh=False):
+        kb_ids, sources = await load_chat_sources(db, context, refresh=refresh)
+        current_sources.clear()
+        current_sources.update(sources)
+        return kb_ids, sources
+
+    def format_passage(passage):
+        hydrate_passage_assets(current_sources, [passage])
+        return references.format_passage(passage, partial(passage_context, asset_visible=public_source_asset))
+
+    def attach_assets(sources, query, pack):
+        hydrate_passage_assets(sources, pack.passages)
+        attach_source_assets(
+            sources, query, pack, config=image_config,
+            images_for_source=partial(source_images, config=image_config),
+            doc_id_for_source=published_doc_id, asset_visible=public_source_asset,
+        )
+        references.collect(pack.links)
+        references.bind_images(pack.images)
+
+    def compose(profile, retrieved, entities, tool_names):
+        return references.compact(compose_reply_messages(
+            profile, retrieved, entities, tool_names, format_passage=format_passage,
+        ))
+
     retrieve = partial(
         retrieve_evidence, backend=backend, load_sources=load_sources,
         load_facts=partial(get_chat_fact_evidence, db),
-        attach_assets=partial(
-            attach_source_assets, config=image_config,
-            images_for_source=partial(source_images, config=image_config),
-            doc_id_for_source=published_doc_id, asset_visible=public_source_asset,
-        ),
+        attach_assets=attach_assets,
         config=features, evidence_factory=RetrievedContext,
     )
     prepare = partial(
@@ -119,13 +118,37 @@ def get_aura_chat(db: AsyncSession = Depends(get_db)) -> Callable[[AuraInference
         expand=partial(expand_continuations, backend, config=features, load_sources=load_sources,
                        format_passage=format_passage),
         load_profile=partial(load_chat_profile, db), load_entities=partial(get_chat_entities, db),
-        compose=partial(compose_reply_messages, format_passage=format_passage),
+        compose=compose,
         gallery_limit=image_config.max_gallery_images,
         select_records=partial(select_records, config=features),
-        allow_search=True, format_passage=format_passage,
+        allow_search=True, format_passage=format_passage, references=references,
+        extra_tools=partial(build_event_listing_tools, db, config=event_config),
     )
     generate = partial(generate_response, prepare=prepare)
     return partial(conversations.stream_response, generate=generate, cfg=cfg)
+
+@router.get("/paths/{public_path:path}")
+async def get_public_space_path(public_path: str, db: AsyncSession = Depends(get_db)):
+    """Resolve a published hierarchy without granting cross-Space content access."""
+    segments = public_path.split("/")
+    if len(segments) < 2 or len(segments) > 20 or any(not part for part in segments):
+        raise HTTPException(404, "Space not found")
+    parent_id = None
+    owner_id = None
+    for handle in segments:
+        row = (await db.execute(select(Space, YulloSpace).join(
+            YulloSpace, YulloSpace.space_id == Space.id,
+        ).where(Space.slug == handle, Space.product == "yullo", Space.active.is_(True),
+                Space.status == "live", YulloSpace.lifecycle_status == "live"))).first()
+        if not row:
+            raise HTTPException(404, "Space not found")
+        space, extension = row
+        if extension.parent_space_id != parent_id or (owner_id is not None and space.owner_user_id != owner_id):
+            raise HTTPException(404, "Space not found")
+        parent_id, owner_id = space.id, space.owner_user_id
+    # Reuse the canonical child projection and its disclosure rules.
+    return await get_public_space(segments[-1], db)
+
 
 @router.get("/spaces/{handle}")
 async def get_public_space(
@@ -155,10 +178,10 @@ async def get_public_space(
         presentation = (
             SpacePresentationConfig.model_validate(yullo_space.appearance_config)
             if yullo_space.appearance_config
-            else default_presentation_config(yullo_space.purpose)
+            else default_presentation_config(yullo_space.purpose, is_subspace=yullo_space.parent_space_id is not None)
         )
     except Exception:
-        presentation = default_presentation_config(yullo_space.purpose)
+        presentation = default_presentation_config(yullo_space.purpose, is_subspace=yullo_space.parent_space_id is not None)
     hero_asset = None
     if presentation.hero.asset_id:
         asset = await db.scalar(
@@ -205,6 +228,9 @@ async def get_public_space(
         yullo_config.settings if yullo_config else {},
         {str(entity.id) for entity in public_entities},
         {fact["id"] for fact in await collect_preview_facts(db, space.id)},
+        await eligible_preview_chunks(db, space_id=space.id, contents=[
+            applied_preview(yullo_config.settings if yullo_config else {}),
+        ]),
     )
     landing_content = await resolve_preview_images(db, space_id=space.id, content=landing_content, public=True)
     section_types = {section.type.value for section in landing_content.sections}
@@ -223,14 +249,16 @@ async def get_public_space(
         "id": str(space.id),
         "handle": space.slug,
         "displayName": space.display_name,
+        "isSubspace": yullo_space.parent_space_id is not None,
+        "subspaceFields": identity.get("subspace_fields") if yullo_space.parent_space_id else None,
         "description": identity.get("description") or "",
         "avatarUrl": space.logo_url,
         "locationLabel": "",
-        "promptStarters": prompt_starters,
+        "promptStarters": (identity.get("prompt_starters") or []) if yullo_space.parent_space_id else prompt_starters,
         "presentationConfig": presentation.model_dump(mode="json", by_alias=True),
         "landingContent": landing_content.model_dump(mode="json", by_alias=True),
         "heroAsset": hero_asset,
-        "bookingLinks": _public_booking_links(public_entities),
+        **public_page_details(public_entities, space_type=yullo_space.space_type, space_name=space.display_name, is_subspace=yullo_space.parent_space_id is not None),
         "auraEnabled": True
     }
 
@@ -308,7 +336,8 @@ async def get_public_entity(
 @router.post("/spaces/{space_id}/aura/sessions")
 async def start_aura_session(
     space_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user=Depends(optional_current_user),
 ):
     """
     Start a new Aura session for a given space.
@@ -317,8 +346,45 @@ async def start_aura_session(
 
     conversations = YulloConversationRepository(db)
     runtime_id = "default_aura" # In the future, this might be tied to a specific Aura version
-    session = await conversations.start(space_id, runtime_id)
-    return {"session_id": str(session.id)}
+    import secrets
+    token = secrets.token_hex(32) if user is None else None
+    session = await conversations.start(space_id, runtime_id, user_id=user.id if user else None,
+                                         guest_token_hash=proof_hash(token) if token else None)
+    return {"session_id": str(session.id), "guest_token": token}
+
+
+class AuraBrowserProof(BaseModel):
+    session_id: uuid.UUID
+    token: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+class AuraClaimRequest(BaseModel):
+    proofs: list[AuraBrowserProof] = Field(max_length=50)
+
+
+@router.post('/spaces/{space_id}/aura/sessions/claim')
+async def claim_aura_sessions(space_id: uuid.UUID, body: AuraClaimRequest, db: AsyncSession = Depends(get_db),
+                              user=Depends(current_user)):
+    await _require_public_space(db, space_id)
+    return {'claimed': await claim_sessions(db, space_id=space_id, user_id=user.id, proofs=body.proofs)}
+
+
+@router.get('/spaces/{space_id}/aura/sessions')
+async def account_aura_sessions(space_id: uuid.UUID, before: uuid.UUID | None = None,
+                                 limit: int = Query(50, ge=1, le=100), db: AsyncSession = Depends(get_db),
+                                 user=Depends(current_user)):
+    await _require_public_space(db, space_id)
+    return await list_sessions(db, space_id=space_id, user_id=user.id, before=before, limit=limit)
+
+
+@router.get('/spaces/{space_id}/aura/sessions/{session_id}')
+async def aura_transcript(space_id: uuid.UUID, session_id: uuid.UUID, raw_request: Request,
+                           before: uuid.UUID | None = None, limit: int = Query(100, ge=1, le=200),
+                           db: AsyncSession = Depends(get_db), user=Depends(optional_current_user)):
+    await _require_public_space(db, space_id)
+    session = await authorize_session(db, space_id=space_id, session_id=session_id, user_id=user.id if user else None,
+                                      guest_token=raw_request.headers.get('X-Yullo-Chat-Token'))
+    return await read_transcript(db, session=session, before=before, limit=limit)
 
 
 @router.post("/spaces/{space_id}/aura/sessions/{session_id}/chat")
@@ -328,7 +394,8 @@ async def stream_aura_chat(
     request: AuraInferenceRequest,
     raw_request: Request = None,
     db: AsyncSession = Depends(get_db),
-    chat: Callable[[AuraInferenceRequest], AsyncIterator[str]] = Depends(get_aura_chat)
+    chat: Callable[[AuraInferenceRequest], AsyncIterator[str]] = Depends(get_aura_chat),
+    user=Depends(optional_current_user),
 ):
     """
     Stream a chat completion using injected evidence preparation and shared inference.
@@ -339,7 +406,8 @@ async def stream_aura_chat(
     if len(request.message) > 1000:
         raise HTTPException(status_code=400, detail="Message too long (max 1000 characters).")
         
-    request.model = "gpt-4o-mini"
+    from app.yullo.config.inference import get_chat_model_config
+    request.model = get_chat_model_config().llm_model
     
     if raw_request:
         from app.core.rate_limit import enforce_rate_limit
@@ -353,13 +421,17 @@ async def stream_aura_chat(
 
     await _require_public_space(db, space_id)
 
+    guest_token = raw_request.headers.get('X-Yullo-Chat-Token') if raw_request else None
+    await authorize_session(db, space_id=space_id, session_id=session_id, user_id=user.id if user else None,
+                            guest_token=guest_token, allow_legacy=True)
+
     from app.orchestra.ai.db_utils.source_loader import resolve_space_kb_ids
     # Public callers cannot choose KBs belonging to other Spaces or drafts.
     request.kb_ids = await resolve_space_kb_ids(db, space_id, product="yullo")
     request.published_version = None
 
     async def event_generator():
-        async for chunk in chat(request):
+        async for chunk in chat(request, user_id=user.id if user else None, guest_token=guest_token):
             payload = chunk.strip()
             if payload:
                 yield f"data: {payload}\n\n"
@@ -376,27 +448,32 @@ async def stream_aura_chat(
 
 @router.get("/spaces/{space_id}/aura/images/{image_id}")
 async def get_public_chat_image(space_id: uuid.UUID, image_id: str, db: AsyncSession = Depends(get_db)):
-    from app.orchestra.ai.db_utils.source_loader import resolve_space_kb_ids, load_published_chat_sources
     from app.orchestra.ai.knowledge.retrieval.images_retrieval import resolve_published_chunk_image
     from app.yullo.services.sources.service import source_images
     from app.yullo.config.inference import get_chat_image_config
     from app.orchestra.ai.db_utils.source_loader import published_doc_id
+    from app.yullo.services.sources.service import load_chat_sources
+    from app.yullo.schemas.retrieval import YulloExecutionContext
+    from app.yullo.services.sources.assets import hydrate_passage_assets
 
     await _require_public_space(db, space_id)
     if len(image_id) != 64 or any(c not in '0123456789abcdef' for c in image_id):
         raise HTTPException(status_code=404, detail="Image unavailable")
-    kb_ids = await resolve_space_kb_ids(db, space_id, product="yullo")
-    sources = await load_published_chat_sources(db, space_id, kb_ids, product="yullo")
+    _, sources = await load_chat_sources(db, YulloExecutionContext(space_id=space_id, kb_ids=[]))
     image_config = get_chat_image_config()
-    for source in sources:
+    for source in sources.values():
         for image in source_images(source, config=image_config):
             if image['id'] == image_id:
+                def prepare_metadata(metadata):
+                    passage = {'meta': metadata}
+                    hydrate_passage_assets(sources, [passage])
+                    return passage['meta']
                 from fastapi.responses import JSONResponse
                 resolved = await anyio.to_thread.run_sync(functools.partial(
                     resolve_published_chunk_image,
                     str(space_id),
                     published_doc_id(source),
-                    image, config=image_config,
+                    image, config=image_config, prepare_metadata=prepare_metadata,
                 ))
                 return JSONResponse(resolved, headers={"Cache-Control": "no-store"})
     raise HTTPException(status_code=404, detail="Image unavailable")

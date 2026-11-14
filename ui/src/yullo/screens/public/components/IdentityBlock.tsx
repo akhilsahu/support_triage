@@ -1,3 +1,4 @@
+import { SubspaceInfo } from '../../../forms/subspaces/SubspaceInfo'
 import { motion } from 'motion/react'
 import { PublicSpace } from '../../../services/aura/types'
 import type { SpacePresentationConfig } from '../../appearance/presentation/schema'
@@ -33,6 +34,7 @@ export function IdentityBlock({ space, align = 'center', density = 'balanced', e
           </p>
         )}
       </div>
+      <SubspaceInfo fields={space.subspaceFields} />
       {!!space.bookingLinks?.length && (
         <div className={`flex w-full flex-wrap gap-3 ${isStart ? 'justify-start' : isEnd ? 'justify-end' : 'justify-center'}`}>
           {space.bookingLinks.map(link => {

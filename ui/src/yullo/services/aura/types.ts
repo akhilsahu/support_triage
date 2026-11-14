@@ -1,4 +1,7 @@
 export interface PublicSpace {
+  pageDetails?: { spaceType: string; startsAt?: string | null; endsAt?: string | null; locationLabel?: string | null; locationUrl?: string | null; latitude?: number | null; longitude?: number | null; isRemote?: boolean } | null
+  subspaceFields?: import('../../api/spaces').SubspaceFields | null
+  isSubspace?: boolean
   id?: string
   handle: string
   displayName: string

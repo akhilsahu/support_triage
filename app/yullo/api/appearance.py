@@ -195,6 +195,7 @@ async def rebuild_appearance_layout(
         user_id=user.id,
         space_id=space_id,
         force=payload.force,
+        current_config=payload.current_config,
     )
 
 

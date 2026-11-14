@@ -14,10 +14,26 @@ html {
   --font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-satoshi: 'Satoshi', var(--font-sans);
 
+  /* Compatibility aliases keep existing form controls on the canonical accent. */
+  --accent: var(--accent-solid);
+  --accent-fg: var(--accent-on-solid);
+  --accent-solid: rgb(var(--accent-base));
+  --accent-on-solid: var(--accent-on-solid-base);
+  --accent-ink: rgb(var(--accent-base-dark));
+  --accent-soft: rgba(var(--accent-base), 0.15);
+  --accent-border: rgba(var(--accent-base), 0.3);
+  --accent-ring: rgba(var(--accent-base), 0.5);
+
   /* Core Foundation - Light (Default) */
   --canvas: #F3F4F1;
   --surface: #FCFCFA;
   --surface-soft: #F4F6F5;
+  --location-pin: #0F766E;
+  --location-remote: #7C3AED;
+  --space-type-event: #2563EB;
+  --space-type-posting: #7C3AED;
+  --space-type-service: #0F766E;
+  --space-type-other: #B45309;
   
   --text-primary: #151B27;
   --text-secondary: #697382;
@@ -75,9 +91,9 @@ html {
    ACCENT MATRIX
    --------------------------------- */
 [data-accent="yullo"] .yullo-app, .yullo-app {
-  --accent-base: 250, 204, 21; /* #FACC15 */
-  --accent-base-dark: 133, 77, 14; /* #854D0E */
-  --accent-base-light: 253, 224, 71; /* #FDE047 */
+  --accent-base: 255, 252, 0; /* #FFFC00 */
+  --accent-base-dark: 21, 27, 39; /* Neutral ink keeps yellow actions readable without brown. */
+  --accent-base-light: 255, 252, 0; /* #FFFC00 */
   --accent-on-solid-base: #151B27;
 }
 [data-accent="cyan"] .yullo-app {
@@ -177,11 +193,11 @@ html {
   --ambient-glow: rgba(243,220,57,0.08);
   
   
-  --accent-solid: color-mix(in srgb, rgb(var(--accent-base)) 90%, #8A7258);
+  --accent-solid: rgb(var(--accent-base));
   --accent-on-solid: var(--accent-on-solid-base);
-  --accent-ink: color-mix(in srgb, rgb(var(--accent-base-dark)) 85%, #54402C);
-  --accent-soft: color-mix(in srgb, rgba(var(--accent-base), 0.18) 80%, #D6C4AD);
-  --accent-border: color-mix(in srgb, rgba(var(--accent-base), 0.35) 80%, #D6C4AD);
+  --accent-ink: rgb(var(--accent-base-dark));
+  --accent-soft: rgba(var(--accent-base), 0.15);
+  --accent-border: rgba(var(--accent-base), 0.3);
   --accent-ring: rgba(var(--accent-base), 0.5);
   
   --focus: var(--accent-solid);
@@ -278,6 +294,17 @@ html {
   --focus: var(--accent-solid);
   --focus-soft: var(--accent-soft);
 }
+/* Category accents remain distinct from the configurable interaction accent. */
+[data-theme="dark"] .yullo-app,
+[data-theme="dark-warm"] .yullo-app {
+  --location-pin: #2DD4BF;
+  --location-remote: #A78BFA;
+  --space-type-event: #60A5FA;
+  --space-type-posting: #A78BFA;
+  --space-type-service: #2DD4BF;
+  --space-type-other: #FBBF24;
+}
+
 @keyframes space-wake {
   0% { transform: scale(1); opacity: 0.8; }
   50% { transform: scale(1.08); opacity: 1; }
@@ -295,3 +322,124 @@ html {
   50% { opacity: 1; }
 }
 
+
+/* A single reveal introduces new page/list content; reading content stays still. */
+@keyframes yullo-content-reveal {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .yullo-app .yullo-dashboard-enter {
+    animation: yullo-content-reveal 220ms var(--easing-spring) backwards;
+  }
+  .yullo-app .yullo-location-row {
+    animation: yullo-content-reveal 180ms var(--easing-spring) backwards;
+  }
+}
+.yullo-app .yullo-location-row:focus-within {
+  background-color: var(--surface);
+}
+@media (hover: hover) and (pointer: fine) {
+  .yullo-app .yullo-location-row:hover {
+    background-color: var(--surface);
+  }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .yullo-app .yullo-location-row {
+    transition: background-color var(--duration-fast) ease;
+  }
+  .yullo-app .yullo-location-icon {
+    transition: transform var(--duration-fast) var(--easing-spring);
+  }
+  .yullo-app .yullo-location-row:hover .yullo-location-icon {
+    transform: translateY(-2px);
+  }
+}
+
+/* Portal content uses the same configured focus color as the dashboard. */
+.yullo-app.yullo-add-knowledge :is(button, a, input, textarea, select):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.yullo-app .yullo-space-add {
+  color: var(--accent-ink);
+  border: 1px solid color-mix(in srgb, var(--accent-solid) 40%, var(--border));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--surface) 72%, transparent), var(--accent-soft));
+  backdrop-filter: blur(10px);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-primary) 12%, transparent), 0 3px 10px color-mix(in srgb, var(--accent-solid) 10%, transparent);
+}
+.yullo-app .yullo-space-add:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent-solid);
+}
+
+/* Yellow needs a defined edge on pale surfaces; keep other accents unchanged. */
+.yullo-app button.yullo-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--yellow-button-border, var(--border-hover));
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background-color 150ms, border-color 150ms, opacity 150ms;
+}
+.yullo-app button.yullo-button[data-variant="primary"] { background: var(--accent-solid); color: var(--accent-on-solid); border-color: var(--yellow-button-border, var(--border-hover)); }
+.yullo-app button.yullo-button[data-variant="outline"] { background: transparent; color: var(--accent-ink); }
+.yullo-app button.yullo-button[data-variant="ghost"] { background: transparent; color: var(--text-secondary); border-color: var(--border); }
+.yullo-app button.yullo-button[data-variant="danger"] { background: var(--critical); color: #fff; border-color: var(--critical); }
+.yullo-app button.yullo-button[data-size="sm"] { padding: 8px 12px; font-size: 13px; }
+.yullo-app button.yullo-button[data-size="lg"] { padding: 12px 20px; font-size: 16px; }
+.yullo-app button.yullo-button[data-size="icon"] { width: 44px; padding: 0; flex-shrink: 0; }
+.yullo-app button.yullo-button:hover:not(:disabled) { border-color: var(--accent-solid); }
+.yullo-app button.yullo-button[data-variant="primary"]:hover:not(:disabled),
+.yullo-app button.yullo-button[data-variant="danger"]:hover:not(:disabled) { opacity: .9; }
+.yullo-app button.yullo-button:focus-visible { outline: 2px solid var(--accent-solid); outline-offset: 3px; }
+.yullo-app button.yullo-button:disabled { opacity: .45; cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) { .yullo-app button.yullo-button { transition: none; } }
+
+[data-accent="yullo"] .yullo-app {
+  --yellow-button-border: #252525;
+}
+[data-accent="yullo"][data-theme="dark"] .yullo-app,
+[data-accent="yullo"][data-theme="dark-warm"] .yullo-app {
+  --yellow-button-border: var(--border);
+}
+[data-accent="yullo"] .yullo-app :is(button, a)[class*="bg-[var(--accent-solid)]"] {
+  border: 1px solid var(--yellow-button-border);
+}
+
+/* A visible multicolor edge and static halo distinguish the writing helper. */
+.yullo-app .yullo-ai-write {
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 10px;
+  color: var(--text-primary);
+  border: 2px solid transparent;
+  background: linear-gradient(var(--surface), var(--surface)) padding-box,
+    linear-gradient(135deg, var(--space-type-event), var(--space-type-posting) 45%, var(--space-type-service) 75%, var(--accent-solid)) border-box;
+  box-shadow: -3px 0 10px color-mix(in srgb, var(--space-type-event) 45%, transparent),
+    3px 0 10px color-mix(in srgb, var(--space-type-posting) 45%, transparent),
+    0 3px 12px color-mix(in srgb, var(--accent-solid) 40%, transparent);
+}
+.yullo-app .yullo-ai-write:disabled {
+  box-shadow: none;
+}
+
+.yullo-app.yullo-icon-tooltip {
+  border-color: #151B27;
+  background-color: color-mix(in srgb, var(--accent-solid) 24%, var(--surface));
+}
+[data-theme="dark"] .yullo-app.yullo-icon-tooltip,
+[data-theme="dark-warm"] .yullo-app.yullo-icon-tooltip {
+  border-color: color-mix(in srgb, var(--text-primary) 45%, var(--surface));
+}

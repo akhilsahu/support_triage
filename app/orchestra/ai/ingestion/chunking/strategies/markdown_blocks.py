@@ -41,13 +41,19 @@ def _destinations(metadata: dict) -> set[str]:
 
 def _merge_assets(groups: list[dict], key: str) -> list[dict]:
     unique = []
+    offset = 0
     for group in groups:
         for item in group["metadata"].get(key, []):
             if not isinstance(item, dict) or not item.get("url"):
                 continue
             # Retain differing disclosure/provenance attributes on the same URL.
-            if item not in unique:
-                unique.append(dict(item))
+            shifted = dict(item)
+            if item.get('text_spans'):
+                shifted['text_spans'] = [{'start': span['start'] + offset, 'end': span['end'] + offset}
+                                        for span in item['text_spans']]
+            if shifted not in unique:
+                unique.append(shifted)
+        offset += len('\n\n'.join(group['texts'])) + 2
     return unique
 
 
@@ -118,11 +124,11 @@ def chunk_markdown_blocks(doc: ParsedDocument, cfg: ChunkConfig) -> List[Chunk]:
             == {key: value for key, value in metadata.items() if key not in excluded_keys}
         )
         if previous and compatible_metadata and not isolated and fits and previous["section"] == candidate["section"] and (shared_destination or both_plain or short_sibling or reference_siblings or short_tail):
+            merged_links = _merge_assets([previous, candidate], "links")
+            merged_images = _merge_assets([previous, candidate], "images")
             previous["texts"].append(text)
             previous["pages"].append(page.page)
             previous["source_pages"].append((fragment, page))
-            merged_links = _merge_assets([previous, candidate], "links")
-            merged_images = _merge_assets([previous, candidate], "images")
             previous["metadata"] = {
                 **previous["metadata"],
                 "block_type": "media" if merged_images else "linked_text" if merged_links else "text",

@@ -1,3 +1,4 @@
+import { YulloButton } from '../../../../components/core/YulloButton'
 import { FormEvent, useState } from 'react'
 import { ArrowUp } from 'lucide-react'
 import type { AppearanceCandidate } from '../../../../api/appearance'
@@ -37,13 +38,13 @@ export function AppearanceAuraDesigner({ spaceId, config, onApply }: { spaceId: 
 
   return (
     <div className="appearance-aura">
-      <p className="text-sm text-[var(--text-secondary)]">Tell Aura how you want this Space to feel.</p>
-      <button type="button" className="appearance-aura-recommend" onClick={recommend} disabled={aura.recommendation.isPending}>{aura.recommendation.isPending ? 'Thinking…' : 'Recommend an appearance'}</button>
+      <p className="text-sm text-[var(--text-secondary)]">Use your uploaded cover and content to find a look. Preview it here, then save when ready.</p>
+      <YulloButton variant="outline" type="button" className="appearance-aura-recommend" onClick={recommend} disabled={aura.recommendation.isPending}>{aura.recommendation.isPending ? 'Thinking…' : 'Recommend an appearance'}</YulloButton>
       <AuraSuggestionChips onSelect={setInstruction} />
       {message && <AuraAppearanceMessage>{message}</AuraAppearanceMessage>}
       <form onSubmit={submit} className="appearance-aura-input">
         <input value={instruction} onChange={(event) => setInstruction(event.target.value)} placeholder="Ask Aura to change it…" maxLength={500} aria-label="Appearance instruction" />
-        <button type="submit" disabled={!instruction.trim() || aura.command.isPending} aria-label="Send appearance instruction"><ArrowUp size={18} /></button>
+        <YulloButton variant="outline" type="submit" disabled={!instruction.trim() || aura.command.isPending} aria-label="Send appearance instruction"><ArrowUp size={18} /></YulloButton>
       </form>
     </div>
   )

@@ -25,6 +25,12 @@ class PreviewContentSource(str, Enum):
     grounded = "grounded"
 
 
+class PreviewChunkReference(StrictModel):
+    source_item_id: UUID = Field(alias="sourceItemId")
+    source_version: int = Field(alias="sourceVersion", ge=1, strict=True)
+    chunk_id: str = Field(alias="chunkId", min_length=1, max_length=768)
+
+
 class AppearancePreviewItem(StrictModel):
     key: str
     title: str = Field(min_length=1, max_length=120)
@@ -33,13 +39,14 @@ class AppearancePreviewItem(StrictModel):
     source: PreviewContentSource
     source_entity_id: str | None = Field(default=None, alias="sourceEntityId")
     source_fact_ids: list[UUID] = Field(default_factory=list, alias="sourceFactIds", max_length=8)
+    source_chunks: list[PreviewChunkReference] = Field(default_factory=list, alias="sourceChunks", max_length=8)
     image_url: str | None = Field(default=None, alias="imageUrl")
     asset_id: str | None = Field(default=None, alias="assetId")
 
     @model_validator(mode="after")
     def validate_source(self):
-        if self.source == PreviewContentSource.grounded and not (self.source_entity_id or self.source_fact_ids):
-            raise ValueError("Grounded items require entity or fact references")
+        if self.source == PreviewContentSource.grounded and not (self.source_entity_id or self.source_fact_ids or self.source_chunks):
+            raise ValueError("Grounded items require entity, fact or chunk references")
         return self
 
 
@@ -89,6 +96,7 @@ class AppearancePreviewResponse(StrictModel):
 
 
 class AppearanceRebuildLayoutRequest(StrictModel):
+    current_config: SpacePresentationConfig | None = Field(default=None, alias="currentConfig")
     force: bool = False
 
 

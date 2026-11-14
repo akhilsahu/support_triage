@@ -1,9 +1,13 @@
+import { YulloButton } from '../../../../components/core/YulloButton'
 import { ImagePlus, Trash2 } from 'lucide-react'
 import type { AppearanceAsset } from '../../../../api/appearance'
 
 export function AssetManager({
   assets,
   selectedId,
+  coverUrl,
+  imageVisible = true,
+  onUseCover,
   uploading,
   error,
   notice,
@@ -15,6 +19,9 @@ export function AssetManager({
 }: {
   assets: AppearanceAsset[]
   selectedId?: string | null
+  coverUrl?: string | null
+  imageVisible?: boolean
+  onUseCover?: () => void
   uploading?: boolean
   error?: string
   notice?: string
@@ -32,14 +39,15 @@ export function AssetManager({
   return (
     <div>
       <div className="appearance-assets">
-        <div className={`appearance-asset ${!selectedId ? 'is-selected' : ''}`}>
-          <button type="button" onClick={() => onSelect(null)} aria-label="No image" aria-pressed={!selectedId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>
+        <div className={`appearance-asset ${!imageVisible || (!selectedId && !coverUrl) ? 'is-selected' : ''}`}>
+          <button type="button" onClick={() => onSelect(null)} aria-label="No image" aria-pressed={!imageVisible || (!selectedId && !coverUrl)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--surface-soft)', color: 'var(--text-secondary)' }}>
             None
           </button>
         </div>
+        {coverUrl && onUseCover && <div className={`appearance-asset ${imageVisible && !selectedId ? 'is-selected' : ''}`}><button type="button" onClick={onUseCover} aria-label="Use uploaded cover" aria-pressed={imageVisible && !selectedId}><img src={coverUrl} alt="Uploaded cover" /></button></div>}
         {assets.map((asset) => (
-          <div key={asset.id} className={`appearance-asset ${selectedId === asset.id ? 'is-selected' : ''}`}>
-            <button type="button" onClick={() => onSelect(asset)} aria-label={`Use ${asset.filename} as hero image`} aria-pressed={selectedId === asset.id}>
+          <div key={asset.id} className={`appearance-asset ${imageVisible && selectedId === asset.id ? 'is-selected' : ''}`}>
+            <button type="button" onClick={() => onSelect(asset)} aria-label={`Use ${asset.filename} as hero image`} aria-pressed={imageVisible && selectedId === asset.id}>
               <img src={asset.thumbnailUrl || asset.url} alt={asset.altText || ''} />
             </button>
             {asset.sourceType !== 'extracted' && (
@@ -55,7 +63,7 @@ export function AssetManager({
           </div>
         ))}
         {onOpenPicker ? (
-          <button
+          <YulloButton variant="outline"
             type="button"
             className="appearance-add-asset"
             onClick={onOpenPicker}
@@ -63,7 +71,7 @@ export function AssetManager({
           >
             <ImagePlus size={20} />
             <span>{uploading ? 'Adding…' : 'Add image'}</span>
-          </button>
+          </YulloButton>
         ) : (
           <label className="appearance-add-asset">
             <ImagePlus size={20} />

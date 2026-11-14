@@ -128,3 +128,15 @@ At completion update the checkboxes/status in THIS file with date, actual files/
 ### Dependencies for this particular form
 
 Requires existing SourceService, durable blob storage and a registered worker. Implement missing adapter wiring for these inputs rather than a private demo ingestion path. Web search/social connectors are provider-gated optional methods; text input remains independently deliverable. Complete policy projection before enabling public source use.
+
+### Theme/accent adaptation — 2026-11-13
+
+- AddKnowledgeModal icons, selected controls, preview treatments and action text/background now use Yullo theme/accent tokens; removed undefined accent foreground references. Error/warning treatments use semantic theme tokens; added scoped keyboard focus outlines.
+- Updated AuraKnowledgeScreen action foreground/background to the same tokens. Ingestion, preview, extraction, confirmation and persistence flows unchanged.
+- Files: `ui/src/yullo/components/AddKnowledgeModal.tsx`, `ui/src/yullo/screens/knowledge/AuraKnowledgeScreen.tsx`, `ui/src/yullo/styles/tokens.css`. Type-check passed; whitespace check passed after cleanup. Browser/tests not run; visual theme verification pending.
+
+### Multi-image upload and parser filenames — 2026-11-13
+
+- Added Images chooser and knowledge-page shortcut: up to 10 PNG/JPG/WebP files, existing 20 MB per-file backend limit, individually submitted to the existing source upload/ingestion/review path. Failures are per file; retry skips uploads already accepted. Docs/link/text/Q&A flows preserved.
+- Fixed Yullo parsing to use blob filename suffix, keeping the source title as display metadata via optional pipeline display_name. Confirmed real Saved Space details failure was caused by title being used as parser filename.
+- See Home plan's 2026-11-13 event listing/images completion note for full files/checks. Type-check/build/import/whitespace checks passed. No browser/tests run. Live source retry was rejected by automatic approval review (private content to configured providers and DB mutation); no retry or data writes performed.

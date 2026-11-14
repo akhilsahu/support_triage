@@ -38,6 +38,8 @@ async def parse_and_index(
     progress_cb=None,
     enable_summary: bool = True,
     web: bool = False,
+    register_assets=None,
+    display_name: str | None = None,
 ) -> IndexedSourceResult:
     """Process a KB source; queue dispatch and fact extraction live in orchestration.
 
@@ -90,6 +92,8 @@ async def parse_and_index(
             chunk_config = get_web_chunk_config(filename)
         prepared = await anyio.to_thread.run_sync(functools.partial(prepare_document, parsed, config=chunk_config))
         chunks = prepared.chunks
+        if register_assets is not None:
+            await register_assets(prepared)
         if progress_cb:
             progress_cb("chunking", len(chunks), len(chunks))
 
@@ -107,7 +111,7 @@ async def parse_and_index(
 
         await embed_and_store_chunks(
             prepared, client_id=space_id, session_id=str(uuid.uuid4()), doc_id=doc_id,
-            filename=filename, doc_type=doc_type, ttl_days=None, kb_name="", kb_id=kb_id,
+            filename=display_name or filename, doc_type=doc_type, ttl_days=None, kb_name="", kb_id=kb_id,
             space_id=space_id, org_name="", description="", semantic_summary=semantic_summary, topic="",
         )
         if progress_cb:

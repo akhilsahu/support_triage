@@ -1,3 +1,4 @@
+import { YulloButton } from '../../../components/core/YulloButton'
 import { RotateCw } from 'lucide-react'
 
 export function PreviewDirection({
@@ -32,7 +33,7 @@ export function PreviewDirection({
             <p aria-live="polite">{explanation || 'Add confirmed Space details for a tailored preview.'}{lastUpdate ? ' · checked just now' : ''}</p>
           )}
         </div>
-        <button
+        <YulloButton variant="outline"
           type="button"
           className="preview-direction-rebuild"
           onClick={() => onRebuild()}
@@ -41,7 +42,7 @@ export function PreviewDirection({
         >
           <RotateCw size={14} className="rebuild-icon" />
           Rebuild layout with AI
-        </button>
+        </YulloButton>
       </div>
     </div>
   )

@@ -156,12 +156,12 @@ export function AppearanceScreen() {
       return next
     })
     setBuildingSection(type)
-    void generatePreview(false, type)
+    void generatePreview(false, type, previewContent)
       .then(() => {
         setActiveModalSection(type)
       })
       .finally(() => setBuildingSection(undefined))
-  }, [history.draft.sections, generatePreview])
+  }, [history.draft.sections, generatePreview, previewContent])
 
   const handleReviewDraft = useCallback((type: PreviewSectionType) => {
     setActiveModalSection(type)
@@ -245,18 +245,19 @@ export function AppearanceScreen() {
   }, [spaceId, query.data, history.draft, history.replace])
 
   const handleRebuildLayout = useCallback(async (force = true) => {
+    setLayoutModalData(null)
     setIsRebuildingLayout(true)
     setIsLayoutModalOpen(true)
     setError('')
     try {
-      const result = await appearanceApi.rebuildLayout(spaceId, force)
-      setLayoutModalData(result)
+      const result = await appearanceApi.rebuildLayout(spaceId, force, history.draft)
+      if (currentSpace.current === spaceId) setLayoutModalData(result)
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Could not rebuild layout.')
+      if (currentSpace.current === spaceId) setError(err?.response?.data?.detail || 'Could not rebuild layout.')
     } finally {
-      setIsRebuildingLayout(false)
+      if (currentSpace.current === spaceId) setIsRebuildingLayout(false)
     }
-  }, [spaceId])
+  }, [spaceId, history.draft])
 
   const handleConfirmRebuiltLayout = useCallback(() => {
     if (!layoutModalData) return
@@ -341,6 +342,7 @@ export function AppearanceScreen() {
     },
     onSuccess: (result) => {
       queryClient.setQueryData(['yullo', 'appearance', spaceId], result)
+      queryClient.invalidateQueries({ queryKey: ['identity', spaceId] })
       history.replace(resolvePresentationConfig(result.effectiveConfig))
       loadedConfig.current = JSON.stringify(resolvePresentationConfig(result.effectiveConfig))
       loadedRevision.current = result.revision
@@ -375,7 +377,7 @@ export function AppearanceScreen() {
     mutationFn: async (files: File[]) => Promise.all(files.map((file) => appearanceApi.uploadAsset(spaceId, file))),
     onSuccess: (assets) => {
       queryClient.setQueryData<AppearanceResponse>(['yullo', 'appearance', spaceId], (current) => current ? { ...current, assets: [...assets, ...current.assets] } : current)
-      if (assets[0]) history.apply({ ...history.draft, hero: { ...history.draft.hero, assetId: assets[0].id } })
+      if (assets[0]) history.apply({ ...history.draft, hero: { ...history.draft.hero, assetId: assets[0].id, visible: true } })
       setAssetError('')
       setAssetNotice('Image uploaded. Save appearance to publish its placement.')
     },
@@ -386,7 +388,7 @@ export function AppearanceScreen() {
     mutationFn: (asset: AppearanceAsset) => appearanceApi.removeAsset(spaceId, asset.id).then(() => asset),
     onSuccess: (asset) => {
       queryClient.setQueryData<AppearanceResponse>(['yullo', 'appearance', spaceId], (current) => current ? { ...current, assets: current.assets.filter((item) => item.id !== asset.id) } : current)
-      if (history.draft.hero.assetId === asset.id) history.apply({ ...history.draft, hero: { ...history.draft.hero, assetId: null }, backgroundTreatment: history.draft.backgroundTreatment === 'image' ? 'soft' : history.draft.backgroundTreatment })
+      if (history.draft.hero.assetId === asset.id) history.apply({ ...history.draft, hero: { ...history.draft.hero, assetId: null, visible: false }, backgroundTreatment: history.draft.backgroundTreatment === 'image' ? 'soft' : history.draft.backgroundTreatment })
       setAssetError('')
       setAssetNotice('Image deleted.')
     },
@@ -411,7 +413,8 @@ export function AppearanceScreen() {
           hero: {
             ...history.draft.hero,
             assetId: asset.id,
-            layout: history.draft.hero.layout === 'centered' ? 'image_right' : history.draft.hero.layout,
+            visible: true,
+            layout: query.data?.space.isSubspace ? history.draft.hero.layout : history.draft.hero.layout === 'centered' ? 'image_right' : history.draft.hero.layout,
           },
           backgroundTreatment: history.draft.backgroundTreatment === 'image' ? 'image' : history.draft.backgroundTreatment,
         })
@@ -422,7 +425,7 @@ export function AppearanceScreen() {
       }
       setImagePickerTarget(null)
     },
-    [imagePickerTarget, history, updateItemImage, previewContent],
+    [imagePickerTarget, history, updateItemImage, previewContent, query.data?.space.isSubspace],
   )
 
   const handleUploadModalFile = useCallback(
@@ -447,7 +450,7 @@ export function AppearanceScreen() {
     if (imagePickerTarget.itemKey === 'hero') {
       history.apply({
         ...history.draft,
-        hero: { ...history.draft.hero, assetId: null },
+        hero: { ...history.draft.hero, assetId: null, visible: false },
         backgroundTreatment: history.draft.backgroundTreatment === 'image' ? 'soft' : history.draft.backgroundTreatment,
       })
     } else {
@@ -467,7 +470,7 @@ export function AppearanceScreen() {
 
   const handleRemoveAsset = (asset: AppearanceAsset) => {
     if (history.draft.hero.assetId === asset.id) {
-      history.apply({ ...history.draft, hero: { ...history.draft.hero, assetId: null }, backgroundTreatment: history.draft.backgroundTreatment === 'image' ? 'soft' : history.draft.backgroundTreatment })
+      history.apply({ ...history.draft, hero: { ...history.draft.hero, assetId: null, visible: false }, backgroundTreatment: history.draft.backgroundTreatment === 'image' ? 'soft' : history.draft.backgroundTreatment })
       setAssetNotice('Removed from this draft. Save appearance before deleting the image.')
       return
     }
@@ -507,6 +510,7 @@ export function AppearanceScreen() {
       <main className="appearance-shell">
         <div className={`appearance-mode appearance-preview-mode ${mobileMode === 'preview' ? 'is-active' : ''}`} aria-hidden={isCompactLayout && mobileMode !== 'preview'} {...inactive('preview')}>
           <SectionEditorContext.Provider value={{
+            bookingPreview: query.data.space.previewBookingLinks,
             generating: previewState.isGenerating || isInitializing,
             toggle: (type) => history.apply({ ...history.draft, sections: history.draft.sections.map((section) => section.type === type ? { ...section, visible: !section.visible } : section) }),
             build: handlePullSectionData,
@@ -522,6 +526,8 @@ export function AppearanceScreen() {
         <div className={`appearance-mode appearance-customize-mode ${mobileMode === 'customize' ? 'is-active' : ''}`} aria-hidden={isCompactLayout && mobileMode !== 'customize'} {...inactive('customize')}>
           <AppearanceInspector 
             spaceId={spaceId} 
+            coverUrl={query.data.space.logoUrl}
+            isSubspace={query.data.space.isSubspace}
             purpose={query.data.space.purpose as SpacePurpose} 
             config={history.draft} 
             assets={query.data.assets} 
@@ -549,7 +555,7 @@ export function AppearanceScreen() {
               else clearPreview()
             }}
             onReviewDraftSection={handleReviewDraft}
-            onChange={history.apply} 
+            onChange={config => history.apply({ ...config, presentationSource: 'owner' })}
             onAuraApply={applyAura} 
             onUpload={(files) => upload.mutate(files)} 
             onRemoveAsset={handleRemoveAsset}

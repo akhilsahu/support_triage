@@ -16,7 +16,6 @@ it('lists multiple branches independently and edits only the selected record', a
     { ...base, id: 'b', is_public: false, payload_json: { name: 'Branch B', address: 'Second address' } },
   ]);
   render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><Locations spaceId="s" /></QueryClientProvider></MemoryRouter>);
-  await userEvent.click(screen.getByRole('button', { name: 'Manage locations' }));
   expect(await screen.findByText('Branch A')).toBeInTheDocument();
   expect(screen.getByText('Branch B')).toBeInTheDocument();
   expect(screen.getByText('Public')).toBeInTheDocument();

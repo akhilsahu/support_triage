@@ -145,6 +145,11 @@ async def _extract_and_persist_link_preview(
                 )
                 events.info('preview.indexing_started', source_id=str(item_id),
                             doc_id=preview_doc_id, chunks=len(prepared.chunks))
+                from app.yullo.services.sources.assets import register_source_assets
+                await register_source_assets(
+                    db, prepared, user_id=user_id, space_id=space_id, source_id=item_id,
+                    source_version=preview_version,
+                )
                 indexed_count = await embed_and_store_chunks(
                     prepared, client_id=str(space_id), session_id=str(uuid.uuid4()),
                     doc_id=preview_doc_id, filename=title, kb_id=str(kb_item.kb_id),

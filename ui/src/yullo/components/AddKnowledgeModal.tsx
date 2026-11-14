@@ -8,7 +8,7 @@ import {
 import { yulloOnboardingApi } from '../api/onboarding';
 import type { SourceItem } from './SourceUnderstandingCard';
 
-export type KnowledgeModalTab = 'link' | 'upload' | 'text' | 'qna';
+export type KnowledgeModalTab = 'link' | 'upload' | 'text' | 'qna' | 'images';
 export type UploadStage = 'select' | 'processing' | 'preview' | 'full_processing';
 type LinkStage = 'entry' | 'preview';
 
@@ -41,6 +41,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [images, setImages] = useState<{ file: File; status: 'queued' | 'uploading' | 'submitted' | 'failed' }[]>([]);
 
   // Two-Stage Resumable Upload Flow state
   const [uploadStage, setUploadStage] = useState<UploadStage>('select');
@@ -67,6 +68,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
     setRenderedTextLimit(3000);
     setLinkStage('entry');
     setLinkPreview(null);
+    setImages([]);
   }, [initialTab, isOpen]);
 
   if (!isOpen) return null;
@@ -83,7 +85,8 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
     activeTab === 'link' ? (linkStage === 'entry' && !url.trim()) :
     activeTab === 'upload' ? (uploadStage === 'select' && !selectedFile) :
     activeTab === 'text' ? !textContent.trim() :
-    activeTab === 'qna' ? (!question.trim() || !answer.trim()) : false
+    activeTab === 'qna' ? (!question.trim() || !answer.trim()) :
+    activeTab === 'images' ? !images.some(image => image.status === 'queued' || image.status === 'failed') : false
   );
 
   const startRealProcessing = async (file?: File) => {
@@ -172,10 +175,29 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
     }
   };
 
+  const uploadImages = async () => {
+    setIsLoading(true); setErrorMsg(null);
+    try {
+      for (const [index, image] of images.entries()) {
+        if (image.status === 'submitted') continue;
+        setImages(previous => previous.map((item, i) => i === index ? { ...item, status: 'uploading' } : item));
+        try {
+          const id = await onUploadFile(image.file);
+          if (!id) throw new Error('Upload unavailable');
+          setImages(previous => previous.map((item, i) => i === index ? { ...item, status: 'submitted' } : item));
+        } catch {
+          setImages(previous => previous.map((item, i) => i === index ? { ...item, status: 'failed' } : item));
+        }
+      }
+      await onSourceChanged?.();
+    } catch { setErrorMsg('Could not refresh the source list. Your uploaded images are retained.'); } finally { setIsLoading(false); }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitDisabled) return;
     setErrorMsg(null);
+    if (activeTab === 'images') { await uploadImages(); return; }
 
     if (activeTab === 'upload') {
       if (uploadStage === 'select') {
@@ -263,6 +285,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
   };
 
   const handleKeepBackgroundJob = () => {
+    if (activeTab === 'images' && isLoading) return;
     // Background job is already running on the server, we just close the modal
     onClose();
   };
@@ -272,29 +295,31 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
       id: 'text', 
       title: 'Paste knowledge', 
       subtitle: 'Notes, bio, guidelines',
-      icon: <FileText className="w-5 h-5 text-blue-700 dark:text-blue-400" /> 
+      icon: <FileText className="w-5 h-5 text-[var(--space-type-event)]" />
     },
     { 
       id: 'upload', 
       title: 'Upload file', 
       subtitle: 'PDF, DOCX, TXT, MD',
-      icon: <Upload className="w-5 h-5 text-violet-700 dark:text-violet-400" /> 
+      icon: <Upload className="w-5 h-5 text-[var(--space-type-posting)]" />
     },
     { 
       id: 'link', 
       title: 'Add link', 
       subtitle: 'Web URL or doc link',
-      icon: <Globe className="w-5 h-5 text-cyan-700 dark:text-cyan-400" /> 
+      icon: <Globe className="w-5 h-5 text-[var(--space-type-service)]" />
     },
     { 
       id: 'qna', 
       title: 'Add Q&A', 
       subtitle: 'Question & answer',
-      icon: <HelpCircle className="w-5 h-5 text-amber-700 dark:text-amber-400" /> 
+      icon: <HelpCircle className="w-5 h-5 text-[var(--space-type-other)]" />
     },
+    { id: 'images', title: 'Add images', subtitle: 'Photos, posters, scans', icon: <ImageIcon className="w-5 h-5 text-[var(--space-type-service)]" /> },
   ];
 
   const getTabHeading = () => {
+    if (activeTab === 'images') return 'Add images';
     if (activeTab === 'text') return 'Paste knowledge';
     if (activeTab === 'upload') return uploadStage === 'preview' ? 'Preview extracted content' : 'Upload file';
     if (activeTab === 'link') return linkStage === 'preview' ? 'Review website preview' : 'Add website link';
@@ -302,7 +327,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
   };
 
   const modalContent = (
-    <div className="yullo-app" style={{ display: 'contents' }}>
+    <div className="yullo-app yullo-add-knowledge" style={{ display: 'contents' }}>
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-6 bg-black/30 backdrop-blur-[3px] animate-in fade-in duration-150 font-[Instrument_Sans]">
         {/* Backdrop */}
         <div className="absolute inset-0" onClick={handleKeepBackgroundJob} />
@@ -334,7 +359,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
         {/* Scrollable Content Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-7 space-y-7">
           {errorMsg && (
-            <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-[14px] text-rose-500 font-medium">
+            <div className="p-4 bg-[var(--surface-soft)] border border-[var(--critical)] rounded-xl text-[14px] text-[var(--critical)] font-medium">
               {errorMsg}
             </div>
           )}
@@ -344,12 +369,13 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
             <label className="block text-[13px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
               Source Type
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 overflow-x-auto pb-1 scrollbar-none">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 overflow-x-auto pb-1 scrollbar-none">
               {sourceTiles.map(tile => {
                 const isActive = activeTab === tile.id;
                 return (
                   <button
                     key={tile.id}
+                    disabled={isLoading}
                     type="button"
                     onClick={() => { setActiveTab(tile.id); setErrorMsg(null); }}
                     className={`p-4 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
@@ -376,6 +402,22 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
               })}
             </div>
           </div>
+
+          {activeTab === 'images' && <div className="space-y-4">
+            <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-soft)] p-5 text-center text-sm focus-within:outline focus-within:outline-2 focus-within:outline-[var(--accent)]">
+              <ImageIcon size={24} className="text-[var(--accent-ink)]" aria-hidden="true" />Choose up to 10 images
+              <span className="text-xs text-[var(--text-secondary)]">PNG, JPG or WebP · Each image becomes a source for this Space</span>
+              <input type="file" multiple accept="image/png,image/jpeg,image/webp" disabled={isLoading} className="sr-only" onChange={event => {
+                const files = Array.from(event.target.files || []);
+                if (files.length > 10 || files.some(file => !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 20 * 1024 * 1024)) {
+                  setErrorMsg('Choose up to 10 PNG, JPG or WebP images, each up to 20 MB.'); return;
+                }
+                setImages(files.map(file => ({ file, status: 'queued' }))); setErrorMsg(null); event.target.value = '';
+              }} />
+            </label>
+            {images.map((image, index) => <div key={`${image.file.name}:${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] p-3 text-sm"><span className="min-w-0 break-words">{image.file.name}<span className="mt-1 block text-xs text-[var(--text-secondary)]">{formatFileSize(image.file.size)}</span></span><span role="status" className={`shrink-0 text-xs ${image.status === 'failed' ? 'text-[var(--critical)]' : 'text-[var(--text-secondary)]'}`}>{image.status === 'submitted' ? 'Added · processing' : image.status === 'uploading' ? 'Uploading…' : image.status === 'failed' ? 'Failed · retry' : 'Ready to upload'}</span></div>)}
+            <p className="text-xs leading-5 text-[var(--text-secondary)]">Images use the existing source-processing flow. Review extracted information before approving it. Retry skips images already added.</p>
+          </div>}
 
           {/* TAB 1: PASTE KNOWLEDGE (DESIGN SPEC COMPOSITION WITH LIVE PREVIEW BELOW) */}
           {activeTab === 'text' && (
@@ -434,9 +476,9 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                   </div>
 
                   {/* Candidate Facts Preview */}
-                  <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between text-[14px] text-emerald-800 dark:text-emerald-300">
+                  <div className="p-4 bg-[var(--accent-soft)] border border-[var(--border)] rounded-xl flex items-center justify-between text-[14px] text-[var(--text-primary)]">
                     <div className="flex items-center gap-2.5">
-                      <Check className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
+                      <Check className="w-4.5 h-4.5 text-[var(--accent-ink)] shrink-0" />
                       <span className="font-bold">Live facts candidate: ready for Aura</span>
                     </div>
                     <span className="text-[12px] font-mono font-semibold">Automatic extraction</span>
@@ -478,7 +520,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                       Click to upload or drag file here
                     </p>
                     <p className="text-[13px] text-[var(--text-secondary)] mt-1.5">
-                      PDF, DOCX, TXT or Markdown · up to 50 MB
+                      PDF, DOCX, TXT or Markdown · up to 20 MB
                     </p>
                   </div>
                 </div>
@@ -488,8 +530,8 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                   {/* Selected File Control Bar */}
                   <div className="flex items-center justify-between p-4 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl font-[Instrument_Sans]">
                     <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                      <div className="w-11 h-11 rounded-xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center shrink-0">
-                        <FileText className="w-5 h-5 text-violet-700 dark:text-violet-400" />
+                      <div className="w-11 h-11 rounded-xl bg-[var(--accent-soft)] border border-[var(--border)] flex items-center justify-center shrink-0">
+                        <FileText className="w-5 h-5 text-[var(--accent-ink)]" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-[15px] font-semibold text-[var(--text-primary)] truncate font-[Satoshi]">
@@ -506,7 +548,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                         if (pollingSourceId) { yulloOnboardingApi.deleteSource(pollingSourceId).catch(console.error); }
                         document.getElementById('file-upload-input')?.click(); 
                       }}
-                      className="text-[13px] font-semibold text-[var(--accent-hover,#0891b2)] hover:underline px-3 py-1.5 rounded-lg hover:bg-[var(--surface-soft)] transition-colors cursor-pointer shrink-0 ml-3"
+                      className="text-[13px] font-semibold text-[var(--accent-ink)] hover:underline px-3 py-1.5 rounded-lg hover:bg-[var(--surface-soft)] transition-colors cursor-pointer shrink-0 ml-3"
                     >
                       Replace file
                     </button>
@@ -520,7 +562,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                         setUploadedSource(null);
                         setPollingSourceId(null);
                       }}
-                      className="text-[13px] font-semibold text-rose-500 hover:text-rose-600 px-3 py-1.5 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0 ml-1"
+                      className="text-[13px] font-semibold text-[var(--critical)] hover:opacity-80 px-3 py-1.5 rounded-lg hover:bg-[var(--surface-soft)] transition-colors cursor-pointer shrink-0 ml-1"
                     >
                       Remove
                     </button>
@@ -530,7 +572,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
               {(uploadStage === 'processing' || uploadStage === 'full_processing') && (
                 <div className="py-6 px-5 text-center space-y-4 bg-[var(--surface-soft)]/60 border border-[var(--border)] rounded-2xl">
                   <div className="flex items-center justify-center gap-3">
-                    <Loader2 className="w-5 h-5 text-violet-700 dark:text-violet-400 animate-spin" />
+                    <Loader2 className="w-5 h-5 text-[var(--accent-ink)] animate-spin" />
                     <h4 className="font-[Satoshi] text-[16px] font-bold text-[var(--text-primary)]">
                       {uploadedSource?.stage ? uploadedSource.stage : `Processing ${selectedFile?.name || ''}`}... ({uploadProgress}%)
                     </h4>
@@ -545,7 +587,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                   <div className="w-full bg-[var(--border)] h-2 rounded-full overflow-hidden max-w-xs mx-auto">
                     <div 
                       className="h-full transition-all duration-200"
-                      style={{ width: `${uploadProgress}%`, backgroundColor: 'var(--accent)' }}
+                      style={{ width: `${uploadProgress}%`, backgroundColor: 'var(--accent-solid)' }}
                     />
                   </div>
                 </div>
@@ -555,8 +597,8 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
               {selectedFile && uploadStage === 'preview' && (
                 <div className="space-y-6 pt-2 border-t border-[var(--border)] animate-in fade-in duration-200">
                   {uploadedSource?.is_scanned && (
-                    <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-[13px] text-amber-800 dark:text-amber-300 flex items-center gap-3">
-                      <AlertTriangle className="w-4.5 h-4.5 text-amber-600 shrink-0" />
+                    <div className="p-3.5 bg-[var(--surface-soft)] border border-[var(--attention)] rounded-xl text-[13px] text-[var(--text-primary)] flex items-center gap-3">
+                      <AlertTriangle className="w-4.5 h-4.5 text-[var(--attention)] shrink-0" />
                       <span>OCR will run after adding this source.</span>
                     </div>
                   )}
@@ -682,7 +724,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
               ) : linkPreview && (
                 <div className="space-y-5 animate-in fade-in duration-200">
                   <div className="flex items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)]/60 p-4">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-500/25 bg-cyan-500/10 overflow-hidden">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--accent-soft)] overflow-hidden">
                       {linkPreview.favicon_url ? (
                         <img
                           src={linkPreview.favicon_url}
@@ -697,7 +739,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                         />
                       ) : null}
                       <Globe
-                        className="h-5 w-5 text-cyan-700 dark:text-cyan-400"
+                        className="h-5 w-5 text-[var(--accent-ink)]"
                         style={linkPreview.favicon_url ? { display: 'none' } : undefined}
                       />
                     </div>
@@ -773,7 +815,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <label className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">Scraped preview</label>
-                      <span className="text-[12px] font-medium text-emerald-700 dark:text-emerald-400"><Check className="mr-1 inline h-3.5 w-3.5" />Ready to review</span>
+                      <span className="text-[12px] font-medium text-[var(--accent-ink)]"><Check className="mr-1 inline h-3.5 w-3.5" />Ready to review</span>
                     </div>
                     <div className="max-h-[280px] overflow-y-auto whitespace-pre-wrap rounded-xl border border-[var(--border)] bg-[var(--surface-soft)]/70 p-5 text-[14px] leading-relaxed text-[var(--text-primary)]">
                       {linkPreview.preview_excerpt || 'The page was reachable, but no readable preview text was returned.'}
@@ -848,8 +890,8 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                   disabled={isLoading}
                   className="flex-1 sm:flex-initial px-8 h-[52px] rounded-xl text-[15px] font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer hover:opacity-90 active:scale-[0.99] bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90"
                   style={{
-                    backgroundColor: 'var(--accent)',
-                    color: 'var(--accent-fg)'
+                    backgroundColor: 'var(--accent-solid)',
+                    color: 'var(--accent-on-solid)'
                   }}
                 >
                   {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4.5 h-4.5 stroke-[3]" />}
@@ -892,16 +934,16 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
                 type="button"
                 onClick={handleSubmit}
                 disabled={isSubmitDisabled}
-                className={`w-full sm:w-auto px-8 h-[52px] rounded-xl text-[15px] font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer hover:opacity-90 active:scale-[0.99] ${
+                className={`bg-[var(--accent-solid)] text-[var(--accent-on-solid)] w-full sm:w-auto px-8 h-[52px] rounded-xl text-[15px] font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer hover:opacity-90 active:scale-[0.99] ${
                   isSubmitDisabled ? 'opacity-40 cursor-not-allowed' : ''
                 }`}
                 style={{
-                  backgroundColor: 'var(--accent)',
-                  color: 'var(--accent-fg)'
+                  backgroundColor: 'var(--accent-solid)',
+                  color: 'var(--accent-on-solid)'
                 }}
               >
                 {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                {activeTab === 'upload' 
+                {activeTab === 'images' ? (isLoading ? 'Uploading images…' : 'Upload images') : activeTab === 'upload'
                   ? (isLoading ? 'Uploading…' : 'Upload & process') 
                   : activeTab === 'link' 
                   ? (isLoading ? 'Adding to Aura…' : 'Add to Aura')

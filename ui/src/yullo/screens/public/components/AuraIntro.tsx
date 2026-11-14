@@ -1,6 +1,7 @@
 import { useInView } from 'react-intersection-observer'
 import { PublicSpace } from '../../../services/aura/types'
 import { IdentityBlock } from './IdentityBlock'
+import { SubspaceLanding, subspacePrompts } from './SubspaceLanding'
 import { PromptStarters } from './PromptStarters'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { SectionConfirmDialog, type SectionConfirmation } from '../../appearance/preview/SectionConfirmDialog'
@@ -10,6 +11,7 @@ import { useSectionEditor } from '../../appearance/preview/SectionEditorContext'
 import type { AppearancePreviewContent, AppearancePreviewItem, PreviewSectionType } from '../../appearance/preview/types'
 import { InlineEditableText } from '../../appearance/components/InlineEditableText'
 import { PreviewSection } from '../../appearance/preview/PreviewSection'
+import { SectionItemImage } from './SectionItemImage'
 
 const SectionHeadingControls = createContext<ReactNode>(null)
 
@@ -85,6 +87,7 @@ function MockServices({
                 key={item.key || i}
                 className="group relative flex flex-col justify-between p-5 rounded-[var(--presentation-radius)] bg-[var(--presentation-surface)] border border-[var(--presentation-border)] shadow-xs hover:border-[var(--presentation-accent)] transition-all"
               >
+                <SectionItemImage item={item} sectionType={sectionType} />
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <span className="inline-flex items-center justify-center h-6 px-2.5 rounded-full text-xs font-semibold bg-[var(--presentation-accent-soft)] text-[var(--presentation-accent)]">
                     {String(i + 1).padStart(2, '0')}
@@ -136,7 +139,9 @@ function MockServices({
             {items.map((item, i) => (
               <div key={item.key || i} className="grid grid-cols-[32px_1fr] gap-4 py-5">
                 <span className="text-xs text-[var(--presentation-accent)]">{String(i + 1).padStart(2, '0')}</span>
-                <div>
+                <div className="flex min-w-0 items-start gap-4">
+                  <SectionItemImage item={item} sectionType={sectionType} compact />
+                  <div className="min-w-0 flex-1">
                   {sectionEditor?.updateSectionItem ? (
                     <>
                       <InlineEditableText
@@ -162,6 +167,7 @@ function MockServices({
                       {item.description && <div className="text-[var(--presentation-text)] opacity-80 text-sm">{item.description}</div>}
                     </>
                   )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -421,6 +427,7 @@ function MockProducts({
                 key={item.key || i}
                 className="group relative flex flex-col justify-between p-5 rounded-[var(--presentation-radius)] bg-[var(--presentation-surface)] border border-[var(--presentation-border)] shadow-xs hover:border-[var(--presentation-accent)] transition-all"
               >
+                <SectionItemImage item={item} sectionType={sectionType} />
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <span className="h-2.5 w-2.5 rounded-full bg-[var(--presentation-accent)] shrink-0" />
                   {item.meta && (
@@ -470,7 +477,8 @@ function MockProducts({
             {items.map((item, i) => (
               <div key={item.key || i} className="flex items-start gap-5 py-5 border-t border-[var(--presentation-border)] first:border-t-0">
                 <span className="mt-1 h-2 w-2 rounded-full bg-[var(--presentation-accent)] shrink-0" />
-                <div className="flex-1">
+                <SectionItemImage item={item} sectionType={sectionType} compact />
+                <div className="min-w-0 flex-1">
                   {sectionEditor?.updateSectionItem ? (
                     <>
                       <InlineEditableText
@@ -539,6 +547,7 @@ function MockLocation({
         <div className="py-5 border-y border-[var(--presentation-border)]">
           {items.map((item, i) => (
             <div key={item.key || i} className="mb-4 last:mb-0">
+              <SectionItemImage item={item} sectionType={sectionType} />
               {sectionEditor?.updateSectionItem ? (
                 <>
                   <InlineEditableText
@@ -601,6 +610,7 @@ function MockFeatured({
             ? 'pr-6 border-r-2 text-right bg-[linear-gradient(270deg,var(--presentation-accent-soft),transparent)]'
             : 'pl-6 border-l-2 text-left bg-[linear-gradient(90deg,var(--presentation-accent-soft),transparent)]'
         }`}>
+          <SectionItemImage item={item} sectionType={sectionType} />
           {sectionEditor?.updateSectionItem ? (
             <>
               <InlineEditableText
@@ -712,7 +722,7 @@ export function AuraIntro({ space, presentation, heroAssetUrl, heroAssetAltText 
     : 'self-center mx-auto'
 
   return (
-    <div className={`w-full flex flex-col ${containerAlignClass} px-[clamp(16px,4vw,48px)] pb-8 ${openingPadding}`}>
+    <div className={`w-full flex flex-col ${containerAlignClass} px-[clamp(16px,4vw,48px)] pb-8 ${space.isSubspace ? 'pt-6 sm:pt-10' : openingPadding}`}>
       {visibleSections.map((section, index) => {
         const renderSection = () => {
         const previewSection = previewContent?.sections.find(s => s.type === section.type)
@@ -720,7 +730,9 @@ export function AuraIntro({ space, presentation, heroAssetUrl, heroAssetAltText 
         const title = previewSection?.heading
 
         if (section.type === 'identity') {
+          if (space.isSubspace) return <div key={section.type} ref={identityRef} className={`w-full ${sectionAlignSelf}`} style={{ maxWidth: 'var(--presentation-content-width)' }}><SubspaceLanding key={space.id || space.handle} space={space} presentation={presentation} artworkUrl={heroAssetUrl} artworkAlt={heroAssetAltText} /></div>
           const hasSideImage = heroAssetUrl && presentation.hero.layout !== 'centered'
+          const artwork = heroAssetUrl ? <img src={heroAssetUrl} alt={heroAssetAltText} className="max-h-[min(440px,45vh)] w-auto max-w-full justify-self-center rounded-[var(--presentation-radius)] object-contain" /> : null
           const identityAlign = hasSideImage
             ? 'start'
             : (isRight ? 'end' : (isLeft || isStretch ? 'start' : 'center'))
@@ -742,9 +754,9 @@ export function AuraIntro({ space, presentation, heroAssetUrl, heroAssetAltText 
               }`}
               style={{ maxWidth: 'var(--presentation-content-width)' }}
             >
-              {heroAssetUrl && presentation.hero.layout === 'image_left' && <img src={heroAssetUrl} alt={heroAssetAltText} className="h-[clamp(220px,38vh,440px)] w-full rounded-[var(--presentation-radius)] object-cover" />}
+              {presentation.hero.layout === 'image_left' && artwork}
               <IdentityBlock space={space} align={identityAlign} density={presentation.visualDensity} emphasis={presentation.landingEmphasis} />
-              {heroAssetUrl && presentation.hero.layout !== 'image_left' && <img src={heroAssetUrl} alt={heroAssetAltText} className="h-[clamp(220px,38vh,440px)] w-full rounded-[var(--presentation-radius)] object-cover" />}
+              {presentation.hero.layout !== 'image_left' && artwork}
             </div>
           )
         }
@@ -753,7 +765,7 @@ export function AuraIntro({ space, presentation, heroAssetUrl, heroAssetAltText 
         if (section.type === 'products') return previewSection ? <PreviewSection key={section.type} type={section.type} source={sectionSource(items)} index={index}><MockProducts title={title} items={items} sectionType="products" align={contentLayout} variant={section.variant} /></PreviewSection> : null
         if (section.type === 'location') return previewSection ? <PreviewSection key={section.type} type={section.type} source={sectionSource(items)} index={index}><MockLocation title={title} items={items} sectionType="location" align={contentLayout} /></PreviewSection> : null
         if (section.type === 'featured') return previewSection ? <PreviewSection key={section.type} type={section.type} source={sectionSource(items)} index={index}><MockFeatured title={title} items={items} sectionType="featured" align={contentLayout} /></PreviewSection> : null
-        if (section.type === 'prompt_starters') return <PromptStarters key={section.type} prompts={space.promptStarters} onSelect={onSelectPrompt} align={contentLayout} />
+        if (section.type === 'prompt_starters') return <PromptStarters key={section.type} prompts={space.isSubspace ? subspacePrompts(space) : space.promptStarters} onSelect={onSelectPrompt} align={space.isSubspace ? 'left' : contentLayout} />
         return null
         }
         if (sectionEditor && editableTypes.includes(section.type)) {

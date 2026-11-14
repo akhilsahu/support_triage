@@ -1,16 +1,20 @@
 import { AuraProvider, AuraStreamHandlers } from './AuraProvider'
 import { PublicSpace, AuraEvent } from './types'
 import { AppearancePreviewContentSchema } from '../../screens/appearance/preview/types'
+import { yulloFetch, YULLO_API_ORIGIN } from '../../api/client'
+import { guestProof, saveGuestProof } from './conversationCache'
 
 export class HttpAuraProvider implements AuraProvider {
   private readonly baseUrl: string
 
-  constructor(baseUrl: string = '/api/v1') {
+  constructor(baseUrl: string = `${YULLO_API_ORIGIN.replace(/\/$/, '')}/api/v1`) {
     this.baseUrl = baseUrl
   }
 
   async getPublicSpace(handle: string): Promise<PublicSpace | null> {
-    const response = await fetch(`${this.baseUrl}/yullo/public/spaces/${handle}`)
+    const segments = handle.split('/').map(encodeURIComponent).join('/');
+    const route = handle.includes('/') ? 'paths' : 'spaces';
+    const response = await fetch(`${this.baseUrl}/yullo/public/${route}/${segments}`)
     if (!response.ok) {
       if (response.status === 404) return null
       throw new Error(`Failed to fetch public space: ${response.statusText}`)
@@ -23,11 +27,12 @@ export class HttpAuraProvider implements AuraProvider {
     return data
   }
 
-  async startConversation(spaceId: string): Promise<string> {
-    const response = await fetch(`${this.baseUrl}/yullo/public/spaces/${spaceId}/aura/sessions`, {
+  async startConversation(spaceId: string, accountId?: string | null): Promise<string> {
+    const response = await yulloFetch(`${this.baseUrl}/yullo/public/spaces/${spaceId}/aura/sessions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-Yullo-Chat-Account': accountId || 'guest',
       }
     })
     
@@ -36,6 +41,7 @@ export class HttpAuraProvider implements AuraProvider {
     }
     
     const data = await response.json()
+    if (data.guest_token) saveGuestProof(spaceId, data.session_id, data.guest_token)
     return data.session_id
   }
 
@@ -43,16 +49,22 @@ export class HttpAuraProvider implements AuraProvider {
     spaceId: string,
     conversationId: string,
     message: string,
-    handlers: AuraStreamHandlers
+    handlers: AuraStreamHandlers,
+    signal?: AbortSignal,
+    accountId?: string | null,
   ): Promise<void> {
     try {
-      const response = await fetch(
+      const token = guestProof(spaceId, conversationId)
+      const response = await yulloFetch(
         `${this.baseUrl}/yullo/public/spaces/${spaceId}/aura/sessions/${conversationId}/chat`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-Yullo-Chat-Account': accountId || 'guest',
+            ...(token ? { 'X-Yullo-Chat-Token': token } : {}),
           },
+          signal,
           body: JSON.stringify({
             space_id: spaceId,
             session_id: conversationId,
@@ -62,7 +74,7 @@ export class HttpAuraProvider implements AuraProvider {
       )
 
       if (!response.ok) {
-        throw new Error(`Chat request failed: ${response.statusText}`)
+        throw new Error(response.status === 404 ? 'Session not found or expired' : `Chat request failed: ${response.statusText}`)
       }
 
       if (!response.body) {

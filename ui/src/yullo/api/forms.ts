@@ -1,6 +1,12 @@
 import { yulloApiClient } from './client';
+import type { SpaceType, QuickSpaceContext, SubspaceFields } from './spaces';
+import type { SpacePresentationConfig } from '../screens/appearance/presentation/schema';
 
 export interface IdentityFormResponse {
+  subspace_fields?: SubspaceFields | null;
+  presentation_config?: SpacePresentationConfig | null;
+  parent_space_id?: string | null;
+  event_context?: QuickSpaceContext | null;
   space_id?: string;
   purpose: 'person' | 'creator' | 'business' | 'organization';
   display_name: string;
@@ -18,6 +24,7 @@ export interface IdentityFormResponse {
 }
 
 export interface IdentityFormUpdate {
+  subspace_fields?: SubspaceFields;
   purpose?: 'person' | 'creator' | 'business' | 'organization';
   display_name?: string;
   logo_url?: string | null;
@@ -37,6 +44,10 @@ export interface HandleCheckResponse {
 }
 
 export interface CreateSpacePayload {
+  logo_url?: string;
+  quick_context?: QuickSpaceContext;
+  parent_space_id?: string;
+  space_type?: SpaceType;
   display_name?: string;
   slug?: string;
   purpose?: 'person' | 'creator' | 'business' | 'organization';
@@ -62,14 +73,16 @@ export const formsApi = {
     const response = await yulloApiClient.get('/spaces/categories/suggestions', { params });
     return response.data?.items || [];
   },
-  createSpace: async (data?: CreateSpacePayload): Promise<IdentityFormResponse> => {
-    const response = await yulloApiClient.post('/spaces', data || { display_name: 'Unnamed Space' });
+  createSpace: async (data?: CreateSpacePayload, ownerId?: string): Promise<IdentityFormResponse> => {
+    const response = await yulloApiClient.post('/spaces', data || { display_name: 'Unnamed Space' }, {
+      headers: ownerId ? { 'X-Yullo-Chat-Account': ownerId } : undefined,
+    });
     return response.data;
   },
 
 
-  getIdentity: async (spaceId: string): Promise<IdentityFormResponse> => {
-    const response = await yulloApiClient.get(`/spaces/${spaceId}/forms/identity`);
+  getIdentity: async (spaceId: string, ownerId?: string): Promise<IdentityFormResponse> => {
+    const response = await yulloApiClient.get(`/spaces/${spaceId}/forms/identity`, { headers: ownerId ? { 'X-Yullo-Chat-Account': ownerId } : undefined });
     return response.data;
   },
 

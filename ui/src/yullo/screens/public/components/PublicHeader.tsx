@@ -1,8 +1,17 @@
-import { Share } from 'lucide-react'
+import { Share, UserRound } from 'lucide-react'
 import { PublicSpace } from '../../../services/aura/types'
 import { AnimatePresence, motion } from 'framer-motion'
 
-export function PublicHeader({ space, identityVisible }: { space: PublicSpace | null, identityVisible?: boolean }) {
+export function PublicHeader({ space, identityVisible, historyOpen, historyId, onHistoryToggle, signInHref, accountName, busy }: {
+  space: PublicSpace | null
+  identityVisible?: boolean
+  historyOpen?: boolean
+  historyId?: string
+  onHistoryToggle?: () => void
+  signInHref?: string
+  accountName?: string
+  busy?: boolean
+}) {
   if (!space) return null
 
   return (
@@ -11,7 +20,16 @@ export function PublicHeader({ space, identityVisible }: { space: PublicSpace | 
       animate={{ opacity: 1, y: 0 }}
       className="flex items-center justify-between px-6 py-4 bg-[color:var(--presentation-surface)]/90 backdrop-blur-sm border-b border-[var(--presentation-border)] sticky top-0 z-50 flex-shrink-0"
     >
-      <div className="relative h-10 flex items-center min-w-[200px]">
+      <div className="flex min-w-0 items-center gap-3">
+        <button type="button" onClick={onHistoryToggle} disabled={!onHistoryToggle}
+          aria-label={`Open chat history for ${space.displayName}`}
+          aria-expanded={onHistoryToggle ? historyOpen : undefined}
+          aria-controls={historyId}
+          aria-haspopup={onHistoryToggle ? 'dialog' : undefined}
+          className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--presentation-border)] bg-[var(--presentation-accent-soft)] font-bold text-[var(--presentation-text)] enabled:hover:border-[var(--presentation-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--presentation-accent)]">
+          {space.avatarUrl ? <img src={space.avatarUrl} alt="" className="h-full w-full object-cover" /> : space.displayName.charAt(0).toUpperCase()}
+        </button>
+        <div className="relative flex h-10 min-w-0 items-center">
         <AnimatePresence mode="wait">
           {!identityVisible ? (
             <motion.div 
@@ -20,12 +38,9 @@ export function PublicHeader({ space, identityVisible }: { space: PublicSpace | 
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="absolute left-0 flex items-center gap-3"
+              className="flex min-w-0 items-center"
             >
-              <div className="w-9 h-9 rounded-full bg-[var(--presentation-accent)] flex items-center justify-center text-[var(--presentation-accent-ink)] font-bold shadow-sm ring-2 ring-[var(--presentation-surface)]">
-                {space.displayName.charAt(0).toUpperCase()}
-              </div>
-              <div className="font-semibold text-[var(--presentation-text)] leading-tight tracking-tight whitespace-nowrap">
+              <div className="truncate font-semibold text-[var(--presentation-text)] leading-tight tracking-tight">
                 {space.displayName}
               </div>
             </motion.div>
@@ -36,15 +51,21 @@ export function PublicHeader({ space, identityVisible }: { space: PublicSpace | 
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="absolute left-0 font-bold tracking-widest text-sm text-[var(--presentation-text)]"
+              className="font-bold tracking-widest text-sm text-[var(--presentation-text)]"
             >
               YULLO
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
       </div>
 
-      <div className="flex items-center gap-4 text-[var(--presentation-muted)]">
+      <div className="ml-3 flex shrink-0 items-center gap-4 text-[var(--presentation-muted)]">
+        {accountName ? <button type="button" onClick={onHistoryToggle} aria-label={`Open chat history and account for ${accountName}`}
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--presentation-border)] bg-[var(--presentation-surface)] text-[var(--presentation-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--presentation-accent)]">
+          <UserRound size={18} aria-hidden="true" />
+        </button> : signInHref && <a href={signInHref} aria-disabled={busy || undefined} onClick={event => { if (busy) event.preventDefault() }}
+          className={`flex min-h-11 items-center rounded-full border border-[var(--presentation-border)] bg-[var(--presentation-surface)] px-4 text-sm font-medium text-[var(--presentation-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--presentation-accent)] ${busy ? 'opacity-50' : ''}`}>Sign in</a>}
         <button className="text-sm font-medium transition-opacity flex items-center gap-1.5 text-[var(--presentation-text)] hover:opacity-70" aria-label="Share this Space">
           <Share className="w-4 h-4" />
           <span className="hidden sm:inline">Share</span>

@@ -1,4 +1,5 @@
 import uuid
+import logging
 import re
 from typing import Optional, Dict, Any
 from fastapi import HTTPException
@@ -15,13 +16,16 @@ from app.yullo.schemas.forms.identity import (
     IdentityFormUpdate,
     HandleCheckResponse,
     HandleChangeRequest,
-    SpacePurpose
+    SpacePurpose, validate_logo_url
 )
 from app.yullo.services.spaces.handles import validate_handle_format_and_availability
 from app.yullo.services.spaces.creation import create_or_resolve_yullo_space
+from app.yullo.schemas.spaces import SpaceType, QuickSpaceContext, space_description_limit
+from app.yullo.services.spaces.hierarchy import lock_hierarchy, require_no_children, require_parent
 from app.yullo.services.entities.service import create_owner_entity, update_entity
 from app.yullo.services.entities.contracts import EntityCommand, EntityPatch
 from app.yullo.services.persistence.common import finalize_space_mutation
+from app.yullo.services.persistence.appearance import _parse_config
 
 WEBSITE_IDENTITY_KEY = "space-website"
 
@@ -44,6 +48,13 @@ def normalize_purpose(raw_purpose: Optional[str]) -> str:
     if p not in CANONICAL_PURPOSES:
         raise HTTPException(status_code=422, detail=f"Invalid purpose '{raw_purpose}'. Must be one of: {', '.join(CANONICAL_PURPOSES)}")
     return p
+
+
+def _validate_description(description, parent_space_id):
+    limit = space_description_limit(parent_space_id)
+    if description is not None and len(description) > limit:
+        raise HTTPException(422, f"Description must be at most {limit} characters")
+
 
 async def _require_space_owner(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.UUID) -> None:
     stmt = select(Space).where(Space.id == space_id, Space.owner_user_id == user_id, Space.product == "yullo")
@@ -95,7 +106,16 @@ async def get_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.UUID
     # Read category with temporary read compatibility for legacy 'subtype'
     category_val = identity_settings.get("category") or identity_settings.get("subtype")
     
+    event_context = None
+    if yullo_space.space_type == "event" and yullo_space.parent_space_id:
+        from app.yullo.services.spaces.quick_context import read_saved_event_context
+        event_context = await read_saved_event_context(db, space_id)
+
     return IdentityFormResponse(
+        subspace_fields=identity_settings.get("subspace_fields") if yullo_space.parent_space_id else None,
+        presentation_config=_parse_config(yullo_space),
+        event_context=event_context,
+        parent_space_id=yullo_space.parent_space_id,
         space_id=space.id,
         purpose=SpacePurpose(safe_purpose),
         display_name=space.display_name,
@@ -124,6 +144,10 @@ async def update_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.U
     if yullo_space.context_version != data.expected_revision:
         raise HTTPException(status_code=409, detail="Stale revision")
         
+    _validate_description(data.description, yullo_space.parent_space_id)
+    if data.subspace_fields is not None and yullo_space.parent_space_id is None:
+        raise HTTPException(422, "Additional details are available for subspaces")
+
     # Update Space fields (display_name, logo_url)
     if data.display_name is not None:
         trimmed_name = data.display_name.strip()
@@ -132,7 +156,10 @@ async def update_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.U
         space.display_name = trimmed_name
         
     if data.logo_url is not None:
-        space.logo_url = data.logo_url
+        try:
+            space.logo_url = validate_logo_url(data.logo_url)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
         
     # Update YulloSpace fields (purpose)
     if data.purpose is not None:
@@ -192,6 +219,8 @@ async def update_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.U
     if data.presence is not None:
         identity_settings["presence"] = data.presence.value if data.presence else None
         
+    if data.subspace_fields is not None:
+        identity_settings["subspace_fields"] = data.subspace_fields.model_dump(mode="json")
     settings["identity"] = identity_settings
     yullo_config.settings = settings
     
@@ -274,9 +303,13 @@ async def create_space(
     slug: Optional[str] = None,
     purpose: str = "business",
     description: Optional[str] = None,
+    logo_url: Optional[str] = None,
     category: Optional[str] = None,
     presence: Optional[str] = None,
-    website: Optional[str] = None
+    website: Optional[str] = None,
+    parent_space_id: Optional[uuid.UUID] = None,
+    space_type: SpaceType = SpaceType.space,
+    quick_context: QuickSpaceContext | None = None,
 ) -> IdentityFormResponse:
     if not display_name or not display_name.strip():
         display_name = "Unnamed Space"
@@ -284,7 +317,21 @@ async def create_space(
     if len(display_name) > 200:
         raise HTTPException(status_code=422, detail="display_name max length is 200")
 
+    try:
+        logo_url = validate_logo_url(logo_url)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    _validate_description(description, parent_space_id)
     canonical_p = normalize_purpose(purpose)
+    if quick_context is not None and parent_space_id is None:
+        raise HTTPException(422, "Quick context requires a parent Space")
+    quick_input = None
+    if quick_context is not None:
+        from app.yullo.services.sources.service import SourceService
+        from app.yullo.services.sources.contracts import TextSourceInput
+        from app.yullo.services.spaces.quick_context import context_text
+        quick_input = TextSourceInput(title="Saved Space details",
+            text=context_text(display_name, SpaceType(space_type).value, description, quick_context))
 
     if not slug or not slug.strip():
         base_slug = re.sub(r'[^a-z0-9]+', '-', display_name.lower()).strip('-')
@@ -293,6 +340,31 @@ async def create_space(
         slug = base_slug
 
     slug = slug.strip().lower()
+
+    if parent_space_id is not None:
+        await lock_hierarchy(db, user_id)
+        await require_parent(db, user_id, parent_space_id)
+        if quick_context and quick_context.copied_company_revision:
+            parent_identity = await get_identity(db, parent_space_id, user_id)
+            if parent_identity.revision != quick_context.copied_company_revision:
+                raise HTTPException(409, "Company details changed. Fill from company again.")
+        existing = (await db.execute(select(Space, YulloSpace).join(
+            YulloSpace, YulloSpace.space_id == Space.id,
+        ).where(Space.product == "yullo", Space.slug == slug, Space.owner_user_id == user_id))).first()
+        # A stable client-generated handle makes a lost creation response retryable.
+        if existing and existing[0].current_step == "managed":
+            space, config = existing
+            if config.parent_space_id != parent_space_id or space.display_name != display_name or config.space_type != space_type or (space.logo_url or "") != (logo_url or ""):
+                raise HTTPException(status_code=409, detail="Space already exists with different details")
+            if quick_input is not None:
+                from app.models.knowledge_base import KnowledgeBaseItem
+                saved_hash = await db.scalar(select(KnowledgeBaseItem.content_hash).where(
+                    KnowledgeBaseItem.space_id == space.id,
+                    KnowledgeBaseItem.creation_key == str(uuid.uuid5(space.id, "quick-space-context")),
+                ))
+                if saved_hash != SourceService._compute_request_hash(quick_input):
+                    raise HTTPException(409, "This Space was already saved. Open it to edit the details.")
+            return await get_identity(db, space.id, user_id)
     
     avail = await validate_handle_format_and_availability(db, slug, user_id)
     if not avail["valid"]:
@@ -303,7 +375,9 @@ async def create_space(
         owner_user_id=user_id,
         slug=slug,
         purpose=canonical_p,
-        title=display_name
+        title=display_name,
+        parent_space_id=parent_space_id,
+        space_type=space_type,
     )
 
     yullo_config = await db.scalar(select(YulloConfig).where(YulloConfig.space_id == created.space.id))
@@ -311,9 +385,14 @@ async def create_space(
         yullo_config = YulloConfig(space_id=created.space.id, settings={})
         db.add(yullo_config)
         
+    if logo_url:
+        created.space.logo_url = logo_url
+
     settings = dict(yullo_config.settings) if yullo_config.settings else {}
     identity_settings = dict(settings.get("identity", {}))
-    if description: identity_settings["description"] = description
+    if description:
+        identity_settings["description"] = description
+        identity_settings["description_source"] = "owner"
     if category and category.strip():
         identity_settings["category"] = category.strip()
         identity_settings["category_source"] = "owner"
@@ -336,6 +415,8 @@ async def create_space(
             identity_settings["category_source"] = "aura"
 
     if presence: identity_settings["presence"] = presence
+    if quick_context is not None:
+        identity_settings["subspace_fields"] = quick_context.subspace_fields.model_dump(mode="json")
     settings["identity"] = identity_settings
     yullo_config.settings = settings
     
@@ -354,7 +435,28 @@ async def create_space(
             is_public=True
         ))
 
+    if quick_context is not None and SpaceType(space_type) == SpaceType.event:
+        from app.yullo.services.spaces.quick_context import save_event_records
+        await save_event_records(db, user_id=user_id, space_id=created.space.id, name=display_name, context=quick_context)
+
+    if quick_context is not None:
+        accepted = await SourceService().accept_source(db, user_id=user_id, space_id=created.space.id,
+            command=quick_input,
+            idempotency_key=uuid.uuid5(created.space.id, "quick-space-context"))
+        if quick_context.copied_company_revision:
+            from app.models.knowledge_base import KnowledgeBaseItem
+            item = await db.scalar(select(KnowledgeBaseItem).where(KnowledgeBaseItem.id == accepted.item_id, KnowledgeBaseItem.space_id == created.space.id))
+            item.source_metadata = {**(item.source_metadata or {}), "copied_company": {
+                "space_id": str(parent_space_id), "revision": quick_context.copied_company_revision,
+            }}
+        # SourceService records the durable ingestion outbox in this transaction.
     await db.commit()
+    if quick_context is not None:
+        from app.orchestra.ai.ingestion.jobs import get_job_runner
+        try:
+            get_job_runner().enqueue("ingest_knowledge_item", job_id=str(accepted.job_id))
+        except Exception:
+            logging.getLogger(__name__).warning("yullo.quick_context.dispatch_failed", extra={"space_id": str(created.space.id), "job_id": str(accepted.job_id)})
     return await get_identity(db, created.space.id, user_id)
 
 
@@ -369,10 +471,13 @@ async def delete_or_archive_space(
     - 'archive': sets status='archived' and active=False, hiding from Home dashboard while preserving data.
     - 'delete': permanently removes the Space and cascading rows from the database.
     """
+    await lock_hierarchy(db, user_id)
     stmt = select(Space).where(Space.id == space_id, Space.owner_user_id == user_id, Space.product == "yullo")
     space = await db.scalar(stmt)
     if not space:
         raise HTTPException(status_code=404, detail="Yullo space not found or not authorized")
+
+    await require_no_children(db, space_id)
 
     if action == "delete":
         await db.delete(space)

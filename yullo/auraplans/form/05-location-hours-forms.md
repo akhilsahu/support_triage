@@ -1,10 +1,35 @@
 ## Implemented approved slice — 2026-10-19
 
-Space dashboard now has Locations beside Booking/Appearance. Owners can add multiple independent location entities and edit each branch with its existing revision. Fields: name, address, optional map URL, public visibility (default off). Optional Google Maps picker supports explicit address search through Geocoding, choosing a result, map-click pin placement and dragging an advanced marker. Owner must click Use this location before the candidate enters the form, and Save location before persistence. Manual address/map-link editing clears stale coordinates. Failed reverse lookup requires manual address entry. Existing coordinates and public/private state reload from each entity.
+Space dashboard has Locations beside Booking/Appearance. Add location opens the editor directly in one click; saved branches and Edit actions stay visible. Owners can add multiple independent location entities and edit each branch with its existing revision. The address field provides Places (New) suggestions while typing; choosing a suggestion fills the draft's location name, address, city, state/region, country and PIN/postal code. City/state use the same native searchable-dropdown control, with manual entry preserved. Map-click and marker-drag selections fill details through reverse geocoding without another confirmation button. Save location persists the reviewed draft. Existing owner labels remain unchanged unless empty/previously auto-filled. Manual address/area/map-link edits invalidate stale coordinates and pending lookups. Existing coordinates and public/private state reload from each entity.
+
+### Direct-open/autofill completion — 2026-11-12
+
+Map-link/pin follow-up: removed the Map link (optional) editor field. Internal generated/legacy direction links remain compatible with existing canonical payloads. Current location still initializes new drafts automatically. Address/city/state/postal edits were removing the marker because they cleared stale saved coordinates; the form now retains a separate visible pin while those coordinates remain invalidated, with a prompt to select an address or adjust the pin. Choosing a suggestion, clicking/dragging the map or current-location initialization updates the visible pin and draft coordinates together. Explicit Remove pin still clears both. Existing saved locations remain intact; no backend or migration changes. TypeScript and diff checks passed; tests remain skipped, and live map rendering remains dependent on the previously confirmed Google referrer restriction.
+
+Current-location default follow-up: new physical-location drafts preselect the actual current browser fix from `YulloLocationProvider` as soon as available, set its pin/map link and reverse-geocode address/name/city/state/postal details once Maps is ready. Existing entities retain their saved locations; late GPS responses do not replace an owner-entered address. Initial automatic defaults do not alone mark the form dirty or save a Space entity. The existing permission flow is reused: a Use my current location fallback requests permission only on click, and that explicit action may replace a draft selection. Manual edits invalidate pending reverse lookups. Provider publishes current coordinates before waiting for metadata persistence and keeps live browser coordinates ahead of returned historical metadata. Updated `LocationForm.tsx`, `GoogleLocationPicker.tsx` and `YulloLocationProvider.tsx`; no backend/schema changes. TypeScript and diff checks passed; tests remain skipped. Live map/reverse-geocoding verification still depends on resolving the confirmed Google referrer restriction below.
+
+- [x] Fix SpaceDashboard duplicate sibling React keys: `booking:${spaceId}` / `locations:${spaceId}`.
+- [x] Remove Manage locations → Add location disclosure and Search map/Use this location steps. Keep one direct Add action, explicit Save, revision checks and remote/manual flows.
+- [x] Isolate address/city/state suggestions in `LocationSearchField.tsx`, Places adapter in `googleLocationPlaces.ts`, and map/pin reverse lookup in `GoogleLocationPicker.tsx`. Reuse existing SDK singleton, public API key setting, area parser, form fields and canonical entity CRUD; no new dependencies.
+- [x] Debounce typed suggestions 250 ms with a 2-character minimum, use billing session tokens, discard stale requests and fetch only selected place fields. Keep suggestions in component memory and show Google Maps attribution. Existing/private addresses are not queried on initial focus without editing.
+- [x] Autofill/edit/save optional `postal_code` (validated server-side in existing LocationPayload; JSON field, no migration), rename Place name to Location name, retain user labels, and disable Save while selected-place details resolve.
+- [x] Update the existing location tests for the changed controls/flow without adding cases. Tests remain skipped by prior user instruction. TypeScript/production build, backend schema import, focused UI static scans and diff checks passed. Browser/live Google behavior remains unverified.
+
+Confirmed external blocker: user's Console reports `RefererNotAllowedMapError`. Google key website restrictions must allow `http://localhost:3000/*` (and `http://127.0.0.1:3000/*` if used); this cannot be fixed in frontend code. Places API (New) must also be enabled/allowed for type-ahead. Google project restrictions have not been modified. Successful SDK download alone does not verify authorization. No backend endpoints changed in this follow-up; owner publication/extraction pipelines remain intact.
 
 Reuses canonical entity POST/PATCH and existing owner boundaries. No backend, schema, database, booking or Appearance changes. Only the SpaceDashboard import/Locations row connects the new implementation. Appearance's previously discussed presentation-only changes are NOT implemented; those require separate approval.
 
 ### Google Maps configuration (operator action)
+
+2026-11-12 update: user-provided Yullo browser key configured in ignored `ui/.env.local`; credential omitted from tracked files and documentation. `ui/.env.example` now documents the existing Maps key/map ID settings. Existing SDK loader and development `DEMO_MAP_ID` fallback reused; no additional provider or paid API probe introduced. Effective Vite development configuration checked without printing the key. Live Google API availability/restrictions remain unverified; tests remain skipped as requested.
+
+Live verification follow-up requested by user: Google Maps JavaScript SDK returned HTTP 200 with a non-empty script and no recognized key/activation/referrer/billing error marker in the response. One sample Geocoding REST request was denied because the key has HTTP-referrer restrictions; this does not establish whether the browser's JavaScript Geocoder works. Do not remove browser-key restrictions to make a server probe pass. Browser access host remains unavailable, so actual map rendering and browser geocoding remain unverified. No user location was transmitted by these checks, and the credential was omitted from all output.
+
+Running localhost:3000 verification: Vite served the Maps module with HTTP 200, the configured key present and the existing loader intact. Output included booleans only, never the key.
+
+Authorization-error follow-up: user reports Google's generic failed-map overlay. HTTP 200 SDK download is not authorization evidence. Consulted Google error reference and documented `gm_authFailure` callback; actual console error code is requested and still required to distinguish referrer denial, API activation, billing and other causes. Updated `googleLocationMaps.ts` to subscribe to authorization failures before loading and reject failed/cached unauthorized SDK use. Updated `GoogleLocationPicker.tsx` to handle late failures, invalidate pending searches, clear transient candidates/listeners, hide the failed Google canvas and preserve manual address/map-link entry with plain recovery copy. Successful map search/pin/drag flows remain intact. TypeScript and diff checks passed; tests remain skipped. Google project settings and successful rendering remain unverified/unfixed pending the console code.
+
+Picker-first follow-up: `LocationForm.tsx` now places the location picker before name/address details and focuses its address search when available, using name focus for remote/manual-only forms. `GoogleLocationPicker.tsx` mounts its search and map immediately when the editor opens; removed the extra Open map disclosure. Explicit candidate confirmation and Save location, remote-only editing, manual fallback and auth-failure recovery remain intact. Existing picker test adjusted to the direct-open flow; no new test cases. TypeScript and diff checks passed; tests remain skipped and visual behavior is unverified. Google authorization issue above remains unresolved independently of this layout change.
 
 In the existing UI environment configuration (for example ui/.env.local), set:
 
@@ -13,9 +38,9 @@ VITE_YULLO_GOOGLE_MAPS_API_KEY=<browser-restricted Google Maps key>
 VITE_YULLO_GOOGLE_MAPS_MAP_ID=<JavaScript map ID>
 ```
 
-Enable Maps JavaScript API and Geocoding API on the Google Cloud project with billing configured. Restrict the browser key to the actual application HTTP referrers and these APIs; allow localhost explicitly for development. Browser keys are public configuration, not server secrets. Use a production map ID; DEMO_MAP_ID is the development fallback. Restart Vite/rebuild after environment changes. No key or environment file was created or changed by this implementation.
+Enable Maps JavaScript API, Geocoding API and Places API (New) on the Google Cloud project with billing configured. Restrict the browser key to the actual application HTTP referrers and these APIs; allow localhost explicitly for development. Browser keys are public configuration, not server secrets. Use a production map ID; DEMO_MAP_ID is the development fallback. Reload after Cloud restriction changes; restart Vite/rebuild after environment changes. No credential was added to tracked files.
 
-SDK loads only when Open map is clicked. No key: manual entry remains available. SDK failures/timeouts show a manual-entry fallback. No Places/autocomplete subscription or LLM call is introduced. Searches execute on explicit Search map/Enter; multiple results require owner selection. Pin geocoding handles stale responses and cleans up map event listeners on unmount. Google attribution remains SDK-managed.
+SDK loads when the physical-location editor opens. No key: manual entry remains available. SDK failures/timeouts show a manual-entry fallback. Places (New) loads on a typed query of at least two characters, with selectable address/city/state suggestions and no search button. No LLM calls. Pin geocoding handles stale responses and cleans up map event listeners on unmount. Google attribution remains visible.
 
 Files: ui/src/yullo/forms/LocationForm.tsx, Locations.tsx, GoogleLocationPicker.tsx, googleLocationMaps.ts, their focused tests, and ui/src/yullo/screens/SpaceDashboard.tsx.
 
@@ -158,3 +183,42 @@ At completion update the checkboxes/status in THIS file with date, actual files/
 ### Dependencies for this particular form
 
 Hours are nested in the location v2 payload, so they can ship together without another form session. Geocoder is optional; manual address entry must work. A new location must be usable by future event selectors through the shared list API.
+
+### Location visual polish — 2026-11-13
+
+- Complete: physical locations use teal pins; remote locations use violet globes, with light/dark theme variants. Visibility and edit controls have semantic icons; actions retain the configured accent.
+- Added a brief dashboard/content reveal and subtle pointer-hover feedback, respecting reduced motion. No looping motion.
+- Files: `ui/src/yullo/forms/Locations.tsx`, `ui/src/yullo/screens/SpaceDashboard.tsx`, `ui/src/yullo/styles/tokens.css`.
+- Verification: frontend type-check and production build passed; `git diff --check` passed. No browser or tests run. Visual verification remains pending approval.
+- No API, schema, migration, saved-data or public visibility behavior changes.
+
+### Location layout refinement — 2026-11-13
+
+- Moved Locations to the dashboard bottom, after Events, posts & services.
+- Replaced the dominant filled Add button with an outlined action; location cards use smaller colored icons, subtle borders and readable address sizing. Existing editing and visibility behavior preserved.
+- Files: `Locations.tsx`, `SpaceDashboard.tsx`. Type-check and diff whitespace check passed. Browser and tests not run; visual verification pending.
+
+### Saved location map previews — 2026-11-13
+
+- Physical location cards now show a compact Google Maps preview and pin; clicking opens Google Maps. Remote locations omit the map.
+- Reuses the configured SDK loader and coordinate validation. Saved coordinates take priority; older address-only records resolve for display without saving data. Missing configuration/provider failures retain an external map link.
+- Added `ui/src/yullo/forms/LocationMapPreview.tsx`; integrated in `Locations.tsx`. Maps load near the viewport, with cleanup on unmount.
+- Type-check and whitespace check passed. No browser, tests, migrations or database writes; provider rendering remains unverified.
+
+### Responsive location cards — 2026-11-13
+
+- Approved layout: two columns on desktop (1024px+), one on smaller screens; a third location starts the next row.
+- Map preview spans each card below its details, reduced to 112px on mobile / 128px on larger screens.
+- Changed `Locations.tsx` and `LocationMapPreview.tsx`. No persistence changes. Type-check and whitespace check passed; browser/tests not run.
+
+- Responsive refinement: a single approved location occupies full width; two or more use two desktop columns (third starts next row). Mobile remains one column. Type-check and whitespace check passed; no browser/tests run.
+
+- Add location action now shows only plus and map-pin icons, retaining an accessible label and tooltip. Existing creation behavior unchanged. Whitespace check passed; no browser/tests run.
+
+### Compact online location view — 2026-11-13
+
+- Online-only locations use a compact borderless row with a globe and `Online / Remote` label beside the name, preserving edit and visibility controls. No card-sized map placeholder.
+- Physical cards retain their maps; their count alone determines one/two-column layout. Uses existing `is_remote` data; no new hybrid schema or link fields introduced.
+- Changed `Locations.tsx`. Type-check and whitespace check passed; no browser/tests run.
+
+- Online / Remote now uses a monitor icon, distinguishing it from the Public visibility globe. Changed `Locations.tsx`; whitespace check passed. No browser/tests run.

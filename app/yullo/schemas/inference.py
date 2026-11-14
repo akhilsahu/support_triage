@@ -1,12 +1,14 @@
 from typing import List, Optional, Literal, Any
 from pydantic import BaseModel, Field
 from uuid import UUID
+from app.yullo.schemas.spaces import SUBSPACE_DESCRIPTION_LIMIT, SubspaceFields
 
 class SpaceChatProfile(BaseModel):
+    subspace_fields: SubspaceFields | None = None
     name: str = Field(default='This Space', max_length=200)
     purpose: str = Field(default='', max_length=50)
     category: str = Field(default='', max_length=100)
-    description: str = Field(default='', max_length=280)
+    description: str = Field(default='', max_length=SUBSPACE_DESCRIPTION_LIMIT)
     tone: str = 'clear_and_helpful'
 
 class AuraInferenceRequest(BaseModel):

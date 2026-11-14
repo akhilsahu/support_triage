@@ -68,6 +68,8 @@ prometheus-client==0.19.0
 structlog==24.1.0
 email-validator
 google-auth>=2.0.0
-celery[redis]>=5.3.0
+# Keep the Celery transport compatible with the pinned redis-py 5 client.
+celery[redis]>=5.3.6,<5.4
+kombu>=5.3.4,<5.4
 Pillow>=10.0.0
 numpy>=1.26.0

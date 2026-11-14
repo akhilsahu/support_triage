@@ -29,15 +29,17 @@ class ChatImagePresentation:
     Markdown images may appear despite tool instructions. Only exact retrieved URLs
     become image cards; unknown image references never become browser requests.
     """
-    def __init__(self, images):
+    def __init__(self, images, references=None):
         self.pending = ''
         self.images = images
         self.image_ids = []
         self.code_delimiter = None
+        self.references = references
 
     @property
     def by_url(self):
-        return {image['url']: image['id'] for image in self.images}
+        return {**{image['url']: image['id'] for image in self.images},
+                **(self.references.image_urls if self.references else {})}
 
     def _plain(self, text):
         for token in re.findall(r'`+|~{3,}', text):

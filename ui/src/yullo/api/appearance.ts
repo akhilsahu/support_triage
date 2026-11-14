@@ -1,4 +1,6 @@
 import { yulloApiClient } from './client'
+import type { SubspaceFields } from './spaces'
+import type { PublicSpace } from '../services/aura/types'
 import type { SpacePresentationConfig } from '../screens/appearance/presentation/schema'
 import {
   AppearancePreviewResponseSchema,
@@ -10,6 +12,12 @@ import {
 } from '../screens/appearance/preview/types'
 
 export interface AppearanceSpaceSummary {
+  previewBookingLinks?: { id: string; label: string; url: string; visibleOnPage: boolean }[]
+  promptStarters?: string[]
+  bookingLinks?: PublicSpace['bookingLinks']
+  pageDetails?: PublicSpace['pageDetails']
+  subspaceFields?: SubspaceFields | null
+  isSubspace?: boolean
   id: string
   displayName: string
   slug: string
@@ -111,8 +119,8 @@ export const appearanceApi = {
     const response = await yulloApiClient.put(`/spaces/${spaceId}/appearance/preview/section`, { section })
     return AppearancePreviewContentSchema.parse(response.data)
   },
-  rebuildLayout: async (spaceId: string, force = false): Promise<AppearanceRebuildLayoutResponse> => {
-    const response = await yulloApiClient.post(`/spaces/${spaceId}/appearance/rebuild-layout`, { force })
+  rebuildLayout: async (spaceId: string, force = false, currentConfig?: SpacePresentationConfig): Promise<AppearanceRebuildLayoutResponse> => {
+    const response = await yulloApiClient.post(`/spaces/${spaceId}/appearance/rebuild-layout`, { force, currentConfig })
     return response.data
   },
 }

@@ -28,8 +28,41 @@ from app.yullo.services.persistence.identity import (
     list_category_suggestions
 )
 from app.yullo.services.spaces.publication import publish_space, unpublish_space
+from app.yullo.schemas.spaces import HierarchyPatch, HierarchySpace, SpaceType, QuickDescriptionRequest, QuickDescriptionResponse
+from app.yullo.services.spaces.hierarchy import require_parent
+from app.yullo.services.spaces.quick_context import suggest_description
+from app.yullo.services.spaces.hierarchy import read_hierarchy, update_hierarchy
 
 router = APIRouter(prefix="/yullo/spaces", tags=["yullo-forms"])
+
+
+@router.post("/{space_id}/subspace-description", response_model=QuickDescriptionResponse)
+async def suggest_child_description(space_id: uuid.UUID, data: QuickDescriptionRequest, response: Response,
+    user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    await require_parent(db, user.id, space_id)
+    response.headers["Cache-Control"] = "no-store"
+    return await suggest_description(data)
+
+
+@router.get("/hierarchy", response_model=list[HierarchySpace])
+async def get_space_hierarchy(
+    response: Response,
+    details_for: uuid.UUID | None = None,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    response.headers["Cache-Control"] = "no-store"
+    return await read_hierarchy(db, user.id, details_for=details_for)
+
+
+@router.patch("/{space_id}/hierarchy", response_model=HierarchySpace)
+async def patch_space_hierarchy(
+    space_id: uuid.UUID,
+    data: HierarchyPatch,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await update_hierarchy(db, user.id, space_id, data)
 
 
 @router.get("/categories/suggestions", response_model=CategorySuggestionsResponse)
@@ -77,7 +110,11 @@ async def create_new_space_endpoint(
         description=description,
         category=category,
         presence=presence,
-        website=website
+        website=website,
+        parent_space_id=data.parent_space_id if data else None,
+        space_type=data.space_type if data else SpaceType.space,
+        quick_context=data.quick_context if data else None,
+        logo_url=data.logo_url if data else None,
     )
 
 

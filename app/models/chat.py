@@ -44,6 +44,10 @@ class ChatSession(Base):
                              ForeignKey("chatbot_users.id", ondelete="SET NULL"),
                              nullable=True, index=True)
 
+    # Yullo uses its shared account identity; Support247 customer identity stays separate.
+    yullo_user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
+    guest_token_hash = Column(String(64), nullable=True)
+
     # Derived from first user message
     title           = Column(String(200), nullable=True)
 
@@ -88,6 +92,7 @@ class ChatSession(Base):
 
     __table_args__ = (
         Index("ix_chat_sessions_space_last", "space_id", "last_message_at"),
+        Index('ix_chat_sessions_yullo_history', 'yullo_user_id', 'space_id', 'runtime_type', 'last_message_at', 'id'),
     )
 
     def to_dict(self) -> dict:

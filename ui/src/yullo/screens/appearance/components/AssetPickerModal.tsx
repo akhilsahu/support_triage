@@ -1,3 +1,4 @@
+import { YulloButton } from '../../../components/core/YulloButton'
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { X, UploadCloud, Image, Check, Loader2, Trash2, Search, ImageIcon } from 'lucide-react'
 import type { AppearanceAsset } from '../../../api/appearance'
@@ -397,12 +398,12 @@ export function AssetPickerModal({
           </div>
 
           <div className="asset-picker-actions-right">
-            <button type="button" className="asset-action-cancel" onClick={onClose} disabled={busy}>
+            <YulloButton variant="outline" type="button" className="asset-action-cancel" onClick={onClose} disabled={busy}>
               Cancel
-            </button>
+            </YulloButton>
 
             {activeTab === 'upload' ? (
-              <button
+              <YulloButton variant="primary"
                 type="button"
                 className="asset-action-primary"
                 disabled={!stagedFile || busy}
@@ -419,9 +420,9 @@ export function AssetPickerModal({
                     <span>Upload and use</span>
                   </>
                 )}
-              </button>
+              </YulloButton>
             ) : (
-              <button
+              <YulloButton variant="primary"
                 type="button"
                 className="asset-action-primary"
                 disabled={!selectedAsset || busy}
@@ -429,7 +430,7 @@ export function AssetPickerModal({
               >
                 <Check size={14} />
                 <span>Use selected asset</span>
-              </button>
+              </YulloButton>
             )}
           </div>
         </div>

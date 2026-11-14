@@ -64,12 +64,16 @@ export function PublicLinkPreview({ space, config, assets, device, previewConten
 
   const selectedAsset = assets.find((asset) => asset.id === config.hero.assetId)
   const publicSpace = {
+    bookingLinks: space.bookingLinks,
+    pageDetails: space.pageDetails,
+    subspaceFields: space.subspaceFields,
+    isSubspace: space.isSubspace,
     id: space.id,
     handle: space.slug,
     displayName: space.displayName,
     description: space.description || '',
     avatarUrl: space.logoUrl || undefined,
-    promptStarters: ['What do you offer?', 'Tell me about this Space'],
+    promptStarters: space.promptStarters?.length ? space.promptStarters : space.isSubspace ? [] : ['What do you offer?', 'Tell me about this Space'],
     auraEnabled: true,
     presentationConfig: config,
     heroAsset: selectedAsset ? { id: selectedAsset.id, url: selectedAsset.url, altText: selectedAsset.altText } : null,

@@ -1,20 +1,25 @@
 import { motion } from 'framer-motion'
+import { useEffect, useRef } from 'react'
 
 interface AuthTransitionProps {
   isNewUser: boolean
+  returningToChat?: boolean
   onComplete: () => void
 }
 
-export function AuthTransition({ isNewUser, onComplete }: AuthTransitionProps) {
+export function AuthTransition({ isNewUser, returningToChat = false, onComplete }: AuthTransitionProps) {
+  const completion = useRef(onComplete)
+  completion.current = onComplete
+  useEffect(() => {
+    const timer = window.setTimeout(() => completion.current(), 650)
+    return () => window.clearTimeout(timer)
+  }, [])
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.25 }}
-      onAnimationComplete={() => {
-        setTimeout(onComplete, 400) // Snappy 400ms transition duration
-      }}
       className="flex flex-col items-center justify-center py-10 text-center"
     >
       {/* Yellow Node pulse reveal */}
@@ -34,7 +39,7 @@ export function AuthTransition({ isNewUser, onComplete }: AuthTransitionProps) {
       </h3>
 
       <p className="mt-1 text-sm text-slate-500 font-normal">
-        {isNewUser ? 'Preparing your onboarding space…' : 'Entering your space…'}
+        {returningToChat ? 'Returning to your chat…' : isNewUser ? 'Preparing your onboarding space…' : 'Entering your space…'}
       </p>
     </motion.div>
   )

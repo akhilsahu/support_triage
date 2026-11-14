@@ -1,3 +1,4 @@
+import { YulloButton } from '../../../components/core/YulloButton'
 import { useEffect, useRef, useState } from 'react'
 import { Check, Loader2, Layers, X, AlertCircle, ImagePlus } from 'lucide-react'
 import type { AppearancePreviewItem, AppearancePreviewSection, PreviewSectionType } from './types'
@@ -178,7 +179,7 @@ export function SectionDataModal({
 
         {/* Modal actions */}
         <div className="appearance-confirm-actions appearance-data-modal-actions">
-          <button
+          <YulloButton variant="outline"
             type="button"
             autoFocus
             disabled={isApplying}
@@ -186,9 +187,9 @@ export function SectionDataModal({
             className="appearance-btn-cancel"
           >
             Cancel
-          </button>
+          </YulloButton>
           {!isFailed && hasItems && (
-            <button
+            <YulloButton variant="outline"
               type="button"
               className="appearance-confirm-primary appearance-btn-confirm"
               disabled={isLoading || isApplying}
@@ -205,7 +206,7 @@ export function SectionDataModal({
                   Add to section
                 </>
               )}
-            </button>
+            </YulloButton>
           )}
         </div>
       </div>

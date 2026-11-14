@@ -8,11 +8,13 @@ export interface AuraStreamHandlers {
 
 export interface AuraProvider {
   getPublicSpace(handle: string): Promise<PublicSpace | null>
-  startConversation(spaceId: string): Promise<string>
+  startConversation(spaceId: string, accountId?: string | null): Promise<string>
   sendMessage(
     spaceId: string,
     conversationId: string,
     message: string,
-    handlers: AuraStreamHandlers
+    handlers: AuraStreamHandlers,
+    signal?: AbortSignal,
+    accountId?: string | null,
   ): Promise<void>
 }

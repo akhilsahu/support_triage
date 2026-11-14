@@ -13,6 +13,7 @@ from app.models.integration_package import IntegrationPackage, IntegrationPackag
 from app.models.agent_tool_assignment import AgentToolAssignment, DataSourceTestRun
 from app.models.ingestion_job import IngestionJob
 from app.models.knowledge_base import KnowledgeBase, KnowledgeBaseItem, AgentKnowledgeBase
+from app.models.knowledge_source_asset import KnowledgeSourceAsset
 from app.models.kb_fact import KBFact
 from app.models.agent import Agent, AgentType, AgentStatus
 from app.models.workflow import Workflow, ExecutionType, WorkflowStatus
@@ -48,7 +49,7 @@ __all__ = [
     "IntegrationPackage", "IntegrationPackageTool",
     "AgentToolAssignment", "DataSourceTestRun",
     "IngestionJob",
-    "KnowledgeBase", "KnowledgeBaseItem", "AgentKnowledgeBase", "KBFact",
+    "KnowledgeBase", "KnowledgeBaseItem", "AgentKnowledgeBase", "KnowledgeSourceAsset", "KBFact",
 
     "Agent", "AgentType", "AgentStatus",
     "Workflow", "ExecutionType", "WorkflowStatus",

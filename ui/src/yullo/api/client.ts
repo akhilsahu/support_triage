@@ -1,7 +1,8 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios';
 import { useYulloAppStore } from '../store/useYulloAppStore';
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+// Production uses the existing /api proxy so HttpOnly sessions stay first-party.
+export const YULLO_API_ORIGIN = import.meta.env.PROD ? '' : import.meta.env.VITE_API_URL || '';
 
 /**
  * Isolated Yullo API Client
@@ -10,7 +11,7 @@ const API_URL = import.meta.env.VITE_API_URL || '';
  * - Does NOT intercept to inject Bearer tokens
  */
 export const yulloApiClient = axios.create({
-  baseURL: `${API_URL}/api/v1/yullo`,
+  baseURL: `${YULLO_API_ORIGIN}/api/v1/yullo`,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -28,10 +29,10 @@ const refreshCsrfToken = async (): Promise<string> => {
     csrfRefreshPromise = yulloApiClient
       .get('/auth/me')
       .then(({ data }) => {
+        // Token renewal must not overwrite the active UI theme with a stale preference.
         useYulloAppStore.getState().setAuth(
           data.user,
           data.csrf_token,
-          data.preference?.appTheme,
         );
         return data.csrf_token as string;
       })
@@ -41,6 +42,26 @@ const refreshCsrfToken = async (): Promise<string> => {
   }
   return csrfRefreshPromise;
 };
+
+/** Fetch transport for SSE; shares cookie/CSRF refresh with the JSON client. */
+export async function yulloFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const request = () => {
+    const headers = new Headers(options.headers);
+    const csrf = useYulloAppStore.getState().csrfToken;
+    if (csrf && !['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase())) headers.set('X-Yullo-CSRF', csrf);
+    return fetch(url, { ...options, headers, credentials: 'include' });
+  };
+  let response = await request();
+  if (response.status === 403 && (await response.clone().json().catch(() => ({}))).detail === 'Invalid CSRF token') {
+    await refreshCsrfToken();
+    response = await request();
+  }
+  if (response.status === 401) {
+    useYulloAppStore.getState().clearAuth();
+    window.dispatchEvent(new Event('yullo-session-refresh'));
+  }
+  return response;
+}
 
 // Interceptor to attach CSRF token to mutating requests
 yulloApiClient.interceptors.request.use((config) => {
@@ -75,6 +96,7 @@ yulloApiClient.interceptors.response.use(
     // A 403 can be a valid authorization denial; only 401 means the session ended.
     if (error.response?.status === 401 && !request?.url?.includes('/auth/')) {
       useYulloAppStore.getState().clearAuth();
+      window.dispatchEvent(new Event('yullo-session-refresh'));
     }
     return Promise.reject(error);
   }

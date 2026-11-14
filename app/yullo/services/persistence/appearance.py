@@ -23,6 +23,10 @@ from app.yullo.services.persistence.common import finalize_space_mutation
 from app.yullo.services.persistence.appearance_images import (
     applied_preview, load_appearance_images, resolve_preview_images,
 )
+from app.yullo.services.persistence.appearance_evidence import (
+    chunk_reference_key, eligible_preview_chunks, existing_section_context,
+    item_is_duplicate, retrieve_preview_passages,
+)
 
 from pydantic import ValidationError
 from app.models.yullo_space_entity import YulloSpaceEntity
@@ -42,6 +46,8 @@ from app.yullo.schemas.appearance_preview import (
 )
 from app.yullo.services.entities.service import public_entity_predicates
 from app.yullo.services.entities.payloads import public_entity_summary
+from app.yullo.services.entities.presentation import public_page_details, owner_preview_booking_links
+from app.yullo.services.entities.service import get_public_entities
 from app.orchestra.ai.prompts.yullo.appearance import PREVIEW_SYSTEM_PROMPT as SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -78,7 +84,7 @@ async def _owned_space(
 
 def _parse_config(yullo_space: YulloSpace) -> SpacePresentationConfig:
     if not yullo_space.appearance_config:
-        return default_presentation_config(yullo_space.purpose)
+        return default_presentation_config(yullo_space.purpose, is_subspace=yullo_space.parent_space_id is not None)
     try:
         return SpacePresentationConfig.model_validate(yullo_space.appearance_config)
     except Exception:
@@ -86,16 +92,23 @@ def _parse_config(yullo_space: YulloSpace) -> SpacePresentationConfig:
             "yullo.appearance.invalid_saved_config",
             extra={"space_id": str(yullo_space.space_id)},
         )
-        return default_presentation_config(yullo_space.purpose)
+        return default_presentation_config(yullo_space.purpose, is_subspace=yullo_space.parent_space_id is not None)
 
 
 def _space_summary(
     space: Space,
     yullo_space: YulloSpace,
     yullo_config: YulloConfig | None,
+    public_entities=(),
+    owner_bookings=(),
 ) -> AppearanceSpaceSummary:
     identity = ((yullo_config.settings or {}).get("identity") or {}) if yullo_config else {}
     return AppearanceSpaceSummary(
+        previewBookingLinks=owner_preview_booking_links(owner_bookings),
+        promptStarters=identity.get("prompt_starters") or [],
+        **public_page_details(public_entities, space_type=yullo_space.space_type, space_name=space.display_name, is_subspace=yullo_space.parent_space_id is not None),
+        subspaceFields=identity.get("subspace_fields") if yullo_space.parent_space_id else None,
+        isSubspace=yullo_space.parent_space_id is not None,
         id=space.id,
         displayName=space.display_name,
         slug=space.slug,
@@ -116,6 +129,12 @@ async def get_appearance(
     space, yullo_space, yullo_config = await _owned_space(
         db, user_id=user_id, space_id=space_id
     )
+    owner_bookings = list((await db.scalars(select(YulloSpaceEntity).where(
+        YulloSpaceEntity.space_id == space_id,
+        YulloSpaceEntity.entity_type == "action",
+        YulloSpaceEntity.is_active.is_(True),
+        YulloSpaceEntity.review_status.in_(("owner_confirmed", "source_authoritative")),
+    ).order_by(YulloSpaceEntity.sort_order, YulloSpaceEntity.id))).all())
     config = _parse_config(yullo_space)
     assets = await list_assets(db, user_id=user_id, space_id=space_id)
     settings = (yullo_config.settings or {}) if yullo_config else {}
@@ -126,8 +145,9 @@ async def get_appearance(
         facts = await collect_preview_facts(db, space_id)
         entity_ids = {entity["id"] for entity in context.entities}
         fact_ids = {fact["id"] for fact in facts}
+        chunk_ids = await eligible_preview_chunks(db, space_id=space_id, contents=[draft.preview_content])
         for section in draft.preview_content.sections:
-            section.items = [item for item in section.items if item_has_eligible_support(item, entity_ids, fact_ids)]
+            section.items = [item for item in section.items if item_has_eligible_support(item, entity_ids, fact_ids, chunk_ids)]
         draft.preview_content.sections = [section for section in draft.preview_content.sections if section.items]
         draft.preview_content = await resolve_preview_images(db, space_id=space_id, content=draft.preview_content)
         draft.grounded_entity_ids = sorted({
@@ -137,7 +157,7 @@ async def get_appearance(
         if draft.config.hero.asset_id and draft.config.hero.asset_id not in {asset.id for asset in assets}:
             draft.config.hero.asset_id = None
     return AppearanceEditorResponse(
-        space=_space_summary(space, yullo_space, yullo_config),
+        space=_space_summary(space, yullo_space, yullo_config, await get_public_entities(db, space_id, entity_types=("action", "event", "location")), owner_bookings),
         publishedConfig=config,
         effectiveConfig=draft.config if draft else config,
         recommendation=None,
@@ -195,6 +215,7 @@ async def initialize_appearance(
     draft.preview_content = merge_applied_sections(
         draft.preview_content, settings, {entity["id"] for entity in context.entities},
         {fact["id"] for fact in facts},
+        await eligible_preview_chunks(db, space_id=space_id, contents=[applied_preview(settings)]),
     )
     settings["appearance_editor_draft"] = draft.model_dump(mode="json", by_alias=True)
     settings["appearance_initialized"] = True
@@ -284,14 +305,15 @@ async def collect_preview_facts(db: AsyncSession, space_id: UUID) -> list[dict]:
     return sorted(facts, key=lambda fact: fact["id"])
 
 
-def item_has_eligible_support(item: AppearancePreviewItem, entity_ids: set[str], fact_ids: set[str]) -> bool:
+def item_has_eligible_support(item: AppearancePreviewItem, entity_ids: set[str], fact_ids: set[str], chunk_ids=None) -> bool:
     if item.source == PreviewContentSource.example:
-        return True
+        return not item.source_chunks
     return (
         item.source.value == "grounded"
-        and bool(item.source_entity_id or item.source_fact_ids)
+        and bool(item.source_entity_id or item.source_fact_ids or item.source_chunks)
         and (not item.source_entity_id or item.source_entity_id in entity_ids)
         and all(str(fact_id) in fact_ids for fact_id in item.source_fact_ids)
+        and all(chunk_reference_key(ref) in (chunk_ids or set()) for ref in item.source_chunks)
     )
 
 
@@ -384,6 +406,7 @@ def merge_applied_sections(
     settings: dict | None,
     eligible_entity_ids: set[str],
     eligible_fact_ids: set[str] | None = None,
+    eligible_chunk_ids: set[tuple] | None = None,
 ) -> AppearancePreviewContent:
     """Overlay owner-applied wording while its supporting entities stay public."""
     raw = (settings or {}).get("appearance_applied_sections") or {}
@@ -397,7 +420,7 @@ def merge_applied_sections(
             continue
         section.items = [
             item for item in section.items
-            if item_has_eligible_support(item, eligible_entity_ids, eligible_fact_ids or set())
+            if item_has_eligible_support(item, eligible_entity_ids, eligible_fact_ids or set(), eligible_chunk_ids)
         ]
         if section.items:
             by_type[section_type] = section
@@ -418,6 +441,10 @@ async def apply_appearance_preview_section(
     context = await collect_preview_context(db, user_id=user_id, space_id=space_id)
     facts = await collect_preview_facts(db, space_id)
     fact_ids = {fact["id"] for fact in facts}
+    settings_snapshot = await db.scalar(select(YulloConfig.settings).where(YulloConfig.space_id == space_id))
+    chunk_ids = await eligible_preview_chunks(db, space_id=space_id, contents=[
+        AppearancePreviewContent(sections=[section]), applied_preview(settings_snapshot or {}),
+    ])
     canonical = build_deterministic_landing_content(context.entities)
     canonical_section = next((item for item in canonical.sections if item.type == section.type), None)
     eligible = {
@@ -426,7 +453,7 @@ async def apply_appearance_preview_section(
     } if canonical_section else set()
     if (
         not section.items
-        or any(not item_has_eligible_support(item, eligible, fact_ids) for item in section.items)
+        or any(not item_has_eligible_support(item, eligible, fact_ids, chunk_ids) for item in section.items)
     ):
         raise HTTPException(status_code=422, detail="This draft uses details that are no longer public.")
 
@@ -469,7 +496,7 @@ async def apply_appearance_preview_section(
     await db.flush()
     live = canonical
     return images.resolve(merge_applied_sections(
-        live, settings, {entity["id"] for entity in context.entities}, fact_ids
+        live, settings, {entity["id"] for entity in context.entities}, fact_ids, chunk_ids
     ))
 
 
@@ -480,11 +507,13 @@ async def get_live_appearance_preview(
     config = await db.scalar(select(YulloConfig).where(YulloConfig.space_id == space_id))
     live = build_deterministic_landing_content(context.entities)
     facts = await collect_preview_facts(db, space_id)
+    settings = config.settings if config else {}
     content = merge_applied_sections(
         live,
-        config.settings if config else {},
+        settings,
         {entity["id"] for entity in context.entities},
         {fact["id"] for fact in facts},
+        await eligible_preview_chunks(db, space_id=space_id, contents=[applied_preview(settings)]),
     )
     return await resolve_preview_images(db, space_id=space_id, content=content, public=public)
 
@@ -498,23 +527,43 @@ async def generate_appearance_preview(
     config = get_appearance_runtime_config()
     context = await collect_preview_context(db, user_id=user_id, space_id=space_id)
     facts = await collect_preview_facts(db, space_id) if request.section_type else []
+    settings = await db.scalar(select(YulloConfig.settings).where(YulloConfig.space_id == space_id)) or {}
+    by_type = {section.type: section for section in build_deterministic_landing_content(context.entities).sections}
+    by_type.update({section.type: section for section in applied_preview(settings).sections})
+    saved_draft = _parse_editor_draft(settings, space_id=space_id)
+    if saved_draft:
+        by_type.update({section.type: section for section in saved_draft.preview_content.sections})
+    if request.current_content:
+        by_type.update({section.type: section for section in request.current_content.sections})
+    previous = AppearancePreviewContent(sections=list(by_type.values()))
+    visible = {section.type.value for section in request.current_config.sections if section.visible}
+    other_sections = AppearancePreviewContent(sections=[
+        section for section in previous.sections if section.type.value in visible and section.type != request.section_type
+    ])
+    other_items = [item for section in other_sections.sections for item in section.items]
+    passages = []
+    if request.section_type and config.preview_generation_enabled:
+        from app.config import settings as app_settings
+        query = f'{context.space_name} {request.section_type.value} {context.space_description or ""}'
+        passages = await retrieve_preview_passages(db, space_id=space_id, query=query,
+                                                   limit=app_settings.RAG_TOP_K,
+                                                   max_characters=config.preview_max_context_characters // 2)
     result = await generate_preview(
         context, space_id=space_id, request=request, config=config, facts=facts,
+        passages=passages,
+        existing_sections=existing_section_context(other_sections, request.section_type) if request.section_type else [],
         policy=dict(
             system_prompt=SYSTEM_PROMPT, content_model=AppearancePreviewContent,
             response_model=AppearancePreviewResponse, status=PreviewStatus,
             build_content=build_deterministic_landing_content,
             item_supported=item_has_eligible_support,
+            require_grounded=True,
+            chunk_key=chunk_reference_key,
+            item_is_duplicate=lambda item, seen: item_is_duplicate(item, other_items + seen) if request.section_type else False,
         ),
     )
     if result.content:
         images = await load_appearance_images(db, space_id=space_id, content=result.content, suggest=True)
-        settings = await db.scalar(select(YulloConfig.settings).where(YulloConfig.space_id == space_id))
-        previous = applied_preview(settings or {})
-        if request.current_content:
-            by_type = {section.type: section for section in previous.sections}
-            by_type.update({section.type: section for section in request.current_content.sections})
-            previous = AppearancePreviewContent(sections=list(by_type.values()))
         result.content = images.suggest(result.content, previous)
         logger.info('yullo.appearance.images_suggested', extra={
             'space_id': str(space_id),

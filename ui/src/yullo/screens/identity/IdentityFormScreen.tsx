@@ -1,3 +1,4 @@
+import { SUBSPACE_DESCRIPTION_LIMIT } from '../../api/spaces';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -9,7 +10,7 @@ import { yulloOnboardingApi } from '../../api/onboarding';
 import { useAppStore } from '../../../store/useAppStore';
 import { motion, useReducedMotion } from 'motion/react';
 import { FormActions } from '../../forms/core/FormActions';
-import { IdentityForm, identitySchema, IdentityFormValues } from '../../forms/identity/IdentityForm';
+import { IdentityForm, identitySchema, subspaceIdentitySchema, IdentityFormValues } from '../../forms/identity/IdentityForm';
 import { X, Trash2, ArrowRight, Loader2, Check, AlertTriangle } from 'lucide-react';
 import { getBaseDomain } from '../../config';
 
@@ -41,7 +42,7 @@ export function IdentityFormScreen() {
   });
 
   const form = useForm<IdentityFormValues>({
-    resolver: zodResolver(identitySchema),
+    resolver: zodResolver(identity?.parent_space_id ? subspaceIdentitySchema : identitySchema),
     mode: 'onTouched',
     defaultValues: {
       purpose: 'business',
@@ -57,6 +58,7 @@ export function IdentityFormScreen() {
   useEffect(() => {
     if (identity) {
       form.reset({
+        subspace_fields: identity.subspace_fields || undefined,
         purpose: identity.purpose,
         display_name: identity.display_name,
         description: identity.description || '',
@@ -249,6 +251,8 @@ export function IdentityFormScreen() {
               form={form}
               spaceId={spaceId}
               slug={identity.slug}
+              descriptionMaxLength={identity.parent_space_id ? SUBSPACE_DESCRIPTION_LIMIT : 280}
+              generationContext={identity.event_context}
               isLive={identity.status === 'live'}
               onChangeHandle={() => {
                 setNewHandle(identity.slug);

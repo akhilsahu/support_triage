@@ -73,9 +73,11 @@ def build_source_images(source, *, config, asset_visible):
         if not asset_visible(image):
             continue
         url = safe_image_url(image.get('url'))
-        if not url or url in seen:
+        registered = getattr(source, '_asset_records', {}).get(image.get('asset_id'))
+        occurrence = (url, image.get('destination_id'), image.get('title'), image.get('alt')) if registered else url
+        if not url or occurrence in seen:
             continue
-        seen.add(url)
+        seen.add(occurrence)
         parts = list(dict.fromkeys(str(image.get(key) or '').strip() for key in ('title', 'caption', 'alt', 'section', 'context_text')))
         caption = ' '.join(part for part in parts if part)
         own_description = ' '.join(str(image.get(key) or '') for key in ('title', 'caption', 'alt'))
@@ -88,6 +90,8 @@ def build_source_images(source, *, config, asset_visible):
             continue  # No basis for the model to choose or describe this image.
         version = (source.source_metadata or {}).get('indexed_source_version') or source.published_version or source.source_version
         key = f'{source.space_id}:{source.id}:{version}:{url}'
+        if registered and registered['kind'] == 'image':
+            key = f"{registered['id']}:{destination_url or ''}:{image.get('title') or ''}:{image.get('alt') or ''}"
         results.append({
             'id': hashlib.sha256(key.encode()).hexdigest(),
             'url': url,
@@ -141,7 +145,7 @@ def _associate_chunk_image(image, candidates, *, max_caption_characters, whole_s
     return resolved
 
 
-def resolve_published_chunk_image(space_id: str, doc_id: str, image: dict, *, config) -> dict:
+def resolve_published_chunk_image(space_id: str, doc_id: str, image: dict, *, config, prepare_metadata=None) -> dict:
     """Apply an unambiguous published chunk association to a resolved image."""
     try:
         from app.orchestra.ai.knowledge.vector_store import get_vector_store
@@ -153,7 +157,10 @@ def resolve_published_chunk_image(space_id: str, doc_id: str, image: dict, *, co
         logger.warning("chat_image.chunk_metadata_lookup_failed", doc_id=str(doc_id), error=str(exc))
         return image
 
-    matches = [candidate for metadata in result.get('metadatas') or []
+    metadatas = result.get('metadatas') or []
+    if prepare_metadata is not None:
+        metadatas = [prepare_metadata(metadata) for metadata in metadatas]
+    matches = [candidate for metadata in metadatas
                for candidate in _chunk_images(metadata) if candidate['url'] == image.get('url')]
     return _associate_chunk_image(image, matches, whole_source=True, max_caption_characters=config.max_caption_characters) or image
 
@@ -176,14 +183,24 @@ def select_chat_images(sources, passages, query, *, images_for_source, doc_id_fo
         available = images_for_source(source)
         local_images = associated.get(doc_id, [])
         if local_images:
-            available_by_url = {image['url']: image for image in available}
+            available_by_url = {}
+            for image in available:
+                available_by_url.setdefault(image['url'], []).append(image)
             local_by_url = {}
             for local in local_images:
                 local_by_url.setdefault(local['url'], []).append(local)
             for position, (url, candidates) in enumerate(local_by_url.items()):
-                image = available_by_url.get(url)
-                if not image:
+                options = available_by_url.get(url, [])
+                destinations = {candidate.get('destination_url') for candidate in candidates
+                                if candidate.get('destination_url')}
+                if destinations:
+                    matching = [image for image in options if image.get('destinationUrl') in destinations]
+                    if matching or any(candidate.get('asset_id') for candidate in candidates):
+                        options = matching
+                if not options:
                     continue
+                titles = {candidate.get('title') or candidate.get('alt') for candidate in candidates}
+                image = next((image for image in options if image.get('title') in titles), options[0])
                 image = _associate_chunk_image(image, candidates, max_caption_characters=config.max_caption_characters)
                 if image is None:
                     continue

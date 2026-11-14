@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { isAxiosError } from 'axios'
 import { motion, AnimatePresence } from 'framer-motion'
 import { GoogleAuthButton } from './GoogleAuthButton'
 import { PhoneForm } from './PhoneForm'
@@ -6,7 +7,6 @@ import { PhoneOtpForm } from './PhoneOtpForm'
 import { EmailForm } from './EmailForm'
 import { EmailOtpForm } from './EmailOtpForm'
 import { AuthTransition } from './AuthTransition'
-import { API_CONFIG } from '../../../config/api'
 import { yulloApiClient } from '../../api/client'
 import { useYulloAppStore } from '../../store/useYulloAppStore'
 
@@ -15,9 +15,10 @@ export type AuthStep = 'identity' | 'phone-otp' | 'email' | 'email-otp' | 'succe
 interface AuthPanelProps {
   onAuthSuccess: (isNewUser: boolean) => void
   isMobile?: boolean
+  returningToChat?: boolean
 }
 
-export function AuthPanel({ onAuthSuccess, isMobile }: AuthPanelProps) {
+export function AuthPanel({ onAuthSuccess, returningToChat = false, isMobile }: AuthPanelProps) {
   const [step, setStep] = useState<AuthStep>('identity')
   const [phoneData, setPhoneData] = useState<{ phone: string; countryCode: string }>({ phone: '', countryCode: '+91' })
   const [emailData, setEmailData] = useState<string>('')
@@ -28,12 +29,19 @@ export function AuthPanel({ onAuthSuccess, isMobile }: AuthPanelProps) {
   const { setAuth } = useYulloAppStore()
 
   // Google OAuth Success Handler
-  const handleGoogleSuccess = async (googleUser: { google_sub: string; email: string; name?: string }) => {
+  const handleGoogleSuccess = async (googleUser: { id_token: string }) => {
     setLoading(true)
     setErrorMessage('')
     try {
       const { data } = await yulloApiClient.post('/auth/google', googleUser)
-
+      try {
+        await yulloApiClient.get('/auth/me')
+      } catch (error) {
+        if (isAxiosError(error) && error.response?.status === 401) {
+          throw new Error('Your sign-in session could not be saved. Allow cookies and try again.')
+        }
+        throw error
+      }
       setAuth(data.user, data.csrf_token)
       setIsNewUser(data.is_new_user)
       setStep('success')
@@ -120,12 +128,13 @@ export function AuthPanel({ onAuthSuccess, isMobile }: AuthPanelProps) {
   if (isMobile) {
     return (
       <div className="w-full flex flex-col justify-between items-center flex-1">
-        <div className="w-full max-w-[420px] py-4">
+        <div className="w-full max-w-[400px] py-4">
           <AnimatePresence mode="wait">
             {step === 'success' ? (
               <AuthTransition
                 key="success"
                 isNewUser={isNewUser}
+                returningToChat={returningToChat}
                 onComplete={() => onAuthSuccess(isNewUser)}
               />
             ) : (
@@ -240,7 +249,7 @@ export function AuthPanel({ onAuthSuccess, isMobile }: AuthPanelProps) {
   }
 
   return (
-    <div className="w-full min-h-[100dvh] bg-white border-l border-slate-900/[0.06] flex flex-col justify-between items-center overflow-y-auto">
+    <div className="w-full flex-1 min-h-0 bg-white flex flex-col justify-between items-center">
       {/* Top spacer helper */}
       <div className="relative z-10 h-6 shrink-0 pointer-events-none" />
 
@@ -248,7 +257,7 @@ export function AuthPanel({ onAuthSuccess, isMobile }: AuthPanelProps) {
       <div
         className="relative z-10 my-auto py-4"
         style={{
-          width: 'min(420px, calc(100% - 48px))',
+          width: 'min(400px, 100%)',
           marginInline: 'auto',
           marginTop: 'clamp(12px, 3vh, 44px)',
         }}
@@ -258,6 +267,7 @@ export function AuthPanel({ onAuthSuccess, isMobile }: AuthPanelProps) {
             <AuthTransition
               key="success"
               isNewUser={isNewUser}
+              returningToChat={returningToChat}
               onComplete={() => onAuthSuccess(isNewUser)}
             />
           ) : (

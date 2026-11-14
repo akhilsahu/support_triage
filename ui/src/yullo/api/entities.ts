@@ -3,6 +3,7 @@ import { yulloApiClient } from './client';
 export interface SpaceEntity {
   id: string;
   space_id: string;
+  identity_key?: string;
   entity_type: string;
   origin_type?: string;
   payload_json: Record<string, any>;

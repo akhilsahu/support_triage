@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from app.orchestra.ai.config import ChunkConfig
-from app.orchestra.ai.ingestion.chunking.sizing import joined_pages, logical_chunk, subsegments
+from app.orchestra.ai.ingestion.chunking.sizing import joined_pages, logical_chunk, subsegments, slice_asset_metadata
 from app.orchestra.ai.ingestion.chunking.strategies.table_rows import fenced_code_spans, split_table_rows, table_blocks
 from app.orchestra.ai.core.document_models import ParsedDocument
 
@@ -40,15 +40,15 @@ def chunk_by_structure(doc: ParsedDocument, cfg: ChunkConfig):
         for start, end in fenced_code_spans(body):
             if body[cursor:start].strip():
                 chunks.extend(chunk_tables(body[cursor:start], subsegments(segments, cursor, start),
-                                           first.page, section, metadata, cfg,
+                                           first.page, section, slice_asset_metadata(metadata, cursor, start), cfg,
                                            is_table=first.is_table or metadata.get("block_type") == "table"))
             chunks.append(logical_chunk(body[start:end], first.page, section,
-                                        metadata={**metadata, "block_type": "code", "split_mode": "lines"},
+                                        metadata={**slice_asset_metadata(metadata, start, end), "block_type": "code", "split_mode": "lines"},
                                         prefix=prefix, segments=subsegments(segments, start, end)))
             cursor = end
         if body[cursor:].strip():
             chunks.extend(chunk_tables(body[cursor:], subsegments(segments, cursor, len(body)),
-                                       first.page, section, metadata, cfg,
+                                       first.page, section, slice_asset_metadata(metadata, cursor, len(body)), cfg,
                                        is_table=first.is_table or metadata.get("block_type") == "table"))
     return chunks
 
@@ -67,13 +67,13 @@ def chunk_tables(body, segments, page, section, metadata, cfg, *, is_table=True)
     for table in blocks:
         if body[cursor:table.start].strip():
             chunks.append(logical_chunk(
-                body[cursor:table.start], page, section, metadata=prose_metadata,
+                body[cursor:table.start], page, section, metadata=slice_asset_metadata(prose_metadata, cursor, table.start),
                 prefix=prefix, segments=subsegments(segments, cursor, table.start)))
         source = body[table.start:table.end]
         caption = caption_for_table(source, section, mode=cfg.table_caption_mode)
         chunks.append(logical_chunk(
             source, page, section, is_table=True,
-            metadata={**metadata, "block_type": "table", "split_mode": "rows",
+            metadata={**slice_asset_metadata(metadata, table.start, table.end), "block_type": "table", "split_mode": "rows",
                       "table_id": _table_id(segments, table.start)},
             prefix=caption + "\n" if caption else prefix,
             repeat=body[table.start:table.header_end],
@@ -89,15 +89,20 @@ def chunk_tables(body, segments, page, section, metadata, cfg, *, is_table=True)
                                  table_header_unknown=True)
         chunks.append(logical_chunk(
             body[cursor:], page, section, is_table=is_table and not blocks,
-            metadata=tail_metadata,
+            metadata=slice_asset_metadata(tail_metadata, cursor, len(body)),
             prefix=prefix, segments=subsegments(segments, cursor, len(body))))
 
     if cfg.table_row_chunks:
         for row in split_table_rows(body, section, max_rows=cfg.table_row_max,
                                     wide_cols=cfg.table_row_wide_cols, group_size=cfg.table_row_group):
             row_segments = []
+            row_metadata = {**metadata, **{field: [] for field in ('links', 'images') if field in metadata}}
             position = 0
             for start, end in row.source_spans:
+                asset_metadata = slice_asset_metadata(metadata, start, end, offset=position)
+                for field in ('links', 'images'):
+                    if field in row_metadata:
+                        row_metadata[field].extend(asset_metadata.get(field) or [])
                 for segment in subsegments(segments, start, end):
                     row_segments.append({**segment, "start": segment["start"] + position,
                                          "end": segment["end"] + position})
@@ -106,7 +111,7 @@ def chunk_tables(body, segments, page, section, metadata, cfg, *, is_table=True)
             chunks.append(logical_chunk(
                 row.text, page, section, is_table=True, is_table_row=True,
                 row_label=row.label,
-                metadata={**metadata, "block_type": "table", "split_mode": "rows",
+                metadata={**row_metadata, "block_type": "table", "split_mode": "rows",
                           "table_id": _table_id(segments, row.source_spans[0][0])}, prefix=prefix,
                 repeat=body[first_span[0]:first_span[1]], segments=row_segments))
     return chunks

@@ -6,13 +6,15 @@ Authenticates User/Account identity without implicitly creating public Spaces.
 
 from typing import Optional
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.database import get_db
-from app.core.auth import create_token
+from app.core.google_identity import verify_google_id_token
+import anyio
 from app.models.user import User
 from app.models.auth_identity import AuthIdentity
 from app.models.space import Space
@@ -25,10 +27,7 @@ router = APIRouter(prefix="/yullo/auth", tags=["yullo-auth"])
 # ── Pydantic Request Models ────────────────────────────────────────────────────
 
 class GoogleAuthRequest(BaseModel):
-    google_sub: str
-    email: EmailStr
-    name: Optional[str] = None
-    avatar_url: Optional[str] = None
+    id_token: str = Field(min_length=1, max_length=8192)
 
 
 class SendPhoneOtpRequest(BaseModel):
@@ -99,16 +98,25 @@ async def check_handle(slug: str = Query(...), db: AsyncSession = Depends(get_db
     return {"available": True, "reserved": False, "reason": None}
 
 
+@router.get("/providers")
+async def auth_providers():
+    return {"googleClientId": settings.YULLO_GOOGLE_CLIENT_ID or settings.GOOGLE_CLIENT_ID or None}
+
+
 @router.post("/google", response_model=AuthResponseData)
 async def google_auth(req: GoogleAuthRequest, response: Response, db: AsyncSession = Depends(get_db)):
     """Authenticates or registers a user via Google OAuth identity."""
-    clean_email = req.email.strip().lower()
+    info = await anyio.to_thread.run_sync(
+        verify_google_id_token, req.id_token,
+        settings.YULLO_GOOGLE_CLIENT_ID or settings.GOOGLE_CLIENT_ID,
+    )
+    clean_email = info["email"].strip().lower()
 
     # 1. Lookup existing AuthIdentity for Google sub
     res = await db.execute(
         select(AuthIdentity).where(
             AuthIdentity.provider == "google",
-            AuthIdentity.provider_subject == req.google_sub.strip()
+            AuthIdentity.provider_subject == info["sub"]
         )
     )
     identity = res.scalar_one_or_none()
@@ -130,7 +138,7 @@ async def google_auth(req: GoogleAuthRequest, response: Response, db: AsyncSessi
         # Create new User
         user = User(
             email=clean_email,
-            full_name=req.name.strip() if req.name else None,
+            full_name=info.get("name"),
             onboarding_completed=False,
         )
         db.add(user)
@@ -141,7 +149,7 @@ async def google_auth(req: GoogleAuthRequest, response: Response, db: AsyncSessi
     new_identity = AuthIdentity(
         user_id=user.id,
         provider="google",
-        provider_subject=req.google_sub.strip(),
+        provider_subject=info["sub"],
     )
     db.add(new_identity)
     await db.commit()
@@ -163,7 +171,7 @@ async def send_phone_otp(req: SendPhoneOtpRequest):
         from app.services.providers.sms.factory import dispatch_otp_sms
         await dispatch_otp_sms(normalized_phone, code, app_name="yullo")
 
-        logger.info("yullo_auth.phone_otp_sent", phone=normalized_phone, code_dev=code)
+        logger.info("yullo_auth.phone_otp_sent")
         from app.config import settings
         res = {
             "ok": True,
@@ -237,7 +245,7 @@ async def send_email_otp(req: SendEmailOtpRequest):
         from app.services.providers.email.smtp_sender import dispatch_otp_email
         await dispatch_otp_email(clean_email, code, app_name="yullo")
 
-        logger.info("yullo_auth.email_otp_sent", email=clean_email, code_dev=code)
+        logger.info("yullo_auth.email_otp_sent")
         from app.config import settings
         res = {
             "ok": True,
@@ -339,7 +347,8 @@ async def get_current_user_me(
 async def logout(
     request: Request,
     response: Response,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     """Revokes the current session and clears the cookie."""
     from app.yullo.services.auth.session_service import revoke_yullo_session

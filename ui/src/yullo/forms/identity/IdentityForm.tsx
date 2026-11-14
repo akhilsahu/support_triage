@@ -1,3 +1,8 @@
+import { yulloApiClient } from '../../api/client';
+import type { QuickSpaceContext } from '../../api/spaces';
+import { ImageField } from '../core/ImageField';
+import { DetailFields, emptySubspaceFields, subspaceFieldsSchema } from '../subspaces/DetailFields';
+import { SUBSPACE_DESCRIPTION_LIMIT, spaceBranch, useSpaceHierarchy } from '../../api/spaces';
 import React, { useState, useRef } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
@@ -62,6 +67,7 @@ export function normalizeWebsiteUrl(val: string): string {
 }
 
 export const identitySchema = z.object({
+  subspace_fields: subspaceFieldsSchema.optional(),
   purpose: z.enum(['business', 'creator', 'person', 'organization'] as const, { message: 'Purpose is required' }),
   display_name: z.string().min(1, 'Display name is required').max(200),
   description: z.string().max(280, 'Maximum 280 characters').optional().nullable(),
@@ -84,6 +90,10 @@ export const identitySchema = z.object({
     .or(z.literal('')),
   logo_url: z.string().optional().nullable().or(z.literal('')),
   expected_revision: z.number().int().optional(),
+});
+
+export const subspaceIdentitySchema = identitySchema.extend({
+  description: z.string().max(SUBSPACE_DESCRIPTION_LIMIT, 'Maximum 4,000 characters').optional().nullable(),
 });
 
 export type IdentityFormValues = z.infer<typeof identitySchema>;
@@ -118,6 +128,8 @@ interface IdentityFormProps {
   form: UseFormReturn<IdentityFormValues>;
   spaceId?: string;
   slug?: string;
+  descriptionMaxLength?: number;
+  generationContext?: QuickSpaceContext | null;
   isLive?: boolean;
   onChangeHandle?: () => void;
   onSubmit: (data: IdentityFormValues) => void;
@@ -133,16 +145,18 @@ interface IdentityFormProps {
 export function IdentityForm({ 
   form, 
   spaceId, 
-  slug, 
+  slug,
+  descriptionMaxLength = 280,
+  generationContext,
   isLive = false,
   onChangeHandle, 
   onSubmit, 
 }: IdentityFormProps) {
+  const hierarchy = useSpaceHierarchy();
+  const publicPath = spaceBranch(hierarchy.data ?? [], spaceId).map(node => node.slug).join('/') || slug;
   const [suggestion, setSuggestion] = useState<AboutSuggestionResponse | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const [showLogoUrlInput, setShowLogoUrlInput] = useState(false);
-  const [isDraggingFile, setIsDraggingFile] = useState(false);
 
 interface IdentityChatMessage {
   role: 'aura' | 'user';
@@ -159,7 +173,6 @@ interface IdentityChatMessage {
   const [isChatSending, setIsChatSending] = useState(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const shouldReduceMotion = useReducedMotion();
   const transition = shouldReduceMotion ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const };
 
@@ -176,6 +189,17 @@ interface IdentityChatMessage {
   const fetchAuraSuggestion = async () => {
     setIsGenerating(true);
     try {
+      if (descriptionMaxLength > 280 && spaceId) {
+        const { data } = await yulloApiClient.post<{ description: string }>(`/spaces/${spaceId}/subspace-description`, {
+          name: currentDisplayName || 'This item',
+          space_type: hierarchy.data?.find(node => node.id === spaceId)?.space_type || 'other',
+          description: currentDescription || '', context: { ...generationContext, subspace_fields: form.getValues('subspace_fields') },
+          time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        });
+        setSuggestion({ status: 'ready', description: data.description });
+        setDismissed(false);
+        return;
+      }
       const res = await yulloOnboardingApi.generateSummary({
         spaceId: spaceId,
         name: currentDisplayName || 'Space',
@@ -294,27 +318,6 @@ interface IdentityChatMessage {
     setDismissed(true);
   };
 
-  const handleFileUpload = (file: File) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        form.setValue('logo_url', dataUrl, { shouldDirty: true });
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDraggingFile(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file && file.type.startsWith('image/')) {
-      handleFileUpload(file);
-    }
-  };
-
   const handleFormSubmit = (data: IdentityFormValues) => {
     const normalizedData = {
       ...data,
@@ -378,7 +381,7 @@ interface IdentityChatMessage {
               <div className="flex items-center justify-between gap-3 p-3 bg-[var(--surface-soft)] border border-[var(--border)] rounded-xl">
                 <div className="flex items-center min-w-0 font-mono text-[14px] truncate">
                   <span className="text-[var(--text-muted)] select-none">{getBaseDomain()}/</span>
-                  <span className="font-semibold text-[var(--text-primary)] truncate">{slug || 'your-space'}</span>
+                  <span className="font-semibold text-[var(--text-primary)] truncate">{publicPath || 'your-space'}</span>
                 </div>
                 {onChangeHandle && (
                   <button
@@ -622,7 +625,7 @@ interface IdentityChatMessage {
                   About this Space
                 </h2>
                 <p className="text-[13px] text-[var(--text-secondary)] mt-0.5">
-                  A concise summary explaining what this space does and what visitors can explore.
+                  {descriptionMaxLength > 280 ? 'Describe this item in detail so visitors know what to expect.' : 'A concise summary explaining what this space does and what visitors can explore.'}
                 </p>
               </div>
 
@@ -647,15 +650,17 @@ interface IdentityChatMessage {
                 {...form.register('description', {
                   onChange: () => form.setValue('description_source', 'owner', { shouldDirty: true })
                 })}
-                rows={4}
-                maxLength={280}
-                placeholder="Amazon India is an online marketplace offering millions of products across electronics, fashion, home essentials, and books with reliable doorstep delivery..."
+                rows={descriptionMaxLength > 280 ? 8 : 4}
+                maxLength={descriptionMaxLength}
+                placeholder={descriptionMaxLength > 280 ? 'Describe your event, post or service, including the details visitors should know.' : 'Amazon India is an online marketplace offering millions of products across electronics, fashion, home essentials, and books with reliable doorstep delivery...'}
                 className="w-full p-3.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)] transition-all font-[Instrument_Sans] resize-none leading-relaxed"
               />
               <div className="absolute right-3 bottom-3 text-[11px] font-mono text-[var(--text-muted)]">
-                {(currentDescription || '').length}/280
+                {(currentDescription || '').length}/{descriptionMaxLength.toLocaleString()}
               </div>
             </div>
+
+      {descriptionMaxLength > 280 && <div className="mt-6"><DetailFields value={form.watch('subspace_fields') || emptySubspaceFields()} onChange={value => form.setValue('subspace_fields', value, { shouldDirty: true, shouldValidate: true })} /></div>}
 
             {/* Aura Suggestion Banner */}
             <AnimatePresence>
@@ -783,112 +788,7 @@ interface IdentityChatMessage {
             </AnimatePresence>
           </section>
 
-          {/* Section 5: Logo / Photo Branding */}
-          <section className="p-6 sm:p-7 space-y-4">
-            <div>
-              <h2 className="text-[16px] font-semibold text-[var(--text-primary)] font-[Satoshi] tracking-tight">
-                Logo or Photo
-              </h2>
-              <p className="text-[13px] text-[var(--text-secondary)] mt-0.5">
-                Displays on the public space header and social cards.
-              </p>
-            </div>
-
-            {currentLogoUrl ? (
-              <div className="flex items-center gap-4 p-4 bg-[var(--surface-soft)] rounded-xl border border-[var(--border)]">
-                <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--surface)] shrink-0 shadow-xs">
-                  <img
-                    src={currentLogoUrl}
-                    alt="Space Logo"
-                    className="w-full h-full object-cover"
-                    onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold text-[var(--text-primary)] truncate">
-                    {currentLogoUrl.startsWith('data:') ? 'Uploaded custom photo' : 'Remote image asset'}
-                  </div>
-                  <div className="text-xs text-[var(--text-muted)] mt-0.5 truncate">
-                    Displays on public header and metadata cards
-                  </div>
-                  <div className="flex items-center gap-3 mt-2.5">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)] hover:underline cursor-pointer"
-                    >
-                      <Upload className="w-3.5 h-3.5 text-[var(--accent-ink)]" /> Replace photo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => form.setValue('logo_url', '', { shouldDirty: true })}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-rose-500 hover:text-rose-600 cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Remove
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div 
-                onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }}
-                onDragLeave={() => setIsDraggingFile(false)}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${
-                  isDraggingFile 
-                    ? 'border-[var(--accent)] bg-[var(--surface-soft)]' 
-                    : 'border-[var(--border)] hover:border-[var(--text-secondary)] bg-[var(--surface-soft)]/50 hover:bg-[var(--surface-soft)]'
-                }`}
-              >
-                <div className="w-10 h-10 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--accent-ink)] shadow-xs">
-                  <Upload className="w-5 h-5" />
-                </div>
-                <div>
-                  <span className="text-[13px] font-semibold text-[var(--text-primary)]">
-                    Click to upload or drag image here
-                  </span>
-                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                    Supports PNG, JPG, WebP, SVG up to 5MB
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Toggle Image URL Input */}
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={() => setShowLogoUrlInput(!showLogoUrlInput)}
-                className="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <LinkIcon className="w-3.5 h-3.5" />
-                {showLogoUrlInput ? 'Hide image URL input' : 'Or paste an image URL instead'}
-              </button>
-
-              {showLogoUrlInput && (
-                <div className="mt-2.5">
-                  <input
-                    type="text"
-                    {...form.register('logo_url')}
-                    placeholder="https://example.com/logo.png"
-                    className="w-full px-4 py-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)] font-[Instrument_Sans]"
-                  />
-                </div>
-              )}
-            </div>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFileUpload(file);
-              }}
-              className="hidden"
-            />
-          </section>
+          <section className="p-6 sm:p-7"><p className="mb-3 text-[13px] text-[var(--text-secondary)]">Displays on the public Space header and social cards.</p><ImageField value={currentLogoUrl || ''} onChange={value => form.setValue('logo_url', value, { shouldDirty: true })} /></section>
 
         </div>
 
@@ -950,7 +850,7 @@ interface IdentityChatMessage {
 
                 <div className="mb-1 text-right">
                   <div className="inline-flex items-center gap-1 text-[12px] font-mono text-[var(--text-secondary)] bg-[var(--surface-soft)] px-2.5 py-1 rounded-lg border border-[var(--border)]">
-                    {getBaseDomain()}/{slug || 'spacex'}
+                    {getBaseDomain()}/{publicPath || 'spacex'}
                   </div>
                 </div>
               </div>

@@ -178,7 +178,8 @@ async def _ingest_knowledge_item(*, job_id: str) -> None:
         payload = job.retry_payload or {}
         blob_key = payload.get("blob_key")
         source_url = payload.get("source_url")
-        filename = item.title
+        # Yullo titles are display labels, not filenames; parser selection needs the blob suffix.
+        filename = blob_key.rsplit("/", 1)[-1] if is_yullo and blob_key else item.title
 
     from app.services.ai_usage_context import ai_usage_scope
 
@@ -312,6 +313,16 @@ async def _ingest_knowledge_item(*, job_id: str) -> None:
                 except RuntimeError:
                     asyncio.run_coroutine_threadsafe(_update_db(), loop)
 
+            async def register_assets(prepared):
+                from app.yullo.services.sources.assets import register_source_assets
+                async with AsyncSessionLocal() as asset_db:
+                    await register_source_assets(
+                        asset_db, prepared, user_id=space.owner_user_id, space_id=uuid.UUID(space_id),
+                        source_id=uuid.UUID(kb_item_id), source_version=source_version,
+                        job_id=job_uuid, lease_token=lease_token,
+                    )
+                    await asset_db.commit()
+
             result = await parse_and_index(
                 job_id=job_id,
                 space_id=space_id,
@@ -323,6 +334,7 @@ async def _ingest_knowledge_item(*, job_id: str) -> None:
                 progress_cb=_progress_cb,
                 enable_summary=settings.YULLO_INGESTION_SUMMARY_ENABLED if is_yullo else True,
                 web=bool(source_url and not blob_key),
+                **({'register_assets': register_assets, 'display_name': item.title} if is_yullo else {}),
             )
 
             if is_yullo and result.chunk_count:
