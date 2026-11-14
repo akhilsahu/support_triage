@@ -67,8 +67,8 @@ def test_rejects_oversized_items():
         )
 
 
-def test_grounded_items_require_source_entity_id():
-    with pytest.raises(ValidationError, match="Grounded items require entity or fact references"):
+def test_grounded_items_require_authorized_references():
+    with pytest.raises(ValidationError, match="Grounded items require entity, fact or chunk references"):
         AppearancePreviewItem(
             key="1",
             title="Title",

@@ -7,7 +7,7 @@ from app.yullo.api.public import _public_booking_links
 
 def booking(**overrides):
     values = dict(id='booking-1', entity_type='action', is_active=True, is_public=True,
-                  review_status='owner_confirmed', visibility=None, field_policies={},
+                  review_status='owner_confirmed', visibility=None, disclosure_mode=None, field_policies={},
                   payload_json={'kind': 'booking', 'label': 'Book a call', 'destination_url': 'https://booking.example/call'})
     values.update(overrides)
     return SimpleNamespace(**values)

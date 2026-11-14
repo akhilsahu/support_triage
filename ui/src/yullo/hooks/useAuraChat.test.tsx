@@ -67,7 +67,7 @@ it('restores an interrupted reply as retryable after reload', async () => {
   const { result } = renderHook(() => useAuraChat(space))
   expect(result.current.messages[1].status).toBe('error')
   await act(async () => { result.current.retryLastMessage() })
-  expect(auraProvider.sendMessage).toHaveBeenCalledWith('space', 'new-session', 'Show work', expect.anything())
+  expect(auraProvider.sendMessage).toHaveBeenCalledWith('space', 'new-session', 'Show work', expect.anything(), expect.any(AbortSignal), null)
   expect(result.current.messages[1]).toMatchObject({ text: 'Complete', status: 'complete' })
   localStorage.clear()
   window.history.replaceState(window.history.state, '', '/')

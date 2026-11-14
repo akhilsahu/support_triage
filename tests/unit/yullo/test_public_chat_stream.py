@@ -7,14 +7,16 @@ from app.yullo.schemas.inference import AuraInferenceRequest
 
 
 class _Runtime:
-    async def __call__(self, _request):
+    async def __call__(self, _request, **session):
+        assert session == {"user_id": None, "guest_token": None}
         yield '{"type":"message.start","messageId":"m1"}\n'
         yield '{"type":"message.done"}\n'
 
 
 class _DB:
     async def scalar(self, _statement):
-        return True
+        from types import SimpleNamespace
+        return SimpleNamespace(yullo_user_id=None, guest_token_hash=None)
 
     async def scalars(self, _statement):
         from types import SimpleNamespace
@@ -37,6 +39,7 @@ async def test_public_chat_frames_runtime_json_as_sse():
         request=request,
         db=_DB(),
         chat=_Runtime(),
+        user=None,
     )
     chunks = [chunk async for chunk in response.body_iterator]
 

@@ -76,7 +76,7 @@ async def test_delete_or_archive_space_archive():
     owner_id = uuid4()
 
     mock_space = Space(id=space_id, owner_user_id=owner_id, display_name="Test Space", slug="test-space", product="yullo", status="live", active=True)
-    db.scalar.return_value = mock_space
+    db.scalar.side_effect = [mock_space.owner_user_id, mock_space, None]
 
     res = await delete_or_archive_space(db, space_id=space_id, user_id=owner_id, action="archive")
     assert res["status"] == "ok"
@@ -93,7 +93,7 @@ async def test_delete_or_archive_space_delete():
     owner_id = uuid4()
 
     mock_space = Space(id=space_id, owner_user_id=owner_id, display_name="Test Space", slug="test-space", product="yullo", status="live", active=True)
-    db.scalar.return_value = mock_space
+    db.scalar.side_effect = [mock_space.owner_user_id, mock_space, None]
 
     res = await delete_or_archive_space(db, space_id=space_id, user_id=owner_id, action="delete")
     assert res["status"] == "ok"
@@ -116,7 +116,7 @@ async def test_delete_or_archive_space_invalid_action():
     from app.yullo.services.persistence.identity import delete_or_archive_space
     db = AsyncMock()
     mock_space = Space(id=uuid4(), owner_user_id=uuid4(), product="yullo")
-    db.scalar.return_value = mock_space
+    db.scalar.side_effect = [mock_space.owner_user_id, mock_space, None]
 
     with pytest.raises(HTTPException) as exc:
         await delete_or_archive_space(db, space_id=mock_space.id, user_id=mock_space.owner_user_id, action="destroy")

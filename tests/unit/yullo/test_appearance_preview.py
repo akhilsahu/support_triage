@@ -57,7 +57,7 @@ async def test_section_build_without_provider_does_not_pretend_ai_generated(_fac
         {"id": "service", "revision": 1, "type": "offering", "title": "Consulting"},
     ])
     with patch("app.yullo.services.persistence.appearance.collect_preview_context", AsyncMock(return_value=context)), patch("app.orchestra.ai.appearance_preview.generation.get_async_openai_clients", return_value=[]):
-        result = await generate_appearance_preview(AsyncMock(), user_id=uuid.uuid4(), space_id=uuid.uuid4(), request=AppearancePreviewRequest(currentConfig=default_presentation_config(None), sectionType="services"))
+        result = await generate_appearance_preview(_preview_db(), user_id=uuid.uuid4(), space_id=uuid.uuid4(), request=AppearancePreviewRequest(currentConfig=default_presentation_config(None), sectionType="services"))
     assert result.status == "unavailable"
     assert result.content is None
 
@@ -86,6 +86,7 @@ async def test_fact_only_service_draft_generation_apply_and_revocation():
     client = MagicMock()
     client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(raw)))]))
     db = _preview_db()
+    from app.models.yullo_config import YulloConfig
     saved = SimpleNamespace(settings={})
     with patch("app.yullo.services.persistence.appearance.collect_preview_context", AsyncMock(return_value=context)), patch("app.yullo.services.persistence.appearance.collect_preview_facts", AsyncMock(return_value=facts)), patch("app.orchestra.ai.appearance_preview.generation.get_async_openai_clients", return_value=[("test", client, "model")]), patch("app.yullo.services.persistence.appearance.finalize_space_mutation", AsyncMock()) as finalize:
         response = await generate_appearance_preview(db, user_id=uuid.uuid4(), space_id=uuid.uuid4(), request=AppearancePreviewRequest(currentConfig=default_presentation_config(None), sectionType="services"))
@@ -94,7 +95,7 @@ async def test_fact_only_service_draft_generation_apply_and_revocation():
         assert sent["facts"] == facts
         assert sent["entities"] == []
         assert saved.settings == {}  # Generation does not publish.
-        db.scalar.return_value = saved
+        db.scalar.side_effect = lambda statement: saved if statement.column_descriptions[0]["expr"] is YulloConfig else saved.settings
         applied = await apply_appearance_preview_section(db, user_id=uuid.uuid4(), space_id=uuid.uuid4(), section=response.content.sections[0])
         assert applied.sections[0].items[0].title == "Cargo transport"
         finalize.assert_awaited_once()
@@ -196,7 +197,7 @@ async def test_generate_preview_insufficient_context():
     from app.yullo.schemas.appearance_preview import AppearancePreviewRequest, PreviewStatus
     from app.yullo.services.persistence.appearance import generate_appearance_preview
 
-    db = AsyncMock()
+    db = _preview_db()
     mock_space = MagicMock()
     mock_space.display_name = "Test Space"
     mock_space.purpose = "business"

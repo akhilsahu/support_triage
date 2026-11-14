@@ -94,11 +94,14 @@ async def test_public_chat_replaces_caller_kbs_with_space_kbs(monkeypatch):
     resolver = AsyncMock(return_value=[own_kb])
     monkeypatch.setattr('app.orchestra.ai.db_utils.source_loader.resolve_space_kb_ids', resolver)
     captured = []
-    async def stream(request):
+    async def stream(request, **session):
+        assert session == {"user_id": None, "guest_token": None}
         captured.append(request.kb_ids)
         yield '{"type":"message.done"}'
     request = AuraInferenceRequest(space_id=space_id, session_id=str(uuid4()), message='Hi', kb_ids=[foreign_kb])
-    response = await stream_aura_chat(space_id, request.session_id, request, db=AsyncMock(), chat=stream)
+    db = AsyncMock()
+    db.scalar.return_value = NS(yullo_user_id=None, guest_token_hash=None)
+    response = await stream_aura_chat(space_id, request.session_id, request, db=db, chat=stream, user=None)
     _ = [chunk async for chunk in response.body_iterator]
     assert captured == [[own_kb]]
     resolver.assert_awaited_once()

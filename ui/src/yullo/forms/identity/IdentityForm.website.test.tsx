@@ -1,4 +1,5 @@
 import React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -51,6 +52,7 @@ describe('Website URL validation and normalization helpers', () => {
 
 describe('IdentityForm Website Input Behavior', () => {
   function TestFormWrapper({ onSubmit = vi.fn() }: { onSubmit?: (data: IdentityFormValues) => void }) {
+    const [queryClient] = React.useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }));
     const form = useForm<IdentityFormValues>({
       resolver: zodResolver(identitySchema),
       mode: 'onTouched',
@@ -63,14 +65,14 @@ describe('IdentityForm Website Input Behavior', () => {
     });
 
     return (
-      <div>
+      <QueryClientProvider client={queryClient}><div>
         <IdentityForm
           form={form}
           onSubmit={onSubmit}
           slug="spacex"
         />
         <button type="submit" form="identity-form">Save changes</button>
-      </div>
+      </div></QueryClientProvider>
     );
   }
 

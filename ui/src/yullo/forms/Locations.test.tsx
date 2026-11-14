@@ -8,6 +8,7 @@ import { entitiesApi } from '../api/entities';
 import { Locations } from './Locations';
 vi.mock('../api/entities', () => ({ entitiesApi: { listEntities: vi.fn() } }));
 vi.mock('./LocationForm', () => ({ LocationForm: ({ entity }: { entity?: { id: string } }) => <p>Editing {entity?.id || 'new'}</p> }));
+vi.mock('./LocationMapPreview', () => ({ LocationMapPreview: () => <div>Map preview</div> }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 it('lists multiple branches independently and edits only the selected record', async () => {
   const base = { space_id: 's', entity_type: 'location', revision: 2, review_status: 'owner_confirmed', is_public: true };

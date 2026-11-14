@@ -31,9 +31,9 @@ async def test_only_complete_responses_are_persisted_and_done_follows_commit(com
     repository, generate = repository_for(events)
     native = SimpleNamespace(messages=lambda: [], publish=AsyncMock())
     monkeypatch.setattr('app.orchestra.ai.session.store.StagedHistory.open', AsyncMock(return_value=native))
-    repository.db.execute.return_value = SimpleNamespace(scalars=lambda: SimpleNamespace(first=lambda: object()))
     repository.history.return_value = []
     request = AuraInferenceRequest(space_id=uuid4(), session_id=str(uuid4()), message='Hello')
+    repository.db.scalar.return_value = SimpleNamespace(id=request.session_id, space_id=request.space_id, yullo_user_id=None, guest_token_hash=None)
     received = []
     async for chunk in repository.stream_response(request, generate=generate, cfg=OrchestraConfig()):
         event = json.loads(chunk)

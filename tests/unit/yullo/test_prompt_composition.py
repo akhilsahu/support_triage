@@ -37,7 +37,7 @@ def test_followup_uses_visitor_context_not_hallucinated_assistant_context():
 async def test_profile_load_is_read_only_space_scoped_and_ignores_suggested_category():
     space_id = uuid4()
     db = AsyncMock()
-    db.execute.return_value = NS(first=lambda: (NS(display_name='My Space'), NS(purpose='business'), NS(settings={
+    db.execute.return_value = NS(first=lambda: (NS(display_name='My Space'), NS(purpose='business', parent_space_id=None), NS(settings={
         'identity': {'category': 'Real estate', 'category_source': 'aura', 'description': 'Approved saved description'},
     })))
     profile = await load_chat_profile(db, YulloExecutionContext(space_id=space_id, kb_ids=[]))
