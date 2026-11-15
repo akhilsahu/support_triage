@@ -24,7 +24,7 @@ async def test_get_identity_success():
     owner_id = uuid4()
     
     mock_space = Space(id=space_id, owner_user_id=owner_id, display_name="Test Space", slug="test-space", logo_url="https://example.com/logo.png")
-    mock_y_space = YulloSpace(space_id=space_id, purpose="personal", context_version=3)
+    mock_y_space = YulloSpace(space_id=space_id, purpose="personal", space_type="space", context_version=3)
     mock_y_config = YulloConfig(space_id=space_id, settings={
         "identity": {
             "description": "About test space",

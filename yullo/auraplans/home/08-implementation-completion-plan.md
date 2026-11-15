@@ -1000,3 +1000,8 @@ Deployment outcome — 2026-11-15:
 
 - Replaced the green/cyan treatment with a full-spectrum conic-gradient border and blurred rainbow halo. An opaque theme-surface face keeps the Radio icon readable, with a subtle configured-accent tint; active/hover increases halo visibility. Scoped pseudo-elements are non-interactive, no perpetual animation, reduced-motion respected. Existing tooltip, status dot, keyboard focus and 44px target retained.
 - File: ui/src/yullo/styles/tokens.css. Frontend production build and diff whitespace passed; static checks only, visual rendering remains unverified. Not deployed.
+
+### Deployment follow-up — 2026-11-15
+
+- Pushed Beacon rainbow button changes as 94044e1a. Found prior main deployment a42655d8 blocked by test_get_identity_success: its unpersisted YulloSpace fixture omitted space_type, so SQLAlchemy's insert/server default had not run and the new IdentityFormResponse enum rejected None. Updated that existing fixture to explicit space_type="space" matching the database contract. No production behavior or test coverage removed; no new tests.
+- Frontend production build and diff whitespace passed locally. Existing GitHub CI runs unit suites in its isolated CI database; no local test/database writes. Deployment workflow/commit statuses monitored after push.
