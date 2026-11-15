@@ -42,7 +42,7 @@ function BeaconEntry({ spaceId, title, cover, locations, ownerId }: { spaceId: s
   const active = query.data?.status === 'active' && new Date(query.data.config?.expires_at || 0).getTime() > Date.now();
   return <Dialog.Root open={open} onOpenChange={setOpen}>
     <IconTooltip label={active ? 'Beacon is active · Manage reach' : 'Beacon · Share this page in Nearby'}>
-      <Dialog.Trigger asChild><YulloButton variant="outline" size="icon" aria-label="Open Beacon settings" className="relative bg-[linear-gradient(135deg,var(--accent-soft),var(--surface))]"><Radio size={19} strokeWidth={2} aria-hidden="true" />{active && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--surface)] bg-[var(--accent-ink)]" />}</YulloButton></Dialog.Trigger>
+      <Dialog.Trigger asChild><YulloButton variant="outline" size="icon" aria-label="Open Beacon settings" data-active={active || undefined} className="yullo-beacon-trigger relative"><Radio size={19} strokeWidth={2} aria-hidden="true" />{active && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--surface)] bg-emerald-500" />}</YulloButton></Dialog.Trigger>
     </IconTooltip>
     {open && <BeaconEditor spaceId={spaceId} title={title} cover={cover} locations={locations} ownerId={ownerId} close={() => setOpen(false)} />}
   </Dialog.Root>;

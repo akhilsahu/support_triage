@@ -471,3 +471,42 @@ html {
   .yullo-app .yullo-beacon-echo-first { animation: yullo-beacon-echo-first 2.4s linear 2; }
   .yullo-app .yullo-beacon-echo-second { animation: yullo-beacon-echo-second 2.4s linear 2; }
 }
+
+/* Rainbow light stays behind the readable face of this single entry control. */
+.yullo-app button.yullo-button.yullo-beacon-trigger {
+  --beacon-spectrum: conic-gradient(from 35deg, #ff5277, #ffad33, #f4e84a, #39d98a, #22c7f2, #8072ff, #d968ed, #ff5277);
+  position: relative;
+  isolation: isolate;
+  color: var(--text-primary);
+  border: 2px solid transparent;
+  background: linear-gradient(var(--surface), var(--surface)) padding-box, var(--beacon-spectrum) border-box;
+  box-shadow: 0 2px 5px rgb(0 0 0 / 10%);
+}
+.yullo-app button.yullo-button.yullo-beacon-trigger::before,
+.yullo-app button.yullo-button.yullo-beacon-trigger::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.yullo-app button.yullo-button.yullo-beacon-trigger::before {
+  inset: -5px;
+  z-index: -2;
+  background: var(--beacon-spectrum);
+  filter: blur(8px);
+  opacity: 0.55;
+}
+.yullo-app button.yullo-button.yullo-beacon-trigger::after {
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent-solid) 7%, var(--surface)), var(--surface) 70%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 20%);
+}
+.yullo-app button.yullo-button.yullo-beacon-trigger[data-active="true"]::before { opacity: 0.8; }
+@media (hover: hover) and (pointer: fine) {
+  .yullo-app button.yullo-button.yullo-beacon-trigger:hover:not(:disabled) { border-color: transparent; }
+  .yullo-app button.yullo-button.yullo-beacon-trigger:hover:not(:disabled)::before { opacity: 0.85; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .yullo-app button.yullo-button.yullo-beacon-trigger::before { transition: opacity 180ms ease; }
+}

@@ -990,3 +990,13 @@ Deployment outcome — 2026-11-15:
 - Screenshot identified the pale subtitle on the selected customer situation card. Selected titles/subtitles and indicator now use the dark accent foreground, with a black border; inactive subtitles and showcase labels use readable slate-600. Added aria-pressed to expose the existing selected state. Fixed similarly faint text/icons on other yellow Aura/How it works panels, while retaining light text inside their dark inset card.
 - Changed the shared public accent and brand yellow to Snapchat `#FFFC00`, plus hardcoded yellow foreground accents in Hero, OldVsNew, AuraInteractive, Differentiator, NetworkGraph, UseCases, FinalCTA and PublicLayout. Yellow depth token now uses a pale version of the same yellow instead of orange/gold. Buttons, selected cards and primary illustration accents now agree. Decorative canvas colors/motion remain unchanged.
 - Files: `ui/src/yullo/styles/public.css`, `config/index.ts` and the listed Yullo landing components. Production build/TypeScript, focused ESLint and diff whitespace checks passed (existing bundle-size warning); selected text/background contrast calculates to 16.21:1. No old `#FFDA2D`/`#F6B91A` values remain in the landing components or shared public palette. Tests remain skipped; new browser rendering unverified. Not deployed.
+
+### Beacon entry button gradient/glow — implemented 2026-11-15
+
+- Styled only the existing Beacon entry button with a green/mint-to-cyan gradient blended into the theme surface, a soft green halo and stronger active/hover glow. Dark themes use a lighter readable green icon; the existing tooltip, 44px target, active marker and configured-accent keyboard focus remain. No perpetual animation; hover transitions respect reduced motion and pointer capabilities.
+- Files: forms/beacon/BeaconForm.tsx and styles/tokens.css. Static frontend TypeScript/whitespace checks passed; visual rendering unverified. No backend/data changes or deployment.
+
+### Rainbow Beacon button refinement — implemented 2026-11-15
+
+- Replaced the green/cyan treatment with a full-spectrum conic-gradient border and blurred rainbow halo. An opaque theme-surface face keeps the Radio icon readable, with a subtle configured-accent tint; active/hover increases halo visibility. Scoped pseudo-elements are non-interactive, no perpetual animation, reduced-motion respected. Existing tooltip, status dot, keyboard focus and 44px target retained.
+- File: ui/src/yullo/styles/tokens.css. Frontend production build and diff whitespace passed; static checks only, visual rendering remains unverified. Not deployed.
