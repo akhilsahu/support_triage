@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { yulloConfig } from '../config'
+import { yulloConfig, yulloLandingPath } from '../config'
 
 export function YulloFooter() {
   return (
@@ -7,7 +7,7 @@ export function YulloFooter() {
       <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-10 pb-12 border-b border-slate-200/60">
         {/* Brand Col */}
         <div className="col-span-2">
-          <Link to="/yullo" className="flex items-center gap-3">
+          <Link to={yulloLandingPath()} className="flex items-center gap-3">
             <img
               src={yulloConfig.assets.logo}
               alt="Yullo Logo"
@@ -26,10 +26,11 @@ export function YulloFooter() {
         <div>
           <div className="text-xs font-bold text-[#101828] uppercase tracking-wider mb-4">Product</div>
           <ul className="space-y-2.5 text-xs">
-            <li><a href="#aura" className="hover:text-[#101828] transition-colors">Aura</a></li>
-            <li><a href="#network" className="hover:text-[#101828] transition-colors">Network</a></li>
-            <li><a href="#businesses" className="hover:text-[#101828] transition-colors">Businesses</a></li>
-            <li><a href="#how-it-works" className="hover:text-[#101828] transition-colors">Creators</a></li>
+            <li><Link to="/yullo/explore" className="hover:text-[#101828] transition-colors">Explore apps</Link></li>
+            <li><a href={`${yulloLandingPath()}#aura`} className="hover:text-[#101828] transition-colors">Aura</a></li>
+            <li><a href={`${yulloLandingPath()}#network`} className="hover:text-[#101828] transition-colors">Network</a></li>
+            <li><a href={`${yulloLandingPath()}#businesses`} className="hover:text-[#101828] transition-colors">Businesses</a></li>
+            <li><a href={`${yulloLandingPath()}#how-it-works`} className="hover:text-[#101828] transition-colors">Creators</a></li>
           </ul>
         </div>
 
@@ -37,30 +38,25 @@ export function YulloFooter() {
         <div>
           <div className="text-xs font-bold text-[#101828] uppercase tracking-wider mb-4">Company</div>
           <ul className="space-y-2.5 text-xs">
-            <li><Link to="/about" className="hover:text-[#101828] transition-colors">About</Link></li>
-            <li><Link to="/what-we-do" className="hover:text-[#101828] transition-colors">Manifesto</Link></li>
-            <li><Link to="/contact" className="hover:text-[#101828] transition-colors">Contact</Link></li>
+            <li><Link to="/yullo/about" className="hover:text-[#101828] transition-colors">About</Link></li>
+            <li><Link to="/yullo/manifesto" className="hover:text-[#101828] transition-colors">Manifesto</Link></li>
+            <li><Link to="/yullo/contact" className="hover:text-[#101828] transition-colors">Contact</Link></li>
           </ul>
         </div>
 
         {/* Legal & Socials */}
         <div>
-          <div className="text-xs font-bold text-[#101828] uppercase tracking-wider mb-4">Legal & Social</div>
+          <div className="text-xs font-bold text-[#101828] uppercase tracking-wider mb-4">Legal</div>
           <ul className="space-y-2.5 text-xs">
-            <li><Link to="/privacy" className="hover:text-[#101828] transition-colors">Privacy Policy</Link></li>
-            <li><Link to="/terms" className="hover:text-[#101828] transition-colors">Terms of Service</Link></li>
-            <li className="pt-2 flex items-center gap-3 font-semibold text-slate-700">
-              <a href="https://x.com" target="_blank" rel="noreferrer" className="hover:text-[#101828]">X</a>
-              <a href="https://instagram.com" target="_blank" rel="noreferrer" className="hover:text-[#101828]">Instagram</a>
-              <a href="https://linkedin.com" target="_blank" rel="noreferrer" className="hover:text-[#101828]">LinkedIn</a>
-            </li>
+            <li><Link to="/yullo/privacy" className="hover:text-[#101828] transition-colors">Privacy Policy</Link></li>
+            <li><Link to="/yullo/terms" className="hover:text-[#101828] transition-colors">Terms of Service</Link></li>
           </ul>
         </div>
       </div>
 
       {/* Bottom Copyright */}
       <div className="max-w-7xl mx-auto pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-4">
-        <div>© 2026 Yullo. All rights reserved.</div>
+        <div>© {new Date().getFullYear()} Yullo. All rights reserved.</div>
         <div className="font-mono text-[11px]">yullo.co · intelligent space network</div>
       </div>
     </footer>

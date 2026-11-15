@@ -38,7 +38,7 @@ export function YulloDifferentiator() {
           viewport={{ once: true }}
           className="flex items-center gap-4 text-left w-full p-2"
         >
-          <div className="h-3 w-3 rounded-full bg-[#FFDA2D] shrink-0 shadow-sm" />
+          <div className="h-3 w-3 rounded-full bg-[#FFFC00] shrink-0 shadow-sm" />
           <div className="flex-1 border-b border-slate-200/80 pb-3 flex items-center justify-between">
             <div>
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">01 / Intent</div>
@@ -49,7 +49,7 @@ export function YulloDifferentiator() {
         </motion.div>
 
         {/* Pulse Connector Beam */}
-        <div className="h-8 w-0.5 bg-gradient-to-b from-[#FFDA2D] via-blue-400 to-[#4CD8FF] my-1" />
+        <div className="h-8 w-0.5 bg-gradient-to-b from-[#FFFC00] via-blue-400 to-[#4CD8FF] my-1" />
 
         {/* Node 2: Presence */}
         <motion.div
@@ -93,7 +93,7 @@ export function YulloDifferentiator() {
             </div>
             <div className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-[#4CD8FF]" />
-              <span className="h-2 w-2 rounded-full bg-[#FFDA2D]" />
+              <span className="h-2 w-2 rounded-full bg-[#FFFC00]" />
               <span className="h-2 w-2 rounded-full bg-[#A98CFF]" />
             </div>
           </div>

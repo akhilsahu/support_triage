@@ -108,9 +108,11 @@ async def get_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.UUID
     category_val = identity_settings.get("category") or identity_settings.get("subtype")
     
     event_context = None
+    presence = identity_settings.get("presence")
     if yullo_space.space_type == "event" and yullo_space.parent_space_id:
-        from app.yullo.services.spaces.quick_context import read_saved_event_context
+        from app.yullo.services.spaces.quick_context import read_saved_event_context, read_event_presence
         event_context = await read_saved_event_context(db, space_id)
+        presence = await read_event_presence(db, space_id, event_context, space_name=space.display_name)
 
     return IdentityFormResponse(
         subspace_fields=identity_settings.get("subspace_fields") if yullo_space.parent_space_id else None,
@@ -129,7 +131,8 @@ async def get_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.UUID
         category=category_val,
         type_label=saved_type_label(yullo_space.space_type, yullo_config.settings if yullo_config else None) if yullo_space.parent_space_id else None,
         category_source=identity_settings.get("category_source"),
-        presence=identity_settings.get("presence"),
+        presence=presence,
+        space_type=yullo_space.space_type,
         website=website,
         revision=expected_revision,
         status=yullo_space.lifecycle_status
@@ -218,7 +221,8 @@ async def update_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.U
             identity_settings["category"] = fallback_map.get(space.purpose or "business", "Business & brand space")
             identity_settings["category_source"] = "aura"
         
-    if data.presence is not None:
+    # Event presence belongs to its location, never a second identity value.
+    if data.presence is not None and not (yullo_space.parent_space_id and yullo_space.space_type == "event"):
         identity_settings["presence"] = data.presence.value if data.presence else None
         
     if data.subspace_fields is not None:
@@ -428,7 +432,8 @@ async def create_space(
             identity_settings["category"] = fallback_map.get(canonical_p, "Business & brand space")
             identity_settings["category_source"] = "aura"
 
-    if presence: identity_settings["presence"] = presence
+    if presence and not (parent_space_id is not None and SpaceType(space_type) == SpaceType.event):
+        identity_settings["presence"] = presence
     if quick_context is not None:
         identity_settings["subspace_fields"] = quick_context.subspace_fields.model_dump(mode="json")
     settings["identity"] = identity_settings

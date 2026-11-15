@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 
 import { yulloConfig } from '../config'
@@ -7,7 +8,7 @@ export function YulloFinalCTA() {
   return (
     <section className="py-32 px-6 bg-[#0B1020] text-white relative overflow-hidden text-center">
       {/* Background Visual Yellow Y glow & subtle network nodes */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-[#FFDA2D]/10 blur-3xl pointer-events-none" />
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-[#FFFC00]/10 blur-3xl pointer-events-none" />
 
       {/* Culminating Network Backdrop SVG */}
       <div className="absolute inset-0 pointer-events-none opacity-25 flex items-center justify-center">
@@ -23,7 +24,7 @@ export function YulloFinalCTA() {
             y1="300"
             x2="680"
             y2="280"
-            stroke="#FFDA2D"
+            stroke="#FFFC00"
             strokeWidth="2.5"
             strokeLinecap="round"
             initial={{ pathLength: 0, opacity: 0 }}
@@ -37,11 +38,11 @@ export function YulloFinalCTA() {
           <circle cx="800" cy="180" r="7" fill="#6695FF" opacity="0.6" />
           <circle cx="300" cy="450" r="5" fill="#A98CFF" opacity="0.6" />
           <circle cx="750" cy="420" r="6" fill="#4CD8FF" opacity="0.6" />
-          <circle cx="680" cy="280" r="7" fill="#FFDA2D" opacity="0.9" />
+          <circle cx="680" cy="280" r="7" fill="#FFFC00" opacity="0.9" />
 
           {/* Center Yullo Node */}
-          <circle cx="500" cy="300" r="10" fill="#FFDA2D" opacity="0.8" />
-          <circle cx="500" cy="300" r="24" stroke="#FFDA2D" strokeWidth="1.5" opacity="0.3" />
+          <circle cx="500" cy="300" r="10" fill="#FFFC00" opacity="0.8" />
+          <circle cx="500" cy="300" r="24" stroke="#FFFC00" strokeWidth="1.5" opacity="0.3" />
         </svg>
       </div>
 
@@ -76,7 +77,7 @@ export function YulloFinalCTA() {
           transition={{ delay: 0.2 }}
           className="mt-6 text-lg sm:text-xl text-slate-300 max-w-2xl font-normal leading-relaxed"
         >
-          <span className="block font-bold text-[#FFDA2D] mb-2 text-xl sm:text-2xl">Be easier to find. Harder to forget.</span>
+          <span className="block font-bold text-[#FFFC00] mb-2 text-xl sm:text-2xl">Be easier to find. Harder to forget.</span>
           Bring your work, your ideas and your story into one place — and give the right people a better way to reach you.
         </motion.p>
 
@@ -88,24 +89,24 @@ export function YulloFinalCTA() {
           transition={{ delay: 0.3 }}
           className="mt-10 flex flex-wrap items-center justify-center gap-4"
         >
-          <a
-            href="#claim"
-            className="inline-flex items-center gap-2.5 rounded-2xl bg-[#FFDA2D] px-8 py-4 text-base font-bold text-[#101828] shadow-xl transition-all duration-200 hover:bg-[#ffe156] active:scale-[0.98]"
+          <Link
+            to="/yullo/auth?intent=claim"
+            className="yullo-cta inline-flex items-center gap-2.5 rounded-2xl px-8 py-4 text-base font-bold shadow-xl transition-all duration-200 hover:opacity-90 active:scale-[0.98]"
           >
             <span>Claim your Yullo Link</span>
-            <ArrowRight className="h-5 w-5 text-[#101828]" />
-          </a>
-          <a
-            href="#network"
-            className="inline-flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/60 px-8 py-4 text-base font-semibold text-slate-200 backdrop-blur-md transition-all duration-200 hover:bg-slate-800 hover:text-white"
+            <ArrowRight className="h-5 w-5" />
+          </Link>
+          <Link
+            to="/yullo/explore"
+            className="yullo-cta inline-flex items-center gap-2 rounded-2xl px-8 py-4 text-base font-semibold transition-all duration-200 hover:opacity-90"
           >
-            <span>Explore connected spaces</span>
-          </a>
+            <span>Explore apps</span>
+          </Link>
         </motion.div>
 
         {/* Visitor Node Arrival Tagline */}
         <div className="mt-14 inline-flex items-center gap-2 text-xs font-mono text-slate-400">
-          <span className="h-2 w-2 rounded-full bg-[#FFDA2D] animate-ping" />
+          <span className="h-2 w-2 rounded-full bg-[#FFFC00] animate-ping" />
           <span>Your place is waiting on the Yullo Network.</span>
         </div>
       </div>

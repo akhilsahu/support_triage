@@ -5,6 +5,7 @@ Authenticates User/Account identity without implicitly creating public Spaces.
 """
 
 from typing import Optional
+import re
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
@@ -81,8 +82,10 @@ async def check_handle(slug: str = Query(...), db: AsyncSession = Depends(get_db
     Returns {"available": bool, "reserved": bool, "reason": str|None}.
     """
     clean_slug = slug.strip().lower()
-    if not clean_slug or len(clean_slug) < 2:
+    if len(clean_slug) < 3:
         return {"available": False, "reserved": False, "reason": "too_short"}
+    if len(clean_slug) > 50 or not re.fullmatch(r"[a-z0-9_-]+", clean_slug):
+        return {"available": False, "reserved": False, "reason": "invalid_format"}
 
     from app.utils.reserved_slugs import is_reserved_slug
     if is_reserved_slug(clean_slug):
@@ -93,7 +96,8 @@ async def check_handle(slug: str = Query(...), db: AsyncSession = Depends(get_db
         if res.scalars().first():
             return {"available": False, "reserved": False, "reason": "taken"}
     except Exception as err:
-        logger.warning("yullo_auth.check_handle_db_error", error=str(err))
+        logger.warning("yullo_auth.check_handle_db_error", error_type=type(err).__name__)
+        raise HTTPException(503, "Link availability is temporarily unavailable") from None
 
     return {"available": True, "reserved": False, "reason": None}
 

@@ -3,6 +3,7 @@ import type { SpaceType, QuickSpaceContext, SubspaceFields } from './spaces';
 import type { SpacePresentationConfig } from '../screens/appearance/presentation/schema';
 
 export interface IdentityFormResponse {
+  space_type?: SpaceType;
   type_label?: string | null;
   subspace_fields?: SubspaceFields | null;
   presentation_config?: SpacePresentationConfig | null;

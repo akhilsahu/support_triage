@@ -1,5 +1,4 @@
-import yulloLogo from '../../assets/images/logos/yullo/yullo.png'
-// import yulloLogoTransparent from '../../assets/images/logos/yullo/logo_transparent.png'
+import yulloLogo from '../../assets/images/logos/yullo/logo_transparent.png'
 
 /**
  * Yullo Brand System & Configuration
@@ -16,14 +15,14 @@ export const yulloConfig = {
   // Brand Assets
   assets: {
     logo: yulloLogo,
-    logoTransparent: yulloLogo, // Fallback for now
+    logoTransparent: yulloLogo,
   },
   
   // Palette Tokens
   colors: {
     background: '#F9FBFF',
-    yellow: '#FFDA2D',
-    yellowDepth: 'linear-gradient(135deg, #F6B91A 0%, #FFDA2D 100%)',
+    yellow: '#FFFC00',
+    yellowDepth: 'linear-gradient(135deg, #FFFC00 0%, #FFFC66 100%)',
     navy: '#101828',
     slate: '#667085',
     cyan: '#4CD8FF',
@@ -34,13 +33,13 @@ export const yulloConfig = {
 
   // Nomenclature
   nomenclature: {
-    title: 'Yullo — Make your place on the internet feel alive.',
+    title: 'Yullo — Let people connect with what makes you, you.',
     link: 'Yullo Link',
     aura: 'Aura',
     network: 'Yullo Network',
     tagline: 'Claim your Link. Build your Aura. Join the Network.',
     heroEyebrow: 'THE INTERNET IS CHANGING',
-    heroTitle: 'Make your place on the internet feel alive.',
+    heroTitle: 'Let people connect with what makes you, you.',
     heroSubtitle: 'You’ve built something worth discovering. Give people a place where they can understand what you do, explore what matters, and find their way closer to you.',
   },
 
@@ -56,6 +55,14 @@ export const yulloConfig = {
   home: {
     sections: [] // Empty implies defaults
   },
+}
+
+export function isYulloHostname(): boolean {
+  return window.location.hostname === 'yullo.co' || window.location.hostname.endsWith('.yullo.co')
+}
+
+export function yulloLandingPath(): string {
+  return isYulloHostname() ? '/' : '/yullo'
 }
 
 import { API_CONFIG } from '../../config/api'

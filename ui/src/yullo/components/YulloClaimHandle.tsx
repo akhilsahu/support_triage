@@ -1,92 +1,55 @@
-import { useState } from 'react'
-import { motion } from 'framer-motion'
-import { Check, ArrowRight } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { ArrowRight, Check, Loader2 } from 'lucide-react'
+import { yulloApiClient } from '../api/client'
 import { yulloConfig } from '../config'
 
 export function YulloClaimHandle() {
-  const [handle, setHandle] = useState('northstarstudio')
-  const [checked, setChecked] = useState(true)
+  const [handle, setHandle] = useState('')
+  const [status, setStatus] = useState<'idle' | 'checking' | 'available' | 'unavailable' | 'error'>('idle')
+  const [message, setMessage] = useState('')
+  const requestId = useRef(0)
 
-  const handleCheck = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (handle.trim()) {
-      setChecked(true)
+  const handleCheck = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const id = ++requestId.current
+    setStatus('checking')
+    setMessage('Checking your link…')
+    try {
+      const { data } = await yulloApiClient.get<{ available: boolean; reason?: string }>('/auth/check-handle', { params: { slug: handle } })
+      if (id !== requestId.current) return
+      setStatus(data.available ? 'available' : 'unavailable')
+      setMessage(data.available ? `yullo.co/${handle} is available. Sign in to continue.` : 'This link isn’t available. Try another name.')
+    } catch {
+      if (id !== requestId.current) return
+      setStatus('error')
+      setMessage('We couldn’t check this link. Please try again.')
     }
   }
 
   return (
-    <section id="claim" className="py-36 sm:py-44 px-6 relative z-20 max-w-5xl mx-auto text-center border-t border-slate-200/60 my-8">
-      <h2 className={`text-4xl sm:text-6xl md:text-7xl font-extrabold text-[#101828] tracking-tight leading-tight ${yulloConfig.typography.headingClass}`}>
-        Claim your place.
-      </h2>
-
-      {/* 3 Pillars */}
-      <div className="mt-8 flex flex-wrap items-center justify-center gap-6 sm:gap-8 text-base sm:text-lg font-semibold text-slate-800">
-        <div className="flex items-center gap-2.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#FFDA2D] shadow-sm" />
-          <span>A name people can find.</span>
+    <section id="claim" className="relative z-20 mx-auto my-8 max-w-5xl border-t border-slate-200/60 px-5 py-20 text-center sm:px-6 sm:py-36">
+      <h2 className={`text-4xl font-extrabold tracking-tight text-[#101828] sm:text-6xl ${yulloConfig.typography.headingClass}`}>Claim your place.</h2>
+      <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-slate-600">A name people can find. A Space that feels like you. An Aura they can talk to.</p>
+      <form onSubmit={handleCheck} className="mx-auto mt-10 flex max-w-2xl flex-col items-center gap-3 rounded-3xl border border-slate-200 bg-white p-3 shadow-lg sm:flex-row sm:p-4">
+        <label htmlFor="yullo-handle" className="sr-only">Choose your Yullo link</label>
+        <div className="flex w-full min-w-0 flex-1 items-center px-2 py-2 font-mono text-base sm:px-4 sm:text-lg">
+          <span className="shrink-0 text-slate-400">yullo.co/</span>
+          <input id="yullo-handle" type="text" value={handle} required minLength={3} maxLength={50} pattern={'[a-z0-9_\\-]+'} autoComplete="off" autoCapitalize="none" spellCheck={false} aria-describedby="handle-help handle-result" onChange={event => {
+            requestId.current += 1
+            setHandle(event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))
+            setStatus('idle')
+            setMessage('')
+          }} placeholder="yourname" className="ml-1 w-full min-w-0 bg-transparent font-bold text-[#101828]" />
         </div>
-        <div className="flex items-center gap-2.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#4CD8FF] shadow-sm" />
-          <span>A space people can explore.</span>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#6695FF] shadow-sm" />
-          <span>An Aura that makes it yours.</span>
-        </div>
-      </div>
-
-      {/* Interactive Search Box */}
-      <form
-        onSubmit={handleCheck}
-        className="mt-12 max-w-2xl mx-auto rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl flex flex-col sm:flex-row items-center gap-3"
-      >
-        <div className="flex-1 flex items-center px-4 py-2 text-base sm:text-lg font-mono w-full">
-          <span className="text-slate-400 font-normal shrink-0">yullo.co/</span>
-          <input
-            type="text"
-            value={handle}
-            onChange={e => {
-              setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))
-              setChecked(false)
-            }}
-            placeholder="yourname"
-            className="w-full bg-transparent font-bold text-[#101828] focus:outline-none ml-1"
-          />
-        </div>
-        <button
-          type="submit"
-          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--accent-solid)] px-6 py-3.5 text-sm font-semibold text-[var(--accent-on-solid)] shadow-md transition-all hover:opacity-90 shrink-0"
-        >
-          <span>Claim your Yullo Link</span>
-          <ArrowRight className="h-4 w-4 text-[#FFDA2D]" />
+        <button type="submit" disabled={status === 'checking'} className="yullo-cta inline-flex min-h-12 w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold disabled:opacity-60 sm:w-auto">
+          {status === 'checking' && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+          {status === 'checking' ? 'Checking…' : 'Check availability'}
         </button>
       </form>
-
-      <div className="mt-4 text-xs font-medium text-slate-400">
-        Your place on Yullo starts here.
-      </div>
-
-      {/* Result Indicator */}
-      {checked && handle.trim() && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mt-6 inline-flex flex-col sm:flex-row items-center gap-3 rounded-2xl bg-emerald-50 px-6 py-3 border border-emerald-200 text-emerald-900"
-        >
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Check className="h-4 w-4 text-emerald-600" />
-            <span>✓ yullo.co/{handle} is available</span>
-          </div>
-          <a
-            href="#claim"
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#101828] underline underline-offset-4 hover:text-blue-600"
-          >
-            <span>Claim your Yullo Link now</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </a>
-        </motion.div>
-      )}
+      <p id="handle-help" className="mt-4 text-xs text-slate-500">3–50 letters, numbers, hyphens or underscores. Checking doesn’t reserve a link.</p>
+      <p id="handle-result" role="status" className="mt-5 text-sm text-slate-700">{message}</p>
+      {status === 'available' && <Link to={`/yullo/auth?intent=claim&handle=${encodeURIComponent(handle)}`} className="yullo-cta mt-5 inline-flex min-h-12 items-center gap-2 rounded-xl px-6 py-3 font-semibold"><Check className="h-4 w-4" aria-hidden="true" />Claim your Yullo Link<ArrowRight className="h-4 w-4" aria-hidden="true" /></Link>}
     </section>
   )
 }

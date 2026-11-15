@@ -5,15 +5,16 @@ import type { NearbyArea } from './nearby';
 import { useYulloAppStore } from '../store/useYulloAppStore';
 
 export const beaconReaches = [
-  { value: 'nearby_5', label: '5 km' },
-  { value: 'nearby_10', label: '10 km' },
+  { value: 'nearby', label: 'Nearby' },
   { value: 'city', label: 'City' },
   { value: 'country', label: 'Country' },
   { value: 'worldwide', label: 'Worldwide' },
 ] as const;
-export type BeaconReach = typeof beaconReaches[number]['value'];
+export type BeaconReach = typeof beaconReaches[number]['value'] | 'nearby_5' | 'nearby_10';
+export const isNearbyReach = (reach: BeaconReach) => reach === 'nearby' || reach === 'nearby_5' || reach === 'nearby_10';
 export interface BeaconSettings {
   reach: BeaconReach;
+  radius_km?: number | null;
   target_area: NearbyArea;
   origin_location_entity_id?: string | null;
   expires_at: string;
@@ -40,8 +41,11 @@ const assertAccount = (ownerId: string) => {
 };
 export function useBeacon(spaceId: string, enabled = true) {
   const ownerId = useYulloAppStore(state => state.user?.id);
-  return useQuery({
-    queryKey: beaconKey(ownerId, spaceId), enabled: !!ownerId && enabled, gcTime: 0, refetchInterval: 60000,
+  return useQuery<BeaconState>({
+    queryKey: beaconKey(ownerId, spaceId), enabled: !!ownerId && enabled, gcTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchInterval: query => query.state.status === 'success' ? 60000 : false,
     queryFn: async ({ signal }) => {
       assertAccount(ownerId!);
       const result = await yulloApiClient.get<BeaconState>(`/spaces/${spaceId}/beacon`, { signal, headers: { 'X-Yullo-Chat-Account': ownerId } });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { yulloOnboardingApi } from '../api/onboarding';
 import { useAppStore } from '../../store/useAppStore';
@@ -98,6 +98,9 @@ function ProcessingLoaderModal({
 
 export function NewSpaceScreen() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const suggestedHandle = params.get('handle') || '';
+  const claimedHandle = /^[a-z0-9_-]{3,50}$/.test(suggestedHandle) ? suggestedHandle : '';
   const queryClient = useQueryClient();
   const { token: appToken } = useAppStore();
   const { user, csrfToken } = useYulloAppStore();
@@ -178,7 +181,7 @@ export function NewSpaceScreen() {
     setDisplayName(nameVal);
     setShowGeneratePrompt(true);
 
-    if (!isEditingHandle) {
+    if (!isEditingHandle && !claimedHandle) {
       const generatedSlug = nameVal
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
@@ -274,7 +277,7 @@ export function NewSpaceScreen() {
         const freshDraft = await yulloOnboardingApi.resetDraft();
         setDraftId(freshDraft.id);
         setDisplayName('');
-        setHandle(freshDraft.handle || '');
+        setHandle(claimedHandle || freshDraft.handle || '');
         setPurpose('business');
         setSources([]);
         setAboutState({ value: '', source: 'owner' });
@@ -285,7 +288,7 @@ export function NewSpaceScreen() {
       }
     };
     initDraft();
-  }, [activeToken]);
+  }, [activeToken, claimedHandle]);
 
   // Auto-save draft on every edit with 400ms debounce
   useEffect(() => {

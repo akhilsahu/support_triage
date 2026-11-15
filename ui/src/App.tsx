@@ -19,6 +19,7 @@ import { apiClient } from './api/client'
 import { RouteSeo } from './lib/RouteSeo'
 import { DataSourceFeatureGuard } from './features/data-sources/DataSourceFeatureGuard'
 import { YulloPrivateRoute } from './yullo/providers/YulloPrivateRoute'
+import { isYulloHostname } from './yullo/config'
 
 const Dashboard = lazy(() => import('./screens/Dashboard').then(module => ({ default: module.Dashboard })))
 const Agents = lazy(() => import('./screens/Agents').then(module => ({ default: module.Agents })))
@@ -36,6 +37,8 @@ const EmbedWidget = lazy(() => import('./screens/EmbedWidget').then(module => ({
 const ChatbotProfile = lazy(() => import('./screens/ChatbotProfile').then(module => ({ default: module.ChatbotProfile })))
 const OnboardingWizard = lazy(() => import('./screens/OnboardingWizard').then(module => ({ default: module.OnboardingWizard })))
 const YulloLanding = lazy(() => import('./yullo/screens/YulloLanding').then(module => ({ default: module.YulloLanding })))
+const YulloInfo = lazy(() => import('./yullo/screens/YulloInfo').then(module => ({ default: module.YulloInfo })))
+const YulloExplore = lazy(() => import('./yullo/screens/YulloExplore').then(module => ({ default: module.YulloExplore })))
 const YulloAuth = lazy(() => import('./yullo/screens/YulloAuth').then(module => ({ default: module.YulloAuth })))
 const YulloOnboarding = lazy(() => import('./yullo/screens/onboarding/YulloOnboarding').then(module => ({ default: module.YulloOnboarding })))
 const YulloHome = lazy(() => import('./yullo/screens/YulloHome').then(module => ({ default: module.YulloHome })))
@@ -120,15 +123,15 @@ export default function App() {
         <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-sm text-gray-500">Loading…</div>}><Routes>
           {/* ── Marketing / landing (root namespace, reserved) ── */}
           <Route path="/" element={<DynamicHome />} />
-          <Route path="/about" element={<AboutPage />} />
-          <Route path="/what-we-do" element={<WhatWeDoPage />} />
+          <Route path="/about" element={isYulloHostname() ? <YulloInfo page="about" /> : <AboutPage />} />
+          <Route path="/what-we-do" element={isYulloHostname() ? <YulloInfo page="manifesto" /> : <WhatWeDoPage />} />
           <Route path="/how-it-works" element={<DynamicHowItWorks />} />
           <Route path="/features" element={<FeaturesPage />} />
           <Route path="/pricing" element={<DynamicPricing />} />
-          <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={isYulloHostname() ? <YulloInfo page="privacy" /> : <PrivacyPage />} />
+          <Route path="/terms" element={isYulloHostname() ? <YulloInfo page="terms" /> : <TermsPage />} />
           <Route path="/cookies" element={<CookiesPage />} />
-          <Route path="/contact" element={<ContactPage />} />
+          <Route path="/contact" element={isYulloHostname() ? <YulloInfo page="contact" /> : <ContactPage />} />
           <Route path="/security" element={<SecurityPage />} />
 
           {/* ── App (authenticated product) under /app/* ── */}
@@ -177,6 +180,12 @@ export default function App() {
 
           {/* ── Yullo Isolated Routes ── */}
           <Route path="/yullo" element={<YulloLanding />} />
+          <Route path="/yullo/explore" element={<YulloExplore />} />
+          <Route path="/yullo/about" element={<YulloInfo page="about" />} />
+          <Route path="/yullo/manifesto" element={<YulloInfo page="manifesto" />} />
+          <Route path="/yullo/contact" element={<YulloInfo page="contact" />} />
+          <Route path="/yullo/privacy" element={<YulloInfo page="privacy" />} />
+          <Route path="/yullo/terms" element={<YulloInfo page="terms" />} />
           <Route path="/yullo/auth" element={<YulloAuth />} />
           <Route path="/yullo/onboarding" element={<YulloPrivateRoute><YulloOnboarding /></YulloPrivateRoute>} />
           <Route path="/yullo/home" element={<YulloPrivateRoute><YulloHome /></YulloPrivateRoute>} />

@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useHomepageVariant } from '../screens/home/useHomepageVariant'
 import { plans } from '../screens/home/home5/content'
+import { yulloConfig } from '../yullo/config'
+import { yulloPublicPages, type YulloPublicPage } from '../yullo/config/publicPages'
 
 /**
  * RouteSeo — lightweight per-route meta manager (no external deps).
@@ -162,8 +164,11 @@ export function RouteSeo() {
     }
     upsertMeta('name', 'theme-color', isYullo ? '#FFFC00' : '#6366f1')
     if (isYullo) {
-      const title = 'Yullo'
-      const description = 'Your Space, powered by Aura.'
+      const pageKey = pathname === '/what-we-do' ? 'manifesto' : pathname.split('/').filter(Boolean).slice(-1)[0]
+      const page = pageKey && Object.prototype.hasOwnProperty.call(yulloPublicPages, pageKey) ? yulloPublicPages[pageKey as YulloPublicPage] : undefined
+      const landing = pathname === '/' || pathname === '/yullo'
+      const title = page ? `${page.label} — Yullo` : pathname === '/yullo/explore' ? 'Explore apps — Yullo' : landing ? yulloConfig.nomenclature.title : 'Yullo'
+      const description = page?.description || (pathname === '/yullo/explore' ? 'Find a public Yullo Space, tap its icon and start a conversation with its Aura.' : landing ? yulloConfig.nomenclature.heroSubtitle : 'Your Space, powered by Aura.')
       document.title = title
       upsertMeta('name', 'description', description)
       upsertMeta('name', 'author', 'Yullo')

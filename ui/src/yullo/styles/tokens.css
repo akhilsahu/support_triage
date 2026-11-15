@@ -443,3 +443,31 @@ html {
 [data-theme="dark-warm"] .yullo-app.yullo-icon-tooltip {
   border-color: color-mix(in srgb, var(--text-primary) 45%, var(--surface));
 }
+
+/* Instrument-style radar, isolated from the form's theme/accent controls. */
+.yullo-app .yullo-beacon-radar {
+  color: #4ade80;
+  background: radial-gradient(circle at center, #103b2b, #071b14 74%);
+  border: 1px solid #29533e;
+  box-shadow: inset 0 0 16px rgb(0 0 0 / 25%);
+}
+.yullo-app .yullo-beacon-sweep {
+  background: conic-gradient(from 0deg, transparent 0deg 295deg, rgb(74 222 128 / 6%) 315deg, rgb(74 222 128 / 32%) 358deg, rgb(134 239 172 / 80%) 359deg, transparent 360deg);
+}
+.yullo-app .yullo-beacon-echo { opacity: 0.45; }
+@keyframes yullo-beacon-sweep { to { transform: rotate(360deg); } }
+@keyframes yullo-beacon-echo-first {
+  0%, 12%, 100% { opacity: 0.2; }
+  16%, 23% { opacity: 1; }
+  75% { opacity: 0.3; }
+}
+@keyframes yullo-beacon-echo-second {
+  0%, 62%, 100% { opacity: 0.2; }
+  66%, 73% { opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* Two measured revolutions, then rest; no permanent background distraction. */
+  .yullo-app .yullo-beacon-sweep { animation: yullo-beacon-sweep 2.4s linear 2; }
+  .yullo-app .yullo-beacon-echo-first { animation: yullo-beacon-echo-first 2.4s linear 2; }
+  .yullo-app .yullo-beacon-echo-second { animation: yullo-beacon-echo-second 2.4s linear 2; }
+}

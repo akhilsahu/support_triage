@@ -7,7 +7,7 @@ const ECOSYSTEM_NODES = [
     id: 'emily',
     label: 'Emily Startup',
     sub: 'yullo.co/emilystartup',
-    color: '#FFDA2D',
+    color: '#FFFC00',
     connectionText: 'Connecting them around a shared brand identity project.',
     target: 'northstar',
     x: 120,
@@ -96,7 +96,7 @@ export function YulloNetworkGraph() {
               y1={activeNode.y}
               x2={targetNode.x}
               y2={targetNode.y}
-              stroke="#FFDA2D"
+              stroke="#FFFC00"
               strokeWidth="3"
               strokeLinecap="round"
               initial={{ pathLength: 0, opacity: 0.2 }}
@@ -137,7 +137,7 @@ export function YulloNetworkGraph() {
                     style={{ backgroundColor: node.color }}
                   />
                   {isActive && (
-                    <span className="absolute inset-0 rounded-full bg-[#FFDA2D] animate-ping opacity-75" />
+                    <span className="absolute inset-0 rounded-full bg-[#FFFC00] animate-ping opacity-75" />
                   )}
                 </button>
 
@@ -160,7 +160,7 @@ export function YulloNetworkGraph() {
         {/* Dynamic Human Connection Callout Banner */}
         <div className="mt-6 rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#FFDA2D] animate-ping shrink-0" />
+            <span className="h-2.5 w-2.5 rounded-full bg-[#FFFC00] animate-ping shrink-0" />
             <div>
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Active Discovery Reason

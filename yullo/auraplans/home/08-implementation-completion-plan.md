@@ -823,3 +823,170 @@ Beacon completion notes — 2026-11-15:
 - Found production API lacked persistent mounts for source blobs/uploads/local Chroma index. Added host-backed directories under /var/lib/support247/api-data, api-uploads and api-chroma; explicit DATA_DIR/Chroma paths. New deploy/preserve-api-storage.sh stops the old API briefly only for the initial consistent copy, retains the old container/files, restores it if copying fails, refuses overwriting unexpected nonempty destinations and recognizes already-mounted deployments. The workflow switches to the new container immediately after copying and marks storage migration complete only after health succeeds. No data directories are deleted or emptied. On failed storage-copy stages, only the task-owned temporary staging directory is removed.
 - Docker build context now excludes .data/uploads and additional environment files so local private files aren't baked into images. SSH command timeout increased to 20 minutes. PostgreSQL/Redis volumes and migration-before-restart order retained. No authentication secrets changed.
 - Pending at commit time: push release, confirm remote CI, Vercel deployment, VPS migration/storage copy/restart and live API health/routes. Actual production migration and file-copy outcome must be reported from the deployment logs, separately from local checks.
+
+Deployment outcome — 2026-11-15:
+- Released commit 5b6826017c5219969d18b9e2cdebd08c9b82bcf4 to main without force push. GitHub run 43703214882 completed successfully: backend checks, frontend checks and VPS deployment all green; Vercel commit status also success.
+- VPS logs confirm both migrations e2f3a4b5c6d7 -> f3a4b5c6d7e8 -> f4b5c6d7e8f9 were applied, original API files preserved before switching to durable host mounts, and API/database/Redis health passed after restart. The initial storage move caused a brief 502 during the deployment, then recovered.
+- Direct https://api.support247.chat/api/v1/health and proxied https://yullo.co/api/v1/health both returned healthy with database and Redis connected. Live OpenAPI confirms Beacon owner, source-resource owner and public-resource listing routes are deployed. No authenticated/user-content smoke actions or live AI requests performed.
+- This final outcome note is a local documentation update; the deployed code is 5b682601. No extra deployment was triggered merely to publish the completion log.
+
+### Compact creation drawer with pinned action — implemented 2026-11-15
+
+- User requested a shorter, serious creation form following their compact form reference, with Create event always visible. Kept the current side drawer and every field/capability. Moved Cancel/Create into a shrink-0 footer outside the only scrolling body, with theme surface/border and mobile safe-area padding; retained form submission/validation/loading guards and used the shared YulloButton primitive.
+- Paired Type and Title at desktop drawer widths; narrow screens stack them. Reduced field gaps/header padding and overview starting size (3 rows / 88px), keeping resize and 4,000-character capacity. Removed repetitive type/AI-word-count helper copy without changing suggestion generation or custom type behavior.
+- Added opt-in compact presentation to existing ImageField and GoogleLocationPicker; used only by the creation drawer. Compact image preview keeps artwork contained; regular image field defaults remain unchanged. Creation map height is 160px vs existing 260px; address selection/pin/geocoding remain available. Upload, URL image entry, schedules, AI tools, booking links, pricing and custom fields are retained.
+- Files: ui/src/yullo/forms/subspaces/Subspaces.tsx, forms/core/ImageField.tsx, forms/GoogleLocationPicker.tsx. Shared creation layout applies consistently to Event/Post/Service/Other. No backend/schema/migration changes.
+- Verification: TypeScript/frontend production build and diff whitespace checks passed. No tests/browser checks run, matching the user's existing static-only preference. Sticky behavior was verified structurally (footer is outside overflow body); rendered desktop/mobile/keyboard behavior remains unverified. No commit, push or deployment for this UI change.
+
+### New event schedule default — implemented 2026-11-15
+
+- New event creation pre-fills the local date and AM/PM time for now + 10 minutes, rounded up to a whole minute. Also initializes an untouched empty schedule when selecting Event through the Type dropdown. Uses the existing date-fns formatter and current DateTimeField/state; no second picker or backend behavior.
+- Initializes per new drawer opening, not on render or an interval. Manual edits and explicit clearing are preserved; non-event forms retain empty schedules. Date rollover is handled by Date arithmetic and local formatting; existing save conversion to UTC remains.
+- File: ui/src/yullo/forms/subspaces/Subspaces.tsx. Production frontend build/TypeScript and diff whitespace passed; no tests/browser checks run (existing static-only preference). Not committed, pushed or deployed.
+
+### Hide Purpose for subspaces — approved/implemented 2026-11-15
+
+- UI-only change: IdentityFormScreen passes an explicit isSubspace flag from the saved parent_space_id; IdentityForm omits only the Space Purpose section for subspaces. Main Space forms retain the existing section. No replacement Type section added.
+- Required purpose value remains loaded from identity.purpose into form state and submitted as before. Schema validation, backend persistence, parent inheritance and all other form sections remain unchanged.
+- Files: ui/src/yullo/forms/identity/IdentityForm.tsx and screens/identity/IdentityFormScreen.tsx. Frontend production build/TypeScript and diff whitespace checks passed. No tests/browser verification run (existing static-only preference). No commit/push/deployment. Prior pending compact-drawer/date-default edits preserved.
+
+### Event presence uses event location — approved/implemented 2026-11-15
+
+- Hidden Presence Type only for event subspaces; main Spaces and non-event subspaces retain their existing control/behavior. Event classification/link section uses appropriate copy and fills the available column. Existing hidden Purpose behavior remains intact.
+- Identity read API now returns canonical space_type and derives event presence from its own linked, active, reviewed event/location entity; no parent-company inheritance. Canonical event identity takes priority, with unambiguous matching-title support for older records. Only legacy events without current venue records use their deterministic original saved form's explicit location_mode. An unspecified event is not assumed physical merely because is_remote is false; removed/inactive current links don't regain an old venue through the fallback.
+- Event identity create/update no longer writes another presence value; the frontend omits the redundant field on event saves. Existing stored identity presence is left intact for compatibility but not used as the event's authority. No synchronization, backfill, new stored field, schema migration or deletion. Public event pages already derive their format from disclosure-safe event/location entities and remain unchanged; no private venue data added to public/Aura responses.
+- Backend files: app/yullo/services/spaces/quick_context.py, services/persistence/identity.py, schemas/forms/identity.py. Frontend: api/forms.ts, forms/identity/IdentityForm.tsx, screens/identity/IdentityFormScreen.tsx. Previous pending UI/date-default edits preserved.
+- Verification: frontend production build/TypeScript, changed Python syntax/module imports and diff whitespace passed. No tests/browser or live-data verification run (existing static-only preference). No commit/push/deployment.
+
+### Local Beacon 503 and repeated requests — fixed 2026-11-15
+
+- Reported localhost GET /spaces/de3f17eb-52dc-4a9c-a920-6b907f23cd41/beacon returned repeated 503s. Verified local DB localhost:5432/multiagent still at e2f3a4b5c6d7 with neither Beacon nor resource settings table. Production deployment migrations had not affected this separate local database.
+- Applied the existing additive local migration chain e2f3a4b5c6d7 -> f3a4b5c6d7e8 -> f4b5c6d7e8f9. Both tables and applied head verified afterward. No source/Space/Beacon settings records edited and no production change.
+- Read the reported Space via canonical read_beacon service after the upgrade: successful inactive response, no writes. HTTP browser/auth session path was not exercised; debug/Vite configuration points to backend 8001 using the same .env.
+- Updated ui/src/yullo/api/beacon.ts: explicit BeaconState query type, no automatic retry or window-focus refetch, minute polling only after a successful response. Existing manual Try again and fresh-mount/reconnect recovery remain; owner/account isolation unchanged. This stops error polling without suppressing a real failure or bypassing authorization.
+- Verification: local revision/table inspection and read-only canonical Beacon read passed; frontend production build/TypeScript and diff whitespace passed. No test suite or browser run. Existing pending UI/date/presence edits preserved; frontend retry change is local/uncommitted, not deployed.
+
+### Compact Beacon targeting — approved/implemented 2026-11-15
+
+- Replaced the default city/state/country input stack with one location search, a compact clickable/draggable map pin, and a read-only city/state/country summary from the existing Google geocoder. Manual AreaField is shown only when lookup fails or lacks required reach metadata. Same-Space reviewed physical locations can seed the pin; parent/company locations are not inherited.
+- Reach choices are Nearby, City, Country and Worldwide. Nearby uses a 10–100 km slider and an accent-colored coverage circle that fits the map and reacts to theme changes. Worldwide omits location controls. Existing expiry, revision conflict recovery, pause and pinned activation footer remain. Stale map lookups are cancelled when a different search selection is made.
+- Reused LocationSearchField, GoogleLocationPicker, AreaField, DateTimeField and YulloButton; no new SDK or parallel location service. Optional map radius/lookup callbacks preserve existing consumers. Frontend files: forms/beacon/BeaconForm.tsx, forms/GoogleLocationPicker.tsx, forms/googleLocationMaps.ts and api/beacon.ts.
+- Canonical owner settings now support nearby + radius_km (10–100), validated server-side and persisted on the existing Beacon row. Nearby discovery uses each Beacon's saved radius for conservative SQL prefiltering and exact great-circle matching. Original organic Nearby results, publication checks, ownership/product boundaries, expiry and public disclosure rules remain unchanged; private targeting coordinates are not added to public cards. Legacy 5/10 km settings remain readable, and 5 km stays unchanged until the owner explicitly changes coverage.
+- Backend files: config/beacon.py, schemas/beacon.py, schemas/nearby.py, models/space_beacon.py, services/spaces/beacon.py and services/home/nearby/beacons.py. Existing owner GET/PUT /spaces/{id}/beacon and Nearby endpoints extended, no new routes.
+- Migration f5c6d7e8f9a0 follows f4b5c6d7e8f9: nullable radius_km and additive reach/radius constraints; no backfill or record edits. Applied to the local development database only after checking its applied revision. Production migration is pending. Downgrade refuses to silently discard configured coverage.
+- Verification: frontend production build (including TypeScript), changed Python syntax/module imports and git diff --check passed. Existing bundle-size warning remains. Static checks only; no test suites or browser/map integration verification. No commit, push or deployment. Previous pending compact event/Purpose/presence/retry changes preserved.
+
+### Beacon event-location suggestion — implemented 2026-11-15
+
+- Removed the separate saved-location selector. The existing searchable Location field now places the current event venue first among saved suggestions, followed by other reviewed physical locations from this subspace, then Google suggestions. Selecting a saved suggestion uses its existing coordinates/address without a second Places lookup; users can search another address or drag the pin afterward.
+- New Beacons prefill the event address rather than only city/state. Existing saved Beacon targets remain unchanged until edited. Only same-Space reviewed locations with coordinates are offered; no company-location inheritance or database writes added.
+- Files: ui/src/yullo/forms/beacon/BeaconForm.tsx and forms/LocationSearchField.tsx. The shared field has an optional savedSuggestions prop; existing callers retain their behavior. Frontend production build/TypeScript and diff whitespace checks passed; no tests/browser checks. Not committed, pushed or deployed.
+
+### Beacon city/country boundary highlight — implemented 2026-11-15
+
+- Beacon search now requests city suggestions for Nearby/City and country suggestions for Country. Saved event-location suggestions, current selection and reach changes display city/state/country names (country only for Country) instead of street addresses. Same-Space event venue remains the first saved suggestion; matching saved display values are deduplicated. Underlying selected coordinates and server-side targeting are unchanged.
+- Added focused forms/googleLocationBoundary.ts hook using the existing Google Maps loader/geocoder and actual LOCALITY/COUNTRY feature layers. Resolves the selected administrative place within the selected country, fits its viewport, fills/outlines only its place ID with the configured accent, updates colors with theme changes, and clears stale highlights on area/reach change or close. No bounding-box substitute, new provider, stored geometry or database/schema changes. Nearby retains the existing coverage circle.
+- Google Cloud setup required: configure the deployed VITE_YULLO_GOOGLE_MAPS_MAP_ID as a vector map with LOCALITY and COUNTRY boundary layers enabled in its cloud map style. DEMO_MAP_ID or unavailable boundary coverage cannot provide fills; an inline notice explains unavailable highlighting while retaining the valid selection. Official reference: https://developers.google.com/maps/documentation/javascript/dds-boundaries/start . Cloud configuration was not modified or verified.
+- Files: forms/beacon/BeaconForm.tsx, forms/LocationSearchField.tsx, forms/GoogleLocationPicker.tsx, forms/googleLocationMaps.ts and new forms/googleLocationBoundary.ts. Other form callers retain default address suggestions and no boundary behavior.
+- Verification: frontend production build/TypeScript and git diff --check passed (existing bundle-size warning). Static checks only; browser/map integration and enabled-layer configuration remain unverified. No commit/push/deployment.
+
+### Beacon default expiry — updated 2026-11-15
+
+- New Beacon expiry defaults to now + 24 hours using the existing server-side default_days setting (changed from 7 to 1 in both validated configuration and environment fallback). Existing saved expiry dates and owner edits remain unchanged. Earlier event expiry/maximum duration still caps the initial value. Explicit YULLO_BEACON_DEFAULT_DAYS deployment overrides remain supported.
+- File: app/yullo/config/beacon.py. Python syntax/module import and git diff --check passed. Static checks only; no tests/browser or database changes. Not deployed.
+
+### Beacon signal motion and Worldwide map — implemented 2026-11-15
+
+- Added three accent-colored rings expanding from a central Radio icon behind the Beacon summary. CSS uses only transform/opacity, decorative aria-hidden/pointer-events-none, stops within five seconds, and shows static rings for reduced-motion users. No perpetual motion or animation library added.
+- Worldwide retains the same map instance, clears city/country highlighting and radius through existing props, hides the location pin, and fits full world bounds. Location search/manual targeting controls are hidden for this scope, while map navigation remains available. Clicking the map cannot change a Worldwide target; switching back restores the existing location/pin and appropriate coverage. Pending reverse-geocode responses are cancelled on scope changes and cannot leave activation blocked.
+- Files: forms/beacon/BeaconForm.tsx, forms/GoogleLocationPicker.tsx, styles/tokens.css. Shared map gains an opt-in worldwide prop; other forms retain their behavior. No backend/database changes.
+- Verification: frontend production build/TypeScript and diff whitespace checks passed (existing bundle-size warning). Static checks only; rendered animation/map navigation remain unverified. Not committed, pushed or deployed.
+
+### Beacon eligibility notice — updated 2026-11-15
+
+- Removed the requested publication/parent/event eligibility notice from BeaconForm.tsx. Feature-unavailable notice, disabled activation state and backend eligibility validation remain unchanged. Copy-only UI change; diff whitespace check passed. Not deployed.
+
+### Beacon full initial 24-hour prefill — corrected 2026-11-15
+
+- Removed event/maximum-expiry clamping from the default_expires_at response. With the existing one-day default, new forms now prefill both local date and time at now + 24 hours, even if the event cutoff is earlier. Saved expiries still load unchanged. Explicit default-days configuration remains supported.
+- latest_expires_at, server-side save validation, publication checks and the UI latest-expiry hint/validation remain unchanged. If the event cutoff is sooner, the owner must select a permitted expiry before activation. This supersedes the prior note saying the initial value was capped.
+- File: app/yullo/services/spaces/beacon.py. Python syntax/module imports and diff whitespace passed. Static checks only; no tests/browser/data writes/deployment.
+
+### Green Beacon radar illustration — implemented 2026-11-15
+
+- Upgraded the existing Beacon summary illustration to semantic green radar: rotating conic sweep, static range circles, signal blips, central Radio icon and expanding rings. Uses darker green in light themes and brighter green in dark themes; other controls keep the configured accent.
+- Replays on the activation/update process/status transition; existing text remains the authority for actual active/paused state. Decorative, aria-hidden and non-interactive. CSS transform/opacity motion stops in under five seconds; reduced motion keeps a still radar with spaced rings. No new component/library or backend changes.
+- Files: ui/src/yullo/forms/beacon/BeaconForm.tsx and styles/tokens.css. Production build/TypeScript and diff whitespace passed (existing bundle warning). Static checks only; rendered motion remains unverified. Not committed, pushed or deployed.
+
+### Beacon radar visual refinement — implemented 2026-11-15
+
+- Replaced the oversized background decoration with a compact, contained radar instrument beside the title: deep green display, fine concentric range rings, crosshair, bearing ticks, narrow rotating sweep and two echoes timed to the sweep position. Neutral summary surface, separate text/artwork columns and smaller retained cover thumbnail improve legibility without text overlap.
+- Removed superseded ripple/icon CSS instead of layering another animation. SVG geometry remains fixed; CSS animates transform/opacity only. Two 2.4-second scans replay on process/status change, then rest. Reduced motion retains a still radar. Decorative echoes do not represent measured people/reach; saved status text remains authoritative.
+- Files: forms/beacon/BeaconForm.tsx and styles/tokens.css. Frontend production build/TypeScript and diff whitespace passed; old radar selectors have no remaining references. Static checks only; visual rendering remains unverified. Not committed, pushed or deployed.
+
+### Beacon radius placement — updated 2026-11-15
+
+- Moved the existing Nearby radius control above Choose your area in BeaconForm.tsx. Slider state, map coverage and legacy radius behavior unchanged. Static TypeScript/whitespace checks only; not deployed.
+
+### Clearer price currency selection — updated 2026-11-15
+
+- Existing shared DetailFields already saved amount + ISO currency together in create and edit flows. Improved its currency dropdown to show localized full currency names with codes and widened it to half the pricing row (stacked on narrow screens). Preserves saved currencies outside the preset list. No second currency field, conversion logic, backend/schema or data changes.
+- File: ui/src/yullo/forms/subspaces/DetailFields.tsx. Frontend production build/TypeScript and diff whitespace checks passed; static checks only. Not deployed.
+
+### Location-based event currency default — implemented 2026-11-15
+
+- Event creation retains the selected Google venue/map country's code in temporary form state and passes it to the shared pricing fields. Enabling pricing uses that country's currency; later country changes update the automatic default. Explicit currency selections and already-saved prices are never automatically overwritten. Price amount remains unchanged (no currency conversion).
+- Reused the same currency field and persisted SubspaceFields payload; no duplicate stored location/currency, backend service or migration. Country is taken only from this form's selected physical location, not the parent company, browser locale or Beacon target. Clearing/retyping the location invalidates the country suggestion; online/unspecified locations keep the existing editable fallback. Unknown/multiple-current-currency countries are not guessed.
+- Added config/currencies.ts with a compact country/currency mapping derived from official Unicode CLDR 49 currencyData as of 2026-11-15, retaining its Unicode v3 license. Current tender currencies populate the existing selector, including countries beyond its earlier nine presets. Source: https://github.com/unicode-org/cldr-json/blob/main/cldr-json/cldr-core/supplemental/currencyData.json . No new dependency/runtime requests/geolocation prompt.
+- Files: ui/src/yullo/forms/subspaces/Subspaces.tsx, forms/subspaces/DetailFields.tsx and config/currencies.ts. Frontend production build/TypeScript and diff whitespace passed (existing bundle-size warning). Static checks only; no tests/browser/data writes. Not committed, pushed or deployed.
+
+### Landing mobile fixes and Explore apps — implemented 2026-11-15
+
+- Kept the existing landing sections; placed the sticky header in document flow, narrowed mobile branding/CTA, made claim buttons visible through scoped public accent variables, added anchor offsets, keyboard focus/skip link and reduced-motion handling. Reused the existing PNG with verified alpha transparency for logos. Headline: “Let people connect with what makes you, you.”
+- All claim CTAs now enter Yullo auth. Replaced fabricated handle availability with the real API, loading/error feedback, stale-response protection and a sign-in continuation. Public handle validation now follows the canonical 3–50 character format and returns 503 on database failure instead of falsely claiming availability. A selected handle is carried into the existing creation screen and retained when entering a name. After claim sign-in, existing drafts resume in their identity editor; only a confirmed absence of a draft enters the existing new-Space flow. Normal sign-in/chat-return flows remain unchanged.
+- Added `/yullo/explore`: responsive app icon grid with debounced name/@handle search, URL query persistence, keyboard navigation, pagination, missing-image fallback and loading/empty/error/retry states. Icons open the canonical public Space chatbot URLs, including nested paths. User confirmed this launcher interpretation. No fake app entries or separate knowledge/search index.
+- Added GET `/api/v1/yullo/public/directory` with bounded, validated search/cursor/limit and an explicit minimal response schema. Reads existing Yullo identities only; requires active/live Space and Yullo lifecycle plus canonical live same-owner ancestors. No private sources, conversations, inferred content or credentials are searched or returned. Request-local ancestor cache and no-store responses; no database migration or durable data writes.
+- Added Yullo-owned About, Manifesto, Contact, Privacy and Terms pages under `/yullo/*`; contact uses user-confirmed `hello@yullo.co`. Footer and auth legal links use these routes. Existing `/about`, `/what-we-do`, `/contact`, `/privacy` and `/terms` aliases select Yullo content on Yullo hosts; Support247 host behavior stays intact. Removed generic social-network homepage placeholders. Scoped styles use `.yullo-marketing` to avoid changing the existing public-chat `.yullo-public` renderer. Central SEO handles the new pages/headline; favicon remains owned by RouteSeo.
+- Backend files: `app/yullo/api/public.py`, new `schemas/directory.py`, new `services/spaces/directory.py`, `app/api/v1/yullo_auth.py`.
+- Frontend files: `ui/src/App.tsx`, `lib/RouteSeo.tsx`; Yullo `config/index.ts`, new `config/publicPages.ts`, new `api/directory.ts`, new `styles/public.css`, new `components/YulloPublicLayout.tsx`; existing Header/Hero/Footer/ClaimHandle/FinalCTA, `components/auth/AuthPanel.tsx`; Landing/Auth/NewSpace screens, new Explore/Info screens.
+- Verification: production frontend build and TypeScript passed; focused ESLint and git whitespace checks passed. Python syntax and API/schema imports passed (shell DEBUG=release needed a command-local DEBUG=false override). Read-only local API requests verified 200/no-store/minimal fields, page bounds/disjoint cursors, @handle search, empty search, one canonical public chatbot target, and invalid-handle rejection. No credentials, source bodies or returned Space identities were logged in the task output.
+- Pending: actual narrow-screen/keyboard visual review and authenticated end-to-end claim flow; browser host was unavailable and native Chrome access was not approved. User explicitly chose to skip existing public-chat regression tests on 2026-11-15; no tests were added or run. No production verification, commit, push or deployment. Pre-existing Beacon/location/currency edits and migration were preserved.
+
+### Landing button color — updated 2026-11-15
+
+- Main landing CTAs (header claim, hero claim/Explore apps, handle check/claim and final claim/Explore apps) now use Snapchat yellow `#FFFC00` with black text/icons and a 1px black border. Shared scoped `.yullo-cta` styling keeps existing sizes, routing and interactions. Other surfaces retain their palette.
+- Files: `ui/src/yullo/styles/public.css` and `components/YulloHeader.tsx`, `YulloHero.tsx`, `YulloClaimHandle.tsx`, `YulloFinalCTA.tsx`.
+- Production frontend build/TypeScript and diff whitespace checks passed; existing bundle-size warning remains. Tests skipped per user instruction; visual browser review remains unverified. Not committed, pushed or deployed.
+
+### Auth back navigation — implemented 2026-11-15
+
+- The auth screen previously displayed a back link only for chat-return sign-ins. Added a visible Back to Yullo link above the auth controls on mobile and desktop, using Snapchat yellow, black border and a left arrow. It returns to `/yullo` locally or `/` on Yullo hosts. Existing validated Back to chat destination remains intact for chat-return sign-ins. Auth and claim actions are unchanged.
+- File: `ui/src/yullo/screens/YulloAuth.tsx`. TypeScript, focused ESLint and diff whitespace checks passed. Tests remain skipped per user instruction; rendered browser behavior unverified. Not deployed.
+
+### Lighter auth background — updated 2026-11-15
+
+- Lightened the desktop brand panel and mobile brand strip from `#F8FAFD` to near-white `#FDFEFF`; reduced the decorative network canvas to 25% opacity for clearer text. Keeps the network animation, logo, auth controls and routing intact.
+- Files: `ui/src/yullo/components/auth/AuthBrandPanel.tsx`, `AuthBrandNetwork.tsx`, `screens/YulloAuth.tsx`. Production build/TypeScript and diff whitespace checks passed (existing bundle-size warning). Tests remain skipped; visual browser review unverified. Not deployed.
+
+### Landing background clarity from screenshot — fixed 2026-11-15
+
+- Screenshot identifies the landing How it works section, rather than auth. The visible purple gradient matches the shared dark body background. The shared root is a viewport-height flex column; added scoped `flex-shrink: 0`, an explicit opaque `#F9FBFF` background/text color and stacking isolation to `.yullo-marketing` so its light surface extends with its full content. Shared Support247/dashboard theme settings remain untouched.
+- Faded the landing canvas network from 90% to 25% opacity and changed the “And then you waited.” heading line from slate-400 to slate-600. Network animation and section interactions remain intact.
+- Files: `ui/src/yullo/styles/public.css`, `components/YulloCanvasNetwork.tsx`, `components/YulloOldVsNew.tsx`. Production build/TypeScript and diff whitespace checks passed (existing bundle-size warning). Tests skipped per prior instruction. Browser rendering remains unverified; no deployment.
+
+### Landing network visibility — adjusted 2026-11-15
+
+- Kept the full-page light background and darker heading. Restored the network canvas to 75% opacity, deepened its cyan/blue/violet/gold colors for light surfaces, strengthened line opacity/width and node opacity, and raised the quiet scroll phase from 0.12 to 0.45 so the graph stays visible behind the text. Preserved hover responses, pulses, scroll phases, counts and reduced-motion handling.
+- File: `ui/src/yullo/components/YulloCanvasNetwork.tsx`. Production build/TypeScript and diff whitespace checks passed (existing bundle-size warning). Tests remain skipped per user instruction; visual browser review remains unverified. Not deployed.
+
+### Landing network motion — implemented 2026-11-15
+
+- Added gentle node drift (4–11px, 14–23 second horizontal/18–23 second vertical cycles), 6-second radius breathing, staggered 3.6-second expanding rings on anchor nodes and 1.4–2 second traveling pulses with short trails along actual graph connections. Fine pointers attract nearby nodes slightly and retain hover highlights with approximately 160ms following; touch input does not trigger hover movement. Marketing purpose: explain a connected, active network while leaving reading space quiet. Existing light background, node colors/opacity, node counts and scroll-dependent visibility/finale convergence remain.
+- Reused the existing canvas and requestAnimationFrame loop with elapsed-time movement rather than frame-dependent speeds. Bounded simultaneous pulses (2 mobile/4 desktop); pause while the document is hidden and resume without jumping. Rebase node anchors on resize and cap canvas pixel ratio at 2 for sharper lines. Reduced motion now retains a still graph, including live preference changes, instead of hiding the canvas. Cleanup removes frames and all listeners. No new library or React animation-state updates.
+- File: `ui/src/yullo/components/YulloCanvasNetwork.tsx`. Production build/TypeScript, focused ESLint and diff whitespace checks passed (existing bundle-size warning). Tests remain skipped per user instruction. Browser playback, motion feel and real-device performance remain unverified; not deployed.
+
+### Snapchat yellow and selected-card contrast — fixed 2026-11-15
+
+- Screenshot identified the pale subtitle on the selected customer situation card. Selected titles/subtitles and indicator now use the dark accent foreground, with a black border; inactive subtitles and showcase labels use readable slate-600. Added aria-pressed to expose the existing selected state. Fixed similarly faint text/icons on other yellow Aura/How it works panels, while retaining light text inside their dark inset card.
+- Changed the shared public accent and brand yellow to Snapchat `#FFFC00`, plus hardcoded yellow foreground accents in Hero, OldVsNew, AuraInteractive, Differentiator, NetworkGraph, UseCases, FinalCTA and PublicLayout. Yellow depth token now uses a pale version of the same yellow instead of orange/gold. Buttons, selected cards and primary illustration accents now agree. Decorative canvas colors/motion remain unchanged.
+- Files: `ui/src/yullo/styles/public.css`, `config/index.ts` and the listed Yullo landing components. Production build/TypeScript, focused ESLint and diff whitespace checks passed (existing bundle-size warning); selected text/background contrast calculates to 16.21:1. No old `#FFDA2D`/`#F6B91A` values remain in the landing components or shared public palette. Tests remain skipped; new browser rendering unverified. Not deployed.

@@ -231,7 +231,7 @@ export function AuthBrandNetwork() {
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 w-full h-full pointer-events-none z-0"
+      className="absolute inset-0 w-full h-full pointer-events-none z-0 opacity-25"
     />
   )
 }

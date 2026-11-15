@@ -11,7 +11,7 @@ from sqlalchemy.exc import ProgrammingError
 from app.models.space import Space
 from app.models.yullo_space import YulloSpace
 from app.models.yullo_space_entity import YulloSpaceEntity
-from app.yullo.config.beacon import get_beacon_rules
+from app.yullo.config.beacon import get_beacon_rules, NEARBY_REACHES
 from app.yullo.models.space_beacon import YulloSpaceBeacon
 from app.yullo.schemas.beacon import BeaconResponse, BeaconSettings, BeaconUpdate
 from app.yullo.schemas.nearby import NearbyArea
@@ -59,16 +59,16 @@ async def _response(db, space, extension, row, now):
                     and (event_expiry is None or event_expiry > now))
     latest = min(now + timedelta(days=rules.max_days), event_expiry) if event_expiry else now + timedelta(days=rules.max_days)
     response = BeaconResponse(can_activate=eligible, enabled=rules.enabled, event_expires_at=event_expiry,
-        default_expires_at=min(now + timedelta(days=rules.default_days), latest), latest_expires_at=latest)
+        default_expires_at=now + timedelta(days=rules.default_days), latest_expires_at=latest)
     if row:
-        response.config = BeaconSettings(reach=row.reach, target_area=NearbyArea.model_validate(row.target_area),
+        response.config = BeaconSettings(reach=row.reach, radius_km=row.radius_km, target_area=NearbyArea.model_validate(row.target_area),
             origin_location_entity_id=row.origin_location_entity_id, expires_at=row.expires_at)
         if row.origin_location_entity_id:
             location = await db.scalar(select(YulloSpaceEntity).where(
                 YulloSpaceEntity.id == row.origin_location_entity_id, YulloSpaceEntity.space_id == space.id,
                 YulloSpaceEntity.entity_type == "location", YulloSpaceEntity.is_active.is_(True),
             ))
-            fields = ("latitude", "longitude") if row.reach.startswith("nearby_") else ("city", "region", "country_code") if row.reach == "city" else ("country_code",)
+            fields = ("latitude", "longitude") if row.reach in NEARBY_REACHES else ("city", "region", "country_code") if row.reach == "city" else ("country_code",)
             response.target_changed = not location or any((location.payload_json or {}).get(key) != row.target_area.get(key) for key in fields)
         response.revision = row.revision
         response.status = "expired" if row.expires_at <= now else "paused" if row.state == "paused" else "active" if eligible else "unavailable"
@@ -110,7 +110,7 @@ async def save_beacon(db, user_id: UUID, space_id: UUID, data: BeaconUpdate):
         config = config.model_copy(update={"target_area": validated.target_area})
     if not now < config.expires_at <= state.latest_expires_at:
         raise HTTPException(422, "Choose a future expiry within the allowed period and event schedule")
-    values = dict(state="active", reach=config.reach,
+    values = dict(state="active", reach=config.reach, radius_km=config.radius_km,
         target_area={} if config.reach == "worldwide" else config.target_area.model_dump(exclude_none=True),
         origin_location_entity_id=None if config.reach == "worldwide" else config.origin_location_entity_id,
         expires_at=config.expires_at, updated_at=now)

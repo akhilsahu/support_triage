@@ -77,6 +77,7 @@ class IdentityFormUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class IdentityFormResponse(IdentityForm):
+    space_type: SpaceType = SpaceType.space
     type_label: Optional[str] = None
     subspace_fields: SubspaceFields | None = None
     presentation_config: SpacePresentationConfig | None = None

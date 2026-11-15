@@ -27,7 +27,7 @@ const STAGES = [
     title: 'A webpage waits. An Aura welcomes.',
     subtitle: 'Aura turns your Yullo Link into a space that feels present. It learns your world and helps each visitor find what matters to them — without making them dig for it.',
     tagline: 'You’ve built something worth finding. Yullo helps the right people find their way to it.',
-    color: '#FFDA2D',
+    color: '#FFFC00',
   },
 ]
 
@@ -45,7 +45,7 @@ export function YulloOldVsNew() {
             <motion.span initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: 0.2 }}>
               You shared your work.<br />
             </motion.span>
-            <motion.span initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6, delay: 0.4 }} className="text-slate-400 block mt-1">
+            <motion.span initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6, delay: 0.4 }} className="text-slate-600 block mt-1">
               And then you waited.
             </motion.span>
           </h2>
@@ -69,7 +69,7 @@ export function YulloOldVsNew() {
                 <span
                   className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-extrabold"
                   style={{
-                    backgroundColor: isActive ? '#FFDA2D' : '#e2e8f0',
+                    backgroundColor: isActive ? '#FFFC00' : '#e2e8f0',
                     color: '#101828',
                   }}
                 >
@@ -171,7 +171,7 @@ export function YulloOldVsNew() {
                       <img src={yulloConfig.assets.logoTransparent} alt="Yullo Logo" className="h-9 w-auto object-contain" />
                     </div>
                     <div className="text-xs font-bold tracking-wide">YULLO AURA</div>
-                    <div className="text-[10px] text-slate-300 font-mono mt-0.5">yullo.co/northstarstudio</div>
+                    <div className="text-[10px] text-slate-700 font-mono mt-0.5">yullo.co/northstarstudio</div>
                   </div>
 
                   <div className="flex flex-col gap-2 text-left w-full md:w-48">
@@ -207,13 +207,13 @@ export function YulloOldVsNew() {
               className="w-full max-w-4xl sm:max-w-5xl rounded-3xl border border-slate-900 bg-[var(--accent-solid)] p-8 sm:p-10 shadow-2xl text-left text-[var(--accent-on-solid)] relative overflow-hidden"
             >
               <div className="text-center">
-                <div className="inline-block text-xs font-semibold uppercase tracking-widest text-[#FFDA2D] bg-slate-800 px-3 py-1 rounded-full mb-2">
+                <div className="inline-block text-xs font-semibold uppercase tracking-widest text-[#FFFC00] bg-slate-800 px-3 py-1 rounded-full mb-2">
                   03 / {STAGES[2].badge}
                 </div>
                 <h3 className="text-2xl sm:text-4xl font-bold text-[var(--accent-on-solid)]">
                   {STAGES[2].title}
                 </h3>
-                <p className="mt-3 text-sm sm:text-base text-slate-300 max-w-lg mx-auto">
+                <p className="mt-3 text-sm sm:text-base text-slate-700 max-w-lg mx-auto">
                   {STAGES[2].subtitle}
                 </p>
               </div>
@@ -227,7 +227,7 @@ export function YulloOldVsNew() {
                     </div>
                     <div>
                       <div className="text-[11px] text-[#4CD8FF] font-semibold uppercase tracking-wider">Connected Yullo Endpoint</div>
-                      <div className="text-sm font-bold text-[var(--accent-on-solid)] font-mono">yullo.co/northstarstudio</div>
+                      <div className="text-sm font-bold text-white font-mono">yullo.co/northstarstudio</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold bg-emerald-950/60 px-3 py-1 rounded-full border border-emerald-800">
@@ -238,7 +238,7 @@ export function YulloOldVsNew() {
 
                 <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono text-slate-300">
                   <div>Website ──●── Aura ──●── Active Visitor</div>
-                  <a href="#claim" className="inline-flex items-center gap-1.5 font-bold text-[#FFDA2D] hover:underline">
+                  <a href="#claim" className="inline-flex items-center gap-1.5 font-bold text-[#FFFC00] hover:underline">
                     <span>Claim your address</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </a>

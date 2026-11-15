@@ -78,7 +78,7 @@ export function IdentityFormScreen() {
     mutationFn: (values: IdentityFormValues) => {
       const payload = {
         ...values,
-        presence: values.presence === '' ? undefined : (values.presence as any),
+        presence: identity?.parent_space_id && identity.space_type === 'event' ? undefined : values.presence === '' ? undefined : (values.presence as any),
         expected_revision: identity!.revision,
       };
       return formsApi.updateIdentity(spaceId!, payload);
@@ -251,6 +251,8 @@ export function IdentityFormScreen() {
               form={form}
               spaceId={spaceId}
               slug={identity.slug}
+              isSubspace={Boolean(identity.parent_space_id)}
+              spaceType={identity.space_type}
               descriptionMaxLength={identity.parent_space_id ? SUBSPACE_DESCRIPTION_LIMIT : 280}
               generationContext={identity.event_context}
               isLive={identity.status === 'live'}

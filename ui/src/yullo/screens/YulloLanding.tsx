@@ -1,6 +1,5 @@
-import { useEffect } from 'react'
 import { YulloCanvasNetwork } from '../components/YulloCanvasNetwork'
-import { YulloHeader } from '../components/YulloHeader'
+import { YulloPublicLayout } from '../components/YulloPublicLayout'
 import { YulloHero } from '../components/YulloHero'
 import { YulloOldVsNew } from '../components/YulloOldVsNew'
 import { YulloAuraInteractive } from '../components/YulloAuraInteractive'
@@ -10,43 +9,15 @@ import { YulloNetworkGraph } from '../components/YulloNetworkGraph'
 import { YulloUseCases } from '../components/YulloUseCases'
 import { YulloClaimHandle } from '../components/YulloClaimHandle'
 import { YulloFinalCTA } from '../components/YulloFinalCTA'
-import { YulloFooter } from '../components/YulloFooter'
-import { yulloConfig } from '../config'
 
 export function YulloLanding() {
-  useEffect(() => {
-    document.title = yulloConfig.nomenclature.title
-
-    // Dynamically update Chrome tab Favicon to Yullo logo
-    const linkIcon = document.querySelector("link[rel*='icon']") as HTMLLinkElement | null
-    const originalIconHref = linkIcon ? linkIcon.href : null
-
-    if (linkIcon) {
-      linkIcon.href = yulloConfig.assets.logo
-    } else {
-      const newIcon = document.createElement('link')
-      newIcon.rel = 'shortcut icon'
-      newIcon.href = yulloConfig.assets.logo
-      document.getElementsByTagName('head')[0].appendChild(newIcon)
-    }
-
-    return () => {
-      if (linkIcon && originalIconHref) {
-        linkIcon.href = originalIconHref
-      }
-    }
-  }, [])
-
   return (
-    <div className={`scroll-smooth min-h-screen bg-[#F9FBFF] text-[#101828] ${yulloConfig.typography.bodyClass} antialiased selection:bg-[#FFDA2D] selection:text-[#101828] relative overflow-x-hidden`}>
+    <YulloPublicLayout>
       {/* Dynamic Interactive HTML5 Canvas Network Background */}
       <YulloCanvasNetwork />
 
-      {/* Navigation Header */}
-      <YulloHeader />
-
       {/* Main Content Arc */}
-      <main className="relative z-10">
+      <main id="main-content" tabIndex={-1} className="relative z-10">
         {/* Section 1: Hero */}
         <YulloHero />
 
@@ -75,8 +46,6 @@ export function YulloLanding() {
         <YulloFinalCTA />
       </main>
 
-      {/* Footer */}
-      <YulloFooter />
-    </div>
+    </YulloPublicLayout>
   )
 }

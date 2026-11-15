@@ -8,7 +8,7 @@ const NODES = [
   { id: 'work', label: 'Work & Portfolio', color: '#4CD8FF' },
   { id: 'products', label: 'Products & Services', color: '#6695FF' },
   { id: 'ideas', label: 'Ideas & Writings', color: '#A98CFF' },
-  { id: 'people', label: 'People & Team', color: '#FFDA2D' },
+  { id: 'people', label: 'People & Team', color: '#FFFC00' },
   { id: 'links', label: 'Curated Links', color: '#4CD8FF' },
   { id: 'knowledge', label: 'Knowledge Base', color: '#6695FF' },
   { id: 'opportunities', label: 'Open Opportunities', color: '#A98CFF' },
@@ -85,11 +85,11 @@ export function YulloAuraInteractive() {
                       <div className="flex items-center gap-2">
                         <span
                           className="h-2 w-2 rounded-full transition-transform"
-                          style={{ backgroundColor: node.color }}
+                          style={{ backgroundColor: isSelected ? 'var(--accent-on-solid)' : node.color }}
                         />
                         <span>{node.label}</span>
                       </div>
-                      <ArrowUpRight className={`h-3.5 w-3.5 ${isSelected ? 'text-[#FFDA2D]' : 'text-slate-400'}`} />
+                      <ArrowUpRight className={`h-3.5 w-3.5 ${isSelected ? 'text-[var(--accent-on-solid)]' : 'text-slate-400'}`} />
                     </button>
                   )
                 })}

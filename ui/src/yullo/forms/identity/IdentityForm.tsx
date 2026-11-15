@@ -129,6 +129,8 @@ interface IdentityFormProps {
   spaceId?: string;
   slug?: string;
   descriptionMaxLength?: number;
+  isSubspace?: boolean;
+  spaceType?: string;
   generationContext?: QuickSpaceContext | null;
   isLive?: boolean;
   onChangeHandle?: () => void;
@@ -147,12 +149,15 @@ export function IdentityForm({
   spaceId, 
   slug,
   descriptionMaxLength = 280,
+  isSubspace = false,
+  spaceType,
   generationContext,
   isLive = false,
   onChangeHandle, 
   onSubmit, 
 }: IdentityFormProps) {
   const hierarchy = useSpaceHierarchy();
+  const isEventSubspace = isSubspace && (spaceType === 'event' || (!spaceType && hierarchy.data?.find(node => node.id === spaceId)?.space_type === 'event'));
   const publicPath = spaceBranch(hierarchy.data ?? [], spaceId).map(node => node.slug).join('/') || slug;
   const [suggestion, setSuggestion] = useState<AboutSuggestionResponse | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -402,7 +407,7 @@ interface IdentityChatMessage {
           </section>
 
           {/* Section 2: Space Purpose */}
-          <section className="p-6 sm:p-7 space-y-4">
+          {!isSubspace && <section className="p-6 sm:p-7 space-y-4">
             <div>
               <h2 className="text-[16px] font-semibold text-[var(--text-primary)] font-[Satoshi] tracking-tight">
                 Space Purpose
@@ -453,20 +458,20 @@ interface IdentityChatMessage {
                 );
               })}
             </div>
-          </section>
+          </section>}
 
           {/* Section 3: Classification & Online Presence (with Coloured Icons) */}
           <section className="p-6 sm:p-7 space-y-5">
             <div>
               <h2 className="text-[16px] font-semibold text-[var(--text-primary)] font-[Satoshi] tracking-tight">
-                Online Presence & Classification
+                {isEventSubspace ? 'Classification & links' : 'Online Presence & Classification'}
               </h2>
               <p className="text-[13px] text-[var(--text-secondary)] mt-0.5">
-                Categorization, presence type, and official brand/channel links.
+                {isEventSubspace ? 'Category and official links for this event.' : 'Categorization, presence type, and official brand/channel links.'}
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className={`grid grid-cols-1 gap-4 ${isEventSubspace ? '' : 'sm:grid-cols-2'}`}>
               {/* Category */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
@@ -498,7 +503,7 @@ interface IdentityChatMessage {
               </div>
 
               {/* Presence */}
-              <div>
+              {!isEventSubspace && <div>
                 <label className="block text-[13px] font-semibold text-[var(--text-primary)] mb-1.5">
                   Presence Type
                 </label>
@@ -517,7 +522,7 @@ interface IdentityChatMessage {
                     <ArrowRight className="w-3.5 h-3.5 rotate-90" />
                   </div>
                 </div>
-              </div>
+              </div>}
             </div>
 
             {/* Official Website & Social Links (Coloured Icons Powered) */}

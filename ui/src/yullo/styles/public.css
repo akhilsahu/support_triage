@@ -1,0 +1,41 @@
+/* Public pages render without the private dashboard's theme provider. */
+.yullo-marketing {
+  --accent: #FFFC00;
+  --accent-solid: var(--accent);
+  --accent-on-solid: #101828;
+  --accent-ink: #101828;
+  --accent-soft: #FFFFCC;
+  /* The shared #root is a viewport-height flex column; keep this page at its content height. */
+  flex-shrink: 0;
+  isolation: isolate;
+  background-color: #F9FBFF;
+  color: #101828;
+  font-family: 'Instrument Sans', system-ui, sans-serif;
+}
+
+.yullo-marketing [id] { scroll-margin-top: 7rem; }
+.yullo-marketing :is(a, button, input):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+}
+.yullo-marketing input:focus-visible { outline-color: var(--accent-ink); }
+.yullo-marketing .yullo-cta {
+  --accent: #FFFC00;
+  --accent-on-solid: #000;
+  border: 1px solid #000;
+  background-color: var(--accent);
+  color: var(--accent-on-solid);
+}
+.yullo-marketing .hero-title {
+  font-size: clamp(2.25rem, 5.5vw, 4.75rem);
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yullo-marketing *, .yullo-marketing *::before, .yullo-marketing *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}

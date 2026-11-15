@@ -11,6 +11,7 @@ class YulloSpaceBeacon(Base):
     space_id = Column(UUID(as_uuid=True), ForeignKey("yullo_spaces.space_id", ondelete="CASCADE"), primary_key=True)
     state = Column(String(12), nullable=False, default="paused")
     reach = Column(String(16), nullable=False)
+    radius_km = Column(Integer, nullable=True)
     target_area = Column(JSONB, nullable=False, default=dict)
     origin_location_entity_id = Column(UUID(as_uuid=True), ForeignKey("yullo_space_entities.id", ondelete="SET NULL"), nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
@@ -20,6 +21,8 @@ class YulloSpaceBeacon(Base):
 
     __table_args__ = (
         CheckConstraint("state IN ('active', 'paused')", name="ck_yullo_beacon_state"),
-        CheckConstraint("reach IN ('nearby_5', 'nearby_10', 'city', 'country', 'worldwide')", name="ck_yullo_beacon_reach"),
+        CheckConstraint("reach IN ('nearby', 'nearby_5', 'nearby_10', 'city', 'country', 'worldwide')", name="ck_yullo_beacon_reach"),
+        CheckConstraint("radius_km IS NULL OR radius_km BETWEEN 10 AND 100", name="ck_yullo_beacon_radius"),
+        CheckConstraint("reach <> 'nearby' OR radius_km IS NOT NULL", name="ck_yullo_beacon_nearby_radius"),
         CheckConstraint("revision >= 1", name="ck_yullo_beacon_revision"),
     )

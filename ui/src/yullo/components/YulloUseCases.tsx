@@ -11,7 +11,7 @@ const SITUATIONS = [
     query: '“Can you help us launch our new brand?”',
     auraAction: 'Aura presents Northstar Studio’s Startup Brand Architecture package ($6,500, 3-week sprint) and displays 3 recent product identity case studies.',
     nextStep: 'Schedule 20-min strategy alignment session',
-    color: '#FFDA2D',
+    color: '#FFFC00',
   },
   {
     id: 'work',
@@ -57,18 +57,19 @@ export function YulloUseCases() {
                 <button
                   key={s.id}
                   type="button"
+                  aria-pressed={isActive}
                   onClick={() => setActiveTab(s.id)}
                   className={`p-4 rounded-2xl border text-left transition-all duration-200 ${
                     isActive
-                      ? 'bg-[var(--accent-solid)] text-[var(--accent-on-solid)] border-slate-900 shadow-md scale-[1.01]'
+                      ? 'bg-[var(--accent-solid)] text-[var(--accent-on-solid)] border-black shadow-md scale-[1.01]'
                       : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-200'
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-bold">{s.title}</span>
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} />
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: isActive ? 'var(--accent-on-solid)' : s.color }} />
                   </div>
-                  <div className={`text-xs mt-1 ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>
+                  <div className={`text-xs mt-1 ${isActive ? 'text-[var(--accent-on-solid)]' : 'text-slate-600'}`}>
                     {s.subtitle}
                   </div>
                 </button>
@@ -90,7 +91,7 @@ export function YulloUseCases() {
             >
               <div>
                 <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-600">
                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                     <span>Situation: {current.title}</span>
                   </div>
@@ -99,7 +100,7 @@ export function YulloUseCases() {
 
                 {/* Visitor Question */}
                 <div className="mt-6">
-                  <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                  <div className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider mb-2">
                     Visitor Prompt
                   </div>
                   <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4 border border-slate-200/80 text-sm font-semibold text-[#101828]">

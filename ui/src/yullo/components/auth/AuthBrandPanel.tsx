@@ -4,7 +4,7 @@ import { AuthBrandNetwork } from './AuthBrandNetwork'
 
 export function AuthBrandPanel() {
   return (
-    <div className="relative w-full min-h-[100dvh] bg-[#F8FAFD] border-r border-slate-200/60 flex flex-col justify-between items-center overflow-hidden">
+    <div className="relative w-full min-h-[100dvh] bg-[#FDFEFF] border-r border-slate-200/60 flex flex-col justify-between items-center overflow-hidden">
       {/* Network background layer */}
       <AuthBrandNetwork />
 

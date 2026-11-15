@@ -129,3 +129,45 @@ async def read_saved_event_context(db, space_id):
         return QuickSpaceContext.model_validate(fields)
     except ValidationError:
         return None
+
+
+async def read_event_presence(db, space_id, saved_context=None, *, space_name=""):
+    """Owner-only identity projection from this event's canonical location, not company data."""
+    from sqlalchemy import select
+    from app.models.yullo_space_entity import YulloSpaceEntity
+
+    records = list((await db.scalars(select(YulloSpaceEntity).where(
+        YulloSpaceEntity.space_id == space_id,
+        YulloSpaceEntity.entity_type.in_(("event", "location")),
+    ))).all())
+    event = next((record for record in records if record.entity_type == "event" and record.identity_key == "space-event"), None)
+    if event is None and space_name:
+        matches = [record for record in records if record.entity_type == "event"
+                   and str((record.payload_json or {}).get("title") or "").strip().casefold() == space_name.strip().casefold()
+                   and record.is_active and record.review_status in ("owner_confirmed", "source_authoritative")]
+        event = matches[0] if len(matches) == 1 else None
+    venue = next((record for record in records if record.entity_type == "location" and record.identity_key == "event-venue"), None)
+
+    def eligible(record):
+        return record.is_active and record.review_status in ("owner_confirmed", "source_authoritative")
+
+    if event:
+        if not eligible(event):
+            return None
+        location_id = (event.payload_json or {}).get("location_entity_id")
+        if location_id:
+            venue = next((record for record in records if record.entity_type == "location" and str(record.id) == str(location_id)), None)
+            if venue is None:
+                return None
+        elif venue:
+            # A removed link is authoritative; never restore an old venue from the form source.
+            return "online" if (event.payload_json or {}).get("is_remote") is True else None
+        elif (event.payload_json or {}).get("is_remote") is True:
+            return "online"
+    if venue:
+        if not eligible(venue):
+            return None
+        payload = venue.payload_json or {}
+        return "online" if payload.get("is_remote") is True else "physical" if payload.get("address") else None
+    # Legacy/unspecified-address events may have only the deterministic saved form source.
+    return saved_context.location_mode if saved_context else None

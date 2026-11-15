@@ -4,7 +4,7 @@ import uuid
 import functools
 
 import anyio
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Response, Depends, HTTPException
 from pydantic import BaseModel, Field
 from fastapi import Query
 from app.core.auth import current_user, optional_current_user
@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.yullo.services.spaces.hierarchy import upcoming_public_child_events
 from app.yullo.schemas.spaces import saved_type_label
+from app.yullo.schemas.directory import PublicSpaceDirectory
 from app.models.space import Space
 from app.models.yullo_config import YulloConfig
 from app.models.yullo_space import YulloSpace
@@ -41,6 +42,20 @@ from app.orchestra.ai.inference.streaming import generate_response, prepare_resp
 from app.yullo.services.entities.presentation import public_booking_links as _public_booking_links, public_page_details
 
 router = APIRouter(tags=["Aura"])
+
+
+@router.get("/directory", response_model=PublicSpaceDirectory)
+async def public_space_directory(
+    response: Response,
+    q: str = Query("", max_length=100),
+    cursor: uuid.UUID | None = None,
+    limit: int = Query(48, ge=1, le=96),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.yullo.services.spaces.directory import browse_public_spaces
+
+    response.headers["Cache-Control"] = "no-store"
+    return await browse_public_spaces(db, query=q.strip().lstrip("@"), cursor=cursor, limit=limit)
 
 
 

@@ -2,9 +2,11 @@
 export type Point = { lat: number; lng: number };
 export type LatLng = { lat(): number; lng(): number };
 type Listener = { remove(): void };
-export type MapInstance = { panTo(point: Point): void; setZoom(zoom: number): void; addListener(event: string, callback: (event: { latLng?: LatLng }) => void): Listener };
+export type CircleInstance = { setOptions(options: Record<string, unknown>): void; setMap(map: MapInstance | null): void; getBounds(): unknown };
+export type BoundaryLayer = { isAvailable: boolean; style: ((options: { feature: { placeId?: string } }) => Record<string, unknown> | undefined) | null };
+export type MapInstance = { getFeatureLayer?(type: string): BoundaryLayer; fitBounds?(bounds: unknown, padding?: number): void; panTo(point: Point): void; setZoom(zoom: number): void; addListener(event: string, callback: (event: { latLng?: LatLng }) => void): Listener };
 export type MarkerInstance = { position?: Point | LatLng; map: MapInstance | null; addListener(event: string, callback: () => void): Listener };
-export type GeocodeResult = { formatted_address: string; geometry: { location: LatLng }; address_components?: { long_name: string; short_name: string; types: string[] }[] };
+export type GeocodeResult = { formatted_address: string; place_id?: string; types?: string[]; geometry: { location: LatLng; viewport?: unknown }; address_components?: { long_name: string; short_name: string; types: string[] }[] };
 export function geocodeArea(result?: GeocodeResult): { city?: string; region?: string; countryCode?: string; postalCode?: string } {
   const parts = result?.address_components ?? [];
   const city = parts.find(part => part.types.includes('locality')) ?? parts.find(part => part.types.includes('postal_town'));
@@ -18,8 +20,9 @@ export type LocationSelection = Point & ReturnType<typeof geocodeArea> & { addre
 export type GoogleMaps = {
   importLibrary?: (name: string) => Promise<unknown>;
   Map: new (node: HTMLElement, options: Record<string, unknown>) => MapInstance;
+  Circle?: new (options: Record<string, unknown>) => CircleInstance;
   marker: { AdvancedMarkerElement: new (options: Record<string, unknown>) => MarkerInstance };
-  Geocoder: new () => { geocode(request: { address?: string; location?: Point }): Promise<{ results: GeocodeResult[] }> };
+  Geocoder: new () => { geocode(request: { address?: string; location?: Point; componentRestrictions?: { country: string } }): Promise<{ results: GeocodeResult[] }> };
 };
 type MapsWindow = Window & { google?: { maps: GoogleMaps }; __yulloMapsReady?: () => void; gm_authFailure?: () => void };
 let loading: Promise<GoogleMaps> | undefined;

@@ -1,3 +1,5 @@
+import { format } from 'date-fns';
+import { YulloButton } from '../../components/core/YulloButton';
 import { CategoryCombobox } from '../core/CategoryCombobox';
 import { subspaceTypeSuggestions, spaceTypeFromLabel } from '../../api/spaces';
 import { IconTooltip } from '../core/IconTooltip';
@@ -54,9 +56,16 @@ export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { s
   const [place, setPlace] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
+  const scheduleTouched = useRef(false);
+  const defaultSchedule = () => {
+    const start = new Date(Math.ceil(Date.now() / 60000) * 60000 + 10 * 60000);
+    setDate(format(start, 'yyyy-MM-dd'));
+    setTime(format(start, 'HH:mm'));
+  };
   const [locationMode, setLocationMode] = useState<'online' | 'physical' | null>(null);
   const [meetingLink, setMeetingLink] = useState('');
   const [pin, setPin] = useState<Point>();
+  const [locationCountry, setLocationCountry] = useState<string>();
   const [resolvingPlace, setResolvingPlace] = useState(false);
   const [url, setUrl] = useState('');
   const [copiedRevision, setCopiedRevision] = useState<number>();
@@ -99,9 +108,11 @@ export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { s
   }, onError: error => { if (sameAccount()) { setFailure(errorMessage(error)); if (isAxiosError(error) && error.response?.status === 409) void parent.refetch(); } } });
   const open = (value: SpaceType) => {
     setDetailFields(emptySubspaceFields());
+    scheduleTouched.current = false;
     setMenuOpen(false);
     setType(value); setTypeLabel(value === 'other' ? '' : spaceTypeLabel(value)); setAiHintOpen(false); aiHintShown.current = false; setCover(''); setName(''); setDescription(''); setPlace(''); setDate(''); setTime(''); setUrl('');
-    setLocationMode(null); setMeetingLink(''); setPin(undefined); setResolvingPlace(false);
+    if (value === 'event') defaultSchedule();
+    setLocationMode(null); setMeetingLink(''); setPin(undefined); setLocationCountry(undefined); setResolvingPlace(false);
     setCopiedRevision(undefined); setSuggestion(null); setPrevious(null); setFailure(''); setCreationId(crypto.randomUUID());
   };
   const busy = save.isPending || generate.isPending || resolvingPlace;
@@ -118,6 +129,7 @@ export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { s
     setSuggestion(current => current ? { ...current, text: fill(current.text) } : null);
   };
   const updateSchedule = (nextDate: string, nextTime: string) => {
+    scheduleTouched.current = true;
     setDate(nextDate); setTime(nextTime);
     if (nextDate && nextTime) {
       const value = new Date(`${nextDate}T${nextTime}`);
@@ -127,6 +139,7 @@ export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { s
     }
   };
   const selectVenue = (selection: LocationSelection) => {
+    setLocationCountry(selection.countryCode);
     setPlace((selection.address || selection.name || '').slice(0, 300));
     setPin({ lat: selection.lat, lng: selection.lng });
     fillOverview(selection.address || selection.name);
@@ -154,7 +167,7 @@ export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { s
       <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-[100] bg-black/40" />
         <Dialog.Content asChild>
         <motion.section initial={!reducedMotion ? { x: 16, opacity: 0 } : false} animate={{ x: 0, opacity: 1 }} transition={{ duration: reducedMotion ? 0 : 0.2, ease: 'easeOut' }} className="yullo-app fixed inset-y-0 right-0 z-[101] flex h-[100dvh] w-full max-w-[min(640px,100vw)] flex-col border-l border-[var(--border)] bg-[var(--canvas)] text-[var(--text-primary)] shadow-2xl outline-none min-[720px]:rounded-l-2xl">
-          <div className="mx-auto flex w-full max-w-[680px] shrink-0 items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
+          <div className="mx-auto flex w-full max-w-[680px] shrink-0 items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4 sm:px-6">
             <div className="min-w-0">
               <Dialog.Title className="text-[18px] font-semibold leading-6 tracking-tight">Create {itemLabel}</Dialog.Title>
               <Dialog.Description className="mt-1 truncate text-[13px] leading-5 text-[var(--text-secondary)]" title={parent.data?.display_name}>In {parent.data?.display_name || 'this Space'}</Dialog.Description>
@@ -162,11 +175,13 @@ export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { s
             <IconTooltip label="Close creation form" disabledReason={busy ? 'Wait for the current action to finish.' : undefined}><Dialog.Close disabled={busy} className={toolStyle} aria-label="Close"><X size={16} aria-hidden="true" /></Dialog.Close></IconTooltip>
           </div>
           <form className="flex min-h-0 flex-1 flex-col" onSubmit={event => { event.preventDefault(); if (!busy && !scheduleIncomplete && typeLabel.trim() && name.trim() && parent.data) save.mutate(); }}>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-            <fieldset disabled={save.isPending || generate.isPending} className="mx-auto w-full max-w-[680px] space-y-6 px-6 py-5 sm:py-6">
-              <div><label htmlFor={`subspace-type-${spaceId}`} className={`${labelStyle} mb-2`}>Type</label><CategoryCombobox id={`subspace-type-${spaceId}`} value={typeLabel} onChange={value => { const label = value === 'Other' ? '' : value; setTypeLabel(label); setType(spaceTypeFromLabel(label)); }} suggestions={typeSuggestions} autoFocus={type === 'other' && !typeLabel} itemLabel="type" placeholder="Event, Post, Announcement—or your own type" maxLength={60} disabled={busy} /><p className="mt-2 text-xs text-[var(--text-secondary)]">Choose a suggestion or enter a custom type.</p></div>
-              <label className={labelStyle}>{titleLabel}<input required autoFocus={type !== 'other'} maxLength={200} className={`${dialogField} mt-2`} placeholder={type === 'event' ? 'e.g. Annual partner summit' : undefined} value={name} onChange={event => setName(event.target.value)} /></label>
-              <ImageField value={cover} onChange={setCover} label="Cover image" disabled={busy} />
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <fieldset disabled={save.isPending || generate.isPending} className="mx-auto w-full max-w-[680px] space-y-4 px-5 py-4 sm:px-6 sm:py-5">
+              <div className="grid gap-4 min-[480px]:grid-cols-[minmax(0,0.8fr)_minmax(0,1.4fr)]">
+              <div className="min-w-0"><label htmlFor={`subspace-type-${spaceId}`} className={`${labelStyle} mb-2`}>Type</label><CategoryCombobox id={`subspace-type-${spaceId}`} value={typeLabel} onChange={value => { const label = value === 'Other' ? '' : value; const nextType = spaceTypeFromLabel(label); setTypeLabel(label); setType(nextType); if (nextType === 'event' && !date && !time && !scheduleTouched.current) defaultSchedule(); }} suggestions={typeSuggestions} autoFocus={type === 'other' && !typeLabel} itemLabel="type" placeholder="Event, Post, Announcement—or your own type" maxLength={60} disabled={busy} /></div>
+              <label className={`${labelStyle} min-w-0`}>{titleLabel}<input required autoFocus={type !== 'other'} maxLength={200} className={`${dialogField} mt-2`} placeholder={type === 'event' ? 'e.g. Annual partner summit' : undefined} value={name} onChange={event => setName(event.target.value)} /></label>
+              </div>
+              <ImageField value={cover} onChange={setCover} label="Cover image" disabled={busy} compact />
               <div>
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
                   <label htmlFor={`overview-${spaceId}`} className={labelStyle}>{overviewLabel}</label>
@@ -176,48 +191,50 @@ export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { s
                     <IconTooltip label="Undo the last description fill" disabledReason={!previous ? 'Apply a suggested description first.' : undefined}><button type="button" disabled={!previous} aria-label="Undo fill" className={toolStyle} onClick={() => { if (previous) { setDescription(previous.text); setCopiedRevision(previous.revision); setPrevious(null); } }}><RotateCcw size={16} aria-hidden="true" /></button></IconTooltip>
                   </div>
                 </div>
-                <textarea id={`overview-${spaceId}`} maxLength={SUBSPACE_DESCRIPTION_LIMIT} rows={6} className={`${dialogField} block min-h-[144px] resize-y`} placeholder={type === 'event' ? 'Purpose, audience and key information.' : 'A brief summary of what this Space covers.'} value={description} onChange={event => {
+                <textarea id={`overview-${spaceId}`} maxLength={SUBSPACE_DESCRIPTION_LIMIT} rows={3} className={`${dialogField} block min-h-[88px] resize-y`} placeholder={type === 'event' ? 'Purpose, audience and key information.' : 'A brief summary of what this Space covers.'} value={description} onChange={event => {
                   const value = event.target.value;
                   setDescription(value);
                   if (!value.trim()) setAiHintOpen(false);
                   else if (!aiHintShown.current) { aiHintShown.current = true; setAiHintOpen(true); }
                 }} />
-                <p className="mt-1.5 text-xs leading-5 text-[var(--text-secondary)]">Optional · Up to 4,000 characters · AI drafts around 200–300 words</p>
+                <p className="mt-1.5 text-xs leading-5 text-[var(--text-secondary)]">Optional · Up to 4,000 characters</p>
               </div>
               {suggestion && <div className="rounded-md border border-[var(--border)] bg-[var(--surface-soft)] p-3 text-sm"><p className="mb-2 text-xs font-medium text-[var(--text-secondary)]">Suggested overview</p><p className="mb-2 text-xs text-[var(--text-secondary)]">Review the draft and replace any [placeholders] before publishing.</p><p className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words leading-6">{suggestion.text}</p><div className="mt-2 flex gap-2"><button type="button" className={quiet} onClick={() => { setPrevious({ text: description, revision: copiedRevision }); setDescription(suggestion.text); setCopiedRevision(suggestion.revision); setSuggestion(null); }}>Use description</button><button type="button" className={quiet} onClick={() => setSuggestion(null)}>Dismiss</button></div></div>}
-              {type === 'event' && <div className="space-y-7">
+              {type === 'event' && <div className="space-y-5">
                 <div><h3 className="mb-3 text-[15px] font-medium">Schedule</h3><DateTimeField date={date} time={time} onDateChange={value => updateSchedule(value, time)} onTimeChange={value => updateSchedule(date, value)} disabled={save.isPending || generate.isPending} /></div>
-                <div className="min-w-0 space-y-4">
+                <div className="min-w-0 space-y-3">
                   <div className="flex items-center justify-between gap-3"><h3 className="text-[15px] font-medium">Location <span className="text-xs font-normal text-[var(--text-secondary)]">Optional</span></h3>{locationMode && <button type="button" className={`${quiet} text-xs`} onClick={() => setLocationMode(null)}>Clear</button>}</div>
                   <div role="group" aria-label="Event location format" className="flex gap-2">
                     {(['online', 'physical'] as const).map(mode => <button key={mode} type="button" aria-pressed={locationMode === mode} onClick={() => setLocationMode(mode)} className={`min-h-10 flex-1 rounded-lg border px-4 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${locationMode === mode ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-ink)]' : 'border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-soft)]'}`}>{mode === 'online' ? 'Online' : 'Physical'}</button>)}
                   </div>
-                  {!locationMode && <p className="text-sm leading-6 text-[var(--text-secondary)]">Choose online or a physical venue. You can leave this blank.</p>}
+                  {!locationMode && <p className="text-sm leading-6 text-[var(--text-secondary)]">Online, physical, or leave unspecified.</p>}
                   {locationMode === 'online' && <label className={labelStyle}>Meeting link<input type="url" placeholder="https://" className={`${dialogField} mt-2`} value={meetingLink} onChange={event => setMeetingLink(event.target.value)} onBlur={() => { if (meetingLink.trim()) fillOverview(meetingLink.trim()); }} /><span className="mt-2 block text-xs font-normal leading-5 text-[var(--text-muted)]">Optional. You can add the link later.</span></label>}
                   {locationMode === 'physical' && <div className="space-y-3">
-                    <LocationSearchField label="Venue or address" value={place} disabled={save.isPending || generate.isPending} onChange={value => { setPlace(value.slice(0, 300)); setPin(undefined); }} onSelect={selectVenue} onResolvingChange={setResolvingPlace} />
-                    <GoogleLocationPicker initialPoint={pin} disabled={save.isPending || generate.isPending} onSelect={selectVenue} />
+                    <LocationSearchField label="Venue or address" value={place} disabled={save.isPending || generate.isPending} onChange={value => { setPlace(value.slice(0, 300)); setPin(undefined); setLocationCountry(undefined); }} onSelect={selectVenue} onResolvingChange={setResolvingPlace} />
+                    <GoogleLocationPicker compact initialPoint={pin} disabled={save.isPending || generate.isPending} onSelect={selectVenue} />
                     {pin && <a className={`${quiet} text-sm`} href={googleMapLink(pin)} target="_blank" rel="noopener noreferrer">View selected venue in Google Maps</a>}
                   </div>}
                 </div>
               </div>}
               {type === 'job' && <label className={labelStyle}>Work location<input maxLength={300} placeholder="City, hybrid or remote" className={`${dialogField} mt-2`} value={place} onChange={event => setPlace(event.target.value)} /></label>}
               {(type === 'event' || type === 'service' || type === 'job') && <label className={labelStyle}>{type === 'job' ? 'Application URL' : type === 'event' ? 'Booking or registration link' : 'Booking URL'}<input type="url" placeholder="https://" pattern={type === 'event' ? 'https://.*' : undefined} className={`${dialogField} mt-2`} value={url} onChange={event => setUrl(event.target.value)} /><span className="mt-1 block text-xs font-normal leading-5 text-[var(--text-muted)]">Optional</span></label>}
-              <DetailFields value={detailFields} onChange={setDetailFields} disabled={busy} />
+              <DetailFields countryCode={locationMode === 'physical' ? locationCountry : undefined} value={detailFields} onChange={setDetailFields} disabled={busy} />
             </fieldset>
             <div className="mx-auto w-full max-w-[680px] px-1">
             {parent.isError && <p role="alert" className="px-5 pb-3 text-sm">Could not load company details. <button className={quiet} type="button" onClick={() => void parent.refetch()}>Retry</button></p>}
             {generate.isPending && <p role="status" className="px-5 pb-3 text-sm">Writing your overview…</p>}
             {failure && <p role="alert" className="px-5 pb-3 text-sm text-[var(--attention)]">{failure}</p>}
             </div>
-            <div className="mx-auto flex w-full max-w-[680px] flex-wrap items-center justify-between gap-3 px-6 pb-10 pt-1">
-              <p className="text-xs text-[var(--text-secondary)]">Private until published</p>
-              <div className="flex items-center gap-2">
-                <Dialog.Close disabled={busy} className="min-h-10 rounded-lg px-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">Cancel</Dialog.Close>
-                <button className={`${action} text-sm font-medium`} type="submit" disabled={busy || scheduleIncomplete || !typeLabel.trim() || !name.trim() || !parent.data}>{save.isPending ? 'Saving…' : `Create ${itemLabel}`}</button>
+            </div>
+            <footer className="shrink-0 border-t border-[var(--border)] bg-[var(--surface)] px-5 py-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:px-6">
+              <div className="mx-auto flex w-full max-w-[680px] flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-[var(--text-secondary)]">Private<span className="hidden sm:inline"> until published</span></p>
+                <div className="flex min-w-0 items-center gap-2">
+                  <YulloButton variant="ghost" disabled={busy} onClick={() => setType(null)}>Cancel</YulloButton>
+                  <YulloButton type="submit" isLoading={save.isPending} disabled={busy || scheduleIncomplete || !typeLabel.trim() || !name.trim() || !parent.data} className="min-w-0 !whitespace-normal"><span className="min-w-0 break-words">{save.isPending ? 'Saving…' : `Create ${itemLabel}`}</span></YulloButton>
+                </div>
               </div>
-            </div>
-            </div>
+            </footer>
           </form>
         </motion.section>
         </Dialog.Content>

@@ -57,7 +57,7 @@ class NearbyItem(BaseModel):
     starts_at: datetime | None = None
 
 
-BeaconReach = Literal["nearby_5", "nearby_10", "city", "country", "worldwide"]
+BeaconReach = Literal["nearby", "nearby_5", "nearby_10", "city", "country", "worldwide"]
 
 
 class BeaconCard(BaseModel):

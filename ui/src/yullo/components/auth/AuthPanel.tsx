@@ -234,11 +234,11 @@ export function AuthPanel({ onAuthSuccess, returningToChat = false, isMobile }: 
         <div className="w-full text-center pt-6 pb-2 border-t border-slate-100 mt-auto">
           <p className="text-xs text-slate-500 font-normal leading-relaxed">
             By continuing, you agree to Yullo’s{' '}
-            <a href="/terms" className="text-slate-700 underline underline-offset-2 hover:text-[#0B1220]">
+            <a href="/yullo/terms" className="text-slate-700 underline underline-offset-2 hover:text-[#0B1220]">
               Terms
             </a>{' '}
             and{' '}
-            <a href="/privacy" className="text-slate-700 underline underline-offset-2 hover:text-[#0B1220]">
+            <a href="/yullo/privacy" className="text-slate-700 underline underline-offset-2 hover:text-[#0B1220]">
               Privacy Policy
             </a>
             .
@@ -376,11 +376,11 @@ export function AuthPanel({ onAuthSuccess, returningToChat = false, isMobile }: 
       <div className="w-full text-center pt-6 pb-4 shrink-0 border-t border-slate-100">
         <p className="text-xs text-slate-500 font-normal leading-relaxed">
           By continuing, you agree to Yullo’s{' '}
-          <a href="/terms" className="text-slate-700 underline underline-offset-2 hover:text-[#0B1220]">
+          <a href="/yullo/terms" className="text-slate-700 underline underline-offset-2 hover:text-[#0B1220]">
             Terms
           </a>{' '}
           and{' '}
-          <a href="/privacy" className="text-slate-700 underline underline-offset-2 hover:text-[#0B1220]">
+          <a href="/yullo/privacy" className="text-slate-700 underline underline-offset-2 hover:text-[#0B1220]">
             Privacy Policy
           </a>
           .
