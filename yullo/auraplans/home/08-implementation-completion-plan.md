@@ -1005,3 +1005,10 @@ Deployment outcome — 2026-11-15:
 
 - Pushed Beacon rainbow button changes as 94044e1a. Found prior main deployment a42655d8 blocked by test_get_identity_success: its unpersisted YulloSpace fixture omitted space_type, so SQLAlchemy's insert/server default had not run and the new IdentityFormResponse enum rejected None. Updated that existing fixture to explicit space_type="space" matching the database contract. No production behavior or test coverage removed; no new tests.
 - Frontend production build and diff whitespace passed locally. Existing GitHub CI runs unit suites in its isolated CI database; no local test/database writes. Deployment workflow/commit statuses monitored after push.
+
+### Production deployment verified — 2026-11-16 IST
+
+- Application commits 94044e1a (rainbow Beacon button) and ed63e815 (existing identity fixture correction) pushed to main. GitHub workflow 43747072066 succeeded: backend tests/print hygiene, frontend checks/tests, VPS build/restart. Superseded run 43746981794 cancelled. Run: https://github.com/akhilsahu/support_triage/actions/runs/43747072066 .
+- Vercel status succeeded for ed63e815; the public Yullo auth page returned 200 and its loaded CSS was verified to include the rainbow Beacon rules. Cloudflare Workers check also succeeded.
+- VPS logs confirm migration f4b5c6d7e8f9 -> f5c6d7e8f9a0 applied and API/database/Redis healthy after restart. Both https://api.support247.chat/api/v1/health and https://yullo.co/api/v1/health returned 200/healthy afterward. No manual production data edits.
+- Earlier pending Beacon/form/currency changes in a42655d8 are now included in this successful VPS deployment. Google Cloud boundary-layer enablement and interactive visual/map checks remain unverified; no browser used. This follow-up documentation records the verified application deployment and does not require another API restart.
