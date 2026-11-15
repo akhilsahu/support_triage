@@ -14,6 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.yullo.services.spaces.hierarchy import upcoming_public_child_events
+from app.yullo.schemas.spaces import saved_type_label
 from app.models.space import Space
 from app.models.yullo_config import YulloConfig
 from app.models.yullo_space import YulloSpace
@@ -245,9 +247,14 @@ async def get_public_space(
         if section_type in section_types
     ]
 
+    page = public_page_details(public_entities, space_type=yullo_space.space_type, space_name=space.display_name, is_subspace=yullo_space.parent_space_id is not None)
+    page["pageDetails"]["typeLabel"] = saved_type_label(yullo_space.space_type, yullo_config.settings if yullo_config else None)
     return {
         "id": str(space.id),
         "handle": space.slug,
+        "upcomingEvents": [event.model_dump(mode="json") for event in await upcoming_public_child_events(
+            db, space.id, parent_slug=space.slug, is_subspace=yullo_space.parent_space_id is not None,
+        )],
         "displayName": space.display_name,
         "isSubspace": yullo_space.parent_space_id is not None,
         "subspaceFields": identity.get("subspace_fields") if yullo_space.parent_space_id else None,
@@ -258,7 +265,7 @@ async def get_public_space(
         "presentationConfig": presentation.model_dump(mode="json", by_alias=True),
         "landingContent": landing_content.model_dump(mode="json", by_alias=True),
         "heroAsset": hero_asset,
-        **public_page_details(public_entities, space_type=yullo_space.space_type, space_name=space.display_name, is_subspace=yullo_space.parent_space_id is not None),
+        **page,
         "auraEnabled": True
     }
 
@@ -477,3 +484,51 @@ async def get_public_chat_image(space_id: uuid.UUID, image_id: str, db: AsyncSes
                 ))
                 return JSONResponse(resolved, headers={"Cache-Control": "no-store"})
     raise HTTPException(status_code=404, detail="Image unavailable")
+
+
+@router.get("/spaces/{space_id}/resources")
+async def get_public_resources(space_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    from fastapi.responses import JSONResponse
+    from app.yullo.services.sources.resources import list_public_resources
+    return JSONResponse(await list_public_resources(db, space_id), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/spaces/{space_id}/resources/{source_id}")
+async def open_public_resource(space_id: uuid.UUID, source_id: uuid.UUID, version: int = Query(ge=1), db: AsyncSession = Depends(get_db)):
+    from urllib.parse import quote
+    from fastapi.responses import RedirectResponse, Response
+    from app.yullo.services.sources.resources import get_public_resource, original_blob_key, original_url, resource_kind
+
+    source = await get_public_resource(db, space_id, source_id, version)
+    headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"}
+    if resource_kind(source) == "link":
+        return RedirectResponse(original_url(source), status_code=307, headers=headers)
+    if source.item_type in ("text", "qna") and not source.source_locator:
+        text = f"{source.question}\n\n{source.content or ''}" if source.item_type == "qna" else source.content or ""
+        return Response(text, media_type="text/plain", headers=headers)
+    key = original_blob_key(source)
+    try:
+        async with materialize_blob(key) as path:
+            async with await anyio.open_file(path, "rb") as file:
+                signature = await file.read(16)
+    except FileNotFoundError:
+        raise HTTPException(404, "Resource not available") from None
+    media = "text/plain" if source.item_type == "text" else (
+        "application/pdf" if signature.startswith(b"%PDF-") else
+        "image/png" if signature.startswith(b"\x89PNG\r\n\x1a\n") else
+        "image/jpeg" if signature.startswith(b"\xff\xd8\xff") else
+        "image/gif" if signature.startswith((b"GIF87a", b"GIF89a")) else
+        "image/webp" if signature.startswith(b"RIFF") and signature[8:12] == b"WEBP" else
+        "image/avif" if signature[4:8] == b"ftyp" and signature[8:12] in (b"avif", b"avis") else
+        "application/octet-stream")
+    disposition = "attachment" if media == "application/octet-stream" else "inline"
+    headers["Content-Disposition"] = f"{disposition}; filename*=UTF-8''{quote(source.title or 'resource', safe='')}"
+    headers["Content-Security-Policy"] = "sandbox; default-src 'none'"
+
+    async def body():
+        # Keep the storage context alive for the whole response, including remote stores.
+        async with materialize_blob(key) as path:
+            async with await anyio.open_file(path, "rb") as file:
+                while chunk := await file.read(65536):
+                    yield chunk
+    return StreamingResponse(body(), media_type=media, headers=headers)

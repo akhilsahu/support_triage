@@ -10,6 +10,11 @@ export function resolvePresentationConfig(
   }
   const config = parsed.success ? parsed.data : defaultPresentationConfig(purpose)
 
+  if (!config.sections.some(section => section.type === 'upcoming_events')) {
+    const index = config.sections.findIndex(section => section.type === 'identity') + 1
+    config.sections.splice(index, 0, { type: 'upcoming_events', visible: true })
+  }
+
   // Ensure all section types are present so they can be toggled and rendered
   const allTypes: Array<SpacePresentationConfig['sections'][number]['type']> = [
     'identity', 'services', 'portfolio', 'products', 'location', 'featured', 'prompt_starters'

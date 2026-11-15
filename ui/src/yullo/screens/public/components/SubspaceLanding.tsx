@@ -26,7 +26,7 @@ export function SubspaceLanding({ space, presentation, artworkUrl, artworkAlt = 
   const [expanded, setExpanded] = useState(false)
   const [failedImage, setFailedImage] = useState<string>()
   const type = space.pageDetails?.spaceType || 'other'
-  const label = type === 'posting' ? 'Post' : type === 'other' ? 'Details' : type.charAt(0).toUpperCase() + type.slice(1)
+  const label = space.pageDetails?.typeLabel || (type === 'posting' ? 'Post' : type === 'other' ? 'Details' : type.charAt(0).toUpperCase() + type.slice(1))
   const description = space.description.trim()
   const summary = description.length > 220 ? `${description.slice(0, 200).trimEnd()}…` : description
   const longDescription = description.length > 1200

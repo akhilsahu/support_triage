@@ -117,6 +117,7 @@ export function PublicSpaceExperience({ space, presentationOverride, preview = f
       </div>
       {!preview && <ConversationSidebar
         id={historyId}
+        spaceId={space.id}
         open={historyOpen}
         onOpenChange={setHistoryOpen}
         history={chat.history}

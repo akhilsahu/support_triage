@@ -1,5 +1,6 @@
 import { useInView } from 'react-intersection-observer'
 import { PublicSpace } from '../../../services/aura/types'
+import { UpcomingEvents } from './UpcomingEvents'
 import { IdentityBlock } from './IdentityBlock'
 import { SubspaceLanding, subspacePrompts } from './SubspaceLanding'
 import { PromptStarters } from './PromptStarters'
@@ -687,7 +688,10 @@ export function AuraIntro({ space, presentation, heroAssetUrl, heroAssetAltText 
     local: ['identity', 'location', 'featured'],
   }
   const priority = priorityByEmphasis[presentation.landingEmphasis] || []
+  const upcomingIndex = presentation.sections.filter(section => section.visible).findIndex(section => section.type === 'upcoming_events')
+  const upcomingSection = presentation.sections.find(section => section.type === 'upcoming_events' && section.visible)
   const visibleSections = presentation.sections
+    .filter(section => section.type !== 'upcoming_events')
     .filter((section) => section.visible || (sectionEditor && editableTypes.includes(section.type)))
     .map((section, originalIndex) => ({ section, originalIndex }))
     .sort((a, b) => {
@@ -697,6 +701,9 @@ export function AuraIntro({ space, presentation, heroAssetUrl, heroAssetAltText 
       return a.originalIndex - b.originalIndex
     })
     .map(({ section }) => section)
+
+  // Preserve emphasis ordering for existing sections while honoring the event position.
+  if (upcomingSection) visibleSections.splice(Math.max(0, upcomingIndex), 0, upcomingSection)
 
   const sectionSource = (items?: AppearancePreviewItem[]) => items?.some((item) => item.source === 'grounded') ? 'grounded' as const : 'example' as const
 
@@ -760,6 +767,7 @@ export function AuraIntro({ space, presentation, heroAssetUrl, heroAssetAltText 
             </div>
           )
         }
+        if (section.type === 'upcoming_events') return !space.isSubspace ? <UpcomingEvents key={section.type} events={space.upcomingEvents || []} /> : null
         if (section.type === 'services') return previewSection ? <PreviewSection key={section.type} type={section.type} source={sectionSource(items)} index={index}><MockServices title={title} items={items} sectionType="services" align={contentLayout} variant={section.variant} /></PreviewSection> : null
         if (section.type === 'portfolio') return previewSection ? <PreviewSection key={section.type} type={section.type} source={sectionSource(items)} index={index}><MockPortfolio title={title} items={items} align={contentLayout} /></PreviewSection> : null
         if (section.type === 'products') return previewSection ? <PreviewSection key={section.type} type={section.type} source={sectionSource(items)} index={index}><MockProducts title={title} items={items} sectionType="products" align={contentLayout} variant={section.variant} /></PreviewSection> : null

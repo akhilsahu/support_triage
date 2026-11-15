@@ -25,6 +25,7 @@ from app.yullo.services.spaces.hierarchy import lock_hierarchy, require_no_child
 from app.yullo.services.entities.service import create_owner_entity, update_entity
 from app.yullo.services.entities.contracts import EntityCommand, EntityPatch
 from app.yullo.services.persistence.common import finalize_space_mutation
+from app.yullo.schemas.spaces import resolve_space_type, saved_type_label
 from app.yullo.services.persistence.appearance import _parse_config
 
 WEBSITE_IDENTITY_KEY = "space-website"
@@ -126,6 +127,7 @@ async def get_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.UUID
         description_prompt_version=identity_settings.get("description_prompt_version"),
         description_input_fingerprint=identity_settings.get("description_input_fingerprint"),
         category=category_val,
+        type_label=saved_type_label(yullo_space.space_type, yullo_config.settings if yullo_config else None) if yullo_space.parent_space_id else None,
         category_source=identity_settings.get("category_source"),
         presence=identity_settings.get("presence"),
         website=website,
@@ -309,8 +311,15 @@ async def create_space(
     website: Optional[str] = None,
     parent_space_id: Optional[uuid.UUID] = None,
     space_type: SpaceType = SpaceType.space,
+    type_label: Optional[str] = None,
     quick_context: QuickSpaceContext | None = None,
 ) -> IdentityFormResponse:
+    if type_label is not None and parent_space_id is None:
+        raise HTTPException(422, "Custom types are available for subspaces")
+    try:
+        space_type, type_label = resolve_space_type(space_type, type_label)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
     if not display_name or not display_name.strip():
         display_name = "Unnamed Space"
     display_name = display_name.strip()
@@ -331,7 +340,7 @@ async def create_space(
         from app.yullo.services.sources.contracts import TextSourceInput
         from app.yullo.services.spaces.quick_context import context_text
         quick_input = TextSourceInput(title="Saved Space details",
-            text=context_text(display_name, SpaceType(space_type).value, description, quick_context))
+            text=context_text(display_name, type_label, description, quick_context))
 
     if not slug or not slug.strip():
         base_slug = re.sub(r'[^a-z0-9]+', '-', display_name.lower()).strip('-')
@@ -354,6 +363,9 @@ async def create_space(
         # A stable client-generated handle makes a lost creation response retryable.
         if existing and existing[0].current_step == "managed":
             space, config = existing
+            saved_config = await db.scalar(select(YulloConfig).where(YulloConfig.space_id == space.id))
+            if saved_type_label(config.space_type, saved_config.settings if saved_config else None) != type_label:
+                raise HTTPException(409, "This Space was already saved with another type. Open it to edit its details.")
             if config.parent_space_id != parent_space_id or space.display_name != display_name or config.space_type != space_type or (space.logo_url or "") != (logo_url or ""):
                 raise HTTPException(status_code=409, detail="Space already exists with different details")
             if quick_input is not None:
@@ -390,6 +402,8 @@ async def create_space(
 
     settings = dict(yullo_config.settings) if yullo_config.settings else {}
     identity_settings = dict(settings.get("identity", {}))
+    if parent_space_id is not None:
+        identity_settings["type_label"] = type_label
     if description:
         identity_settings["description"] = description
         identity_settings["description_source"] = "owner"
@@ -484,6 +498,8 @@ async def delete_or_archive_space(
         await db.commit()
         return {"status": "ok", "action": "delete", "space_id": str(space_id)}
     elif action == "archive":
+        from app.yullo.services.spaces.beacon import pause_branch_beacons
+        await pause_branch_beacons(db, space_id)
         space.status = "archived"
         space.active = False
         await db.commit()

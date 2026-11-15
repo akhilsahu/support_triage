@@ -22,6 +22,7 @@ from app.models.yullo_space import YulloSpace
 from app.models.space import Space
 from app.orchestra.ai.ingestion.storage import put as storage_put
 from app.orchestra.ai.ingestion.core.text_utils import sanitize_extracted_text
+from app.yullo.services.sources.resources import resource_state, resource_settings
 from app.yullo.services.sources.contracts import SourceInput, SourceAccepted, TextSourceInput, UrlSourceInput, FileSourceInput
 from app.schemas.yullo_onboarding import SpaceSourceResponse
 from app.orchestra.ai.db_utils.source_loader import source_chunks_enabled
@@ -373,6 +374,7 @@ class SourceService:
         ).order_by(KnowledgeBaseItem.created_at.desc())
         
         items = (await db.execute(stmt)).scalars().all()
+        sharing = await resource_settings(db, space_id)
         
         # Get latest job for each item
         sources = []
@@ -463,6 +465,7 @@ class SourceService:
                 source_assets["link_categories"] = _build_link_categories(source_assets["links"])
 
             sources.append(SpaceSourceResponse(
+                **resource_state(item, sharing.get(item.id)),
                 id=item.id,
                 source_type=item.item_type,
                 content_ref=clean_ref,

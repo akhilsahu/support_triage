@@ -23,6 +23,7 @@ class NearbyArea(BaseModel):
 
 
 class NearbyRequest(NearbyArea):
+    beacon_scope: Literal["all", "nearby", "city", "country", "worldwide"] = "all"
     location_id: UUID | None = None
     scope: Literal["all", "nearby", "city", "remote"] = "all"
 
@@ -56,8 +57,27 @@ class NearbyItem(BaseModel):
     starts_at: datetime | None = None
 
 
+BeaconReach = Literal["nearby_5", "nearby_10", "city", "country", "worldwide"]
+
+
+class BeaconCard(BaseModel):
+    space_id: UUID
+    title: str
+    url: str
+    space_type: str
+    type_label: str
+    cover_url: str | None = None
+    starts_at: str | None = None
+    location_label: str | None = None
+    reach: BeaconReach
+    area_label: str
+    expires_at: datetime
+
+
 class NearbyResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     items: list[NearbyItem]
+    beacons: list[BeaconCard] = Field(default_factory=list)
+    beacons_available: bool = True
     radius_km: float
     limit: int

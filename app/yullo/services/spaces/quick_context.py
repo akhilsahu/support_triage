@@ -33,6 +33,8 @@ async def suggest_description(request: QuickDescriptionRequest) -> QuickDescript
     from app.orchestra.ai.data_generation.identity_generate import generate_about_candidate
 
     payload = request.model_dump(mode="json")
+    from app.yullo.schemas.spaces import resolve_space_type
+    payload["space_type"], payload["type_label"] = resolve_space_type(request.space_type, request.type_label)
     if request.time_zone and request.context.starts_at:
         from zoneinfo import ZoneInfo
         payload["context"]["starts_at"] = request.context.starts_at.astimezone(ZoneInfo(request.time_zone)).isoformat()

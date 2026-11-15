@@ -13,6 +13,7 @@ import { YulloAppHeader } from '../components/YulloAppHeader';
 import { Locations } from '../forms/Locations';
 import { BookingLinks } from '../forms/BookingLinks';
 import { Subspaces } from '../forms/subspaces/Subspaces';
+import { BeaconControl } from '../forms/beacon/BeaconForm';
 import { FullSpaceKnowledgePreviewModal } from '../components/FullSpaceKnowledgePreviewModal';
 import { UnifiedEntityManagerModal } from '../components/UnifiedEntityManagerModal';
 import { VectorChunksManagerModal } from '../components/VectorChunksManagerModal';
@@ -64,7 +65,7 @@ export function SpaceDashboard() {
   const currentNode = branch[branch.length - 1];
   const isChild = !!currentNode?.parent_space_id;
   const isEvent = isChild && currentNode.space_type === 'event';
-  const itemLabel = spaceItemLabel(currentNode?.space_type || 'item');
+  const itemLabel = spaceItemLabel(currentNode?.space_type || 'item', currentNode?.type_label || identity?.type_label);
   const itemTitle = itemLabel.charAt(0).toUpperCase() + itemLabel.slice(1);
   const approved = (entities.data ?? []).filter(item => item.is_active && ['owner_confirmed', 'source_authoritative'].includes(item.review_status));
   const event = approved.find(item => item.entity_type === 'event' && item.identity_key === 'space-event')
@@ -99,8 +100,8 @@ export function SpaceDashboard() {
               onError={() => setFailedCoverUrl(identity.logo_url!)}
             />
         )}
-        <div className="relative min-w-0 w-full flex-1 pr-14">
-          {spaceId && identity && <div className="absolute right-0 top-0"><Subspaces key={`subspaces:${spaceId}`} spaceId={spaceId} /></div>}
+        <div className={`relative min-w-0 w-full flex-1 ${isChild ? "pr-28" : "pr-14"}`}>
+          {spaceId && identity && <div className="absolute right-0 top-0 flex items-center gap-2">{isChild && <BeaconControl spaceId={spaceId} title={identity.display_name} cover={identity.logo_url} locations={approved} />}<Subspaces key={`subspaces:${spaceId}`} spaceId={spaceId} /></div>}
           <h1 className="text-[28px] md:text-[36px] font-[Satoshi] font-medium tracking-tight text-[var(--text-primary)]">
             {isLoading ? 'Loading Space...' : identity?.display_name || 'Unnamed Space'}
           </h1>

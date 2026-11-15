@@ -1,3 +1,5 @@
+import { CanceledError } from 'axios';
+import type { BeaconCard } from './beacon';
 import { useQuery } from '@tanstack/react-query';
 import { useYulloAppStore } from '../store/useYulloAppStore';
 import { yulloApiClient } from './client';
@@ -17,6 +19,7 @@ export interface NearbyOrigin extends NearbyArea {
   space_name: string;
 }
 export interface NearbyRequest extends NearbyArea {
+  beacon_scope?: 'all' | 'nearby' | 'city' | 'country' | 'worldwide';
   location_id?: string;
   scope: NearbyScope;
 }
@@ -34,6 +37,8 @@ export interface NearbyItem {
 }
 interface NearbyResponse {
   items: NearbyItem[];
+  beacons?: BeaconCard[];
+  beacons_available?: boolean;
   radius_km: number;
   limit: number;
 }
@@ -53,7 +58,12 @@ export function useNearby(request: NearbyRequest, enabled: boolean) {
   return useQuery({
     queryKey: ['yullo-nearby', userId, 'results', request],
     enabled: enabled && !!userId,
-    queryFn: async ({ signal }) => (await yulloApiClient.post<NearbyResponse>('/home/nearby', request, { signal })).data,
+    queryFn: async ({ signal }) => {
+      const result = await yulloApiClient.post<NearbyResponse>('/home/nearby', request, { signal });
+      if (useYulloAppStore.getState().user?.id !== userId) throw new CanceledError('Account changed');
+      return result.data;
+    },
+    refetchInterval: 60000,
     gcTime: 0,
   });
 }

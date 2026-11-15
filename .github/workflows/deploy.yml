@@ -97,6 +97,7 @@ jobs:
           host:     ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key:      ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 20m
           envs: >-
             SECRET_KEY,FRONTEND_URL,
             POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,
@@ -135,6 +136,7 @@ jobs:
             docker compose -f deploy/docker-compose.prod.yml --env-file .env build api
             docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d --wait postgres redis
             docker compose -f deploy/docker-compose.prod.yml --env-file .env run --rm --no-deps api alembic upgrade head
+            sh deploy/preserve-api-storage.sh
             docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d --remove-orphans
             docker compose -f deploy/docker-compose.prod.yml --env-file .env exec -T api python - <<'PY'
             import json
@@ -154,5 +156,6 @@ jobs:
                     raise SystemExit("Deployment health check failed")
                 time.sleep(2)
             PY
+            touch /var/lib/support247/.api-storage-migrated-v1
             docker image prune -f
             echo "Deploy complete"

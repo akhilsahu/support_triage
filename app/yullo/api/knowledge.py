@@ -1,13 +1,14 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import current_user
 from app.core.database import get_db
 from app.models.user import User
-from app.yullo.schemas.knowledge import CleanupAlertResolveRequest, FactReviewRequest, SourceFactResponse, VectorChunksResponse
+from app.yullo.services.sources.resources import update_resource
+from app.yullo.schemas.knowledge import PublicResourceUpdate, CleanupAlertResolveRequest, FactReviewRequest, SourceFactResponse, VectorChunksResponse
 from app.yullo.services.sources.cleanup_alerts import list_cleanup_alerts, resolve_cleanup_alert
 from app.yullo.services.sources.fact_review import list_source_facts, review_source_fact
 from app.yullo.services.sources.vector_chunks import (
@@ -114,3 +115,10 @@ async def read_space_vector_chunks(
         source_id=source_id,
         limit=limit,
     )
+
+
+@router.patch("/{space_id}/sources/{source_id}/public-resource")
+async def update_public_resource(space_id: UUID, source_id: UUID, payload: PublicResourceUpdate,
+    response: Response, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    response.headers["Cache-Control"] = "no-store"
+    return await update_resource(db, user_id=user.id, space_id=space_id, source_id=source_id, data=payload)

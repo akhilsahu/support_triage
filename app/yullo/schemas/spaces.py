@@ -25,6 +25,27 @@ class SpaceType(str, Enum):
     posting = "posting"
 
 
+TYPE_LABELS = {"posting": "Post", **{value.value: value.value.capitalize() for value in SpaceType if value != SpaceType.posting}}
+TYPE_ALIASES = {**{label.casefold(): key for key, label in TYPE_LABELS.items()}, "posting": "posting", "announcement": "posting"}
+
+
+def resolve_space_type(space_type, type_label=None):
+    """Labels customize presentation; the existing enum retains behavioral routing."""
+    if type_label is None or not type_label.strip():
+        kind = SpaceType(space_type)
+        return kind, TYPE_LABELS[kind.value]
+    label = " ".join(type_label.split())
+    if len(label) > 60:
+        raise ValueError("Type must be at most 60 characters")
+    kind = SpaceType(TYPE_ALIASES.get(label.casefold(), "other"))
+    return kind, "Announcement" if label.casefold() == "announcement" else TYPE_LABELS[kind.value] if label.casefold() in TYPE_ALIASES else label
+
+
+def saved_type_label(space_type, settings=None):
+    identity = (settings or {}).get("identity") or {}
+    return identity.get("type_label") or TYPE_LABELS.get(str(space_type), str(space_type).capitalize())
+
+
 class DetailField(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     id: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
@@ -74,6 +95,7 @@ class QuickDescriptionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=200)
     space_type: SpaceType
+    type_label: str | None = Field(None, max_length=60)
     description: str = Field("", max_length=SUBSPACE_DESCRIPTION_LIMIT)
     context: QuickSpaceContext = Field(default_factory=QuickSpaceContext)
 
@@ -105,6 +127,7 @@ class HierarchySpace(BaseModel):
     slug: str
     parent_space_id: uuid.UUID | None = None
     space_type: SpaceType
+    type_label: str | None = Field(None, max_length=60)
     revision: int
     status: str
     active: bool
@@ -115,4 +138,5 @@ class HierarchyPatch(BaseModel):
 
     parent_space_id: uuid.UUID | None = None
     space_type: SpaceType | None = None
+    type_label: str | None = Field(None, max_length=60)
     expected_revision: int = Field(ge=1)

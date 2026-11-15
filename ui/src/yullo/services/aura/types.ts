@@ -1,5 +1,15 @@
+export interface UpcomingEvent {
+  title: string
+  url: string
+  cover_url?: string | null
+  starts_at: string
+  location?: { name?: string; address?: string; map_url?: string } | null
+  is_remote?: boolean | null
+}
+
 export interface PublicSpace {
-  pageDetails?: { spaceType: string; startsAt?: string | null; endsAt?: string | null; locationLabel?: string | null; locationUrl?: string | null; latitude?: number | null; longitude?: number | null; isRemote?: boolean } | null
+  upcomingEvents?: UpcomingEvent[]
+  pageDetails?: { spaceType: string; typeLabel?: string | null; startsAt?: string | null; endsAt?: string | null; locationLabel?: string | null; locationUrl?: string | null; latitude?: number | null; longitude?: number | null; isRemote?: boolean } | null
   subspaceFields?: import('../../api/spaces').SubspaceFields | null
   isSubspace?: boolean
   id?: string

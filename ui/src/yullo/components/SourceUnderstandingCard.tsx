@@ -12,6 +12,8 @@ export interface FactItem {
 }
 
 export interface SourceItem {
+  public_resource?: boolean;
+  resource_revision?: number;
   id: string;
   source_type: string;
   content_ref: string;

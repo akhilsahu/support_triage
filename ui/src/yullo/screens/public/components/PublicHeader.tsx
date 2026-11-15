@@ -22,7 +22,7 @@ export function PublicHeader({ space, identityVisible, historyOpen, historyId, o
     >
       <div className="flex min-w-0 items-center gap-3">
         <button type="button" onClick={onHistoryToggle} disabled={!onHistoryToggle}
-          aria-label={`Open chat history for ${space.displayName}`}
+          aria-label={`Open resources and chats for ${space.displayName}`}
           aria-expanded={onHistoryToggle ? historyOpen : undefined}
           aria-controls={historyId}
           aria-haspopup={onHistoryToggle ? 'dialog' : undefined}
@@ -61,7 +61,7 @@ export function PublicHeader({ space, identityVisible, historyOpen, historyId, o
       </div>
 
       <div className="ml-3 flex shrink-0 items-center gap-4 text-[var(--presentation-muted)]">
-        {accountName ? <button type="button" onClick={onHistoryToggle} aria-label={`Open chat history and account for ${accountName}`}
+        {accountName ? <button type="button" onClick={onHistoryToggle} aria-label={`Open resources, chats and account for ${accountName}`}
           className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--presentation-border)] bg-[var(--presentation-surface)] text-[var(--presentation-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--presentation-accent)]">
           <UserRound size={18} aria-hidden="true" />
         </button> : signInHref && <a href={signInHref} aria-disabled={busy || undefined} onClick={event => { if (busy) event.preventDefault() }}

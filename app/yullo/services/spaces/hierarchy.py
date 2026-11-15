@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.space import Space
 from app.models.user import User
+from app.models.yullo_config import YulloConfig
 from app.models.yullo_space import YulloSpace
-from app.yullo.schemas.spaces import HierarchyPatch, HierarchySpace, SpaceType
+from app.yullo.schemas.spaces import HierarchyPatch, HierarchySpace, SpaceType, resolve_space_type, saved_type_label
 
 logger = logging.getLogger(__name__)
 
@@ -38,19 +39,19 @@ async def mark_managed(db: AsyncSession, space_id: uuid.UUID) -> None:
 
 
 async def read_hierarchy(db: AsyncSession, user_id: uuid.UUID, *, details_for: uuid.UUID | None = None) -> list[HierarchySpace]:
-    rows = (await db.execute(select(Space, YulloSpace).join(
+    rows = (await db.execute(select(Space, YulloSpace, YulloConfig).join(
         YulloSpace, YulloSpace.space_id == Space.id,
-    ).where(Space.owner_user_id == user_id, Space.product == "yullo").order_by(
+    ).outerjoin(YulloConfig, YulloConfig.space_id == Space.id).where(Space.owner_user_id == user_id, Space.product == "yullo").order_by(
         Space.display_name, Space.id,
     ))).all()
-    owned = {space.id for space, _ in rows}
+    owned = {space.id for space, _, _ in rows}
     nodes = [HierarchySpace(
         id=space.id, name=space.display_name, slug=space.slug,
         # Do not disclose a foreign parent reference if legacy data is inconsistent.
         parent_space_id=config.parent_space_id if config.parent_space_id in owned else None,
-        space_type=config.space_type, revision=config.hierarchy_revision,
+        space_type=config.space_type, type_label=saved_type_label(config.space_type, settings.settings if settings else None), revision=config.hierarchy_revision,
         status=space.status, active=space.active,
-    ) for space, config in rows]
+    ) for space, config, settings in rows]
     if details_for is not None:
         if details_for not in owned:
             raise HTTPException(404, "Space not found")
@@ -63,7 +64,7 @@ async def read_hierarchy(db: AsyncSession, user_id: uuid.UUID, *, details_for: u
             YulloSpaceEntity.review_status.in_(("owner_confirmed", "source_authoritative")),
             YulloSpaceEntity.entity_type.in_(("event", "location")),
         ))).all()) if child_ids else []
-        spaces = {space.id: space for space, _ in rows}
+        spaces = {space.id: space for space, _, _ in rows}
         for node in children:
             node.logo_url = spaces[node.id].logo_url
             if node.space_type != SpaceType.event:
@@ -91,6 +92,7 @@ async def update_hierarchy(
     current = nodes.get(space_id)
     if current is None:
         raise HTTPException(404, "Space not found")
+    await db.scalar(select(Space.id).where(Space.id == space_id, Space.owner_user_id == user_id, Space.product == "yullo").with_for_update())
     config = await db.scalar(select(YulloSpace).where(YulloSpace.space_id == space_id).with_for_update())
     if config.hierarchy_revision != patch.expected_revision:
         logger.info("yullo.hierarchy.rejected", extra={"space_id": str(space_id), "reason": "stale_revision"})
@@ -113,19 +115,42 @@ async def update_hierarchy(
                 raise HTTPException(404, "Parent Space not available")
             cursor = node.parent_space_id
 
-    space_type = patch.space_type.value if patch.space_type is not None else config.space_type
-    if config.parent_space_id != parent_id or config.space_type != space_type:
+    classification_changed = patch.space_type is not None or "type_label" in patch.model_fields_set
+    space_type = config.space_type
+    label = current.type_label
+    if classification_changed:
+        try:
+            kind, label = resolve_space_type(patch.space_type or config.space_type, patch.type_label)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+        space_type = kind.value
+    if patch.type_label and parent_id is None:
+        raise HTTPException(422, "Custom types are available for subspaces")
+    label_changed = classification_changed and label != current.type_label
+    if config.parent_space_id != parent_id or config.space_type != space_type or label_changed:
+        if config.parent_space_id != parent_id or config.space_type != space_type:
+            from app.yullo.services.spaces.beacon import pause_branch_beacons
+            await pause_branch_beacons(db, space_id)
         if parent_id is not None:
             await mark_managed(db, space_id)
             await mark_managed(db, parent_id)
         config.parent_space_id = parent_id
         config.space_type = space_type
-        # Private navigation has its own revision; it does not invalidate publication.
+        if classification_changed:
+            settings_row = await db.scalar(select(YulloConfig).where(YulloConfig.space_id == space_id).with_for_update())
+            if settings_row is None:
+                raise HTTPException(409, "Complete this Space's setup before changing its type")
+            settings = dict(settings_row.settings or {})
+            settings["identity"] = {**(settings.get("identity") or {}), "type_label": label}
+            settings_row.settings = settings
+            from app.yullo.services.persistence.common import finalize_space_mutation
+            await finalize_space_mutation(db, user_id=user_id, space_id=space_id,
+                public_content_changed=True, operation_key="subspace.type.update")
         config.hierarchy_revision += 1
         await db.commit()
         logger.info("yullo.hierarchy.updated", extra={"space_id": str(space_id), "revision": config.hierarchy_revision})
     return current.model_copy(update={
-        "parent_space_id": parent_id, "space_type": SpaceType(space_type), "revision": config.hierarchy_revision,
+        "parent_space_id": parent_id, "space_type": SpaceType(space_type), "type_label": label, "revision": config.hierarchy_revision,
     })
 
 
@@ -135,7 +160,7 @@ async def require_no_children(db: AsyncSession, space_id: uuid.UUID) -> None:
         raise HTTPException(409, "Detach subspaces before archiving or deleting this Space.")
 
 
-async def list_public_child_events(db, space_id, *, search="", starts_after=None, starts_before=None, limit=10, config):
+async def list_public_child_events(db, space_id, *, search="", starts_after=None, starts_before=None, limit=10, config, scan_all=False):
     """Narrow public-listing exception: direct event children, never their sources."""
     from datetime import datetime, timezone
     from app.models.yullo_config import YulloConfig
@@ -155,9 +180,12 @@ async def list_public_child_events(db, space_id, *, search="", starts_after=None
             Space.active.is_(True), Space.status == "live", YulloSpace.lifecycle_status == "live")
     if search:
         statement = statement.where(Space.display_name.icontains(search, autoescape=True))
-    rows = (await db.execute(statement.order_by(Space.id).limit(config.max_candidates + 1))).all()
+    statement = statement.order_by(Space.id)
+    if not scan_all:
+        statement = statement.limit(config.max_candidates + 1)
+    rows = (await db.execute(statement)).all()
     events = []
-    for child, child_config in rows[:config.max_candidates]:
+    for child, child_config in (rows if scan_all else rows[:config.max_candidates]):
         records = [record for record in await get_public_entities(db, child.id, entity_types=("event", "location"))
                    if record.disclosure_mode in (None, "direct")]
         # Match this event's title; unrelated extracted events cannot supply its dates.
@@ -176,7 +204,7 @@ async def list_public_child_events(db, space_id, *, search="", starts_after=None
         location = next((project_public_entity_payload(record, direct_only=True) for record in records
                          if record.entity_type == "location" and str(record.id) == event.get("location_entity_id")), {})
         identity = (child_config.settings or {}).get("identity", {}) if child_config else {}
-        events.append({"title": child.display_name, "url": f"/{child.slug}",
+        events.append({"title": child.display_name, "url": f"/{child.slug}", "cover_url": child.logo_url,
                        "description": identity.get("description") or "",
                        "starts_at": start.isoformat() if start else None,
                        "ends_at": event.get("ends_at"), "is_remote": event.get("is_remote"),
@@ -188,6 +216,27 @@ async def list_public_child_events(db, space_id, *, search="", starts_after=None
               "date_filter_excludes_unknown_dates": bool(starts_after or starts_before)}
     logger.info("yullo.events.listed", extra={"space_id": str(space_id), "returned": len(result["events"]), "has_more": result["has_more"]})
     return result
+
+
+async def upcoming_public_child_events(db, space_id, *, parent_slug, is_subspace=False):
+    """Share the public listing projection between Studio and the visitor page."""
+    from datetime import datetime, timezone
+    from app.yullo.config.inference import get_event_listing_config
+    from app.yullo.schemas.appearance import UpcomingEvent
+
+    config = get_event_listing_config()
+    if is_subspace or not config.enabled:
+        return []
+    # Scan all direct children so the candidate cap cannot hide an earlier event.
+    result = await list_public_child_events(
+        db, space_id, starts_after=datetime.now(timezone.utc), limit=3,
+        config=config, scan_all=True,
+    )
+    return [UpcomingEvent(
+        title=item["title"], url=f"/{parent_slug}{item['url']}",
+        cover_url=item["cover_url"], starts_at=item["starts_at"],
+        location=item["location"], is_remote=item["is_remote"],
+    ) for item in result["events"]]
 
 
 def build_event_listing_tools(db, context, *, config):
@@ -225,3 +274,29 @@ def build_event_listing_tools(db, context, *, config):
             return {"status": "unavailable", "message": "Event listings are temporarily unavailable."}
 
     return [Function.from_callable(list_events)]
+
+
+async def live_branch_path(db, space, extension, *, ancestor_cache=None):
+    """Every ancestor must be live, same-owner and Yullo; cycles fail closed."""
+    parts, seen = [], set()
+    cache = ancestor_cache if ancestor_cache is not None else {}
+    owner_id = space.owner_user_id
+    while True:
+        if (space.id in seen or len(seen) >= 20 or space.owner_user_id != owner_id
+                or space.product != "yullo" or not space.active or space.status != "live"
+                or extension.lifecycle_status != "live"):
+            return None
+        seen.add(space.id)
+        parts.append(space.slug)
+        if extension.parent_space_id is None:
+            return "/" + "/".join(reversed(parts))
+        parent_id = extension.parent_space_id
+        key = (owner_id, parent_id)
+        if key not in cache:
+            cache[key] = (await db.execute(select(Space, YulloSpace).join(
+                YulloSpace, YulloSpace.space_id == Space.id,
+            ).where(Space.id == parent_id, Space.owner_user_id == owner_id, Space.product == "yullo"))).first()
+        row = cache[key]
+        if not row:
+            return None
+        space, extension = row

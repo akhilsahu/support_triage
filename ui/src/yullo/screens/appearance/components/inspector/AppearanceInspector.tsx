@@ -122,7 +122,7 @@ export function AppearanceInspector({
         <Group title="Content and order" open>
         <Section title="Opening sections">
           <div className="appearance-section-list">
-            {config.sections.map((section, index) => (
+            {config.sections.map((section, index) => isSubspace && section.type === 'upcoming_events' ? null : (
               <SectionRow 
                 key={section.type}
                 section={section}

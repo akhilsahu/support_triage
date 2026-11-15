@@ -113,6 +113,7 @@ async def create_new_space_endpoint(
         website=website,
         parent_space_id=data.parent_space_id if data else None,
         space_type=data.space_type if data else SpaceType.space,
+        type_label=data.type_label if data else None,
         quick_context=data.quick_context if data else None,
         logo_url=data.logo_url if data else None,
     )

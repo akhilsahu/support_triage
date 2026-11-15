@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 FactReviewStatus = Literal["owner_confirmed", "rejected", "extracted"]
 
@@ -87,3 +87,10 @@ class VectorChunksResponse(BaseModel):
     filtered_chunks_count: int = 0
     chunks: list[VectorChunkItem] = Field(default_factory=list)
     source_images: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PublicResourceUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
+    expected_source_version: int = Field(ge=1)
+    expected_revision: int = Field(ge=0)

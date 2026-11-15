@@ -100,6 +100,8 @@ async def publish_space(db: AsyncSession, *, space_id: uuid.UUID, owner_user_id:
     await db.flush()
 
 async def unpublish_space(db: AsyncSession, *, space_id: uuid.UUID, owner_user_id: uuid.UUID) -> None:
+    from app.yullo.services.spaces.hierarchy import lock_hierarchy
+    await lock_hierarchy(db, owner_user_id)
     stmt = select(Space, YulloSpace).join(YulloSpace, YulloSpace.space_id == Space.id).where(
         Space.id == space_id
     ).with_for_update(of=Space)
@@ -117,6 +119,8 @@ async def unpublish_space(db: AsyncSession, *, space_id: uuid.UUID, owner_user_i
     if space.status == "draft" and y_space.lifecycle_status == "draft":
         return
         
+    from app.yullo.services.spaces.beacon import pause_branch_beacons
+    await pause_branch_beacons(db, space_id)
     space.status = "draft"
     y_space.lifecycle_status = "draft"
     

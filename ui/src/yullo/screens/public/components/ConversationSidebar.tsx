@@ -1,3 +1,4 @@
+import { PublicResources } from './PublicResources'
 import { useEffect, useRef } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { MessageSquare, Plus, X } from 'lucide-react'
@@ -5,6 +6,7 @@ import type { ConversationHistoryItem } from '../../../services/aura/conversatio
 
 interface ConversationSidebarProps {
   id: string
+  spaceId?: string
   open: boolean
   onOpenChange: (open: boolean) => void
   history: ConversationHistoryItem[]
@@ -22,7 +24,7 @@ interface ConversationSidebarProps {
   error?: string
 }
 
-export function ConversationSidebar({ id, open, onOpenChange, history, conversationId, isSending, onSelect, onNew, accountName, signInHref, onSignOut, loading, hasMore, onLoadMore, onRetry, error }: ConversationSidebarProps) {
+export function ConversationSidebar({ id, spaceId, open, onOpenChange, history, conversationId, isSending, onSelect, onNew, accountName, signInHref, onSignOut, loading, hasMore, onLoadMore, onRetry, error }: ConversationSidebarProps) {
   const dialog = useRef<HTMLDialogElement>(null)
   const reduceMotion = useReducedMotion()
   const transition = { duration: reduceMotion ? 0.12 : 0.22, ease: [0.32, 0.72, 0, 1] as const }
@@ -59,7 +61,7 @@ export function ConversationSidebar({ id, open, onOpenChange, history, conversat
       >
       <div className="flex h-full flex-col pb-[env(safe-area-inset-bottom)]">
         <div className="flex items-center justify-between gap-3 px-5 py-4">
-          <h2 id={`${id}-title`} className="text-lg font-semibold tracking-tight">Your chats</h2>
+          <h2 id={`${id}-title`} className="text-lg font-semibold tracking-tight">Explore & chat</h2>
           <button type="button" autoFocus onClick={() => onOpenChange(false)} aria-label="Close chat history"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full hover:bg-[var(--presentation-surface)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--presentation-accent)]">
             <X size={20} aria-hidden="true" />
@@ -71,8 +73,9 @@ export function ConversationSidebar({ id, open, onOpenChange, history, conversat
             <Plus size={18} aria-hidden="true" />New chat
           </button>
         </div>
+        {spaceId && <PublicResources key={spaceId} spaceId={spaceId} open={open} portalContainer={dialog.current} />}
         <nav aria-label="Chat history" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
-          <p className="px-3 pb-2 text-xs font-medium text-[var(--presentation-muted)]">Recent</p>
+          <p className="px-3 pb-2 text-xs font-medium text-[var(--presentation-muted)]">Chat history</p>
           {history.length ? (
             <ul className="space-y-1">
               {history.map(item => (

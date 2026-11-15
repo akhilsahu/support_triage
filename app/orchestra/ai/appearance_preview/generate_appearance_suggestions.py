@@ -145,7 +145,7 @@ def _allowed_values() -> dict:
         "visualDensity": ["minimal", "balanced", "expressive"],
         "networkIntensity": ["none", "very_low", "low"],
         "contentLayout": ["left", "center", "right", "stretch"],
-        "sectionTypes": ["identity", "services", "portfolio", "products", "location", "featured", "prompt_starters"],
+        "sectionTypes": ["identity", "services", "portfolio", "products", "location", "featured", "upcoming_events", "prompt_starters"],
         "sectionVariants": ["grid_2col", "grid_3col", "list"],
     }
 

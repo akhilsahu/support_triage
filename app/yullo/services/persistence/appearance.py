@@ -7,6 +7,8 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.yullo.services.spaces.hierarchy import upcoming_public_child_events
+from app.yullo.schemas.spaces import saved_type_label
 from app.models.space import Space
 from app.models.yullo_config import YulloConfig
 from app.models.yullo_space import YulloSpace
@@ -156,8 +158,14 @@ async def get_appearance(
         })
         if draft.config.hero.asset_id and draft.config.hero.asset_id not in {asset.id for asset in assets}:
             draft.config.hero.asset_id = None
+    summary = _space_summary(space, yullo_space, yullo_config, await get_public_entities(db, space_id, entity_types=("action", "event", "location")), owner_bookings)
+    if summary.page_details:
+        summary.page_details.type_label = saved_type_label(yullo_space.space_type, yullo_config.settings if yullo_config else None)
+    summary.upcoming_events = await upcoming_public_child_events(
+        db, space_id, parent_slug=space.slug, is_subspace=yullo_space.parent_space_id is not None,
+    )
     return AppearanceEditorResponse(
-        space=_space_summary(space, yullo_space, yullo_config, await get_public_entities(db, space_id, entity_types=("action", "event", "location")), owner_bookings),
+        space=summary,
         publishedConfig=config,
         effectiveConfig=draft.config if draft else config,
         recommendation=None,

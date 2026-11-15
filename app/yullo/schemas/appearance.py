@@ -52,6 +52,7 @@ class SectionType(str, Enum):
     location = "location"
     featured = "featured"
     prompt_starters = "prompt_starters"
+    upcoming_events = "upcoming_events"
 
 
 class VisualDensity(str, Enum):
@@ -126,6 +127,9 @@ class SpacePresentationConfig(StrictModel):
             raise ValueError("Presentation sections must be unique")
         if SectionType.identity not in section_types:
             raise ValueError("Identity section is required")
+        if SectionType.upcoming_events not in section_types:
+            index = section_types.index(SectionType.identity) + 1
+            self.sections.insert(index, PresentationSection(type=SectionType.upcoming_events))
         return self
 
 
@@ -161,13 +165,24 @@ class SpacePageDetails(StrictModel):
     longitude: float | None = Field(default=None, ge=-180, le=180)
     is_remote: bool = Field(default=False, alias="isRemote")
     space_type: str = Field(default="space", alias="spaceType")
+    type_label: str | None = Field(default=None, alias="typeLabel")
     starts_at: str | None = Field(default=None, alias="startsAt")
     ends_at: str | None = Field(default=None, alias="endsAt")
     location_label: str | None = Field(default=None, alias="locationLabel")
     location_url: str | None = Field(default=None, alias="locationUrl")
 
 
+class UpcomingEvent(StrictModel):
+    title: str
+    url: str
+    cover_url: str | None = None
+    starts_at: str
+    location: dict[str, str] | None = None
+    is_remote: bool | None = None
+
+
 class AppearanceSpaceSummary(StrictModel):
+    upcoming_events: list[UpcomingEvent] = Field(default_factory=list, alias="upcomingEvents")
     preview_booking_links: list[PreviewPageAction] = Field(default_factory=list, alias="previewBookingLinks")
     prompt_starters: list[str] = Field(default_factory=list, alias="promptStarters")
     booking_links: list[PageAction] = Field(default_factory=list, alias="bookingLinks")

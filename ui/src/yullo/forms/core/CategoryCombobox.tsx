@@ -92,11 +92,14 @@ export const CATEGORY_WORD_STORE: Record<'business' | 'creator' | 'person' | 'or
 };
 
 export interface CategoryComboboxProps {
+  suggestions?: readonly string[];
+  itemLabel?: string;
   value: string;
   onChange: (value: string) => void;
   purpose?: 'business' | 'creator' | 'person' | 'organization';
   placeholder?: string;
   disabled?: boolean;
+  autoFocus?: boolean;
   maxLength?: number;
   className?: string;
   id?: string;
@@ -147,9 +150,12 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
 export function CategoryCombobox({
   value,
   onChange,
+  suggestions,
+  itemLabel = "category",
   purpose = 'business',
   placeholder = 'e.g. Space technology company or E-commerce',
   disabled = false,
+  autoFocus = false,
   maxLength = 100,
   className = '',
   id = 'category-combobox-input',
@@ -177,7 +183,7 @@ export function CategoryCombobox({
 
   // Fetch suggestions from backend database API with debounce
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || suggestions) return;
 
     if (fetchTimeoutRef.current) {
       clearTimeout(fetchTimeoutRef.current);
@@ -208,22 +214,25 @@ export function CategoryCombobox({
     return () => {
       if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
     };
-  }, [value, purpose, isOpen]);
+  }, [value, purpose, isOpen, suggestions]);
 
   // Flattened items for keyboard navigation and rendering
   const flatItems = useMemo(() => {
     const items: { type: 'custom' | 'suggestion'; text: string; isRecommended?: boolean; isPopular?: boolean }[] = [];
     const trimmedVal = (value || '').trim();
 
-    // Check if trimmedVal is an exact match for an existing item
-    const isExactMatch = dbSuggestions.some((sug) => sug.name.toLowerCase() === trimmedVal.toLowerCase());
+    const available = suggestions
+      ? suggestions.filter(name => suggestions.some(option => option.toLocaleLowerCase() === trimmedVal.toLocaleLowerCase()) || name.toLocaleLowerCase().includes(trimmedVal.toLocaleLowerCase())).map(name => ({ name, purpose: undefined, is_popular: false }))
+      : dbSuggestions;
+    // Local option lists never fetch or publish category suggestions.
+    const isExactMatch = available.some((sug) => sug.name.toLowerCase() === trimmedVal.toLowerCase());
 
     // If user has typed something that isn't an exact match, offer custom item at the top
     if (trimmedVal && !isExactMatch) {
       items.push({ type: 'custom', text: trimmedVal });
     }
 
-    dbSuggestions.forEach((sug) => {
+    available.forEach((sug) => {
       items.push({
         type: 'suggestion',
         text: sug.name,
@@ -233,7 +242,7 @@ export function CategoryCombobox({
     });
 
     return items;
-  }, [dbSuggestions, value, purpose]);
+  }, [dbSuggestions, value, purpose, suggestions]);
 
   // Adjust scroll when highlighted index changes
   useEffect(() => {
@@ -246,6 +255,7 @@ export function CategoryCombobox({
   }, [highlightedIndex]);
 
   const handleSelect = (categoryText: string) => {
+    if (disabled) return;
     onChange(categoryText.slice(0, maxLength));
     setIsOpen(false);
     setHighlightedIndex(-1);
@@ -271,10 +281,16 @@ export function CategoryCombobox({
       if (isOpen && highlightedIndex >= 0 && highlightedIndex < flatItems.length) {
         e.preventDefault();
         handleSelect(flatItems[highlightedIndex].text);
+      } else if (suggestions && isOpen && value.trim()) {
+        e.preventDefault();
+        handleSelect(value.trim());
       } else {
         // Close on enter if typing custom
         setIsOpen(false);
       }
+    } else if (e.key === 'Tab') {
+      setIsOpen(false);
+      setHighlightedIndex(-1);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setIsOpen(false);
@@ -302,9 +318,10 @@ export function CategoryCombobox({
           aria-expanded={isOpen}
           aria-autocomplete="list"
           aria-controls={`${id}-listbox`}
-          aria-activedescendant={highlightedIndex >= 0 ? `${id}-opt-${highlightedIndex}` : undefined}
+          aria-activedescendant={isOpen && highlightedIndex >= 0 ? `${id}-opt-${highlightedIndex}` : undefined}
           value={value || ''}
           disabled={disabled}
+          autoFocus={autoFocus}
           maxLength={maxLength}
           onChange={(e) => {
             onChange(e.target.value);
@@ -328,7 +345,8 @@ export function CategoryCombobox({
             <button
               type="button"
               onClick={handleClear}
-              aria-label="Clear category"
+              disabled={disabled}
+              aria-label={`Clear ${itemLabel}`}
               className="p-1 rounded-md hover:bg-[var(--border)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
@@ -340,7 +358,8 @@ export function CategoryCombobox({
               setIsOpen(!isOpen);
               if (!isOpen) inputRef.current?.focus();
             }}
-            aria-label="Toggle category suggestions"
+            disabled={disabled}
+            aria-label={`Toggle ${itemLabel} suggestions`}
             className="p-1 rounded-md hover:bg-[var(--border)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
           >
             <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
@@ -349,10 +368,10 @@ export function CategoryCombobox({
       </div>
 
       {/* Suggestion Dropdown */}
-      {isOpen && (
+      {isOpen && !disabled && (
         <div
           className="absolute z-50 left-0 right-0 mt-1.5 bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden backdrop-blur-md animate-in fade-in-0 zoom-in-95 duration-150"
-          style={{ minWidth: '280px' }}
+          style={{ minWidth: suggestions ? 0 : '280px' }}
         >
           <ul
             ref={listboxRef}
@@ -362,7 +381,7 @@ export function CategoryCombobox({
           >
             {flatItems.length === 0 && !isLoading ? (
               <li className="px-4 py-3 text-center text-xs text-[var(--text-muted)]">
-                No matching categories. Type to use custom.
+                No matching {itemLabel === "category" ? "categories" : "types"}. Type to use custom.
               </li>
             ) : (
               flatItems.map((item, idx) => {

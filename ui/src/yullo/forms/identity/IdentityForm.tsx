@@ -193,6 +193,7 @@ interface IdentityChatMessage {
         const { data } = await yulloApiClient.post<{ description: string }>(`/spaces/${spaceId}/subspace-description`, {
           name: currentDisplayName || 'This item',
           space_type: hierarchy.data?.find(node => node.id === spaceId)?.space_type || 'other',
+          type_label: hierarchy.data?.find(node => node.id === spaceId)?.type_label,
           description: currentDescription || '', context: { ...generationContext, subspace_fields: form.getValues('subspace_fields') },
           time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         });

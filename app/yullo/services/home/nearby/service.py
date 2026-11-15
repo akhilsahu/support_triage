@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.yullo.schemas.nearby import NearbyArea, NearbyRequest, NearbyResponse
 from app.yullo.services.home.nearby.ranking import rank_nearby
+from app.yullo.services.home.nearby.beacons import load_beacon_cards
 from app.yullo.services.home.nearby.repository import load_candidates, load_origins
 from app.yullo.services.home.nearby.user_location import load_user_area
 
@@ -47,4 +48,13 @@ async def browse_nearby(
         logger.error("yullo_nearby_failed", extra={"user_id": str(user_id)})
         raise
     logger.info("yullo_nearby_browsed", extra={"user_id": str(user_id), "result_count": len(items), "scope": request.scope})
-    return NearbyResponse(items=items, radius_km=rules.radius_km, limit=rules.limit)
+    beacons_available = True
+    try:
+        async with db.begin_nested():
+            beacons = await load_beacon_cards(db, area, request, now)
+    except Exception as error:
+        # Optional discovery must not poison the transaction or hide organic results.
+        beacons, beacons_available = [], False
+        logger.error("yullo.beacon.discovery_failed", extra={"error_type": type(error).__name__})
+    return NearbyResponse(items=items, beacons=beacons, beacons_available=beacons_available,
+                          radius_km=rules.radius_km, limit=rules.limit)

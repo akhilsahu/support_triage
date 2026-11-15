@@ -1,3 +1,5 @@
+import { CategoryCombobox } from '../core/CategoryCombobox';
+import { subspaceTypeSuggestions, spaceTypeFromLabel } from '../../api/spaces';
 import { IconTooltip } from '../core/IconTooltip';
 import { ImageField } from '../core/ImageField';
 import { DetailFields, emptySubspaceFields } from './DetailFields';
@@ -15,7 +17,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { formsApi } from '../../api/forms';
-import { SUBSPACE_DESCRIPTION_LIMIT, hierarchyKey, patchHierarchy, spaceItemLabel, spaceTypeLabel, spaceTypes, useSpaceHierarchy, type HierarchySpace, type SpaceType, type QuickSpaceContext } from '../../api/spaces';
+import { SUBSPACE_DESCRIPTION_LIMIT, hierarchyKey, patchHierarchy, spaceItemLabel, spaceTypeLabel, useSpaceHierarchy, type HierarchySpace, type SpaceType, type QuickSpaceContext } from '../../api/spaces';
 import { yulloApiClient } from '../../api/client';
 import { useYulloAppStore } from '../../store/useYulloAppStore';
 
@@ -37,6 +39,7 @@ const errorMessage = (error: unknown) => isAxiosError(error) && error.response?.
 export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { spaceId: string; onLink?: () => void; onManage?: () => void; disabled?: boolean }) {
   const reducedMotion = useReducedMotion();
   const [type, setType] = useState<SpaceType | null>(null);
+  const [typeLabel, setTypeLabel] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [aiHintOpen, setAiHintOpen] = useState(false);
@@ -63,6 +66,8 @@ export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { s
   const [creationId, setCreationId] = useState(() => crypto.randomUUID());
   const [menuOpen, setMenuOpen] = useState(false);
   const ownerId = useYulloAppStore(state => state.user?.id);
+  const typeHierarchy = useSpaceHierarchy();
+  const typeSuggestions = Array.from(new Set<string>([...subspaceTypeSuggestions, ...(typeHierarchy.data || []).filter(node => node.parent_space_id && node.type_label).map(node => node.type_label!)]));
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const parent = useQuery({ queryKey: ['subspace-parent', ownerId, spaceId], enabled: !!type && !!ownerId,
@@ -70,21 +75,21 @@ export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { s
   const sameAccount = () => useYulloAppStore.getState().user?.id === ownerId;
   const context = (): QuickSpaceContext => ({
     subspace_fields: detailFields,
-    place: type === 'event' ? (locationMode === 'physical' ? place : '') : place,
+    place: type === 'event' ? (locationMode === 'physical' ? place : '') : type === 'job' ? place : '',
     location_mode: type === 'event' ? locationMode || undefined : undefined,
     meeting_url: type === 'event' && locationMode === 'online' ? meetingLink.trim() || undefined : undefined,
     ...(type === 'event' && locationMode === 'physical' && pin ? { latitude: pin.lat, longitude: pin.lng, map_url: googleMapLink(pin) } : {}),
     destination_url: url.trim() || undefined,
-    starts_at: date && time ? new Date(`${date}T${time}`).toISOString() : undefined, copied_company_revision: copiedRevision });
+    starts_at: type === 'event' && date && time ? new Date(`${date}T${time}`).toISOString() : undefined, copied_company_revision: copiedRevision });
   const generate = useMutation({ mutationFn: async () => (await yulloApiClient.post<{ description: string }>(
-    `/spaces/${spaceId}/subspace-description`, { name, space_type: type, description, context: context(), time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    `/spaces/${spaceId}/subspace-description`, { name, space_type: type, type_label: typeLabel, description, context: context(), time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone },
     { headers: { 'X-Yullo-Chat-Account': ownerId } })).data,
     onSuccess: result => { if (sameAccount()) { setSuggestion({ text: result.description }); setFailure(''); } },
     onError: () => { if (sameAccount()) setFailure('Could not generate a description. You can write one or try again.'); } });
   const save = useMutation({ mutationFn: () => {
     const base = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 36) || 'space';
     return formsApi.createSpace({ display_name: name.trim(), slug: `${base}-${creationId.slice(0, 8)}`,
-      purpose: parent.data!.purpose, parent_space_id: spaceId, space_type: type!, description, logo_url: cover,
+      purpose: parent.data!.purpose, parent_space_id: spaceId, space_type: type!, type_label: typeLabel, description, logo_url: cover,
       category: spaceTypeLabel(type!), quick_context: context() }, ownerId);
   }, onSuccess: async result => {
     if (!sameAccount()) return;
@@ -95,7 +100,7 @@ export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { s
   const open = (value: SpaceType) => {
     setDetailFields(emptySubspaceFields());
     setMenuOpen(false);
-    setType(value); setAiHintOpen(false); aiHintShown.current = false; setCover(''); setName(''); setDescription(''); setPlace(''); setDate(''); setTime(''); setUrl('');
+    setType(value); setTypeLabel(value === 'other' ? '' : spaceTypeLabel(value)); setAiHintOpen(false); aiHintShown.current = false; setCover(''); setName(''); setDescription(''); setPlace(''); setDate(''); setTime(''); setUrl('');
     setLocationMode(null); setMeetingLink(''); setPin(undefined); setResolvingPlace(false);
     setCopiedRevision(undefined); setSuggestion(null); setPrevious(null); setFailure(''); setCreationId(crypto.randomUUID());
   };
@@ -126,9 +131,9 @@ export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { s
     setPin({ lat: selection.lat, lng: selection.lng });
     fillOverview(selection.address || selection.name);
   };
-  const itemLabel = type === 'other' ? 'Space' : spaceTypeLabel(type || 'space').toLowerCase();
-  const titleLabel = type === 'job' ? 'Role title' : type === 'event' ? 'Event title' : type === 'posting' ? 'Posting title' : `${spaceTypeLabel(type || 'space')} name`;
-  const overviewLabel = type === 'job' ? 'Role overview' : type === 'other' ? 'Overview' : `${spaceTypeLabel(type || 'space')} overview`;
+  const itemLabel = typeLabel.trim().toLowerCase() || 'item';
+  const titleLabel = typeLabel.trim() ? `${typeLabel.trim()} title` : 'Title';
+  const overviewLabel = typeLabel.trim() ? `${typeLabel.trim()} overview` : 'Overview';
   return <>
     <Tooltip.Provider delayDuration={200}>
       <Popover.Root open={menuOpen} onOpenChange={setMenuOpen}>
@@ -156,10 +161,11 @@ export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { s
             </div>
             <IconTooltip label="Close creation form" disabledReason={busy ? 'Wait for the current action to finish.' : undefined}><Dialog.Close disabled={busy} className={toolStyle} aria-label="Close"><X size={16} aria-hidden="true" /></Dialog.Close></IconTooltip>
           </div>
-          <form className="flex min-h-0 flex-1 flex-col" onSubmit={event => { event.preventDefault(); if (!busy && !scheduleIncomplete && name.trim() && parent.data) save.mutate(); }}>
+          <form className="flex min-h-0 flex-1 flex-col" onSubmit={event => { event.preventDefault(); if (!busy && !scheduleIncomplete && typeLabel.trim() && name.trim() && parent.data) save.mutate(); }}>
             <div className="min-h-0 flex-1 overflow-y-auto">
             <fieldset disabled={save.isPending || generate.isPending} className="mx-auto w-full max-w-[680px] space-y-6 px-6 py-5 sm:py-6">
-              <label className={labelStyle}>{titleLabel}<input required autoFocus maxLength={200} className={`${dialogField} mt-2`} placeholder={type === 'event' ? 'e.g. Annual partner summit' : undefined} value={name} onChange={event => setName(event.target.value)} /></label>
+              <div><label htmlFor={`subspace-type-${spaceId}`} className={`${labelStyle} mb-2`}>Type</label><CategoryCombobox id={`subspace-type-${spaceId}`} value={typeLabel} onChange={value => { const label = value === 'Other' ? '' : value; setTypeLabel(label); setType(spaceTypeFromLabel(label)); }} suggestions={typeSuggestions} autoFocus={type === 'other' && !typeLabel} itemLabel="type" placeholder="Event, Post, Announcement—or your own type" maxLength={60} disabled={busy} /><p className="mt-2 text-xs text-[var(--text-secondary)]">Choose a suggestion or enter a custom type.</p></div>
+              <label className={labelStyle}>{titleLabel}<input required autoFocus={type !== 'other'} maxLength={200} className={`${dialogField} mt-2`} placeholder={type === 'event' ? 'e.g. Annual partner summit' : undefined} value={name} onChange={event => setName(event.target.value)} /></label>
               <ImageField value={cover} onChange={setCover} label="Cover image" disabled={busy} />
               <div>
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
@@ -208,7 +214,7 @@ export function AddSubspace({ spaceId, onLink, onManage, disabled = false }: { s
               <p className="text-xs text-[var(--text-secondary)]">Private until published</p>
               <div className="flex items-center gap-2">
                 <Dialog.Close disabled={busy} className="min-h-10 rounded-lg px-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">Cancel</Dialog.Close>
-                <button className={`${action} text-sm font-medium`} type="submit" disabled={busy || scheduleIncomplete || !name.trim() || !parent.data}>{save.isPending ? 'Saving…' : `Create ${itemLabel}`}</button>
+                <button className={`${action} text-sm font-medium`} type="submit" disabled={busy || scheduleIncomplete || !typeLabel.trim() || !name.trim() || !parent.data}>{save.isPending ? 'Saving…' : `Create ${itemLabel}`}</button>
               </div>
             </div>
             </div>
@@ -235,12 +241,12 @@ export function Subspaces({ spaceId, display = 'header' }: { spaceId: string; di
   const isSubspace = !!current?.parent_space_id;
   const listingTitle = isSubspace ? 'Related spaces' : 'Events, posts & services';
   const available = nodes.filter(node => node.id !== spaceId && !node.parent_space_id && node.active && node.status !== 'archived');
-  const change = useMutation({ mutationFn: ({ node, ...patch }: { node: HierarchySpace; parent_space_id?: string | null; space_type?: SpaceType }) => patchHierarchy(node, patch, ownerId!),
-    onSuccess: async () => { setFailure(''); setLinking(false); setLinkId(''); await Promise.all([queryClient.invalidateQueries({ queryKey: hierarchyKey(ownerId) }), queryClient.invalidateQueries({ queryKey: ['yullo-home'] })]); },
+  const change = useMutation({ mutationFn: ({ node, ...patch }: { node: HierarchySpace; parent_space_id?: string | null; space_type?: SpaceType; type_label?: string }) => patchHierarchy(node, patch, ownerId!),
+    onSuccess: async () => { setFailure(''); setLinking(false); setLinkId(''); await Promise.all([queryClient.invalidateQueries({ queryKey: hierarchyKey(ownerId) }), queryClient.invalidateQueries({ queryKey: ['yullo-home'] }), queryClient.invalidateQueries({ queryKey: ['identity'] }), queryClient.invalidateQueries({ queryKey: ['yullo', 'appearance'] }), queryClient.invalidateQueries({ queryKey: ['yullo-nearby', ownerId] })]); },
     onError: error => setFailure(errorMessage(error)) });
   return <div id={display === 'header' ? 'subspaces' : undefined} className={display === 'header' ? 'shrink-0' : undefined}>
     {display === 'sections' ? <div className="flex flex-col justify-between gap-4 py-6 md:flex-row md:items-center">
-      <div><p className="font-[Satoshi] text-[18px] font-medium text-[var(--text-primary)]">{listingTitle}</p><p className="mt-1 text-[15px] text-[var(--text-secondary)]">{isSubspace ? `Add or explore spaces connected to this ${spaceItemLabel(current!.space_type)}.` : 'View everything added to this Space.'}</p></div>
+      <div><p className="font-[Satoshi] text-[18px] font-medium text-[var(--text-primary)]">{listingTitle}</p><p className="mt-1 text-[15px] text-[var(--text-secondary)]">{isSubspace ? `Add or explore spaces connected to this ${spaceItemLabel(current!.space_type, current?.type_label)}.` : 'View everything added to this Space.'}</p></div>
       <button type="button" onClick={() => { setLinking(false); setManaging(true); }} className={`${action} self-start px-5 py-2.5 text-[15px] font-medium md:self-auto`}>View</button>
     </div> : query.isError ? <button type="button" className={quiet} title="Reload Space actions" aria-label="Reload Space actions" onClick={() => void query.refetch()}><RefreshCw size={18} aria-hidden="true" /></button> : <AddSubspace disabled={query.isPending || !current?.active || current.status === 'archived'} spaceId={spaceId} onLink={() => { setManaging(true); setLinking(true); }} onManage={() => setManaging(true)} />}
     <Dialog.Root open={managing} onOpenChange={setManaging}><Dialog.Portal>
@@ -260,10 +266,10 @@ export function Subspaces({ spaceId, display = 'header' }: { spaceId: string; di
         return <div key={node.id} className="flex items-start gap-2 border-b border-[var(--border)] py-4">
         <Link className="group flex min-h-20 min-w-0 flex-1 items-start gap-4 rounded-lg px-2 py-2 hover:bg-[var(--surface-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]" to={`/yullo/spaces/${node.id}`}>
           <span className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[var(--border)]" style={{ color: `var(--space-type-${category.type})`, backgroundColor: `color-mix(in srgb, var(--space-type-${category.type}) 12%, var(--surface))` }}><Icon size={26} strokeWidth={2.25} aria-hidden="true" />{node.logo_url && <img src={node.logo_url} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" onError={event => { event.currentTarget.hidden = true; }} />}</span>
-          <span className="min-w-0 flex-1"><span className="block break-words text-base font-semibold leading-6 text-[var(--text-primary)]">{node.name}</span><span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]"><span>{spaceTypeLabel(node.space_type)}</span><span aria-hidden="true">·</span><span>{status}</span></span>{node.space_type === 'event' && <span className="mt-2 block text-xs leading-5 text-[var(--text-secondary)]">{schedule}{node.location_label && <span className="mt-1 block break-words">{node.location_label}</span>}</span>}</span>
+          <span className="min-w-0 flex-1"><span className="block break-words text-base font-semibold leading-6 text-[var(--text-primary)]">{node.name}</span><span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]"><span>{node.type_label || spaceTypeLabel(node.space_type)}</span><span aria-hidden="true">·</span><span>{status}</span></span>{node.space_type === 'event' && <span className="mt-2 block text-xs leading-5 text-[var(--text-secondary)]">{schedule}{node.location_label && <span className="mt-1 block break-words">{node.location_label}</span>}</span>}</span>
           <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-[var(--accent-ink)]"><span className="hidden sm:inline">Open</span><ArrowUpRight size={16} aria-hidden="true" /></span>
         </Link>
-        <details className="relative"><summary className={`${quiet} cursor-pointer list-none`} aria-label={`Options for ${node.name}`} title="Options"><MoreHorizontal size={20} strokeWidth={2.25} aria-hidden="true" /></summary><div className="absolute right-0 z-10 w-44 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2"><label className="text-sm">Classification<select aria-label={`Classification for ${node.name}`} disabled={change.isPending || !node.active} className={`${field} mt-1`} value={node.space_type} onChange={event => change.mutate({ node, space_type: event.target.value as SpaceType })}>{spaceTypes.map(value => <option key={value} value={value}>{spaceTypeLabel(value)}</option>)}</select></label><button type="button" disabled={change.isPending} className={quiet} onClick={() => change.mutate({ node, parent_space_id: null })}>Detach</button></div></details>
+        <details className="relative"><summary className={`${quiet} cursor-pointer list-none`} aria-label={`Options for ${node.name}`} title="Options"><MoreHorizontal size={20} strokeWidth={2.25} aria-hidden="true" /></summary><div className="absolute right-0 z-10 w-72 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2"><TypeEditor node={node} disabled={change.isPending || !node.active} onSave={label => change.mutate({ node, space_type: spaceTypeFromLabel(label), type_label: label })} /><button type="button" disabled={change.isPending} className={quiet} onClick={() => change.mutate({ node, parent_space_id: null })}>Detach</button></div></details>
       </div>; })}
       {current?.parent_space_id && <Link className={`${quiet} mt-2 text-sm`} to={`/yullo/spaces/${current.parent_space_id}`}>← Back to parent</Link>}
       {linking && <form className="mt-3 flex flex-wrap gap-2" onSubmit={event => { event.preventDefault(); const node = available.find(item => item.id === linkId); if (node && !change.isPending) change.mutate({ node, parent_space_id: spaceId }); }}>
@@ -276,4 +282,11 @@ export function Subspaces({ spaceId, display = 'header' }: { spaceId: string; di
       </motion.section></Dialog.Content>
     </Dialog.Portal></Dialog.Root>
   </div>;
+}
+
+
+function TypeEditor({ node, disabled, onSave }: { node: HierarchySpace; disabled: boolean; onSave: (label: string) => void }) {
+  const [label, setLabel] = useState(node.type_label || spaceTypeLabel(node.space_type));
+  useEffect(() => { setLabel(node.type_label || spaceTypeLabel(node.space_type)); }, [node.type_label, node.space_type]);
+  return <div className="min-w-56 space-y-2"><label htmlFor={`type-${node.id}`} className="text-sm">Type</label><CategoryCombobox id={`type-${node.id}`} value={label} onChange={value => setLabel(value === 'Other' ? '' : value)} suggestions={subspaceTypeSuggestions} itemLabel="type" maxLength={60} disabled={disabled} placeholder="Choose or enter a type" /><button type="button" className={quiet} disabled={disabled || !label.trim() || label === (node.type_label || spaceTypeLabel(node.space_type))} onClick={() => onSave(label.trim())}>Save type</button></div>;
 }

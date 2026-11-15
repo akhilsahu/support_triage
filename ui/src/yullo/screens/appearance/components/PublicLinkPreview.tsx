@@ -65,6 +65,7 @@ export function PublicLinkPreview({ space, config, assets, device, previewConten
   const selectedAsset = assets.find((asset) => asset.id === config.hero.assetId)
   const publicSpace = {
     bookingLinks: space.bookingLinks,
+    upcomingEvents: space.upcomingEvents,
     pageDetails: space.pageDetails,
     subspaceFields: space.subspaceFields,
     isSubspace: space.isSubspace,

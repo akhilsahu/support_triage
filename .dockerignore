@@ -10,3 +10,8 @@ ui/node_modules
 ui/dist
 logs
 .chroma_db
+
+.data
+uploads
+.env.*
+**/.env.local

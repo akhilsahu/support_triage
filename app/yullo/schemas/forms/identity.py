@@ -22,6 +22,7 @@ class SpaceCreateRequest(BaseModel):
     quick_context: QuickSpaceContext | None = None
     parent_space_id: Optional[uuid.UUID] = None
     space_type: SpaceType = SpaceType.space
+    type_label: Optional[str] = Field(None, max_length=60)
     logo_url: Optional[str] = None
     display_name: Optional[str] = Field("Unnamed Space", max_length=200)
     slug: Optional[str] = Field(None, max_length=50)
@@ -76,6 +77,7 @@ class IdentityFormUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class IdentityFormResponse(IdentityForm):
+    type_label: Optional[str] = None
     subspace_fields: SubspaceFields | None = None
     presentation_config: SpacePresentationConfig | None = None
     description: Optional[str] = Field(None, max_length=SUBSPACE_DESCRIPTION_LIMIT)

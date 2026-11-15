@@ -6,8 +6,14 @@ export const SUBSPACE_DESCRIPTION_LIMIT = 4000;
 
 export const spaceTypes = ['space', 'event', 'project', 'location', 'community', 'service', 'job', 'other', 'posting'] as const;
 export type SpaceType = typeof spaceTypes[number];
-export const spaceTypeLabel = (type: string) => type.charAt(0).toUpperCase() + type.slice(1);
-export const spaceItemLabel = (type: string) => type === 'posting' ? 'post' : type === 'other' ? 'item' : type;
+export const spaceTypeLabel = (type: string) => type === 'posting' ? 'Post' : type.charAt(0).toUpperCase() + type.slice(1);
+export const subspaceTypeSuggestions = ['Event', 'Post', 'Announcement', 'Service', 'Job', 'Project', 'Other'] as const;
+export const spaceTypeFromLabel = (label: string): SpaceType => {
+  const name = label.trim().toLowerCase();
+  if (name === 'post' || name === 'announcement') return 'posting';
+  return spaceTypes.find(type => type === name) || 'other';
+};
+export const spaceItemLabel = (type: string, label?: string | null) => label && !['Other', 'Space'].includes(label) ? label.toLowerCase() : type === 'posting' ? 'post' : type === 'other' ? 'item' : type;
 
 export interface HierarchySpace {
   logo_url?: string | null;
@@ -18,6 +24,7 @@ export interface HierarchySpace {
   slug: string;
   parent_space_id: string | null;
   space_type: SpaceType;
+  type_label?: string | null;
   revision: number;
   status: string;
   active: boolean;
@@ -41,7 +48,7 @@ export function useSpaceHierarchy(detailsFor?: string) {
   });
 }
 
-export async function patchHierarchy(node: HierarchySpace, change: { parent_space_id?: string | null; space_type?: SpaceType }, ownerId: string) {
+export async function patchHierarchy(node: HierarchySpace, change: { parent_space_id?: string | null; space_type?: SpaceType; type_label?: string }, ownerId: string) {
   const { data } = await yulloApiClient.patch<HierarchySpace>(`/spaces/${node.id}/hierarchy`, {
     ...change, expected_revision: node.revision,
   }, { headers: { 'X-Yullo-Chat-Account': ownerId } });

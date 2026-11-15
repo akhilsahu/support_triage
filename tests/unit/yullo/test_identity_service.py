@@ -72,6 +72,7 @@ async def test_update_identity_stale_revision():
 async def test_delete_or_archive_space_archive():
     from app.yullo.services.persistence.identity import delete_or_archive_space
     db = AsyncMock()
+    db.begin_nested = MagicMock(return_value=AsyncMock())
     space_id = uuid4()
     owner_id = uuid4()
 

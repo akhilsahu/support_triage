@@ -400,6 +400,7 @@ async def root():
 
 # Include API routers
 from app.yullo.api import home as yullo_home
+from app.yullo.api import beacon as yullo_beacon
 from app.yullo.api import space_forms as yullo_space_forms
 from app.yullo.api import appearance as yullo_appearance
 from app.yullo.api import entities as yullo_entities
@@ -408,6 +409,7 @@ from app.yullo.api import knowledge as yullo_knowledge
 app.include_router(yullo_auth.router, prefix="/api/v1", tags=["Yullo Auth"])
 app.include_router(yullo_onboarding.router, prefix="/api/v1", tags=["Yullo Onboarding"])
 app.include_router(yullo_home.router, prefix="/api/v1", tags=["Yullo Home"])
+app.include_router(yullo_beacon.router, prefix="/api/v1")
 app.include_router(yullo_space_forms.router, prefix="/api/v1", tags=["Yullo Space Forms"])
 app.include_router(yullo_appearance.router, prefix="/api/v1", tags=["Yullo Appearance"])
 app.include_router(yullo_entities.router, prefix="/api/v1", tags=["Yullo Entities"])

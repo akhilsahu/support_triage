@@ -4,6 +4,8 @@ from datetime import datetime
 import uuid
 
 class SpaceSourceResponse(BaseModel):
+    public_resource: bool = False
+    resource_revision: int = 0
     id: uuid.UUID
     source_type: str
     content_ref: str

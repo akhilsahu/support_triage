@@ -3,6 +3,7 @@ import type { SpaceType, QuickSpaceContext, SubspaceFields } from './spaces';
 import type { SpacePresentationConfig } from '../screens/appearance/presentation/schema';
 
 export interface IdentityFormResponse {
+  type_label?: string | null;
   subspace_fields?: SubspaceFields | null;
   presentation_config?: SpacePresentationConfig | null;
   parent_space_id?: string | null;
@@ -48,6 +49,7 @@ export interface CreateSpacePayload {
   quick_context?: QuickSpaceContext;
   parent_space_id?: string;
   space_type?: SpaceType;
+  type_label?: string;
   display_name?: string;
   slug?: string;
   purpose?: 'person' | 'creator' | 'business' | 'organization';

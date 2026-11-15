@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const sectionTypeSchema = z.enum([
-  'identity', 'services', 'portfolio', 'products', 'location', 'featured', 'prompt_starters',
+  'identity', 'services', 'portfolio', 'products', 'location', 'featured', 'prompt_starters', 'upcoming_events',
 ])
 
 export const presentationConfigSchema = z.object({
@@ -56,6 +56,7 @@ export const defaultPresentationConfig = (purpose = 'business'): SpacePresentati
     hero: { layout: 'centered' },
     sections: [
       { type: 'identity', visible: true },
+      { type: 'upcoming_events', visible: true },
       { type: 'services', visible: true },
       { type: 'portfolio', visible: true },
       { type: 'products', visible: true },

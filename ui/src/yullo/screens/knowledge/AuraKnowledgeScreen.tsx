@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { SourceDeletionMode, SourceFact, yulloOnboardingApi } from '../../api/onboarding';
 import { useSpaceEntities } from '../../api/entityQueries';
 import { formsApi } from '../../api/forms';
+import { PublicResourceToggle } from '../../components/PublicResourceToggle';
 import { SourceItem } from '../../components/SourceUnderstandingCard';
 import { SourceReviewSheet } from '../../components/SourceReviewSheet';
 import { AddKnowledgeModal, KnowledgeModalTab } from '../../components/AddKnowledgeModal';
@@ -709,6 +710,7 @@ export const AuraKnowledgeScreen: React.FC = () => {
                               <p className="text-[13px] text-[var(--text-secondary)] font-mono truncate">
                                 {displayRef}
                               </p>
+                              {spaceId && <PublicResourceToggle key={`${source.id}:${source.source_version}`} spaceId={spaceId} source={source} onSaved={() => void fetchSources()} />}
                             </div>
                           </div>
 
