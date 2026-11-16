@@ -55,8 +55,7 @@ def public_booking_links(entities: list[YulloSpaceEntity], *, include_other: boo
     return links
 
 
-def public_page_details(entities, *, space_type, space_name, is_subspace):
-    eligible = [(entity, _page_payload(entity)) for entity in entities]
+def _page_details(eligible, *, space_type, space_name):
     event = next((payload for entity, payload in eligible
                   if entity.entity_type == "event" and payload and
                   (entity.identity_key == "space-event" or payload.get("title") == space_name)), {}) if space_type == "event" else {}
@@ -66,18 +65,30 @@ def public_page_details(entities, *, space_type, space_name, is_subspace):
         venue = next((payload for entity, payload in eligible if entity.entity_type == "location" and payload), {})
     location = "Online" if venue.get("is_remote") or event.get("is_remote") else venue.get("address")
     return {
-        "bookingLinks": public_booking_links(entities, include_other=is_subspace),
-        "pageDetails": {
-            "spaceType": space_type,
-            "startsAt": event.get("starts_at"),
-            "endsAt": event.get("ends_at"),
-            "locationLabel": location,
-            "locationUrl": venue.get("map_url"),
-            "latitude": venue.get("latitude") if location and not venue.get("is_remote") else None,
-            "longitude": venue.get("longitude") if location and not venue.get("is_remote") else None,
-            "isRemote": bool(venue.get("is_remote") or event.get("is_remote")),
-        },
+        "spaceType": space_type,
+        "startsAt": event.get("starts_at"),
+        "endsAt": event.get("ends_at"),
+        "locationLabel": location,
+        "locationUrl": venue.get("map_url"),
+        "latitude": venue.get("latitude") if location and not venue.get("is_remote") else None,
+        "longitude": venue.get("longitude") if location and not venue.get("is_remote") else None,
+        "isRemote": bool(venue.get("is_remote") or event.get("is_remote")),
     }
+
+
+def public_page_details(entities, *, space_type, space_name, is_subspace):
+    return {
+        "bookingLinks": public_booking_links(entities, include_other=is_subspace),
+        "pageDetails": _page_details([(entity, _page_payload(entity)) for entity in entities],
+                                     space_type=space_type, space_name=space_name),
+    }
+
+
+def owner_preview_page_details(entities, *, space_type, space_name):
+    """Owner-authorized Studio data only; never merge this into a public projection."""
+    eligible = [(entity, entity.payload_json or {}) for entity in entities
+                if entity.is_active and entity.review_status in ("owner_confirmed", "source_authoritative")]
+    return _page_details(eligible, space_type=space_type, space_name=space_name)
 
 
 

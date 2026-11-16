@@ -67,6 +67,7 @@ export function normalizeWebsiteUrl(val: string): string {
 }
 
 export const identitySchema = z.object({
+  explore_discovery: z.boolean().optional(),
   subspace_fields: subspaceFieldsSchema.optional(),
   purpose: z.enum(['business', 'creator', 'person', 'organization'] as const, { message: 'Purpose is required' }),
   display_name: z.string().min(1, 'Display name is required').max(200),
@@ -664,6 +665,13 @@ interface IdentityChatMessage {
               <div className="absolute right-3 bottom-3 text-[11px] font-mono text-[var(--text-muted)]">
                 {(currentDescription || '').length}/{descriptionMaxLength.toLocaleString()}
               </div>
+            </div>
+
+            <div className="mt-6 border-t border-[var(--border)] pt-5">
+              <label className="flex cursor-pointer items-start gap-3 text-sm">
+                <input type="checkbox" {...form.register('explore_discovery')} className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]" />
+                <span><span className="block font-medium">Show in Explore apps</span><span className="mt-1 block text-xs leading-relaxed text-[var(--text-secondary)]">Let visitors discover this page in Explore when it is live. Applies only to this page.</span></span>
+              </label>
             </div>
 
       {descriptionMaxLength > 280 && <div className="mt-6"><DetailFields value={form.watch('subspace_fields') || emptySubspaceFields()} onChange={value => form.setValue('subspace_fields', value, { shouldDirty: true, shouldValidate: true })} /></div>}

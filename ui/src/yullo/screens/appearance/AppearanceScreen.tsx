@@ -511,6 +511,7 @@ export function AppearanceScreen() {
         <div className={`appearance-mode appearance-preview-mode ${mobileMode === 'preview' ? 'is-active' : ''}`} aria-hidden={isCompactLayout && mobileMode !== 'preview'} {...inactive('preview')}>
           <SectionEditorContext.Provider value={{
             bookingPreview: query.data.space.previewBookingLinks,
+            pageDetailsPreview: query.data.space.previewPageDetails,
             generating: previewState.isGenerating || isInitializing,
             toggle: (type) => history.apply({ ...history.draft, sections: history.draft.sections.map((section) => section.type === type ? { ...section, visible: !section.visible } : section) }),
             build: handlePullSectionData,

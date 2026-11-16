@@ -1,10 +1,11 @@
 """Space hierarchy and the explicitly shared public child-event listing."""
 import logging
 import uuid
+from typing import Literal
 
 from fastapi import HTTPException
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from app.models.space import Space
 from app.models.user import User
@@ -160,18 +161,67 @@ async def require_no_children(db: AsyncSession, space_id: uuid.UUID) -> None:
         raise HTTPException(409, "Detach subspaces before archiving or deleting this Space.")
 
 
-async def list_public_child_events(db, space_id, *, search="", starts_after=None, starts_before=None, limit=10, config, scan_all=False):
+EventTimeframe = Literal["all", "upcoming", "past"]
+EventWindow = Literal["today", "24_hours", "week", "month", "year"]
+EventSort = Literal["date_asc", "date_desc", "created_desc"]
+
+
+def _event_window_end(now, window):
+    from calendar import monthrange
+    from datetime import timedelta
+
+    if window in ("24_hours", "week"):
+        return now + timedelta(days=1 if window == "24_hours" else 7)
+    year, month = (now.year + 1, now.month) if window == "year" else (now.year + now.month // 12, now.month % 12 + 1)
+    return now.replace(year=year, month=month, day=min(now.day, monthrange(year, month)[1]))
+
+
+def _event_timestamp(raw):
+    from datetime import datetime
+
+    try:
+        value = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        return value if value.tzinfo is not None else None
+    except ValueError:
+        return None
+
+
+async def list_public_child_events(db, space_id, *, search="", starts_after=None, starts_before=None, limit=10, config, scan_all=False, timeframe: EventTimeframe = "all", window: EventWindow | None = None, sort_by: EventSort = "date_asc", time_zone: str = "UTC"):
     """Narrow public-listing exception: direct event children, never their sources."""
-    from datetime import datetime, timezone
+    from datetime import datetime, timezone, timedelta
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
     from app.models.yullo_config import YulloConfig
     from app.yullo.services.entities.service import get_public_entities
     from app.yullo.services.entities.payloads import project_public_entity_payload
+
+    if timeframe not in ("all", "upcoming", "past") or sort_by not in ("date_asc", "date_desc", "created_desc") or window not in (None, "today", "24_hours", "week", "month", "year"):
+        raise HTTPException(422, "Invalid event listing filters")
+    if window and ((timeframe == "past" and window != "today") or starts_after or starts_before):
+        raise HTTPException(422, "Choose a relative window or explicit date bounds")
+    try:
+        zone = ZoneInfo(time_zone)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise HTTPException(422, "Choose a valid IANA timezone") from None
+    now = datetime.now(timezone.utc)
+    if window == "today":
+        midnight = now.astimezone(zone).replace(hour=0, minute=0, second=0, microsecond=0)
+        starts_after, starts_before = midnight.astimezone(timezone.utc), (midnight + timedelta(days=1)).astimezone(timezone.utc)
+    elif window:
+        starts_after = now
+        starts_before = _event_window_end(now if window == "24_hours" else now.astimezone(zone), window).astimezone(timezone.utc)
+    if timeframe == "past" and window != "today":
+        starts_before = min(starts_before, now) if starts_before else now
+    if starts_after and starts_before and starts_after > starts_before:
+        raise HTTPException(422, "Date range is reversed")
 
     parent = (await db.execute(select(Space, YulloSpace).join(
         YulloSpace, YulloSpace.space_id == Space.id,
     ).where(Space.id == space_id, Space.product == "yullo", Space.active.is_(True),
             Space.status == "live", YulloSpace.lifecycle_status == "live"))).first()
     if not parent:
+        return {"status": "unavailable", "events": []}
+    parent_path = await live_branch_path(db, parent[0], parent[1])
+    if not parent_path:
         return {"status": "unavailable", "events": []}
     statement = select(Space, YulloConfig).join(YulloSpace, YulloSpace.space_id == Space.id).outerjoin(
         YulloConfig, YulloConfig.space_id == Space.id,
@@ -180,40 +230,60 @@ async def list_public_child_events(db, space_id, *, search="", starts_after=None
             Space.active.is_(True), Space.status == "live", YulloSpace.lifecycle_status == "live")
     if search:
         statement = statement.where(Space.display_name.icontains(search, autoescape=True))
-    statement = statement.order_by(Space.id)
+    statement = statement.order_by(Space.created_at.desc(), Space.id) if sort_by == "created_desc" else statement.order_by(Space.id)
     if not scan_all:
         statement = statement.limit(config.max_candidates + 1)
     rows = (await db.execute(statement)).all()
-    events = []
+    events, undated = [], []
+    created = {}
     for child, child_config in (rows if scan_all else rows[:config.max_candidates]):
         records = [record for record in await get_public_entities(db, child.id, entity_types=("event", "location"))
                    if record.disclosure_mode in (None, "direct")]
         # Match this event's title; unrelated extracted events cannot supply its dates.
-        payloads = [project_public_entity_payload(record, direct_only=True) for record in records if record.entity_type == "event"]
-        matching = [payload for payload in payloads if str(payload.get("title", "")).strip().casefold() == child.display_name.strip().casefold()]
-        event = matching[0] if len(matching) == 1 else {}
-        start = None
-        try:
-            value = datetime.fromisoformat(str(event.get("starts_at", "")).replace("Z", "+00:00"))
-            if value.tzinfo is not None:
-                start = value
-        except ValueError:
-            pass
-        if (starts_after or starts_before) and (start is None or (starts_after and start < starts_after) or (starts_before and start > starts_before)):
-            continue
+        payloads = [(record, project_public_entity_payload(record, direct_only=True)) for record in records if record.entity_type == "event"]
+        canonical = next((payload for record, payload in payloads if record.identity_key == "space-event"), None)
+        matching = [payload for _, payload in payloads if str(payload.get("title", "")).strip().casefold() == child.display_name.strip().casefold()]
+        event = canonical if canonical is not None else matching[0] if len(matching) == 1 else {}
+        start = _event_timestamp(event.get("starts_at"))
+        end = _event_timestamp(event.get("ends_at"))
+        if end and start and end < start:
+            end = None
+        status = "schedule_unavailable" if start is None else "ended" if end and end <= now else "upcoming" if start > now else "ongoing" if end else "started_end_unknown"
         location = next((project_public_entity_payload(record, direct_only=True) for record in records
                          if record.entity_type == "location" and str(record.id) == event.get("location_entity_id")), {})
         identity = (child_config.settings or {}).get("identity", {}) if child_config else {}
-        events.append({"title": child.display_name, "url": f"/{child.slug}", "cover_url": child.logo_url,
+        item = {"title": child.display_name, "url": f"{parent_path}/{child.slug}", "cover_url": child.logo_url,
                        "description": identity.get("description") or "",
                        "starts_at": start.isoformat() if start else None,
-                       "ends_at": event.get("ends_at"), "is_remote": event.get("is_remote"),
+                       "ends_at": end.isoformat() if end else None, "event_status": status, "is_remote": event.get("is_remote"),
                        "location": {key: location[key] for key in ("name", "address", "map_url") if key in location} or None,
-                       "registration_url": event.get("registration_url")})
-    events.sort(key=lambda item: (datetime.fromisoformat(item["starts_at"]).timestamp() if item["starts_at"] else float("inf"), item["title"]))
-    result = {"status": "success", "as_of": datetime.now(timezone.utc).isoformat(),
-              "events": events[:limit], "has_more": len(events) > limit or len(rows) > config.max_candidates,
-              "date_filter_excludes_unknown_dates": bool(starts_after or starts_before)}
+                       "registration_url": event.get("registration_url")}
+        if (starts_after or starts_before or timeframe != "all") and start is None:
+            undated.append(item)
+            continue
+        if window == "today" and start:
+            # Whole-day activity includes a known multi-day event overlapping today.
+            if start >= starts_before or (end <= starts_after if end else start < starts_after):
+                continue
+        elif start and ((starts_after and start < starts_after) or (starts_before and start > starts_before)):
+            continue
+        if timeframe == "upcoming" and window != "today" and status == "ended":
+            continue
+        if timeframe == "past" and window != "today" and start and start >= now:
+            continue
+        created[item["url"]] = child.created_at.timestamp() if child.created_at else 0
+        events.append(item)
+    if sort_by == "created_desc":
+        events.sort(key=lambda item: (-created[item["url"]], item["title"]))
+    else:
+        direction = -1 if sort_by == "date_desc" else 1
+        events.sort(key=lambda item: (direction * datetime.fromisoformat(item["starts_at"]).timestamp() if item["starts_at"] else float("inf"), item["title"]))
+    result = {"status": "success", "as_of": now.isoformat(),
+              "events": events[:limit], "has_more": len(events) > limit or (not scan_all and len(rows) > config.max_candidates),
+              "undated_events": undated[:limit], "undated_has_more": len(undated) > limit,
+              "sort_by": sort_by, "time_zone": time_zone, "starts_after": starts_after.isoformat() if starts_after else None,
+              "starts_before": starts_before.isoformat() if starts_before else None,
+              "date_filter_excludes_unknown_dates": bool(starts_after or starts_before or timeframe != "all")}
     logger.info("yullo.events.listed", extra={"space_id": str(space_id), "returned": len(result["events"]), "has_more": result["has_more"]})
     return result
 
@@ -233,7 +303,7 @@ async def upcoming_public_child_events(db, space_id, *, parent_slug, is_subspace
         config=config, scan_all=True,
     )
     return [UpcomingEvent(
-        title=item["title"], url=f"/{parent_slug}{item['url']}",
+        title=item["title"], url=item["url"],
         cover_url=item["cover_url"], starts_at=item["starts_at"],
         location=item["location"], is_remote=item["is_remote"],
     ) for item in result["events"]]
@@ -252,25 +322,42 @@ def build_event_listing_tools(db, context, *, config):
         starts_after: AwareDatetime | None = None
         starts_before: AwareDatetime | None = None
         limit: int = Field(default=10, ge=1, le=20)
+        timeframe: EventTimeframe = "all"
+        window: EventWindow | None = None
+        sort_by: EventSort = "date_asc"
+        time_zone: str = Field(default="UTC", min_length=1, max_length=64)
 
         @model_validator(mode="after")
         def ordered(self):
+            if self.window and ((self.timeframe == "past" and self.window != "today") or self.starts_after or self.starts_before):
+                raise ValueError("Choose a relative window or explicit date bounds")
             if self.starts_after and self.starts_before and self.starts_after > self.starts_before:
                 raise ValueError("Date range is reversed")
             return self
 
-    async def list_events(search: str = "", starts_after: str | None = None, starts_before: str | None = None, limit: int = 10) -> dict:
-        """List published event children of this Space. Optional date bounds are ISO timestamps with timezone. Unknown dates are excluded by date filters. No private child knowledge is read."""
+    async def list_events(search: str = "", starts_after: str | None = None, starts_before: str | None = None, limit: int = 10, timeframe: EventTimeframe = "all", window: EventWindow | None = None, sort_by: EventSort = "date_asc", time_zone: str = "UTC") -> dict:
+        """List this Space's published child events. General questions use all; upcoming/past use timeframe. Live controls listing availability; upcoming includes not-yet-ended events. Relative window: today/24_hours/week/month/year from the server clock. Today spans the whole date in time_zone (IANA; UTC default); other ranges use timezone-aware ISO bounds. Sort date_asc/date_desc/created_desc. Unknown schedules return separately. No private child knowledge is read."""
         try:
-            filters = Filters(search=search, starts_after=starts_after, starts_before=starts_before, limit=limit)
+            filters = Filters(search=search, starts_after=starts_after, starts_before=starts_before, limit=limit, timeframe=timeframe, window=window, sort_by=sort_by, time_zone=time_zone)
         except ValidationError:
             return {"status": "invalid_filters", "message": "Use a valid date range with timezone and a limit from 1 to 20."}
         try:
-            return await list_public_child_events(db, context.space_id, search=filters.search,
-                starts_after=filters.starts_after, starts_before=filters.starts_before,
-                limit=min(filters.limit, config.max_results), config=config)
+            # Model tools can run after another retrieval left its transaction failed.
+            # Keep this public, read-only lookup independent while reusing the same DB bind.
+            bind = db.bind.engine if isinstance(db.bind, AsyncConnection) else db.bind
+            if bind is None:
+                raise RuntimeError("Event lookup database is not configured")
+            async with AsyncSession(bind=bind, expire_on_commit=False, autoflush=False) as listing_db:
+                await listing_db.execute(text("SET TRANSACTION READ ONLY"))
+                return await list_public_child_events(listing_db, context.space_id, search=filters.search,
+                    starts_after=filters.starts_after, starts_before=filters.starts_before,
+                    limit=min(filters.limit, config.max_results), config=config, timeframe=filters.timeframe,
+                    window=filters.window, sort_by=filters.sort_by, time_zone=filters.time_zone)
         except Exception as error:
-            logger.warning("yullo.events.list_failed", extra={"space_id": str(context.space_id), "error_type": type(error).__name__})
+            if isinstance(error, HTTPException) and error.status_code == 422:
+                return {"status": "invalid_filters", "message": "Choose a valid date range, timeframe and sort order."}
+            logger.warning("yullo.events.list_failed space_id=%s error_type=%s", context.space_id, type(error).__name__,
+                           extra={"space_id": str(context.space_id), "error_type": type(error).__name__})
             return {"status": "unavailable", "message": "Event listings are temporarily unavailable."}
 
     return [Function.from_callable(list_events)]

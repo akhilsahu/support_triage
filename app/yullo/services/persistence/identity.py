@@ -115,6 +115,7 @@ async def get_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.UUID
         presence = await read_event_presence(db, space_id, event_context, space_name=space.display_name)
 
     return IdentityFormResponse(
+        explore_discovery=identity_settings.get("explore_discovery") is True,
         subspace_fields=identity_settings.get("subspace_fields") if yullo_space.parent_space_id else None,
         presentation_config=_parse_config(yullo_space),
         event_context=event_context,
@@ -178,6 +179,8 @@ async def update_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.U
     
     settings = dict(yullo_config.settings) if yullo_config.settings else {}
     identity_settings = dict(settings.get("identity", {}))
+    if data.explore_discovery is not None:
+        identity_settings["explore_discovery"] = data.explore_discovery
     
     if data.description is not None:
         identity_settings["description"] = data.description

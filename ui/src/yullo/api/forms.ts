@@ -3,6 +3,7 @@ import type { SpaceType, QuickSpaceContext, SubspaceFields } from './spaces';
 import type { SpacePresentationConfig } from '../screens/appearance/presentation/schema';
 
 export interface IdentityFormResponse {
+  explore_discovery?: boolean;
   space_type?: SpaceType;
   type_label?: string | null;
   subspace_fields?: SubspaceFields | null;
@@ -26,6 +27,7 @@ export interface IdentityFormResponse {
 }
 
 export interface IdentityFormUpdate {
+  explore_discovery?: boolean;
   subspace_fields?: SubspaceFields;
   purpose?: 'person' | 'creator' | 'business' | 'organization';
   display_name?: string;
@@ -89,8 +91,8 @@ export const formsApi = {
     return response.data;
   },
 
-  updateIdentity: async (spaceId: string, data: IdentityFormUpdate): Promise<IdentityFormResponse> => {
-    const response = await yulloApiClient.put(`/spaces/${spaceId}/forms/identity`, data);
+  updateIdentity: async (spaceId: string, data: IdentityFormUpdate, ownerId?: string): Promise<IdentityFormResponse> => {
+    const response = await yulloApiClient.put(`/spaces/${spaceId}/forms/identity`, data, { headers: ownerId ? { 'X-Yullo-Chat-Account': ownerId } : undefined });
     return response.data;
   },
 

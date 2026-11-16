@@ -1,5 +1,5 @@
 import uuid
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, StrictBool
 from typing import Optional
 from enum import Enum
 from app.yullo.schemas.spaces import SpaceType, QuickSpaceContext, SUBSPACE_DESCRIPTION_LIMIT
@@ -56,6 +56,7 @@ class IdentityForm(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class IdentityFormUpdate(BaseModel):
+    explore_discovery: StrictBool | None = None
     subspace_fields: SubspaceFields | None = None
     purpose: Optional[SpacePurpose] = None
     display_name: Optional[str] = Field(None, min_length=1, max_length=200)
@@ -77,6 +78,7 @@ class IdentityFormUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class IdentityFormResponse(IdentityForm):
+    explore_discovery: bool = False
     space_type: SpaceType = SpaceType.space
     type_label: Optional[str] = None
     subspace_fields: SubspaceFields | None = None

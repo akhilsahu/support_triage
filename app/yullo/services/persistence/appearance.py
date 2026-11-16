@@ -48,7 +48,7 @@ from app.yullo.schemas.appearance_preview import (
 )
 from app.yullo.services.entities.service import public_entity_predicates
 from app.yullo.services.entities.payloads import public_entity_summary
-from app.yullo.services.entities.presentation import public_page_details, owner_preview_booking_links
+from app.yullo.services.entities.presentation import public_page_details, owner_preview_booking_links, owner_preview_page_details
 from app.yullo.services.entities.service import get_public_entities
 from app.orchestra.ai.prompts.yullo.appearance import PREVIEW_SYSTEM_PROMPT as SYSTEM_PROMPT
 
@@ -102,11 +102,12 @@ def _space_summary(
     yullo_space: YulloSpace,
     yullo_config: YulloConfig | None,
     public_entities=(),
-    owner_bookings=(),
+    owner_entities=(),
 ) -> AppearanceSpaceSummary:
     identity = ((yullo_config.settings or {}).get("identity") or {}) if yullo_config else {}
     return AppearanceSpaceSummary(
-        previewBookingLinks=owner_preview_booking_links(owner_bookings),
+        previewPageDetails=owner_preview_page_details(owner_entities, space_type=yullo_space.space_type, space_name=space.display_name) if yullo_space.parent_space_id else None,
+        previewBookingLinks=owner_preview_booking_links(owner_entities),
         promptStarters=identity.get("prompt_starters") or [],
         **public_page_details(public_entities, space_type=yullo_space.space_type, space_name=space.display_name, is_subspace=yullo_space.parent_space_id is not None),
         subspaceFields=identity.get("subspace_fields") if yullo_space.parent_space_id else None,
@@ -131,9 +132,9 @@ async def get_appearance(
     space, yullo_space, yullo_config = await _owned_space(
         db, user_id=user_id, space_id=space_id
     )
-    owner_bookings = list((await db.scalars(select(YulloSpaceEntity).where(
+    owner_entities = list((await db.scalars(select(YulloSpaceEntity).where(
         YulloSpaceEntity.space_id == space_id,
-        YulloSpaceEntity.entity_type == "action",
+        YulloSpaceEntity.entity_type.in_(("action", "event", "location")),
         YulloSpaceEntity.is_active.is_(True),
         YulloSpaceEntity.review_status.in_(("owner_confirmed", "source_authoritative")),
     ).order_by(YulloSpaceEntity.sort_order, YulloSpaceEntity.id))).all())
@@ -158,7 +159,7 @@ async def get_appearance(
         })
         if draft.config.hero.asset_id and draft.config.hero.asset_id not in {asset.id for asset in assets}:
             draft.config.hero.asset_id = None
-    summary = _space_summary(space, yullo_space, yullo_config, await get_public_entities(db, space_id, entity_types=("action", "event", "location")), owner_bookings)
+    summary = _space_summary(space, yullo_space, yullo_config, await get_public_entities(db, space_id, entity_types=("action", "event", "location")), owner_entities)
     if summary.page_details:
         summary.page_details.type_label = saved_type_label(yullo_space.space_type, yullo_config.settings if yullo_config else None)
     summary.upcoming_events = await upcoming_public_child_events(

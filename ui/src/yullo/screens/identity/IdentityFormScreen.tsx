@@ -58,6 +58,7 @@ export function IdentityFormScreen() {
   useEffect(() => {
     if (identity) {
       form.reset({
+        explore_discovery: identity.explore_discovery === true,
         subspace_fields: identity.subspace_fields || undefined,
         purpose: identity.purpose,
         display_name: identity.display_name,

@@ -34,7 +34,7 @@ export const yulloPublicPages = {
     description: 'How information is used when you create a Space or talk to an Aura on Yullo.',
     sections: [
       { title: 'Your account and Space', body: 'Yullo processes the account details used to sign in, such as your email, phone number or connected Google identity. We also store the information and sources you add to manage your Space and provide its features.' },
-      { title: 'What becomes public', body: 'Published Space names, handles, images and public information can be seen by visitors. Published Spaces may appear in Explore apps. Share only information you are comfortable making available to that audience.' },
+      { title: 'What becomes public', body: 'Published Space names, handles, images and public information can be seen by visitors. Published Spaces appear in Explore apps only when their owner enables Explore discovery. Share only information you are comfortable making available to that audience.' },
       { title: 'Conversations and Aura', body: 'Messages sent to an Aura are processed to generate replies and may be stored as conversation history. Relevant messages and authorized Space information may be processed by the AI providers configured for the service. Avoid sharing sensitive personal information in chat.' },
       { title: 'Cookies and local storage', body: 'Yullo uses session cookies to keep you signed in and browser storage for preferences and chat continuity. Some browser settings may prevent these features from working.' },
       { title: 'Questions about your data', body: 'Contact hello@yullo.co about access, corrections, deletion or other privacy questions. Include enough detail to identify your account or Space without sharing passwords or verification codes.' },

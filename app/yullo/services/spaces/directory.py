@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.space import Space
 from app.models.yullo_space import YulloSpace
+from app.models.yullo_config import YulloConfig
 from app.yullo.schemas.directory import PublicSpaceDirectory, PublicSpaceIcon
 from app.yullo.services.spaces.hierarchy import live_branch_path
 
@@ -16,9 +17,12 @@ logger = logging.getLogger(__name__)
 async def browse_public_spaces(
     db: AsyncSession, *, query: str = "", cursor: UUID | None = None, limit: int = 48,
 ) -> PublicSpaceDirectory:
-    statement = select(Space, YulloSpace).join(YulloSpace, YulloSpace.space_id == Space.id).where(
+    statement = select(Space, YulloSpace).join(YulloSpace, YulloSpace.space_id == Space.id).join(
+        YulloConfig, YulloConfig.space_id == Space.id,
+    ).where(
         Space.product == "yullo", Space.active.is_(True), Space.status == "live",
         YulloSpace.lifecycle_status == "live",
+        YulloConfig.settings.contains({"identity": {"explore_discovery": True}}),
     )
     if query:
         # Treat wildcard characters as literal search text.

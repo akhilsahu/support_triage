@@ -4,11 +4,13 @@ import React, { useState } from 'react';
 import { useSpaceEntities } from '../api/entityQueries';
 import { useParams, Link, useNavigate, Outlet } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useYulloAppStore } from '../store/useYulloAppStore';
+import { IconTooltip } from '../forms/core/IconTooltip';
 import { formsApi } from '../api/forms';
 import { yulloOnboardingApi } from '../api/onboarding';
 import { useAppStore } from '../../store/useAppStore';
 import { Card } from '../../components/ui/Card';
-import { CalendarDays, Clock3, MapPin, ArrowLeft, ArrowRight, Eye, Layers, Table, Database, SlidersHorizontal } from 'lucide-react';
+import { CalendarDays, Clock3, MapPin, ArrowLeft, ArrowRight, Eye, Layers, Table, Database, SlidersHorizontal, Info } from 'lucide-react';
 import { YulloAppHeader } from '../components/YulloAppHeader';
 import { Locations } from '../forms/Locations';
 import { BookingLinks } from '../forms/BookingLinks';
@@ -26,6 +28,8 @@ export function SpaceDashboard() {
   const { spaceId } = useParams<{ spaceId: string }>();
   const navigate = useNavigate();
   const { token } = useAppStore();
+  const ownerId = useYulloAppStore(state => state.user?.id);
+  const [discoveryError, setDiscoveryError] = useState<{ spaceId: string; message: string } | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [publicationError, setPublicationError] = useState<{ spaceId?: string; message: string } | null>(null);
   const [isEntityManagerOpen, setIsEntityManagerOpen] = useState(false);
@@ -54,6 +58,25 @@ export function SpaceDashboard() {
     onError: error => {
       const detail = isAxiosError(error) && error.response?.status === 409 ? error.response.data?.detail : null;
       setPublicationError({ spaceId, message: typeof detail === 'string' ? detail : 'Could not update visibility. Try again shortly.' });
+    },
+  });
+
+  const discoveryMutation = useMutation({
+    mutationFn: (request: { spaceId: string; revision: number; enabled: boolean; ownerId: string }) => {
+      if (useYulloAppStore.getState().user?.id !== request.ownerId) throw new Error('Account changed');
+      return formsApi.updateIdentity(request.spaceId, { explore_discovery: request.enabled, expected_revision: request.revision }, request.ownerId);
+    },
+    onMutate: () => setDiscoveryError(null),
+    onSuccess: (data, request) => {
+      if (useYulloAppStore.getState().user?.id !== request.ownerId) return;
+      queryClient.setQueryData(['identity', request.spaceId], data);
+      void queryClient.invalidateQueries({ queryKey: ['yullo-public-directory'] });
+    },
+    onError: (error, request) => {
+      if (useYulloAppStore.getState().user?.id !== request.ownerId) return;
+      const conflict = isAxiosError(error) && error.response?.status === 409;
+      if (conflict) void queryClient.invalidateQueries({ queryKey: ['identity', request.spaceId] });
+      setDiscoveryError({ spaceId: request.spaceId, message: conflict ? 'Settings changed. Please try again.' : 'Could not save app discovery. Please try again.' });
     },
   });
 
@@ -129,7 +152,7 @@ export function SpaceDashboard() {
                 
                 <button
                   onClick={() => toggleLiveMutation.mutate(!isLive)}
-                  disabled={toggleLiveMutation.isPending}
+                  disabled={toggleLiveMutation.isPending || discoveryMutation.isPending}
                   className="text-[13px] font-[Instrument_Sans] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50 ml-1"
                 >
                   [{isLive ? 'Hide' : 'Make live'}]
@@ -137,6 +160,24 @@ export function SpaceDashboard() {
               </div>
             </div>
           )}
+          {identity && spaceId && <div className="mt-5 max-w-sm border-t border-[var(--border)] pt-4">
+            <div className="flex items-center gap-2">
+              <span id={`app-discovery-${spaceId}`} className="text-sm font-medium">App discovery</span>
+              <IconTooltip label="Who can discover this app?" description="When enabled, this page can appear in Explore apps once it and its parent pages are live. Turning it off removes the Explore listing; the public link still works. Each subspace has its own setting.">
+                <button type="button" aria-label="About app discovery" className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--surface-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"><Info size={15} /></button>
+              </IconTooltip>
+              <button type="button" role="switch" aria-checked={identity.explore_discovery === true} aria-labelledby={`app-discovery-${spaceId}`} aria-describedby={`app-discovery-description-${spaceId}`} aria-busy={discoveryMutation.isPending || undefined}
+                disabled={!ownerId || discoveryMutation.isPending || toggleLiveMutation.isPending}
+                onClick={() => { if (ownerId) discoveryMutation.mutate({ spaceId, ownerId, revision: identity.revision, enabled: !identity.explore_discovery }); }}
+                className="ml-auto flex min-h-11 min-w-11 items-center justify-center rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-wait disabled:opacity-50">
+                <span className={`flex h-6 w-11 items-center rounded-full border p-0.5 ${identity.explore_discovery ? 'border-[var(--accent)] bg-[var(--accent-solid)]' : 'border-[var(--border-hover)] bg-[var(--surface-soft)]'}`}>
+                  <span className={`h-4 w-4 rounded-full shadow-sm motion-safe:transition-transform motion-safe:duration-150 ${identity.explore_discovery ? 'translate-x-5 bg-[var(--accent-on-solid)]' : 'translate-x-0 bg-[var(--text-secondary)]'}`} />
+                </span>
+              </button>
+            </div>
+            <p id={`app-discovery-description-${spaceId}`} className="mt-1 text-xs leading-relaxed text-[var(--text-secondary)]">{discoveryMutation.isPending ? 'Saving discovery setting…' : 'Let people find this page in Explore apps when it’s live.'}</p>
+            {discoveryError?.spaceId === spaceId && <p role="alert" className="mt-2 text-xs text-[var(--critical)]">{discoveryError.message}</p>}
+          </div>}
         </div>
         </div>
 

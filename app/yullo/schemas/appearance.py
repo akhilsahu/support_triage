@@ -182,6 +182,7 @@ class UpcomingEvent(StrictModel):
 
 
 class AppearanceSpaceSummary(StrictModel):
+    preview_page_details: SpacePageDetails | None = Field(default=None, alias="previewPageDetails")
     upcoming_events: list[UpcomingEvent] = Field(default_factory=list, alias="upcomingEvents")
     preview_booking_links: list[PreviewPageAction] = Field(default_factory=list, alias="previewBookingLinks")
     prompt_starters: list[str] = Field(default_factory=list, alias="promptStarters")

@@ -12,6 +12,7 @@ import {
 } from '../screens/appearance/preview/types'
 
 export interface AppearanceSpaceSummary {
+  previewPageDetails?: PublicSpace['pageDetails']
   upcomingEvents?: PublicSpace['upcomingEvents']
   previewBookingLinks?: { id: string; label: string; url: string; visibleOnPage: boolean }[]
   promptStarters?: string[]
