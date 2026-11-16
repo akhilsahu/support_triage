@@ -4,6 +4,8 @@
 
 User authorized committing, pushing and deploying all pending account/authentication, onboarding, identity-generation and Home UI changes. Frontend production build/TypeScript, API import and diff whitespace checks passed locally; existing build warnings remain. No new migrations. Local tests remain skipped under the existing instruction; the unchanged push workflow runs its isolated CI suites before VPS deployment. Production deployment and health verification pending. Image collection/context/compression remains analysis only and is not part of this release.
 
+Release verified: application commit `b0d04b96` pushed to main. CI backend/frontend checks and VPS build/restart all succeeded in https://github.com/akhilsahu/support_triage/actions/runs/43936427366 . Vercel and Cloudflare build checks succeeded. Post-deployment requests to `https://api.support247.chat/api/v1/health` and `https://yullo.co/api/v1/health` both returned healthy with database/Redis connected. Authenticated browser/profile/onboarding/model-generation flows remain unverified in production. This completion note supersedes the pending status above.
+
 ## Ship order
 
 1. Foundation and policy enforcement first; no visibility controls before server filtering works.
