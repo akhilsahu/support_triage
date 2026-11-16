@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { spaceTypeLabel, useSpaceHierarchy } from '../../api/spaces';
+import { useSpaceHierarchy } from '../../api/spaces';
 import { AddSubspace } from '../../forms/subspaces/Subspaces';
 import type { HomeSpace } from '../../home/types';
 import { YulloPulse } from '../YulloPulse';
@@ -41,12 +41,6 @@ export function SpaceNetwork({ spaces, selectedId, onSelect, userName }: {
     {query.isError && <p role="alert" className="text-sm text-[var(--text-secondary)]">Could not load subspaces. <button type="button" className={linkStyle} onClick={() => void query.refetch()}>Try again</button></p>}
     {query.isPending && <p role="status" className="text-sm text-[var(--text-secondary)]">Loading subspaces…</p>}
     {scopeId && !current && query.isSuccess && <button className={linkStyle} type="button" onClick={() => drill(null)}>Show all Spaces</button>}
-    {!!visible.length && <details className="mt-3 text-sm">
-      <summary className="min-h-11 cursor-pointer py-3 text-[var(--text-secondary)]">List view · {visible.length}</summary>
-      <ul className="divide-y divide-[var(--border)]">{visible.map(space => <li key={space.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <button type="button" className={`${linkStyle} min-w-0 break-words text-left`} onClick={() => drill(space.id)}>{space.name}</button>
-        {space.spaceType && <span className="text-[var(--text-secondary)]">{spaceTypeLabel(space.spaceType)}</span>}
-      </li>)}</ul>
-    </details>}
+
   </div>;
 }

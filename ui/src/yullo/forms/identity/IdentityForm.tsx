@@ -211,6 +211,12 @@ interface IdentityChatMessage {
         spaceId: spaceId,
         name: currentDisplayName || 'Space',
         website: currentWebsite || undefined,
+        purpose: currentPurpose,
+        category: currentCategory || '',
+        category_source: categorySource || 'owner',
+        presence: currentPresence || undefined,
+        description: currentDescription || '',
+        description_source: form.getValues('description_source') || 'owner',
       });
       setSuggestion(res);
       setDismissed(false);
@@ -229,19 +235,7 @@ interface IdentityChatMessage {
         }
       ]);
 
-      if (res.status === 'ready') {
-        if (res.description && form.getValues('description_source') !== 'owner') {
-          form.setValue('description', res.description, { shouldDirty: true });
-          form.setValue('description_source', 'aura', { shouldDirty: true });
-        }
-        if (res.category && form.getValues('category_source') !== 'owner') {
-          form.setValue('category', res.category, { shouldDirty: true });
-          form.setValue('category_source', 'aura', { shouldDirty: true });
-        }
-        if (res.candidate_match?.url && !form.getValues('website')) {
-          form.setValue('website', res.candidate_match.url, { shouldDirty: true, shouldValidate: true });
-        }
-      }
+      // Keep proposals separate until the owner explicitly applies one.
     } catch (e) {
       console.warn('Failed to fetch Aura identity suggestion:', e);
       setSuggestion({ status: 'unavailable', clarification: 'AI suggestion is currently unavailable. Please enter details manually.' });
@@ -274,6 +268,12 @@ interface IdentityChatMessage {
         spaceId: spaceId,
         name: currentDisplayName || 'Space',
         website: currentWebsite || undefined,
+        purpose: currentPurpose,
+        category: currentCategory || '',
+        category_source: categorySource || 'owner',
+        presence: currentPresence || undefined,
+        description: currentDescription || '',
+        description_source: form.getValues('description_source') || 'owner',
         history,
         user_message: textToSend,
       });
@@ -314,11 +314,11 @@ interface IdentityChatMessage {
       form.setValue('description', desc, { shouldDirty: true });
       form.setValue('description_source', 'aura', { shouldDirty: true });
     }
-    if (cat) {
+    if (cat && (!form.getValues('category')?.trim() || form.getValues('category_source') !== 'owner')) {
       form.setValue('category', cat, { shouldDirty: true });
       form.setValue('category_source', 'aura', { shouldDirty: true });
     }
-    if (web) {
+    if (web && !form.getValues('website')?.trim()) {
       form.setValue('website', web, { shouldDirty: true, shouldValidate: true });
     }
     setIsChatOpen(false);
@@ -667,12 +667,7 @@ interface IdentityChatMessage {
               </div>
             </div>
 
-            <div className="mt-6 border-t border-[var(--border)] pt-5">
-              <label className="flex cursor-pointer items-start gap-3 text-sm">
-                <input type="checkbox" {...form.register('explore_discovery')} className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]" />
-                <span><span className="block font-medium">Show in Explore apps</span><span className="mt-1 block text-xs leading-relaxed text-[var(--text-secondary)]">Let visitors discover this page in Explore when it is live. Applies only to this page.</span></span>
-              </label>
-            </div>
+
 
       {descriptionMaxLength > 280 && <div className="mt-6"><DetailFields value={form.watch('subspace_fields') || emptySubspaceFields()} onChange={value => form.setValue('subspace_fields', value, { shouldDirty: true, shouldValidate: true })} /></div>}
 
@@ -706,7 +701,7 @@ interface IdentityChatMessage {
                               form.setValue('description', suggestion.description, { shouldDirty: true }); 
                               form.setValue('description_source', 'aura', { shouldDirty: true });
                             }
-                            if (suggestion.category) {
+                            if (suggestion.category && (!form.getValues('category')?.trim() || form.getValues('category_source') !== 'owner')) {
                               form.setValue('category', suggestion.category, { shouldDirty: true }); 
                               form.setValue('category_source', 'aura', { shouldDirty: true });
                             }
@@ -738,7 +733,7 @@ interface IdentityChatMessage {
                         <MessageSquare className="w-3.5 h-3.5 text-[var(--accent-ink)]" />
                         <span>Chat with Aura</span>
                       </button>
-                      {suggestion.status === 'needs_clarification' && (
+                      {suggestion.status === 'needs_clarification' && suggestion.candidate_match?.url && (
                         <button 
                           type="button" 
                           onClick={() => {
@@ -753,7 +748,7 @@ interface IdentityChatMessage {
                               form.setValue('description', candidateDesc, { shouldDirty: true }); 
                               form.setValue('description_source', 'aura', { shouldDirty: true });
                             }
-                            if (candidateCat) {
+                            if (candidateCat && (!form.getValues('category')?.trim() || form.getValues('category_source') !== 'owner')) {
                               form.setValue('category', candidateCat, { shouldDirty: true }); 
                               form.setValue('category_source', 'aura', { shouldDirty: true });
                             }
@@ -1107,15 +1102,16 @@ interface IdentityChatMessage {
                   </button>
                   <button
                     type="button"
+                    disabled={isChatSending || suggestion?.status !== 'ready'}
                     onClick={() => {
-                      const latestAura = [...chatMessages].reverse().find(m => m.role === 'aura' && (m.description || m.category || m.website));
+                      const latestAura = [...chatMessages].reverse().find(m => m.role === 'aura');
                       handleApplyChatProposal(
                         latestAura?.description || suggestion?.description || suggestion?.candidate_match?.candidate_description,
                         latestAura?.category || suggestion?.category || suggestion?.candidate_match?.candidate_category,
                         latestAura?.website || suggestion?.candidate_match?.url
                       );
                     }}
-                    className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 transition-opacity cursor-pointer shadow-xs flex items-center gap-1.5"
+                    className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90 transition-opacity cursor-pointer shadow-xs flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Check className="w-3.5 h-3.5" />
                     <span>Apply to Space</span>

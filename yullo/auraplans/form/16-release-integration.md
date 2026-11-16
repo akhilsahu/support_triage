@@ -1,5 +1,9 @@
 # Form release integration and coverage plan
 
+### 2026-11-17 — Pending changes release
+
+User authorized committing, pushing and deploying all pending account/authentication, onboarding, identity-generation and Home UI changes. Frontend production build/TypeScript, API import and diff whitespace checks passed locally; existing build warnings remain. No new migrations. Local tests remain skipped under the existing instruction; the unchanged push workflow runs its isolated CI suites before VPS deployment. Production deployment and health verification pending. Image collection/context/compression remains analysis only and is not part of this release.
+
 ## Ship order
 
 1. Foundation and policy enforcement first; no visibility controls before server filtering works.
@@ -28,6 +32,10 @@ Source extraction -> provider -> strict candidate validation -> evidence -> priv
 Modify `app/yullo/services/spaces/publication.py` and onboarding launch to use one service and the latest launch requirements: approved type, display_name, valid available handle. A ready KB item is NOT required to publish the identity page. Expose `auraReadiness=insufficient_knowledge|ready|processing|attention` independently of lifecycle. Empty knowledge answers with a truthful limitation and owner-approved contact options. Never label Aura trained/ready solely because Space is live. Publish does not auto-confirm extracted candidates.
 
 Update 07 bootstrap and 08 completion plan references during implementation so they no longer enforce ready-source launch. Resolve the selected Space explicitly; first-draft queries are invalid for multi-Space owners. Keep product/owner isolation on all draft, handle and source routes.
+
+### 2026-11-16 implementation status
+
+Identity publication is now independent of source readiness in the shared publication service. The New Space wizard collects type, name/link and optional knowledge sequentially; explicit-ID launch retries return the selected owned Space. Source confirmation, candidate review and indexing remain separate. See `02-identity-form.md` for files, checks and pending verification. No migration required; changes are local and not deployed.
 
 ## Cross-cutting migrations
 
@@ -90,3 +98,8 @@ Reject the implementation even when it functions if it falls back to Support247 
 Capture one light and one dark screenshot for the changed desktop shell plus one 360px screenshot. Review composition, hierarchy and overflow rather than accepting screenshots as proof of persistence. If an existing shared component cannot produce this contract without Support247 styling, create or extend the Yullo-owned primitive in `ui/src/yullo/forms/core/`; do not wrap the incompatible component with more cards.
 
 Document real endpoint/file/migration status in each plan checkbox. Code existence is not completion; mark complete only after a save reaches the canonical store and the correct projected value appears in its intended consumer.
+
+
+### 2026-11-16 onboarding identity integration
+
+The three-step onboarding now collects Category, Presence Type and Official Website or Channel in step 3, with optional knowledge ingestion below. Create uses the existing canonical identity update endpoint, revision checks, contact-channel writer and publication finalizer. The official-link checkbox/selector is explicit owner consent; source links are not auto-promoted. Onboarding opts out of implicit missing-category generation using a request flag whose default preserves existing editor behavior. See `02-identity-form.md` for files and verification; changes remain local.

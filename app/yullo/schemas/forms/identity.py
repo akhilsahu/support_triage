@@ -56,6 +56,7 @@ class IdentityForm(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class IdentityFormUpdate(BaseModel):
+    generate_missing_category: bool = True
     explore_discovery: StrictBool | None = None
     subspace_fields: SubspaceFields | None = None
     purpose: Optional[SpacePurpose] = None

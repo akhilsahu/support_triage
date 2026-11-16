@@ -33,6 +33,11 @@ export function YulloAuth() {
     return () => media.removeEventListener('change', update)
   }, [])
   const handleAuthSuccess = async (isNewUser: boolean) => {
+    if (isNewUser) {
+      const suffix = claiming && /^[a-z0-9_-]{3,50}$/.test(handle) ? `?handle=${encodeURIComponent(handle)}` : ''
+      navigate(`/yullo/onboarding${suffix}`, { replace: true, state: { returnTo } })
+      return
+    }
     if (claiming) {
       try {
         // The new-Space screen resets drafts. Resume saved work before opening it.
@@ -43,7 +48,7 @@ export function YulloAuth() {
       }
       return
     }
-    navigate(returnTo || (isNewUser ? '/yullo/onboarding' : '/yullo/home'), { replace: true })
+    navigate(returnTo || '/yullo/home', { replace: true })
   }
   return (
     <div className="yullo-auth grid min-h-[100dvh] w-full grid-cols-1 bg-white selection:bg-[#FFDA2D] selection:text-[#0B1220] min-[960px]:grid-cols-[minmax(0,58fr)_minmax(420px,42fr)]">

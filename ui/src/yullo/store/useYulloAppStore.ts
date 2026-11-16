@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-type YulloUser = {
+export type YulloUser = {
   id: string;
-  email: string;
+  email: string | null;
+  phone?: string | null;
+  created_at?: string | null;
   full_name: string | null;
   onboarding_completed: boolean;
 };

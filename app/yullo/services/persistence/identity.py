@@ -206,8 +206,8 @@ async def update_identity(db: AsyncSession, space_id: uuid.UUID, user_id: uuid.U
         # Remove legacy subtype key on new writes
         identity_settings.pop("subtype", None)
 
-    # Ensure category is populated if blank
-    if not identity_settings.get("category") or not str(identity_settings.get("category")).strip():
+    # Existing editors retain enrichment; onboarding can save without a model call.
+    if data.generate_missing_category and (not identity_settings.get("category") or not str(identity_settings.get("category")).strip()):
         from app.orchestra.ai.data_generation.identity_generate import suggest_about
         gen_res = await suggest_about(db, user_id=user_id, space_id=space_id)
         suggested_cat = gen_res.get("category")

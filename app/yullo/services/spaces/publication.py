@@ -1,16 +1,18 @@
 import uuid
 import logging
+import re
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert
 
 from app.models.space import Space
 from app.models.yullo_space import YulloSpace
 from app.models.yullo_config import YulloConfig
-from app.models.knowledge_base import KnowledgeBase, KnowledgeBaseItem
+from app.models.knowledge_base import KnowledgeBase
+from app.utils.reserved_slugs import is_reserved_slug
 from app.models.yullo_home_event import YulloHomeEvent
 
 logger = logging.getLogger(__name__)
@@ -24,7 +26,15 @@ async def validate_publication_readiness(db: AsyncSession, *, space_id: uuid.UUI
     if space.owner_user_id != owner_user_id:
         return False
         
-    if not space.slug or space.slug.startswith("draft-"):
+    # Publishing identity does not imply that Aura has finished learning.
+    if not space.display_name or not space.display_name.strip():
+        return False
+    purpose = {"personal": "person", "work": "creator"}.get(space.purpose, space.purpose)
+    if purpose not in ("person", "creator", "business", "organization"):
+        return False
+    if (not space.slug or space.slug.startswith("draft-")
+            or not re.fullmatch(r"[a-z0-9_-]{3,50}", space.slug)
+            or is_reserved_slug(space.slug)):
         return False
         
     y_space = (await db.execute(select(YulloSpace).where(YulloSpace.space_id == space_id))).scalars().first()
@@ -37,24 +47,13 @@ async def validate_publication_readiness(db: AsyncSession, *, space_id: uuid.UUI
     if not kb:
         return False
         
-    items_stmt = select(KnowledgeBaseItem).where(KnowledgeBaseItem.kb_id == kb.id, KnowledgeBaseItem.space_id == space_id)
-    items = (await db.execute(items_stmt)).scalars().all()
-    
-    if items:
-        ready_item = any(
-            item.ingestion_status in ('ready', 'completed', 'indexed', 'queued', None) or
-            (item.ingestion_status == 'ready_to_review' and bool(item.published_version and item.indexed_doc_id)) or
-            (isinstance(item.source_metadata, dict) and item.source_metadata.get('status') in ('ready', 'queued'))
-            for item in items
-        )
-        if not ready_item:
-            return False
-        
+    # Source status and candidate approval are enforced by knowledge readers,
+    # indexing and review. Pending/failed sources must not block the identity page.
     return True
 
 async def publish_space(db: AsyncSession, *, space_id: uuid.UUID, owner_user_id: uuid.UUID) -> None:
     stmt = select(Space, YulloSpace).join(YulloSpace, YulloSpace.space_id == Space.id).where(
-        Space.id == space_id
+        Space.id == space_id, Space.product == "yullo"
     ).with_for_update(of=Space)
     
     result = await db.execute(stmt)
@@ -76,7 +75,7 @@ async def publish_space(db: AsyncSession, *, space_id: uuid.UUID, owner_user_id:
     success = await validate_publication_readiness(db, space_id=space_id, owner_user_id=owner_user_id)
     if not success:
         logger.info("yullo.publication.not_ready", extra={"space_id": str(space_id)})
-        raise HTTPException(status_code=409, detail="This Space is not ready to publish. Check its setup and sources in What Aura knows, then try again.")
+        raise HTTPException(status_code=409, detail="Check the Space name, type and link, then try again.")
         
     space.status = "live"
     
@@ -103,7 +102,7 @@ async def unpublish_space(db: AsyncSession, *, space_id: uuid.UUID, owner_user_i
     from app.yullo.services.spaces.hierarchy import lock_hierarchy
     await lock_hierarchy(db, owner_user_id)
     stmt = select(Space, YulloSpace).join(YulloSpace, YulloSpace.space_id == Space.id).where(
-        Space.id == space_id
+        Space.id == space_id, Space.product == "yullo"
     ).with_for_update(of=Space)
     
     result = await db.execute(stmt)

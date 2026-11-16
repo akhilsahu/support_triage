@@ -31,6 +31,7 @@ from app.schemas.yullo_onboarding import (
     SourceUpdateRequest,
     SourceDeleteRequest,
     PreviewRequest,
+    LaunchRequest,
     SpaceSourceResponse,
     GenerateSummaryRequest,
     GenerateSummaryResponse
@@ -207,7 +208,7 @@ async def update_draft(req: OnboardingDraftUpdate, user: User = Depends(current_
         if yullo_space:
             yullo_space.purpose = canonical_p
 
-    if req.description is not None or req.description_source is not None:
+    if any(value is not None for value in (req.description, req.description_source, req.category, req.category_source)):
         yullo_config = await db.scalar(select(YulloConfig).where(YulloConfig.space_id == draft.id))
         if not yullo_config:
             yullo_config = YulloConfig(space_id=draft.id, settings={})
@@ -219,6 +220,10 @@ async def update_draft(req: OnboardingDraftUpdate, user: User = Depends(current_
             identity_settings["description"] = req.description
         if req.description_source is not None:
             identity_settings["description_source"] = req.description_source
+        if req.category is not None:
+            identity_settings["category"] = req.category
+        if req.category_source is not None:
+            identity_settings["category_source"] = req.category_source
         settings["identity"] = identity_settings
         yullo_config.settings = settings
     
@@ -244,6 +249,10 @@ async def reserve_handle(req: HandleValidateRequest, user: User = Depends(curren
     if not draft:
         raise HTTPException(status_code=404, detail="No active draft found.")
         
+    validation = await validate_handle_format_and_availability(db, clean_handle, user.id)
+    if not validation["valid"]:
+        raise HTTPException(status_code=400, detail=validation["reason"])
+
     if draft.slug == clean_handle:
         draft.handle_reserved_until = datetime.utcnow() + timedelta(hours=72)
         draft.current_step = "teach"
@@ -621,18 +630,33 @@ async def generate_preview(req: PreviewRequest, user: User = Depends(current_use
     return {"ok": True, "message": "Preview generated successfully."}
 
 @router.post("/launch")
-async def launch_space(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+async def launch_space(
+    req: LaunchRequest | None = Body(default=None),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
     await lock_hierarchy(db, user.id)
-    result = await db.execute(
-        select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "draft", Space.current_step != "managed")
-    )
-    draft = result.scalars().first()
+    selected_id = req.space_id if req else None
+    query = select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo")
+    if selected_id:
+        query = query.where(Space.id == selected_id)
+    else:
+        query = query.where(Space.status == "draft", Space.current_step != "managed")
+    draft = (await db.execute(query)).scalars().first()
     if not draft:
-        already_live = await db.execute(select(Space).where(Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "live"))
-        if already_live.scalars().first():
-            return {"ok": True, "message": "Already launched."}
+        # Older clients send no ID; preserve their already-launched response.
+        # Current clients always retry against the explicit selected Space above.
+        if selected_id is None:
+            live = (await db.execute(select(Space).where(
+                Space.owner_user_id == user.id, Space.product == "yullo", Space.status == "live"
+            ))).scalars().first()
+            if live:
+                return {"ok": True, "space_id": str(live.id), "handle": live.slug,
+                        "status": "live", "public_path": f"/yullo/spaces/{live.id}"}
         raise HTTPException(status_code=404, detail="No active draft found.")
-        
+    if draft.status != "draft" and not (selected_id and draft.status == "live"):
+        raise HTTPException(status_code=409, detail="This Space cannot be launched.")
+
     if not draft.slug or draft.slug.startswith("draft-"):
         raise HTTPException(status_code=400, detail="Invalid handle. Please reserve a handle before launching.")
         
@@ -671,11 +695,18 @@ async def generate_summary(
         override_name=req.name,
         client_sources=req.sources,
         history=req.history,
-        user_message=req.user_message
+        user_message=req.user_message,
+        draft_purpose=req.purpose,
+        draft_category=req.category,
+        category_source=req.category_source,
+        draft_presence=req.presence,
+        draft_description=req.description,
+        description_source=req.description_source,
     )
     return GenerateSummaryResponse(
         status=result["status"],
         description=result.get("description"),
+        category=result.get("category"),
         claims=result.get("claims", []),
         clarification=result.get("clarification"),
         candidate_match=result.get("candidate_match"),

@@ -9,6 +9,7 @@ import { ForYou } from '../components/home/ForYou';
 import { QuickInsight } from '../components/home/QuickInsight';
 import { Nearby } from '../components/home/Nearby';
 import { YulloAppHeader } from '../components/YulloAppHeader';
+import { useYulloAppStore } from '../store/useYulloAppStore';
 
 import { yulloConfig } from '../config';
 import { validateHomeSections, getVisibleSections } from '../home/sectionConfig';
@@ -17,7 +18,6 @@ import { SectionComponents } from '../home/sectionRegistry';
 import { mapYulloHomeResponse } from '../home/apiAdapter';
 import { useYulloHome } from '../api/queries';
 import { formsApi } from '../api/forms';
-import { BookingForm } from '../forms/BookingForm';
 import type { HomeData, HomeSpace } from '../home/types';
 
 // ─── Theme Management (Moved to YulloAppProviders) ───
@@ -100,8 +100,7 @@ const SpaceRow = ({ space, index }: { space: HomeSpace, index: number }) => {
 };
 
 export const YulloHome = () => {
-  const [bookingSpace, setBookingSpace] = useState<HomeSpace | null>(null);
-  const [bookingSaved, setBookingSaved] = useState(false);
+  const accountName = useYulloAppStore(state => state.user?.full_name?.trim() || 'You');
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
   const [deleteTargetSpace, setDeleteTargetSpace] = useState<HomeSpace | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -176,7 +175,6 @@ export const YulloHome = () => {
   const showOrbit = visibleSections.has('orbit') && data.orbit;
   const showRecent = visibleSections.has('recent') && data.happening.length > 0;
   const showPattern = visibleSections.has('pattern') && data.pattern;
-  const showSuggestion = visibleSections.has('suggestion') && data.suggestion;
   
   
   const OrbitComponent = SectionComponents.orbit!;
@@ -212,7 +210,7 @@ export const YulloHome = () => {
                 <p className="text-[var(--text-secondary)] text-[16px] mb-8 leading-relaxed max-w-lg">
                   Create a Space for yourself, your work, your business, or your community.
                 </p>
-                <button className="flex items-center gap-2 font-medium hover:opacity-80 transition-opacity text-[15px] bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90">
+                <button type="button" onClick={() => navigate('/yullo/spaces/new')} className="flex min-h-[52px] items-center gap-2 rounded-xl border border-black px-6 py-3 font-medium text-[15px] bg-[var(--accent)] text-[var(--accent-on-solid)] transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)]">
                   Create Space <ArrowRight className="w-4 h-4" />
                 </button>
               </motion.div>
@@ -241,7 +239,7 @@ export const YulloHome = () => {
                           spaces={data.spaces} 
                           selectedId={selectedSpaceId}
                           onSelect={setSelectedSpaceId}
-                          userName="Akhil"
+                          userName={accountName}
                         />
                       </div>
                     </div>
@@ -292,9 +290,7 @@ export const YulloHome = () => {
                             >
                               Open Space
                             </button>
-                            <button onClick={() => { setBookingSaved(false); setBookingSpace(selected); }} className="px-4 py-2 text-[14px] font-medium rounded-lg transition-colors bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90">
-                              Add booking option
-                            </button>
+
                           </div>
                         </div>
                       </motion.div>
@@ -382,8 +378,9 @@ export const YulloHome = () => {
                           ))}
                         </div>
 
-                        <button 
-                          className="relative z-10 flex items-center gap-2 mt-10 text-[15px] font-medium hover: transition-colors bg-[var(--accent-solid)] text-[var(--accent-on-solid)] hover:opacity-90"
+                        <button
+                          type="button"
+                          className="relative z-10 mt-10 inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-black bg-[var(--accent)] px-6 py-3 text-[15px] font-medium text-[var(--accent-on-solid)] transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)]"
                           onClick={() => navigate('/yullo/spaces/new')}
                         >
                           <Plus className="w-4 h-4" />
@@ -435,52 +432,6 @@ export const YulloHome = () => {
                             )}
                           </React.Fragment>
                         ))}
-                      </div>
-                    </motion.section>
-                  </div>
-                </div>
-              )}
-
-              {/* ════════════ SUGGESTION ════════════ */}
-              {showSuggestion && (
-                <div className="w-full border-t border-[var(--mosaic-hairline)] relative z-10">
-                  <div className="max-w-[1080px] mx-auto px-[clamp(24px,5vw,72px)] py-12 lg:py-16">
-                    <motion.section
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.22, ease: globalEase, delay: 0.18 }}
-                      className="flex flex-col-reverse lg:grid lg:grid-cols-2 gap-8 lg:gap-16 items-center"
-                    >
-                      <div className="w-full">
-                        <h2 className="text-[32px] md:text-[40px] text-[var(--text-primary)] font-medium font-[Satoshi] tracking-tight leading-tight">
-                          {data.suggestion?.title}
-                        </h2>
-                        <p className="text-[18px] text-[var(--text-secondary)] mt-4 leading-relaxed font-[Instrument_Sans]">
-                          {data.suggestion?.text}
-                        </p>
-                        {data.suggestion?.context && (
-                          <p className="text-[15px] text-[var(--text-muted)] mt-2 font-[Instrument_Sans]">
-                            {data.suggestion?.context}
-                          </p>
-                        )}
-                        <Link 
-                          to={data.suggestion?.actionHref || ''}
-                          className="inline-flex items-center gap-1.5 text-[16px] font-medium text-[var(--text-primary)] hover:opacity-70 transition-opacity mt-8 group bg-[var(--surface-soft)] px-6 py-3 rounded-lg border border-[var(--border)]"
-                        >
-                          {data.suggestion?.actionLabel} <ArrowRight className="w-4 h-4 opacity-70 group-hover:opacity-100 transition-opacity group-hover:translate-x-1" />
-                        </Link>
-                      </div>
-                      
-                      <div className="w-full flex justify-start lg:justify-end">
-                        <svg width="240" height="240" viewBox="0 0 100 100" className="overflow-visible opacity-80">
-                          <motion.circle cx="15" cy="15" r="4" fill="var(--text-muted)" initial={{ opacity: 0.2 }} animate={{ opacity: [0.2, 0.6, 0.2] }} transition={{ duration: 4, repeat: Infinity, delay: 0 }} />
-                          <motion.circle cx="85" cy="15" r="4" fill="var(--text-muted)" initial={{ opacity: 0.2 }} animate={{ opacity: [0.2, 0.6, 0.2] }} transition={{ duration: 4, repeat: Infinity, delay: 0.8 }} />
-                          <motion.circle cx="50" cy="10" r="4" fill="var(--text-muted)" initial={{ opacity: 0.2 }} animate={{ opacity: [0.2, 0.6, 0.2] }} transition={{ duration: 4, repeat: Infinity, delay: 1.6 }} />
-                          <path d="M 20 25 L 50 80" fill="none" stroke="var(--text-muted)" strokeWidth="1" strokeDasharray="4 6" opacity="0.3" />
-                          <path d="M 80 25 L 50 80" fill="none" stroke="var(--text-muted)" strokeWidth="1" strokeDasharray="4 6" opacity="0.3" />
-                          <path d="M 50 20 L 50 80" fill="none" stroke="var(--text-muted)" strokeWidth="1" strokeDasharray="4 6" opacity="0.3" />
-                          <motion.circle cx="50" cy="85" r="8" fill="var(--accent-solid)" initial={{ scale: 0.9, opacity: 0.6 }} animate={{ scale: [0.9, 1.1, 0.9], opacity: [0.6, 1, 0.6] }} transition={{ duration: 4, repeat: Infinity }} />
-                        </svg>
                       </div>
                     </motion.section>
                   </div>
@@ -632,8 +583,6 @@ export const YulloHome = () => {
           </motion.div>
         )}
       </AnimatePresence>
-      {bookingSaved && <p role="status" className="fixed bottom-5 left-5 z-50 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-[var(--text-primary)]">Booking link saved.</p>}
-      {bookingSpace && <BookingForm key={bookingSpace.id} spaceId={bookingSpace.id} spaceName={bookingSpace.name} onClose={() => setBookingSpace(null)} onSaved={() => { setBookingSpace(null); setBookingSaved(true); }} />}
     </div>
   );
 };

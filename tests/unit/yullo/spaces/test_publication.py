@@ -24,6 +24,8 @@ async def test_validate_publication_readiness_success(mock_db):
     mock_space = MagicMock()
     mock_space.owner_user_id = owner_id
     mock_space.slug = "valid-slug"
+    mock_space.display_name = "Example"
+    mock_space.purpose = "business"
     
     mock_y_space = MagicMock()
     mock_y_config = MagicMock()

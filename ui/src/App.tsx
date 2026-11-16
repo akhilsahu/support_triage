@@ -40,7 +40,7 @@ const YulloLanding = lazy(() => import('./yullo/screens/YulloLanding').then(modu
 const YulloInfo = lazy(() => import('./yullo/screens/YulloInfo').then(module => ({ default: module.YulloInfo })))
 const YulloExplore = lazy(() => import('./yullo/screens/YulloExplore').then(module => ({ default: module.YulloExplore })))
 const YulloAuth = lazy(() => import('./yullo/screens/YulloAuth').then(module => ({ default: module.YulloAuth })))
-const YulloOnboarding = lazy(() => import('./yullo/screens/onboarding/YulloOnboarding').then(module => ({ default: module.YulloOnboarding })))
+const YulloAccount = lazy(() => import('./yullo/screens/YulloAccount').then(module => ({ default: module.YulloAccount })))
 const YulloHome = lazy(() => import('./yullo/screens/YulloHome').then(module => ({ default: module.YulloHome })))
 const PublicYulloLink = lazy(() => import('./yullo/screens/public/PublicYulloLink').then(module => ({ default: module.PublicYulloLink })))
 const SpaceDashboard = lazy(() => import('./yullo/screens/SpaceDashboard').then(module => ({ default: module.SpaceDashboard })))
@@ -187,7 +187,8 @@ export default function App() {
           <Route path="/yullo/privacy" element={<YulloInfo page="privacy" />} />
           <Route path="/yullo/terms" element={<YulloInfo page="terms" />} />
           <Route path="/yullo/auth" element={<YulloAuth />} />
-          <Route path="/yullo/onboarding" element={<YulloPrivateRoute><YulloOnboarding /></YulloPrivateRoute>} />
+          <Route path="/yullo/onboarding" element={<YulloPrivateRoute><NewSpaceScreen /></YulloPrivateRoute>} />
+          <Route path="/yullo/account" element={<YulloPrivateRoute><YulloAccount /></YulloPrivateRoute>} />
           <Route path="/yullo/home" element={<YulloPrivateRoute><YulloHome /></YulloPrivateRoute>} />
           <Route path="/yullo/spaces/new" element={<YulloPrivateRoute><NewSpaceScreen /></YulloPrivateRoute>} />
           <Route path="/yullo/spaces/:spaceId/appearance" element={<YulloPrivateRoute><AppearanceScreen /></YulloPrivateRoute>} />

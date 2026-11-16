@@ -143,7 +143,7 @@ async def extract_entity_candidates(*, source_item_id: UUID,
 
 - [ ] Scope slug lookup by Yullo product; reuse slug normalization/reserved-name checks. Resolve existing KB through configuration. Reject changed identity/purpose on rerun rather than silently ignoring it.
 - [ ] Remove dummy Space credentials after auditing legacy nullability/auth consumers. If needed, add a Yullo-only compatibility migration allowing absent legacy credentials while preserving Support247's credential requirements and login behavior.
-- [ ] Route onboarding launch and bootstrap publication through the same owner-checked service. Lock the Yullo extension version; verify configured KB, current ready sources and entity eligibility. Publish that exact context version and emit one idempotent event.
+- [ ] Route onboarding launch and bootstrap publication through the same owner-checked service. Lock the Yullo extension version; verify configured KB and identity eligibility. Source readiness and candidate approval remain independent of identity publication. Publish that exact context version and emit one idempotent event.
 - [ ] Prevalidate the entire bootstrap payload: unique Space slugs, source/entity keys, supported versions, required data and explicit owner. If both email and phone are supplied, require them to resolve to the same user. Add an explicit display name instead of deriving business identity from a slug.
 - [ ] Provide `validate_bootstrap_payload(payload)` and `preflight_bootstrap(config)`; preflight checks applied schema, owner, slug conflicts, blob provider and worker availability without durable writes. Expose a dry-run CLI option while keeping the input JSON self-contained.
 - [ ] Permit malformed fixtures only in explicit development/test/staging environments. Add bounded per-job execution time, record partial results on failure, and keep deterministic keys stable across retries. Never auto-delete partially created business data.
@@ -1066,3 +1066,67 @@ Deployment outcome — 2026-11-15:
 - VPS logs confirm API/database/Redis healthy and Deploy complete. Post-restart direct API health returned 200/healthy. Initial Yullo proxy health probe timed out; retry returned healthy with database/Redis connected. Explore endpoint returned 200 with empty items/next_cursor=null, consistent with explicit opt-in defaults; frontend /yullo/auth returned 200.
 - Includes pending Explore flags/header control, owner-only richer preview details, flexible event query windows/statuses/sorting and isolated read-only event-tool session. No private event/source visibility flags were changed, so parent date filtering still depends on public schedule visibility. A full AI chat reply and rendered UI were not exercised in production.
 - Deployment complete; this documentation-only follow-up records verified application release results without another backend restart.
+
+
+### 2026-11-16 — Sequential onboarding and nonblocking knowledge
+
+New Space now asks purpose, contextual name/link and optional knowledge in three steps, retaining ingestion and review. Shared publication no longer gates on ready sources. Launch supports an explicit owner-scoped Space ID and idempotent retries. See `../form/02-identity-form.md` for changed files, verification and pending work. No migration, bootstrap, production data change or deployment. Existing historical ready-source notes above are superseded for publication policy only.
+
+
+### 2026-11-16 — Home avatar sign out
+
+- Replaced the decorative top-right avatar in `ui/src/yullo/components/YulloAppHeader.tsx` with a keyboard-accessible account popover containing name/email and Sign out. Existing shared desktop header placement is preserved.
+- Calls the existing authenticated `/api/v1/yullo/auth/logout` endpoint, then cancels/clears the isolated Yullo query cache, navigates to auth and clears local Yullo authentication. Expired sessions complete sign-out; other failures retain the session and show retry copy. Support247 state is untouched.
+- Verification: UI TypeScript and diff whitespace checks passed. Browser sign-out remains unverified. Tests skipped per user's existing instruction. No backend change, migration, commit, push or deployment. Earlier onboarding changes remain local and preserved.
+
+
+### 2026-11-16 — Home after sign-in and account onboarding reset
+
+- Normal new/existing account sign-in now opens `/yullo/home`; explicit claim and safe chat-return intents remain intact. Home retains the supplied welcome copy and its previously unwired Create Space button now opens the three-step `/yullo/spaces/new` flow.
+- Avatar → Account settings includes an explicit Reset onboarding status checkbox plus Reset onboarding action. Calls authenticated `POST /api/v1/yullo/auth/onboarding/reset`, updates only the current User's `onboarding_completed` flag and mirrors the result into the persisted Yullo account store. No Space/source deletion or automatic onboarding redirect. Existing Space creation still marks onboarding complete.
+- Files: `ui/src/yullo/screens/YulloAuth.tsx`, `ui/src/yullo/screens/YulloHome.tsx`, `ui/src/yullo/components/YulloAppHeader.tsx`, `app/api/v1/yullo_auth.py`.
+- Verification: UI TypeScript, auth router import/registration and diff whitespace checks passed. Browser account reset remains unverified. Tests skipped as requested. No migration, production mutation, commit, push or deployment; earlier local work preserved.
+
+
+### 2026-11-16 — Dedicated Account page
+
+- Added authenticated, lazy-loaded `/yullo/account` through the existing Yullo private route/provider. Avatar menu now links to Account settings; Sign out remains in the menu.
+- Moved the existing onboarding reset checkbox/action from the popover into `ui/src/yullo/screens/YulloAccount.tsx`, alongside read-only account name/email and Back to Home. Retains the existing authenticated reset endpoint, current-account store update, loading/error/success states and isolated Home invalidation. No Space/source deletions or new backend behavior.
+- Files: `ui/src/App.tsx`, `ui/src/yullo/components/YulloAppHeader.tsx`, `ui/src/yullo/screens/YulloAccount.tsx`.
+- Verification: UI TypeScript and diff whitespace checks passed. Tests remain skipped as requested; browser navigation/reset not verified. No commit, push or deployment. Earlier local changes preserved.
+
+
+### 2026-11-16 — Mandatory onboarding until completion (supersedes Home-first sign-in)
+
+- User clarified that incomplete accounts must onboard first. Normal sign-in routes incomplete users to `/yullo/onboarding`; the private-route guard redirects direct Home/account/Space navigation there until completion. Completed accounts keep normal Home/claim routing. Safe chat returns are retained through auth/onboarding state.
+- `/yullo/onboarding` now renders the same three-step NewSpaceScreen, replacing the legacy wizard route (legacy files preserved). It resumes an owned draft and canonical identity instead of resetting/deleting saved sources. Explicit Create Space retains its fresh-draft behavior. Claimed handles are retained; step-1 Cancel is hidden during mandatory onboarding.
+- Account onboarding reset now reopens step 1 immediately. Successful launch mirrors the server completion flag into the account store before navigation, preventing a redirect loop. Source ingestion/review and public chat routes remain intact; no API authorization is relaxed.
+- Files: `ui/src/App.tsx`, `ui/src/yullo/providers/YulloPrivateRoute.tsx`, `ui/src/yullo/screens/YulloAuth.tsx`, `ui/src/yullo/screens/NewSpaceScreen.tsx`, `ui/src/yullo/screens/YulloAccount.tsx`.
+- Verification: TypeScript/diff whitespace passed; tests remain skipped by request. Browser persistence/navigation not verified. No migration, production data write, commit, push or deployment.
+
+
+### 2026-11-16 — Real account identity and completed Account page
+
+- Removed the hardcoded `userName="Akhil"` from Home. The root ownership node now uses the signed-in account's trimmed full_name, with “You” fallback. Existing hierarchy drill-in still uses the selected Space's own name; no Space identity or data changes.
+- Account page loads fresh authenticated account details, offers optional full-name editing with Save/Discard and feedback, read-only sign-in email/phone, real member-since date, existing onboarding reset and sign-out on the page. Name saves update the persisted Yullo user store and account query, so Home/avatar reflect the saved name. Refetches preserve dirty input. Failed or stale writes retain edits; reset/sign-out on the page require saving/discarding dirty name changes. Closing/reloading the browser warns for dirty edits.
+- Added current-account-only `GET/PATCH /api/v1/yullo/auth/profile`. PATCH accepts only validated full_name plus expected_updated_at, locks the authenticated User, rejects stale updates and uses existing updated_at for concurrency. Logs contain user ID/operation only. No login email/phone mutation, password flow, schema migration or duplicate profile table. These Users are Yullo accounts; Support247 auth/state remain isolated.
+- Shared sign-out hook uses existing session revocation, handles expired sessions, cancels/clears only the Yullo query client and clears auth. Header avatar/account menu now remains accessible on mobile, with theme icon compacted and desktop navigation preserved.
+- Files: `ui/src/yullo/screens/YulloHome.tsx`, `ui/src/yullo/screens/YulloAccount.tsx`, `ui/src/yullo/store/useYulloAppStore.ts`, `ui/src/yullo/components/YulloAppHeader.tsx`, `ui/src/yullo/api/account.ts`, `ui/src/yullo/hooks/useYulloSignOut.ts`, `app/api/v1/yullo_auth.py`, `app/yullo/schemas/account.py`, `app/yullo/services/auth/account_service.py`.
+- Verification: UI TypeScript, production build (existing bundle/dependency warnings), backend profile schema/service/router imports and diff whitespace passed. Tests remain skipped per user request; no real account name/reset/logout writes performed for validation. Browser save/reload and cross-account integration remain unverified. No commit, push or deployment. Earlier local onboarding changes remain preserved.
+
+
+### 2026-11-16 — Home Create Space button and booking shortcut
+
+- Fixed the cramped Create another Space action: 52px minimum height, horizontal/vertical padding, rounded corners, black border, accent fill, proper focus and button type. Kept its existing `/yullo/spaces/new` navigation. Matched the empty-Home Create Space border/padding.
+- Removed the unconditional Add booking option action from the selected Space panel and its now-unused Home modal/state/imports. Existing Space booking manager/form, endpoints and saved booking links remain intact.
+- File: `ui/src/yullo/screens/YulloHome.tsx`. TypeScript and diff whitespace checks passed. Tests remain skipped by user request; browser styling unverified. No commit, push or deployment.
+
+
+### 2026-11-16 — Remove Home suggestion section
+
+Removed the rendered Suggestion band and its local visibility variable from `ui/src/yullo/screens/YulloHome.tsx` at user request. Other Home sections and backend suggestion contracts remain intact. TypeScript and diff whitespace checks passed; tests remain skipped. Not deployed.
+
+
+### 2026-11-16 — Remove graph List view disclosure
+
+Removed the duplicate “List view · count” disclosure below the Home network from `ui/src/yullo/components/home/SpaceNetwork.tsx`. Network hierarchy navigation, loading/error feedback and the separate Your Spaces list are retained. TypeScript and diff whitespace checks passed; tests remain skipped. Not deployed.

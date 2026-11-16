@@ -207,15 +207,21 @@ export const yulloOnboardingApi = {
     return res.data;
   },
   
-  launch: async (): Promise<{ ok: boolean; space_id: string; handle: string; status: string; public_path: string }> => {
-    const res = await yulloApiClient.post('/onboarding/launch');
+  launch: async (spaceId?: string): Promise<{ ok: boolean; space_id: string; handle: string; status: string; public_path: string }> => {
+    const res = await yulloApiClient.post('/onboarding/launch', spaceId ? { space_id: spaceId } : undefined);
     return res.data;
   },
 
   generateSummary: async (params: { 
     spaceId?: string; 
     name?: string; 
-    website?: string; 
+    website?: string;
+    purpose?: 'person' | 'creator' | 'business' | 'organization';
+    category?: string;
+    category_source?: 'owner' | 'aura' | null;
+    presence?: 'online' | 'physical' | 'both' | 'mobile';
+    description?: string;
+    description_source?: 'owner' | 'aura' | null;
     sources?: any[]; 
     history?: Array<{ role: 'user' | 'assistant'; content: string }>; 
     user_message?: string;
@@ -224,6 +230,12 @@ export const yulloOnboardingApi = {
       space_id: params.spaceId, 
       name: params.name, 
       website: params.website,
+      purpose: params.purpose,
+      category: params.category,
+      category_source: params.category_source,
+      presence: params.presence,
+      description: params.description,
+      description_source: params.description_source,
       sources: params.sources,
       history: params.history,
       user_message: params.user_message

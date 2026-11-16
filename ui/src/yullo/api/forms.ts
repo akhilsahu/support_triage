@@ -27,6 +27,8 @@ export interface IdentityFormResponse {
 }
 
 export interface IdentityFormUpdate {
+  generate_missing_category?: boolean;
+  category_source?: 'owner' | 'aura' | null;
   explore_discovery?: boolean;
   subspace_fields?: SubspaceFields;
   purpose?: 'person' | 'creator' | 'business' | 'organization';

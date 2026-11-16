@@ -140,3 +140,99 @@ At completion update the checkboxes/status in THIS file with date, actual files/
 ### Dependencies for this particular form
 
 Website input depends on contact_channel creation. If contact editor is absent, implement only the existing website channel via the shared entity service; the full contact manager is not required. Logo needs verified upload infrastructure; keep existing logo unchanged if provider unavailable and report that gap. Existing handle service must enforce namespace/reservations; never inline a weaker check.
+
+
+## 2026-11-16 — Three-step Space onboarding
+
+- [x] Replace the crowded New Space page with one question per step: Created for → contextual name + editable link → optional links/files/text. Back retains current inputs. Purpose selection is explicit; creation is available with no sources.
+- [x] Preserve source ingestion, extraction, review, source enable/remove controls and knowledge preview. Optional About/category editing and explicit grounded generation remain behind a disclosure on step 3. Creation no longer runs generation implicitly.
+- [x] Use configured app/accent tokens, native keyboard radio selection, labelled inputs, accessible source dialogs, 180 ms step entry and reduced-motion support. Display actual request/source state rather than simulated progress/ETA.
+- [x] Fix shared publication readiness: valid identity and canonical setup required; empty, queued, processing, review-pending or failed knowledge does not block identity publication. Owner/product checks and source approval/indexing rules remain in force. Legacy personal/work purpose aliases remain accepted.
+- [x] Launch accepts optional explicit `space_id`, scopes it to the current Yullo owner, and returns that same Space on retries. The wizard supplies its draft ID. Handle reservation now validates format/reserved names server-side; draft About/category writes use existing identity settings.
+- Files: `ui/src/yullo/screens/NewSpaceScreen.tsx`, `ui/src/yullo/api/onboarding.ts`, `app/api/v1/yullo_onboarding.py`, `app/schemas/yullo_onboarding.py`, `app/yullo/services/spaces/publication.py`. Existing publication success fixture supplies required name/purpose; no new tests or migrations.
+- Verification: UI TypeScript check passed. Production frontend build, changed Python syntax, service/schema/router imports and diff whitespace checks passed. Build reports existing bundle/dependency warnings. Import check uses DEBUG=false because the shell supplies a nonboolean DEBUG=release. User requested skipping tests; browser/end-to-end ingestion/publication remains unverified. No production writes, commit, push or deployment for this change.
+
+
+### Onboarding routing clarification, 2026-11-16
+
+Incomplete accounts must complete the three-step wizard before private Home/account/Space pages. `/yullo/onboarding` reuses NewSpaceScreen, resumes the owned draft/identity/sources and starts on step 1 after account reset. Launch marks local account completion before leaving the wizard. Completed owners can still explicitly create additional Spaces via `/yullo/spaces/new`. See the Home completion plan's mandatory-onboarding note for changed files and verification. Earlier Home-first sign-in notes are superseded.
+
+
+### 2026-11-16 — Onboarding wording and floating network
+
+- First question is now “What would you like to do?” with the agreed introduction/work/business/community supporting line.
+- Reuses the landing page's `YulloCanvasNetwork` behind the three-step flow, masked away from the central form with lower opacity on mobile. Canvas is decorative, cannot capture input, already honors reduced motion and pauses when hidden. Shared landing component is unchanged; ingestion and navigation remain intact.
+- File: `ui/src/yullo/screens/NewSpaceScreen.tsx`. TypeScript and diff whitespace checks passed. Tests remain skipped by request; browser visual review not performed. No commit, push or deployment.
+
+
+### 2026-11-16 — Snapchat-yellow onboarding palette
+
+- User requested Snapchat yellow with black borders. NewSpaceScreen now scopes #FFFC00 page/surface/action tokens and black text/control borders to the onboarding/create flow. Black progress and focus indicators remain visible on yellow; selected purpose has a heavier black outline and checkmark. Floating graphics remain in place. Global dashboard/theme preferences are not mutated.
+- File: `ui/src/yullo/screens/NewSpaceScreen.tsx`. TypeScript and diff whitespace checks passed; tests skipped by existing request. Browser appearance not verified. No commit, push or deployment.
+
+
+### 2026-11-16 — Yellow styling scope correction
+
+User clarified that the page background should retain its prior theme. Removed the yellow canvas/surface and black global text/border overrides. Only existing yellow action components use #FFFC00 with black text and black borders; background, neutral fields, selected-purpose styling and text follow the configured app theme again. Floating graphics retained. Supersedes the full-page palette note above. TypeScript and diff whitespace checks passed; tests remain skipped. Not deployed.
+
+
+### 2026-11-16 — Step 1 copy refinement
+
+Updated the onboarding title to “How do you want to show up in the world?” and made the radio-group legend visible as “Please choose one”. Existing options and selection behavior are unchanged. Copy-only change; diff whitespace check passed, tests skipped as requested. Not deployed.
+
+
+### 2026-11-16 — Selected option gradient/glow
+
+Selected step-1 option now uses a Snapchat-yellow gradient, soft yellow glow, black border/text/icons and its existing checkmark. Neutral options retain their theme styling. Focus stays visible; the 150 ms color/shadow transition is disabled for reduced motion, with no animated pulsing. File: `ui/src/yullo/screens/NewSpaceScreen.tsx`. TypeScript and diff whitespace checks passed. Tests skipped as requested; browser visuals not verified. Not deployed.
+
+
+### 2026-11-16 — Visible profile-generation guidance
+
+Moved `needs_clarification`/`insufficient_context` feedback outside the optional About/category disclosure into the visible step-3 knowledge area. Replaced light-mode-unreadable amber text with semantic theme surfaces/text and a live status. Guidance remains tied to explicit Generate, and never gates creation. File: `ui/src/yullo/screens/NewSpaceScreen.tsx`. TypeScript and diff whitespace checks passed; tests skipped by request. Browser visibility not verified. No deployment.
+
+
+### 2026-11-16 — Step 3 classification, presence and official channel
+
+- Step 3 is now Online Presence & Classification. Category uses the existing Yullo CategoryCombobox; Presence Type reuses the canonical online/physical/both/mobile values; Official Website or Channel is visible with explicit public-link copy. Existing source ingestion/review, previews and optional About generation remain below these fields.
+- Knowledge URLs were intentionally never identity website channels. Add Link now offers an explicit “Use as my official website or channel” checkbox; already-added URLs can be chosen from the official field. These choices populate local official-channel input without silently publishing reference links or replacing an owner-approved channel.
+- Creation flushes classification/presence/official channel through `formsApi.updateIdentity` and the existing authenticated, revision-checked canonical persistence service before handle reservation/publication. That service writes the established `space-website` contact-channel entity, so the main identity editor/public projection can read the same data. No duplicate website store or direct entity insert. Resume reads canonical presence/website. New details save on Create; refreshing unsaved classification inputs before creation is not verified.
+- Added `generate_missing_category` to the canonical update request, default true to preserve existing editor enrichment. Onboarding sends false to avoid implicit model work or fabricated fallback classification on Create; blank optional category still allows launch. Explicit generation, source processing and review remain unchanged.
+- Files: `ui/src/yullo/screens/NewSpaceScreen.tsx`, `ui/src/yullo/api/forms.ts`, `app/yullo/schemas/forms/identity.py`, `app/yullo/services/persistence/identity.py`.
+- Verification: UI TypeScript, canonical service/schema imports and diff whitespace checks passed. Production frontend build passed with existing bundle warnings. Tests remain skipped by user request; browser persistence/public channel integration not verified. No migration, production data writes, commit, push or deployment.
+
+
+### 2026-11-16 — Separate optional knowledge step
+
+- Onboarding/create now has four steps: Created for → Name → Online Presence & Classification → Add knowledge (optional). Moved link/file/text actions, existing source/review list, processing/clarification feedback, optional About generation and preview to step 4. Category, presence and official channel remain in step 3. Back/Continue preserves component state; Create/Skip is only on step 4. Canonical identity save and ingestion remain unchanged.
+- Presence Type mobile retains its stored value and now explains that it covers travel-to-customer or temporary-location services (home services, food trucks, market stalls).
+- File: `ui/src/yullo/screens/NewSpaceScreen.tsx`. Supersedes earlier three-step notes. TypeScript and diff whitespace checks passed; tests skipped by existing request. Browser flow not verified. No deployment.
+
+
+### 2026-11-16 — Remove mobile/pop-up onboarding choice
+
+Removed Mobile / Pop-up service and its explanatory helper from onboarding. The selectable presence choices are Online only, Physical location and Online & physical location. A hidden compatibility option preserves an existing saved mobile value until the owner chooses a replacement; no stored data or other editor capability was deleted. File: `ui/src/yullo/screens/NewSpaceScreen.tsx`. Diff whitespace passed; tests skipped by request. Not deployed.
+
+
+### 2026-11-16 — Home after onboarding
+
+Successful mandatory onboarding now always navigates to `/yullo/home` after server launch and local completion update, overriding any old return destination for that flow. Explicit additional-Space creation retains its existing destination. File: `ui/src/yullo/screens/NewSpaceScreen.tsx`. Diff whitespace passed; tests skipped as requested. Not deployed.
+
+
+### 2026-11-16 — Remove Explore toggle from identity UI
+
+Removed the Show in Explore apps checkbox and explanatory text from `ui/src/yullo/forms/identity/IdentityForm.tsx` at user request. Existing saved discovery values and server filtering remain unchanged; form reset/schema compatibility is retained. No stored visibility changes. TypeScript and diff whitespace checks passed; tests skipped as requested. Not deployed.
+
+
+### 2026-11-17 — Owner inputs take priority in About generation
+
+- Suggest with Aura, Chat with Aura and onboarding generation now send current purpose, category/provenance, presence and description/provenance with the name/official URL. Request fields have server-side enum/length validation. Missing fields from older/internal callers fall back to saved identity values.
+- Context distinguishes owner-written category/description from previous Aura drafts, labels presence explicitly, includes current owner classification in fallback search terms and fingerprints all owner constraints/history/prompt version. Added product/owner filtering in the context collector and rejects an inaccessible explicit Space before collecting any source data. Context/search boundary logs retain IDs without names or queries.
+- Prompt `identity-v3-owner-priority` says owner inputs define intended identity, same-name searches are unverified, category/presence conflicts must ask for clarification, URLs alone are not website contents and prior Aura drafts are not owner evidence. Model reports consistent/uncertain/conflict. Server pins the owner's category and downgrades uncertain/conflicting matches, or search matches missing consistency, to needs_clarification without candidate description/channel when owner constraints are present. Matching is model-assisted, not a deterministic identity guarantee.
+- Fixed generate-summary response dropping the generated category. Generation now leaves form values intact until explicit Use suggestion/Apply. Apply retains an owner-entered category and existing official channel; chat cannot apply an old proposal while awaiting a new result or after a non-ready result. Source ingestion/extraction/review and canonical save/publication remain intact.
+- Files: `app/schemas/yullo_onboarding.py`, `app/api/v1/yullo_onboarding.py`, `app/orchestra/ai/data_generation/identity_generate.py`, `app/orchestra/ai/prompts/yullo/about.py`, `ui/src/yullo/api/onboarding.ts`, `ui/src/yullo/forms/identity/IdentityForm.tsx`, `ui/src/yullo/screens/NewSpaceScreen.tsx`.
+- Verification: TypeScript, changed generation schema/router/context/prompt imports and diff whitespace passed. Production frontend build passed with existing bundle/dependency warnings. Tests remain skipped by user request; no live-model calls or database/source mutations made for validation. Search identity accuracy and browser end-to-end generation remain unverified. Bare official URLs still do not fetch website content; unchanged source-status/evidence collection remains a separate known limitation from the prior audit. No migration, commit, push or deployment.
+
+
+### 2026-11-17 — Icon-only delete action in identity editor
+
+Identity editor now requests the existing shared FormActions delete action as a 44px icon-only button with Delete space accessible label/title. Other forms retain their text labels by default. Existing confirmation/archive/delete behavior is unchanged. Files: `ui/src/yullo/forms/core/FormActions.tsx`, `ui/src/yullo/screens/identity/IdentityFormScreen.tsx`. TypeScript and diff whitespace checks passed; tests skipped by request. Not deployed.

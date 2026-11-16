@@ -15,7 +15,7 @@ from app.models.yullo_config import YulloConfig
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "identity-v2"
+PROMPT_VERSION = "identity-v4-owner-draft"
 
 async def collect_about_context(
     db: AsyncSession,
@@ -24,27 +24,33 @@ async def collect_about_context(
     draft_website: Optional[str] = None,
     override_name: Optional[str] = None,
     client_sources: Optional[List[dict]] = None,
-    user_message: Optional[str] = None
+    user_message: Optional[str] = None,
+    draft_purpose: Optional[str] = None,
+    draft_category: Optional[str] = None,
+    category_source: Optional[str] = None,
+    draft_presence: Optional[str] = None,
+    draft_description: Optional[str] = None,
+    description_source: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Server-side resolution of space identity, ownership, and all available knowledge sources.
     Aggregates space name, purpose, owner description, and confirmed KnowledgeBaseItems/YulloSources.
     Enforces strict filtering: same Space, current source version, successful ingestion, is_confirmed = True.
     """
-    logger.info(f"collect_about_context: user_id={user_id}, space_id={space_id}, override_name={override_name}")
+    logger.info("yullo.identity.context", extra={"user_id": str(user_id), "space_id": str(space_id) if space_id else None})
     
     target_space: Optional[Space] = None
     
     if space_id:
         # Check ownership explicitly for target space
-        stmt = select(Space).where(Space.id == space_id, Space.owner_user_id == user_id)
+        stmt = select(Space).where(Space.id == space_id, Space.owner_user_id == user_id, Space.product == "yullo")
         target_space = await db.scalar(stmt)
     else:
         # Resolve active draft space for user
-        stmt = select(Space).where(Space.owner_user_id == user_id, Space.status == "draft").order_by(Space.created_at.desc())
+        stmt = select(Space).where(Space.owner_user_id == user_id, Space.product == "yullo", Space.status == "draft").order_by(Space.created_at.desc())
         target_space = await db.scalar(stmt)
 
-    if not target_space and not override_name:
+    if (space_id and not target_space) or (not target_space and not override_name):
         logger.warning(f"collect_about_context: No valid space found for user {user_id} (space_id={space_id})")
         return {
             "space_name": "",
@@ -63,13 +69,20 @@ async def collect_about_context(
     space_type = target_space.purpose if target_space else "business"
     resolved_space_id = target_space.id if target_space else space_id
 
-    # Fetch owner-provided description from YulloConfig if present
-    owner_description = ""
+    identity_settings = {}
     if resolved_space_id:
         yullo_config = await db.scalar(select(YulloConfig).where(YulloConfig.space_id == resolved_space_id))
-        if yullo_config and yullo_config.settings:
-            identity_settings = yullo_config.settings.get("identity", {})
-            owner_description = identity_settings.get("description", "") or ""
+        identity_settings = (yullo_config.settings or {}).get("identity", {}) if yullo_config else {}
+    space_type = draft_purpose if draft_purpose is not None else space_type
+    category = draft_category if draft_category is not None else identity_settings.get("category", "")
+    category_provenance = category_source if category_source is not None else identity_settings.get("category_source", "owner")
+    description = draft_description if draft_description is not None else identity_settings.get("description", "")
+    description_provenance = description_source if description_source is not None else identity_settings.get("description_source", "owner")
+    owner_category = (category or "").strip() if category_provenance != "aura" else ""
+    owner_description = (description or "").strip() if description_provenance != "aura" else ""
+    presence = draft_presence if draft_presence is not None else identity_settings.get("presence", "")
+    previous_description = (description or "").strip() if description_provenance == "aura" else ""
+    previous_category = (category or "").strip() if category_provenance == "aura" else ""
 
     excerpts: List[Dict[str, Any]] = []
     seen_source_ids = set()
@@ -186,8 +199,8 @@ async def collect_about_context(
     if not excerpts and space_name:
         try:
             from app.orchestra.ai.tools.web_search import search_web
-            query = f"{space_name} {space_type}".strip()
-            logger.info(f"collect_about_context: Searching web candidates for query='{query}'")
+            query = " ".join(str(value) for value in (space_name, owner_category, space_type, presence) if value).strip()
+            logger.info("yullo.identity.search", extra={"space_id": str(resolved_space_id) if resolved_space_id else None})
             search_candidates = await search_web(query=query, limit=3)
         except Exception as e:
             logger.warning(f"collect_about_context: search_web error: {e}")
@@ -196,6 +209,10 @@ async def collect_about_context(
         "space_name": space_name,
         "space_type": space_type,
         "owner_description": owner_description,
+        "owner_category": owner_category,
+        "presence": presence,
+        "previous_description": previous_description,
+        "previous_category": previous_category,
         "excerpts": excerpts,
         "search_candidates": search_candidates,
         "found_space": True if (target_space or space_name) else False,
@@ -253,10 +270,22 @@ def build_about_prompt(
         space_type,
         owner_desc,
         excerpts_text if excerpts else "",
-        search_candidates_text=search_candidates_text
+        search_candidates_text=search_candidates_text,
+        owner_category=context.get("owner_category", ""),
+        presence=context.get("presence", ""),
+        previous_description=context.get("previous_description", ""),
+        previous_category=context.get("previous_category", ""),
     )
 
-    raw_fingerprint = f"{space_name}:{space_type}:{owner_desc}:{excerpts_text}:{search_candidates_text}:{user_message or ''}"
+    if context.get("generation_basis") == "owner_only":
+        user_prompt += "\nDraft from the owner's inputs only. No external identity verification is required to describe what the owner stated. If category or owner description is meaningful, return a concise ready draft using only those facts and presence. Shorter than 120 characters is acceptable when details are limited. Do not invent specialties, credentials, addresses, clients, services or scale. Only request more details if the owner supplied no meaningful description or category. claims must be []."
+
+    raw_fingerprint = json.dumps({"name": space_name, "purpose": space_type, "owner_description": owner_desc,
+                                  "owner_category": context.get("owner_category"), "presence": context.get("presence"),
+                                  "previous_description": context.get("previous_description"), "previous_category": context.get("previous_category"),
+                                  "excerpts": excerpts_text, "search": search_candidates_text, "history": history,
+                                  "feedback": user_message, "prompt_version": PROMPT_VERSION,
+                                  "generation_basis": context.get("generation_basis", "owner_with_evidence")}, sort_keys=True)
     input_fingerprint = hashlib.sha256(raw_fingerprint.encode("utf-8")).hexdigest()[:16]
     
     messages = [
@@ -321,7 +350,7 @@ async def generate_about_candidate(messages: List[Dict[str, str]]) -> Optional[D
             
     return None
 
-def validate_about_candidate(candidate: Dict[str, Any], valid_source_ids: List[str]) -> bool:
+def validate_about_candidate(candidate: Dict[str, Any], valid_source_ids: List[str], fixed_category: str = "") -> bool:
     """
     Strict validation for structured LLM identity output.
     Rejects unknown source IDs, excessive length, or invalid structure.
@@ -351,7 +380,7 @@ def validate_about_candidate(candidate: Dict[str, Any], valid_source_ids: List[s
                 return False
                 
         if category is not None and isinstance(category, str):
-            if len(category.strip()) > 80:
+            if len(category.strip()) > 80 and category.strip() != fixed_category:
                 logger.warning(f"validate_about_candidate: Category exceeded 80 chars ({len(category)})")
                 return False
 
@@ -376,7 +405,13 @@ async def suggest_about(
     override_name: Optional[str] = None,
     client_sources: Optional[List[dict]] = None,
     history: Optional[List[Dict[str, str]]] = None,
-    user_message: Optional[str] = None
+    user_message: Optional[str] = None,
+    draft_purpose: Optional[str] = None,
+    draft_category: Optional[str] = None,
+    category_source: Optional[str] = None,
+    draft_presence: Optional[str] = None,
+    draft_description: Optional[str] = None,
+    description_source: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Main entry point for generating Identity suggestion (About + Category) server-side in ONE single LLM call.
@@ -391,7 +426,9 @@ async def suggest_about(
             draft_website=draft_website,
             override_name=override_name,
             client_sources=client_sources,
-            user_message=user_message
+            user_message=user_message,
+            draft_purpose=draft_purpose, draft_category=draft_category, category_source=category_source,
+            draft_presence=draft_presence, draft_description=draft_description, description_source=description_source,
         )
         
         if not context.get("found_space"):
@@ -422,8 +459,37 @@ async def suggest_about(
             user_message=user_message
         )
         candidate = await generate_about_candidate(messages)
-        
-        if not candidate or not validate_about_candidate(candidate, valid_source_ids):
+        owner_category = context.get("owner_category", "")
+        owner_constraints = bool(owner_category or context.get("presence") or context.get("owner_description"))
+        search_matches_owner = True
+        if isinstance(candidate, dict):
+            # Search may enrich identity, but cannot silently reclassify owner input.
+            if owner_category:
+                candidate["category"] = owner_category
+            uncertain_match = candidate.get("identity_match") in ("uncertain", "conflict")
+            unconfirmed_search = bool(context.get("search_candidates")) and candidate.get("identity_match") != "consistent"
+            if owner_constraints and (uncertain_match or unconfirmed_search):
+                search_matches_owner = False
+                # A search mismatch is not a reason to discard useful owner input.
+                # Retry once without external content or previous assistant proposals.
+                owner_context = {
+                    **context, "excerpts": [], "search_candidates": [],
+                    "previous_description": "", "previous_category": "",
+                    "generation_basis": "owner_only",
+                }
+                owner_history = [turn for turn in (history or []) if turn.get("role") == "user"]
+                messages, input_fingerprint, valid_source_ids = build_about_prompt(
+                    owner_context, history=owner_history, user_message=user_message,
+                )
+                candidate = await generate_about_candidate(messages)
+                if isinstance(candidate, dict):
+                    candidate["claims"] = []
+                    if owner_category:
+                        candidate["category"] = owner_category
+                logger.info("yullo.identity.owner_draft", extra={"space_id": str(context.get("space_id")),
+                            "status": candidate.get("status") if isinstance(candidate, dict) else "unavailable"})
+
+        if not candidate or not validate_about_candidate(candidate, valid_source_ids, fixed_category=owner_category):
             logger.warning("suggest_about: candidate generation or validation failed")
             return {
                 "status": "unavailable",
@@ -442,7 +508,7 @@ async def suggest_about(
 
         candidate_match = None
         search_cands = context.get("search_candidates") or []
-        top_cand = search_cands[0] if search_cands else None
+        top_cand = search_cands[0] if search_cands and search_matches_owner else None
         if top_cand:
             candidate_match = {
                 "title": top_cand.get("title"),
@@ -451,7 +517,7 @@ async def suggest_about(
                 "candidate_description": (candidate.get("description") or "").strip() if candidate.get("description") else None,
                 "candidate_category": (candidate.get("category") or "").strip() if candidate.get("category") else None,
             }
-        elif clarification:
+        elif clarification and search_matches_owner:
             import re
             title_m = re.search(r"matches for '([^']+)'|online presence for ([^(\s]+)", clarification)
             url_m = re.search(r"\((https?://[^\s)]+)\)|(https?://[^\s)]+)", clarification)

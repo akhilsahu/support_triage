@@ -1,13 +1,15 @@
 import { spaceBranch, useSpaceHierarchy } from '../api/spaces';
 import React, { useState, useRef, useEffect } from 'react';
-import { Palette, Check, Monitor, Sun, Moon } from 'lucide-react';
+import { Palette, Check, Monitor, Sun, Moon, LogOut, Loader2, Settings } from 'lucide-react';
 import { useYulloAppStore } from '../store/useYulloAppStore';
 import { useQuery } from '@tanstack/react-query';
+import * as Popover from '@radix-ui/react-popover';
+import { Link } from 'react-router-dom';
+import { useYulloSignOut } from '../hooks/useYulloSignOut';
 import { formsApi } from '../api/forms';
 
 export function YulloAppHeader({ spaceId }: { spaceId?: string }) {
-  const { appTheme, setTheme, appAccent, setAccent, user } = useYulloAppStore();
-  
+
   const { data: identity } = useQuery({
     queryKey: ['identity', spaceId],
     queryFn: () => spaceId ? formsApi.getIdentity(spaceId) : Promise.resolve(null),
@@ -18,13 +20,13 @@ export function YulloAppHeader({ spaceId }: { spaceId?: string }) {
   const ancestors = spaceBranch(hierarchy.data ?? [], spaceId).slice(0, -1);
 
   return (
-    <header className="relative z-[60] hidden md:flex items-center justify-between h-[72px] px-8 bg-[var(--canvas)] border-b border-[var(--border)]">
-      <div className="flex items-center gap-6">
+    <header className="relative z-[60] flex items-center justify-between h-16 px-4 md:h-[72px] md:px-8 bg-[var(--canvas)] border-b border-[var(--border)]">
+      <div className="flex items-center gap-3 md:gap-6">
         <div className="text-[20px] font-black tracking-tight text-[var(--text-primary)]">
           YULLO
         </div>
-        <div className="h-4 w-px bg-[var(--border)]" />
-        <div className="flex items-center gap-2 text-[14px] font-[Instrument_Sans] font-medium">
+        <div className="hidden h-4 w-px bg-[var(--border)] sm:block" />
+        <div className="hidden sm:flex items-center gap-2 text-[14px] font-[Instrument_Sans] font-medium">
           <a href="/yullo/home" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
             Home
           </a>
@@ -43,15 +45,43 @@ export function YulloAppHeader({ spaceId }: { spaceId?: string }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-3 md:gap-6">
         <ThemeMenu />
-        <div className="h-4 w-px bg-[var(--border)]" />
+        <div className="hidden h-4 w-px bg-[var(--border)] sm:block" />
         
-        <div className="w-8 h-8 rounded-full bg-[var(--surface-soft)] flex items-center justify-center text-[13px] font-semibold text-[var(--text-primary)] border border-[var(--border)]">
-          {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'U'}
-        </div>
+        <UserAccountMenu />
       </div>
     </header>
+  );
+}
+
+function UserAccountMenu() {
+  const user = useYulloAppStore(state => state.user);
+  const [open, setOpen] = useState(false);
+  const { signOut, signingOut, error, clearError } = useYulloSignOut();
+
+  return (
+    <Popover.Root open={open} onOpenChange={value => { if (!signingOut) { setOpen(value); clearError(); } }}>
+      <Popover.Trigger asChild>
+        <button type="button" aria-label="Account menu" title="Account menu" className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-soft)] text-[13px] font-semibold text-[var(--text-primary)] transition-colors hover:border-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)]">
+          {(user?.full_name || user?.email || 'U').charAt(0).toUpperCase()}
+        </button>
+      </Popover.Trigger>
+      <Popover.Content align="end" sideOffset={10} aria-label="Your account" className="z-[80] w-64 max-w-[calc(100vw-32px)] rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 text-[var(--text-primary)] shadow-lg">
+        <div className="border-b border-[var(--border)] px-3 py-3">
+          <p className="truncate text-sm font-semibold">{user?.full_name || 'Your account'}</p>
+          {user?.email && <p className="mt-1 truncate text-xs text-[var(--text-secondary)]">{user.email}</p>}
+        </div>
+        <Link to="/yullo/account" onClick={() => setOpen(false)} className="mt-1 flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors hover:bg-[var(--surface-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+          <Settings aria-hidden="true" className="h-4 w-4" />Account settings
+        </Link>
+        <button type="button" disabled={signingOut} onClick={signOut} className="mt-1 flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium transition-colors hover:bg-[var(--surface-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] disabled:opacity-50">
+          {signingOut ? <Loader2 aria-hidden="true" className="h-4 w-4 motion-safe:animate-spin" /> : <LogOut aria-hidden="true" className="h-4 w-4" />}
+          {signingOut ? 'Signing out…' : 'Sign out'}
+        </button>
+        {error && <p role="alert" className="px-3 pb-2 text-sm text-[var(--text-secondary)]">{error}</p>}
+      </Popover.Content>
+    </Popover.Root>
   );
 }
 
@@ -93,10 +123,12 @@ function ThemeMenu() {
     <div className="relative" ref={menuRef}>
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-[Instrument_Sans] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors"
+        aria-label="Interface theme"
+        aria-expanded={isOpen}
+        className="flex min-h-11 items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-[Instrument_Sans] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors"
       >
         <Palette className="w-4 h-4" />
-        Interface theme
+        <span className="hidden sm:inline">Interface theme</span>
       </button>
 
       {isOpen && (

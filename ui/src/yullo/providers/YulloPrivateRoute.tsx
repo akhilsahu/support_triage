@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useYulloAppStore } from '../store/useYulloAppStore';
 import { yulloApiClient } from '../api/client';
 import { YulloAppProviders } from './YulloAppProviders';
 
 export const YulloPrivateRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated, setAuth, clearAuth } = useYulloAppStore();
+  const { isAuthenticated, user, setAuth, clearAuth } = useYulloAppStore();
   const [isVerifying, setIsVerifying] = useState(!isAuthenticated);
   const location = useLocation();
 
@@ -48,6 +48,12 @@ export const YulloPrivateRoute = ({ children }: { children: React.ReactNode }) =
 
   if (!isAuthenticated) {
     return <Navigate to="/yullo/auth" state={{ from: location.pathname }} replace />;
+  }
+
+  if (!user?.onboarding_completed && location.pathname !== '/yullo/onboarding') {
+    const handle = new URLSearchParams(location.search).get('handle');
+    const suffix = handle && /^[a-z0-9_-]{3,50}$/.test(handle) ? `?handle=${encodeURIComponent(handle)}` : '';
+    return <Navigate to={`/yullo/onboarding${suffix}`} replace />;
   }
 
   return (

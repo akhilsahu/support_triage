@@ -208,10 +208,10 @@ The `.example` domain prevents accidental delivery or external business claims. 
 
 **Interfaces:**
 - Produces: deterministic `validate_publication_readiness()` and idempotent `publish_space()`.
-- Consumes: owned Yullo Space, valid handle, ready published knowledge item, configuration and current context version.
+- Consumes: owned Yullo Space, approved purpose, display name, valid handle, configuration and current context version. Source readiness is separate from publication.
 
 - [ ] Remove `_call_aura_publication_service()` returning unconditional `True`.
-- [ ] Validate the Space belongs to the owner and Yullo namespace, its extension/config exist, its handle is valid, and at least one current knowledge item is genuinely ready.
+- [ ] Validate the Space belongs to the owner and Yullo namespace, its extension/config exist, its handle is valid, and its name/purpose are valid. Pending, failed or absent knowledge must not block identity publication.
 - [ ] Publish Northstar and Offers.Run only after readiness passes; emit `space.published` once with the real version.
 - [ ] Never call publication for Acme Corp.
 - [ ] A rerun of the same published version is a no-op.
@@ -265,3 +265,8 @@ The `.example` domain prevents accidental delivery or external business claims. 
 ## Execution gate
 
 This document authorizes planning only. Before implementation, review the current Alembic head and confirm plans 01–06 are complete. Before running against a database, review the selected owner printed by preflight and the three resolved slugs. Running the bootstrap creates durable database, blob and vector-index data for that owner.
+
+
+### 2026-11-16 publication policy reconciliation
+
+Shared publication now permits identity-only Spaces and Spaces whose sources are still processing or failed. Source-ready requirements above describe the sample fixture evidence only, never a publication gate. Acme remains draft because the fixture explicitly requests draft, not because it lacks sources. No bootstrap or production data was changed in this task.

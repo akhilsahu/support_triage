@@ -273,6 +273,7 @@ export function IdentityFormScreen() {
             className="px-5 sm:px-8 lg:px-10 py-4 shadow-lg bg-[var(--surface)]"
             onCancel={() => navigate(`/yullo/spaces/${spaceId}`)}
             onDelete={() => setShowDeleteModal(true)}
+            deleteIconOnly
             isSubmitting={saveStatus === 'saving' || saveStatus === 'saved' || isDeleting}
             submitLabel={saveStatus === 'saved' ? 'Saved' : (saveStatus === 'saving' ? 'Saving...' : 'Save changes')}
           />

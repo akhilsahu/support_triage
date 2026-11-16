@@ -92,6 +92,11 @@ class SourceTextRequest(BaseModel):
     text: str
     title: Optional[str] = None
 
+class LaunchRequest(BaseModel):
+    # Optional for compatibility with the existing onboarding client.
+    space_id: Optional[uuid.UUID] = None
+
+
 class PreviewRequest(BaseModel):
     regenerate: bool = False
 
@@ -109,8 +114,14 @@ class IdentitySuggestion(BaseModel):
 
 class GenerateSummaryRequest(BaseModel):
     space_id: Optional[uuid.UUID] = None
-    name: Optional[str] = None
-    website: Optional[str] = None
+    name: Optional[str] = Field(None, max_length=200)
+    website: Optional[str] = Field(None, max_length=500)
+    purpose: Optional[Literal["person", "creator", "business", "organization"]] = None
+    category: Optional[str] = Field(None, max_length=100)
+    category_source: Optional[Literal["owner", "aura"]] = None
+    presence: Optional[Literal["online", "physical", "both", "mobile"]] = None
+    description: Optional[str] = Field(None, max_length=4000)
+    description_source: Optional[Literal["owner", "aura"]] = None
     sources: Optional[List[dict]] = None
     history: Optional[List[Dict[str, str]]] = None
     user_message: Optional[str] = None

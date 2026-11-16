@@ -17,6 +17,7 @@ from app.core.database import get_db
 from app.core.google_identity import verify_google_id_token
 import anyio
 from app.models.user import User
+from app.yullo.schemas.account import AccountProfileUpdate
 from app.models.auth_identity import AuthIdentity
 from app.models.space import Space
 from app.services.auth.otp_service import normalize_e164, issue_otp, verify_otp
@@ -358,3 +359,36 @@ async def logout(
     from app.yullo.services.auth.session_service import revoke_yullo_session
     await revoke_yullo_session(db, request, response)
     return {"ok": True}
+
+
+@router.post("/onboarding/reset")
+async def reset_onboarding_status(
+    response: Response,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset only the authenticated account's onboarding flag, retaining its Spaces."""
+    user.onboarding_completed = False
+    await db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    logger.info("yullo_auth.onboarding_reset", user_id=str(user.id))
+    return {"onboarding_completed": False}
+
+
+@router.get("/profile")
+async def read_account_profile(response: Response, user: User = Depends(current_user)):
+    from app.yullo.services.auth.account_service import profile_payload
+    response.headers["Cache-Control"] = "no-store"
+    return profile_payload(user)
+
+
+@router.patch("/profile")
+async def update_account_profile(
+    payload: AccountProfileUpdate,
+    response: Response,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.yullo.services.auth.account_service import update_profile
+    response.headers["Cache-Control"] = "no-store"
+    return await update_profile(db, user_id=user.id, data=payload)
