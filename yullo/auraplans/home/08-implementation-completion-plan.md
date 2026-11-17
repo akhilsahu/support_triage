@@ -1147,3 +1147,12 @@ Removed the duplicate “List view · count” disclosure below the Home network
 - Verification: Python parsing/imports, workflow YAML parsing, Alembic single-head graph and scoped diff whitespace passed. Migration offline SQL verified in the preceding entry. Tests remain skipped per user instruction; new guard execution on a migrated isolated database and real authenticated Home success remain unverified. No production write, migration, commit, push or deployment performed.
 - Separate shared-startup risk found: `app/core/database.py:init_db` executes runtime DDL including `DROP TABLE IF EXISTS documents CASCADE`, startup backfill, and catches migration failures while allowing startup. Left intact pending a compatibility review; do not call this application production-ready without resolving that shared initialization behavior and validating the affected flows.
 - Pending: approval for production migration/release; verify authenticated Home and mixed activity after rollout; review shared startup DDL with Support247 compatibility; run focused regression checks when the user's test-skip instruction is lifted.
+
+
+### 2026-11-17 — Home repair deployed and verified
+
+- User authorized deployment. Published isolated release `f8201437` containing only the Home repository fixes, migration, schema guard, workflow integration and corresponding plan notes; unrelated dirty source/onboarding/visual/workflow edits stayed out of the release.
+- GitHub Actions run `44056688600` succeeded: backend tests/print hygiene, frontend type-check/lint/test job, and production build/deployment. The existing pipeline ran its configured CI checks; no extra local test suite was run.
+- Production API is healthy at the new release; Alembic reports `f6d7e8f9a0b1 (head)`. Read-only Home schema/index guard passed against production. Read-only execution of the actual Home service for the owner affected by the logged failure succeeded, including complete response serialization. No profile/source bodies were printed or mutated for verification.
+- Public `/yullo/home` returned HTTP 200; `/api/v1/health` reported database/Redis connected. Fresh API logs contained no errors/5xx in the inspected post-rollout window. Full signed-in browser rendering was not exercised; the service/data failure is verified resolved.
+- Shared startup DDL risk recorded above remains outside this Home release and still needs compatibility review. Deployment success is not a claim that the whole application has completed a production-readiness audit.
