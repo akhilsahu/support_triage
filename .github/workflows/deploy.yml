@@ -38,6 +38,8 @@ jobs:
         run: python -c "from app.main import app; assert app.routes"
       - name: Migrate isolated test database
         run: alembic upgrade head
+      - name: Verify Home schema and event deduplication
+        run: python -m app.yullo.services.home.schema_check
       - name: Backend tests
         run: pytest tests/unit -q -o addopts="" -o asyncio_default_test_loop_scope=session
       - name: print() hygiene (ruff T20)
@@ -136,6 +138,7 @@ jobs:
             docker compose -f deploy/docker-compose.prod.yml --env-file .env build api
             docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d --wait postgres redis
             docker compose -f deploy/docker-compose.prod.yml --env-file .env run --rm --no-deps api alembic upgrade head
+            docker compose -f deploy/docker-compose.prod.yml --env-file .env run --rm --no-deps api python -m app.yullo.services.home.schema_check
             sh deploy/preserve-api-storage.sh
             docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d --remove-orphans
             docker compose -f deploy/docker-compose.prod.yml --env-file .env exec -T api python - <<'PY'

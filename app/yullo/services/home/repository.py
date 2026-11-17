@@ -1,8 +1,8 @@
 import uuid
 import zoneinfo
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_, or_, func, text, case
 
@@ -63,6 +63,14 @@ class EventRecord(BaseModel):
     occurred_at: datetime
     metadata: dict
 
+    @field_validator("occurred_at")
+    @classmethod
+    def utc_timestamp(cls, value: datetime) -> datetime:
+        # Conversation timestamps are naive UTC; Home events are timezone-aware.
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
 
 class PreferenceSnapshot(BaseModel):
     app_theme: str = "system"
@@ -111,7 +119,7 @@ class HomeSnapshotRepository:
     @staticmethod
     def _build_snapshot(db: Session, user_id: uuid.UUID, now: datetime, config: dict) -> HomeSnapshot:
         preferences = HomeSnapshotRepository._load_preferences(db, user_id)
-        tz_str = preferences.timezone if preferences else "UTC"
+        tz_str = (preferences.timezone if preferences else None) or "UTC"
         try:
             tz = zoneinfo.ZoneInfo(tz_str)
         except (zoneinfo.ZoneInfoNotFoundError, ValueError):
